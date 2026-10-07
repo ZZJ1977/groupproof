@@ -208,6 +208,61 @@ Railway 自动部署和 GitHub Actions 部署应选择一种，不能同时启�
 
 生产分支应启用保护规则，并要求 `quality` 和 `docker` 检查通过后才能合并。
 
+## 组员协作
+
+仓库当前是私有仓库。你需要先在 GitHub 打开仓库的 **Settings → Collaborators → Add people**，邀请组员的 GitHub 账号，并给普通开发成员 `Write` 权限。只有项目负责人保留 `Admin` 权限，避免误删仓库、分支或环境配置。
+
+组员接受邀请后，在自己的电脑执行：
+
+```bash
+git clone git@github.com:ZZJ1977/groupproof.git
+cd groupproof
+npm ci
+cp .env.example .env.local
+npm run dev
+```
+
+然后打开 <http://localhost:3000>。`.env.local` 只用于本机，不要提交；需要新增变量时先更新 [`.env.example`](./.env.example)，让所有成员使用同一份变量名。
+
+每个人都从 `develop` 创建自己的功能分支，不要直接向 `main` 或 `develop` 推送：
+
+```bash
+git fetch origin
+git switch develop
+git pull --ff-only origin develop
+git switch -c feat/task-evidence
+```
+
+分支名可以使用 `feat/功能名`、`fix/问题名` 或 `chore/维护内容`。完成开发后，先在本地执行：
+
+```bash
+npm run lint
+npm run typecheck
+npm run check:routes
+npm run build
+```
+
+提交并推送功能分支：
+
+```bash
+git add .
+git commit -m "feat: add task evidence workflow"
+git push --set-upstream origin feat/task-evidence
+```
+
+在 GitHub 创建 Pull Request，目标分支选择 `develop`。至少一名成员完成代码审查，并等待 `quality` 和 `docker` 检查通过后再合并。合并到 `develop` 后，Railway 测试环境会自动部署；测试验收完成后，由负责人创建 `develop → main` 的发布 Pull Request。
+
+开始新任务前同步最新代码：
+
+```bash
+git switch develop
+git pull --ff-only origin develop
+git switch feat/task-evidence
+git rebase origin/develop
+```
+
+发生冲突时先解决冲突，再运行全部检查。不要提交 `.env.local`、数据库密码、OAuth secret、AI key 或 Railway token；这些值只能放在本机环境、Railway Variables 或 GitHub Secrets 中。
+
 ## 项目开发计划
 
 ### 阶段一：V1 前端原型（当前已完成）
