@@ -37,7 +37,9 @@ The container exposes `/healthz` for platform health checks.
 
 ## CI/CD and Railway
 
-`.github/workflows/ci-cd.yml` runs lint, TypeScript checks, route checks, a production build, a rendered-route smoke test, and a Docker build/smoke test for pull requests and pushes to `main`.
+`.github/workflows/ci-cd.yml` runs lint, TypeScript checks, route checks, a production build, a rendered-route smoke test, and a Docker build/smoke test for pull requests and pushes to `main` or `develop`.
+
+Railway detects the root `Dockerfile`; configure the service health check as `/healthz` in the dashboard. Environment variables are documented in [`.env.example`](./.env.example); the staging/production service layout is documented in [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
 To use Railway's GitHub integration for automatic deployment:
 
@@ -49,6 +51,8 @@ To use Railway's GitHub integration for automatic deployment:
 For deployments gated by this workflow's checks, disable Railway's automatic GitHub deployment and use the Actions deploy job instead. Create a Railway Project Token for the target environment, add it as the `RAILWAY_TOKEN` repository secret, add the target service ID as the `RAILWAY_SERVICE_ID` repository variable, and set `RAILWAY_DEPLOY` to `true`. A push to `main` then runs the deploy job after the checks pass; a manual workflow run can deploy a selected ref. Use one deployment trigger to avoid duplicate deployments.
 
 This V1 is still a browser-only mock frontend. It does not require runtime environment variables, and data stored in `localStorage` is local to each browser rather than shared by Railway instances.
+
+The planned frontend/API/worker boundaries, environment variable contract, and staging/production rollout rules are documented in [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
 ## Current scope
 
