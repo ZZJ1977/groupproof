@@ -43,12 +43,12 @@ Railway detects the root `Dockerfile`; configure the service health check as `/h
 
 To use Railway's GitHub integration for automatic deployment:
 
-1. Create a project in your Railway account and deploy the `main` branch of this repository.
+1. Create separate staging and production Railway projects and connect `develop` to staging and `main` to production.
 2. Keep the service root directory at the repository root. Railway will detect `Dockerfile` automatically.
 3. Set the service health check path to `/healthz`, then generate a Railway domain.
-4. Protect `main` in GitHub and require the `quality` and `docker` checks before merging. Railway will redeploy pushes to the connected branch. A direct push to `main` can trigger Railway before that push's Actions checks finish.
+4. Protect `main` and `develop` in GitHub and require the quality and Docker checks before merging. Railway will redeploy pushes to the connected branch. A direct push can trigger Railway before that push's Actions checks finish.
 
-For deployments gated by this workflow's checks, disable Railway's automatic GitHub deployment and use the Actions deploy job instead. Create a Railway Project Token for the target environment, add it as the `RAILWAY_TOKEN` repository secret, add the target service ID as the `RAILWAY_SERVICE_ID` repository variable, and set `RAILWAY_DEPLOY` to `true`. A push to `main` then runs the deploy job after the checks pass; a manual workflow run can deploy a selected ref. Use one deployment trigger to avoid duplicate deployments.
+For deployments gated by this workflow's checks, disable Railway's automatic GitHub deployment and use the Actions deploy job instead. Create GitHub Environments named `staging` and `production`; in each environment add the target Railway Project Token as the `RAILWAY_TOKEN` secret and the target service ID as the `RAILWAY_SERVICE_ID` variable. Set the repository variable `RAILWAY_DEPLOY_STAGING` or `RAILWAY_DEPLOY_PRODUCTION` to `true` to enable automatic deployment for that branch. A push to `develop` or `main` then runs the matching deploy job after the checks pass; a manual workflow run can deploy a selected ref. Use one deployment trigger to avoid duplicate deployments.
 
 This V1 is still a browser-only mock frontend. It does not require runtime environment variables, and data stored in `localStorage` is local to each browser rather than shared by Railway instances.
 
