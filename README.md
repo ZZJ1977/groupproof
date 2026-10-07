@@ -14,6 +14,20 @@ GroupProof 是一个面向课程小组项目的协作与治理平台。平台围
 - `develop` 分支用于测试环境，`main` 分支用于生产环境。
 - 当前 Mock 数据只保存在访问者自己的浏览器中，不同用户和 Railway 实例之间不会共享数据。
 
+## 快速导航
+
+- [本地开发](#本地开发)：安装依赖并启动前端
+- [最终技术选型](#最终技术选型)：查看完整技术栈和服务边界
+- [环境变量](#环境变量)：配置本地、测试和生产变量
+- [本地质量检查](#本地质量检查)：运行 lint、类型、路由和构建检查
+- [Docker](#docker)：构建并运行生产镜像
+- [测试环境与生产环境](#测试环境与生产环境)：查看两个 Railway 环境
+- [Railway 部署](#railway-部署)：配置服务和发布方式
+- [CI/CD](#cicd)：了解 develop → staging → main → production 流程
+- [组员协作](#组员协作)：邀请成员和协同开发命令
+- [项目开发计划](#项目开发计划)：查看后端、管理后台和生产化阶段
+- [详细部署基线](./docs/DEPLOYMENT.md)：查看完整服务拓扑和环境约定
+
 ## 技术栈
 
 - Next.js 15 App Router、React 19、TypeScript strict
@@ -309,6 +323,9 @@ git rebase origin/develop
 
 ## 项目开发计划
 
+<details>
+<summary>展开查看五个开发阶段</summary>
+
 ### 阶段一：V1 前端原型（当前已完成）
 
 - 完成 56 个页面、角色导航和响应式布局。
@@ -344,7 +361,12 @@ git rebase origin/develop
 - 分离测试和生产数据库、缓存、存储桶及密钥。
 - 关闭生产环境 Mock，执行完整验收后再开放真实用户。
 
+</details>
+
 ## 目录结构
+
+<details>
+<summary>展开查看目录结构</summary>
 
 ```text
 app/                         Next.js App Router 入口、布局和健康检查
@@ -373,7 +395,12 @@ packages/domain/             前后端共享契约与类型
 infra/                       Compose、数据库迁移和运维脚本
 ```
 
+</details>
+
 ## 当前限制
+
+<details>
+<summary>展开查看当前限制</summary>
 
 - 登录、邮箱验证码、OAuth 和权限目前是前端演示逻辑。
 - 数据只保存在当前浏览器的 `localStorage` 中，不是共享数据。
@@ -381,3 +408,7 @@ infra/                       Compose、数据库迁移和运维脚本
 - 真实 API、数据库、对象存储、Redis、Worker 和生产管理后台尚未接入。
 
 详细的前端交付状态见 [`FRONTEND_STATUS.md`](./FRONTEND_STATUS.md)，页面与路由计划见 [`FRONTEND_IMPLEMENTATION_PLAN.md`](./FRONTEND_IMPLEMENTATION_PLAN.md)。
+
+</details>
+
+[返回顶部](#groupproof)
