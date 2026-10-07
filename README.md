@@ -23,6 +23,31 @@ GroupProof 是一个面向课程小组项目的协作与治理平台。平台围
 - Docker 多阶段构建，Next.js standalone 运行模式
 - GitHub Actions、Railway
 
+## 最终技术选型
+
+以下选型作为 GroupProof V1 及后续完整系统的统一技术基线。当前仓库已经落地 Web 前端、Docker、GitHub Actions 和 Railway；FastAPI、数据库、异步任务和第三方集成会按下面的边界逐步接入。
+
+| 层级 | 最终技术选型 | 用途 |
+| --- | --- | --- |
+| 产品形态 | **Web-only** | V1 只做 Web，不开发独立 App |
+| 前端 | **Next.js + Tailwind CSS + shadcn/ui** | 学生端、教师端、Admin 后台 |
+| 后端 | **FastAPI / Python** | REST API、业务逻辑、第三方集成和 AI 调用 |
+| 后端架构 | **Modular Monolith** | 模块化单体，暂不上微服务 |
+| 主数据库 | **PostgreSQL** | User、Course、Group、Task、Evidence、Review、Report 等业务数据 |
+| 向量能力 | **pgvector** | AI 检索、语义匹配和 Evidence ↔ Task 关联 |
+| 文件存储 | **Supabase Storage** | 文档、Evidence 文件和附件 |
+| 异步任务 | **Redis + Celery** | AI 分析、GitHub/飞书同步、文档解析和报告生成 |
+| 实时状态 | **SSE** | 推送 AI 分析完成、同步完成等状态 |
+| AI | **第三方 LLM API + Provider Adapter** | 任务提取、Evidence 分析、验收和风险解释 |
+| GitHub | **GitHub App + REST API + Webhook** | Commit、Pull Request、Diff、Changed Files 和 CI 证据 |
+| 飞书 | **企业自建应用 + 飞书 Open API** | V1 只读同步项目群协作证据 |
+| 认证 | **Google Login + MUST 邮箱验证** | 学生身份认证 |
+| 权限 | **Contextual RBAC** | Student / Teacher / Admin 加课程和小组上下文权限 |
+| CI/CD | **GitHub Actions** | 自动测试、构建和 Staging 部署 |
+| 部署 | **Railway + Managed PostgreSQL** | 部署 Next.js、FastAPI、Celery 和 Redis |
+| 监控 | **Sentry** | 前后端错误监控 |
+| 测试 | **pytest + Playwright** | 后端单元/集成测试和前端/E2E 测试 |
+
 ## 环境要求
 
 本地开发需要：
