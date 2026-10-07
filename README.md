@@ -191,7 +191,7 @@ Railway 自动部署和 GitHub Actions 部署应选择一种，不能同时启�
 
 ## CI/CD
 
-工作流文件为 [`.github/workflows/ci-cd.yml`](./.github/workflows/ci-cd.yml)，在 Pull Request 和 `main`/`develop` 推送时执行：
+工作流文件为 [`.github/workflows/ci-cd.yml`](./.github/workflows/ci-cd.yml)，在 `develop` 或 `main` 推送时执行：
 
 1. 安装锁定依赖。
 2. 执行 lint、TypeScript 检查和路由映射检查。
@@ -200,13 +200,13 @@ Railway 自动部署和 GitHub Actions 部署应选择一种，不能同时启�
 5. 构建 Docker 镜像并验证健康检查和静态资源。
 6. 按配置选择是否部署 Railway。
 
-推荐的开发流程：
+发布流程：
 
 ```text
-功能分支 → Pull Request → develop → 测试环境验收 → main → 生产环境
+功能分支本地测试 → 推送 develop → CI/CD 测试环境 → 验收通过 → 推送 main → CI/CD 生产环境
 ```
 
-生产分支应启用保护规则，并要求 `quality` 和 `docker` 检查通过后才能合并。
+`develop` 的每次推送都会先经过质量检查和 Docker 检查，然后部署测试环境。测试环境确认通过后，再将 `develop` 的内容同步到 `main` 并推送；`main` 的检查通过后才发布生产环境。`main` 只允许负责人推送，避免未经测试的代码进入生产。
 
 ## 组员协作
 
@@ -224,7 +224,7 @@ npm run dev
 
 然后打开 <http://localhost:3000>。`.env.local` 只用于本机，不要提交；需要新增变量时先更新 [`.env.example`](./.env.example)，让所有成员使用同一份变量名。
 
-每个人都从 `develop` 创建自己的功能分支，不要直接向 `main` 或 `develop` 推送：
+每个人都从 `develop` 创建自己的功能分支，先在本地完成开发和检查：
 
 ```bash
 git fetch origin
@@ -242,7 +242,7 @@ npm run check:routes
 npm run build
 ```
 
-提交并推送功能分支：
+提交功能分支：
 
 ```bash
 git add .
@@ -250,7 +250,25 @@ git commit -m "feat: add task evidence workflow"
 git push --set-upstream origin feat/task-evidence
 ```
 
-在 GitHub 创建 Pull Request，目标分支选择 `develop`。至少一名成员完成代码审查，并等待 `quality` 和 `docker` 检查通过后再合并。合并到 `develop` 后，Railway 测试环境会自动部署；测试验收完成后，由负责人创建 `develop → main` 的发布 Pull Request。
+本地检查通过后，把功能分支合入 `develop` 并推送，触发测试环境 CI/CD：
+
+```bash
+git switch develop
+git pull --ff-only origin develop
+git merge --no-ff feat/task-evidence -m "merge: task evidence workflow"
+git push origin develop
+```
+
+等待 GitHub Actions 的 `quality`、`docker` 检查和 Railway 测试部署全部成功，在测试环境完成验收。验收通过后，由负责人把测试分支同步到生产分支：
+
+```bash
+git switch main
+git pull --ff-only origin main
+git merge --ff-only origin/develop
+git push origin main
+```
+
+这样 `main` 只接收已经在 `develop` 测试环境验证过的代码。
 
 开始新任务前同步最新代码：
 
