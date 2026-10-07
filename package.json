@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20 <25"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:standalone": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check:routes": "node --experimental-strip-types scripts/check-routes.mjs"
+    "check:routes": "tsx scripts/check-routes.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -38,6 +42,7 @@
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.1.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0"
   },
   "overrides": {

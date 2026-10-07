@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.github
+.env*
+!.env.example
+*.log
+*.tsbuildinfo
+coverage
+out
+Dockerfile*

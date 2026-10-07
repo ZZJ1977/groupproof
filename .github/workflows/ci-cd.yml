@@ -1,0 +1,142 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the current ref to Railway
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 20.x
+
+jobs:
+  quality:
+    name: Lint, typecheck, build, and route smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Check route mapping
+        run: npm run check:routes
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Smoke test rendered routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .next/standalone/.next
+          cp -R .next/static .next/standalone/.next/static
+          cp -R public .next/standalone/public
+          HOSTNAME=127.0.0.1 PORT=3000 npm run start:standalone > "$RUNNER_TEMP/next.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          CHECK_HTTP=1 npm run check:routes
+          curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null
+
+  docker:
+    name: Build and smoke test Docker image
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: groupproof:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name groupproof-ci --publish 3001:3000 groupproof:ci
+          trap 'docker rm --force groupproof-ci >/dev/null 2>&1 || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3001/healthz >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          curl --fail --silent http://127.0.0.1:3001/ > "$RUNNER_TEMP/home.html"
+          node -e "const fs = require('fs'); const html = fs.readFileSync(process.argv[1], 'utf8'); const asset = html.match(/\/_next\/static\/[^\" ]+\.js/); if (!asset) process.exit(1); process.stdout.write(asset[0]);" "$RUNNER_TEMP/home.html" > "$RUNNER_TEMP/asset-path"
+          curl --fail --silent "http://127.0.0.1:3001$(cat "$RUNNER_TEMP/asset-path")" >/dev/null
+
+  deploy:
+    name: Deploy to Railway
+    needs: [quality, docker]
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY == 'true') }}
+    runs-on: ubuntu-latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Railway credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}" || { echo "::error::Set the RAILWAY_TOKEN repository secret before enabling Railway deploys."; exit 1; }
+          test -n "${RAILWAY_SERVICE_ID:-}" || { echo "::error::Set the RAILWAY_SERVICE_ID repository variable before enabling Railway deploys."; exit 1; }
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.63.3
+
+      - name: Deploy source with Dockerfile to Railway
+        run: railway up --ci --service "$RAILWAY_SERVICE_ID"
