@@ -11,7 +11,7 @@
 | 测试 | `develop` | `groupproof-staging` | 联调、验收、演示 |
 | 生产 | `main` | `groupproof-production` | 面向真实用户 |
 
-当前只有前端时，可以先在 `groupproof-staging` 部署 `web` 服务。后端稳定并完成数据迁移后，再把同一套服务配置复制到生产项目。测试和生产使用不同的数据库、Redis、对象存储桶和 OAuth 回调地址。
+当前前端已分别部署到 `groupproof-staging` 和 `groupproof-production`，分别跟踪 `develop` 与 `main`。两套环境目前都使用 Mock 数据；后端稳定并完成数据迁移后，再切换生产服务到真实 API。测试和生产使用不同的数据库、Redis、对象存储桶和 OAuth 回调地址。
 
 每个项目建议使用以下服务名：
 

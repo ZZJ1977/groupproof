@@ -10,7 +10,8 @@ GroupProof 是一个面向课程小组项目的协作与治理平台。平台围
 - 已支持学生/组长、教师/助教、管理员三套演示角色。
 - 已配置 Node.js 20、Next.js standalone 构建、Docker 和 GitHub Actions。
 - 测试环境已部署到 Railway：[`groupproof-staging`](https://groupproof-staging-production.up.railway.app)。
-- `develop` 分支用于测试环境，`main` 分支用于生产发布准备。
+- 生产环境已部署到 Railway：[`groupproof-production`](https://groupproof-production-production.up.railway.app)。
+- `develop` 分支用于测试环境，`main` 分支用于生产环境。
 - 当前 Mock 数据只保存在访问者自己的浏览器中，不同用户和 Railway 实例之间不会共享数据。
 
 ## 技术栈
@@ -156,7 +157,7 @@ curl --fail http://localhost:3000/
 
 <https://groupproof-staging-production.up.railway.app>
 
-目前只有前端原型，因此先维护测试项目。后端、管理后台、数据库迁移和真实鉴权完成后，再创建并发布 `groupproof-production`。测试和生产必须使用不同的 PostgreSQL、Redis、对象存储桶和 OAuth 回调地址。
+当前测试和生产都运行前端原型，数据仍由 Mock 层提供。后端、管理后台、数据库迁移和真实鉴权完成后，生产环境才具备正式对外开放条件。测试和生产必须使用不同的 PostgreSQL、Redis、对象存储桶和 OAuth 回调地址。
 
 ## Railway 部署
 
@@ -314,7 +315,7 @@ git rebase origin/develop
 
 ### 阶段五：生产化
 
-- 创建 `groupproof-production` Railway 项目。
+- 已创建 `groupproof-production` Railway 项目，并连接 `main` 分支。
 - 分离测试和生产数据库、缓存、存储桶及密钥。
 - 关闭生产环境 Mock，执行完整验收后再开放真实用户。
 
