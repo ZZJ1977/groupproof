@@ -146,8 +146,5 @@ jobs:
       - name: Install Railway CLI
         run: npm install --global @railway/cli@5.63.3
 
-      - name: Link Railway project and service
-        run: railway link --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment production
-
       - name: Deploy source with Dockerfile to Railway
-        run: railway up --ci --service "$RAILWAY_SERVICE_ID"
+        run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment production
