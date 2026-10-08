@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({ title, description, eyebrow, actions, icon: Icon }: { title: string; description?: string; eyebrow?: string; actions?: ReactNode; icon?: LucideIcon }) {
-  return <div className="gp-page-header flex flex-wrap items-start justify-between gap-3"><div>{eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}<div className="flex items-center gap-3">{Icon && <span className="flex h-10 w-10 items-center justify-center rounded-[7px] bg-[#eaf2ff] text-[#246bfa]"><Icon size={21} /></span>}<div><h1 className="gp-page-title">{title}</h1>{description && <p className="gp-page-description">{description}</p>}</div></div></div>{actions && <div className="flex items-center gap-2">{actions}</div>}</div>;
+  return <div className="gp-page-header flex flex-wrap items-start justify-between gap-3"><div>{eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}<div className="flex items-center gap-3">{Icon && <span className="flex h-10 w-10 items-center justify-center rounded-[7px] bg-[var(--gp-action-soft)] text-[var(--gp-action)]"><Icon size={21} /></span>}<div><h1 className="gp-page-title">{title}</h1>{description && <p className="gp-page-description">{description}</p>}</div></div></div>{actions && <div className="flex items-center gap-2">{actions}</div>}</div>;
 }
 
 export function Panel({ title, action, children, className, bodyClassName, noPadding = false }: { title?: string; action?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; noPadding?: boolean }) {
@@ -27,7 +27,7 @@ export function ProgressBar({ value, className, color }: { value: number; classN
 }
 
 export function Stat({ label, value, sub, icon: Icon, className, accent }: { label: string; value: string | number; sub?: string; icon?: LucideIcon; className?: string; accent?: string }) {
-  return <div className={cn("gp-stat", className)}><div className="flex items-center justify-between gap-3"><div className="gp-stat-label">{label}</div>{Icon && <Icon size={17} style={{ color: accent ?? "#246bfa" }} />}</div><div className="gp-stat-value" style={accent ? { color: accent } : undefined}>{value}</div>{sub && <div className="gp-stat-sub">{sub}</div>}</div>;
+  return <div className={cn("gp-stat", className)}><div className="flex items-center justify-between gap-3"><div className="gp-stat-label">{label}</div>{Icon && <Icon size={17} style={{ color: accent ?? "var(--gp-action)" }} />}</div><div className="gp-stat-value" style={accent ? { color: accent } : undefined}>{value}</div>{sub && <div className="gp-stat-sub">{sub}</div>}</div>;
 }
 
 export function Avatar({ name, color, size = 28 }: { name: string; color?: string; size?: number }) {
@@ -36,4 +36,15 @@ export function Avatar({ name, color, size = 28 }: { name: string; color?: strin
 
 export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return <div className="gp-empty"><div className="font-semibold text-[#52647f]">{title}</div>{description && <p className="mt-1 text-[12px]">{description}</p>}{action && <div className="mt-4">{action}</div>}</div>;
+}
+
+/** 统一操作反馈（阶段 14 组件状态表）：成功/失败/提示，保留输入场景配合表单使用 */
+export function Feedback({ tone = "info", children, className }: { tone?: "info" | "success" | "error" | "warning"; children: ReactNode; className?: string }) {
+  return <div className={cn("gp-feedback gp-fade-in", className)} data-tone={tone === "info" ? undefined : tone} role="status">{children}</div>;
+}
+
+/** 表单保存状态：未保存/保存中/已保存/失败（含版本冲突提示） */
+export function SaveState({ state, children }: { state: "clean" | "dirty" | "saving" | "saved" | "error"; children?: ReactNode }) {
+  const text = children ?? { clean: "", dirty: "未保存", saving: "保存中…", saved: "已保存", error: "保存失败" }[state];
+  return <span className="gp-save-state" data-state={state === "clean" ? undefined : state} role="status" aria-live="polite">{text}</span>;
 }

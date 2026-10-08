@@ -1,7 +1,9 @@
 import { seedData } from "@/mocks/seed";
+import { migrateWorkspace } from "@/lib/versioning";
 import type { Evidence, MockData, Task, Verification } from "@/types/domain";
 
 const storageKey = "groupproof-v1-workspace";
+const backupKey = "groupproof-v1-workspace-legacy-backup";
 
 function cloneSeed(): MockData {
   return structuredClone(seedData);
@@ -12,11 +14,27 @@ export const mockService = {
     if (typeof window === "undefined") return cloneSeed();
     const saved = window.localStorage.getItem(storageKey);
     if (!saved) return cloneSeed();
+    let raw: unknown;
     try {
-      return JSON.parse(saved) as MockData;
+      raw = JSON.parse(saved);
     } catch {
+      console.error("工作区数据不是合法 JSON，已保留原始记录，本次会话使用演示种子。");
       return cloneSeed();
     }
+    const { data, migrated, error } = migrateWorkspace(raw);
+    if (error) {
+      // 迁移失败保留原始浏览器数据并报告格式错误，不自动覆盖为演示种子
+      console.error(`工作区数据格式错误：${error}。原始记录已保留。`);
+      if (typeof window !== "undefined" && !window.localStorage.getItem(backupKey)) {
+        window.localStorage.setItem(backupKey, saved);
+      }
+      return cloneSeed();
+    }
+    if (migrated) {
+      if (!window.localStorage.getItem(backupKey)) window.localStorage.setItem(backupKey, saved);
+      window.localStorage.setItem(storageKey, JSON.stringify(data));
+    }
+    return data;
   },
 
   async saveWorkspace(data: MockData): Promise<void> {

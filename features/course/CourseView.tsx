@@ -13,13 +13,17 @@ import {
   Plus,
 } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
-import { EmptyState, PageHeader, Panel, ProgressBar, StatusBadge } from "@/components/common";
+import { can } from "@/lib/access/policy";
+import { useCommands } from "@/lib/commands/use-commands";
+import { publishedCourseRule } from "@/lib/versioning";
+import { getRuleChangeImpact } from "@/lib/commands/rule-change";
+import { EmptyState, Feedback, PageHeader, Panel, ProgressBar, StatusBadge } from "@/components/common";
 import type { ActionItem, Course, Group, Project, User } from "@/types/domain";
 
 type Screen = 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | 39 | 40;
 
-const button = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50";
-const secondary = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+const button = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-[var(--gp-action)] bg-[var(--gp-action)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--gp-action-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+const secondary = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-[var(--gp-border)] bg-white px-4 py-2 text-sm font-medium text-[var(--gp-ink-soft)] transition-colors hover:bg-[var(--gp-canvas)] disabled:cursor-not-allowed disabled:opacity-50";
 const input = "w-full rounded border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const label = "mb-1.5 block text-xs font-semibold text-slate-600";
 const muted = "text-sm text-slate-500";
@@ -35,7 +39,7 @@ function statusText(status: Course["status"]) { return status === "active" ? "�
 
 function Header({ title, description, crumbs, action }: { title: string; description?: string; crumbs?: { title: string; href?: string }[]; action?: React.ReactNode }) {
   return <header className="mb-6">
-    {crumbs && <nav aria-label="面包屑导航" className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">{crumbs.map((item, index) => <span key={`${item.title}-${index}`} className="inline-flex items-center gap-1.5">{index > 0 && <span>/</span>}{item.href ? <Link href={item.href} className="hover:text-blue-600">{item.title}</Link> : item.title}</span>)}</nav>}
+    {crumbs && <nav aria-label="面包屑导航" className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">{crumbs.map((item, index) => <span key={`${item.title}-${index}`} className="inline-flex items-center gap-1.5">{index > 0 && <span>/</span>}{item.href ? <Link href={item.href} className="hover:text-[var(--gp-action)]">{item.title}</Link> : item.title}</span>)}</nav>}
     <PageHeader title={title} description={description} actions={action} />
   </header>;
 }
@@ -51,14 +55,18 @@ function Badge({ children, tone = "blue" }: { children: React.ReactNode; tone?: 
 function Bar({ value }: { value: number }) { return <ProgressBar value={value} />; }
 
 function Tabs({ items, active, onChange }: { items: string[]; active: string; onChange: (item: string) => void }) {
-  return <div role="tablist" className="mb-5 flex flex-wrap gap-6 border-b border-slate-200">{items.map((item) => <button key={item} type="button" role="tab" aria-selected={active === item} onClick={() => onChange(item)} className={`border-b-2 pb-3 text-sm font-medium ${active === item ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{item}</button>)}</div>;
+  return <div role="tablist" className="mb-5 flex flex-wrap gap-6 border-b border-slate-200">{items.map((item) => <button key={item} type="button" role="tab" aria-selected={active === item} onClick={() => onChange(item)} className={`border-b-2 pb-3 text-sm font-medium ${active === item ? "border-blue-600 text-[var(--gp-action)]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{item}</button>)}</div>;
 }
 
-function Steps({ items, current }: { items: string[]; current: number }) { return <ol className="mx-auto mb-7 flex max-w-xl items-center justify-center gap-3 text-xs">{items.map((item, index) => <li key={item} className="flex flex-1 items-center gap-2"><span className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${index <= current ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-slate-400"}`}>{index < current ? <Check size={14} /> : index + 1}</span><span className={index === current ? "font-semibold text-blue-600" : "text-slate-400"}>{item}</span>{index < items.length - 1 && <span className="ml-2 h-px flex-1 bg-slate-200" />}</li>)}</ol>; }
+function Steps({ items, current }: { items: string[]; current: number }) { return <ol className="mx-auto mb-7 flex max-w-xl items-center justify-center gap-3 text-xs">{items.map((item, index) => <li key={item} className="flex flex-1 items-center gap-2"><span className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${index <= current ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-slate-400"}`}>{index < current ? <Check size={14} /> : index + 1}</span><span className={index === current ? "font-semibold text-[var(--gp-action)]" : "text-slate-400"}>{item}</span>{index < items.length - 1 && <span className="ml-2 h-px flex-1 bg-slate-200" />}</li>)}</ol>; }
 
 function Notice({ children, tone = "blue" }: { children: React.ReactNode; tone?: "blue" | "amber" | "green" }) { return <div role="status" className={`rounded border px-4 py-3 text-sm ${tone === "amber" ? "border-amber-200 bg-amber-50 text-amber-800" : tone === "green" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-slate-600"}`}>{children}</div>; }
 
 function Empty({ text }: { text: string }) { return <EmptyState title={text} />; }
+
+function NoAccess({ text }: { text: string }) {
+  return <div><Header title="无权访问此页面" description={text} /><Notice tone="amber">如需查看课程内容，请联系课程教师确认你的课程身份。</Notice></div>;
+}
 
 export function CourseView({ screen, courseId = "course-1", groupId = "group-1" }: { screen: Screen | number; courseId?: string; groupId?: string }) {
   const workspace = useWorkspace();
@@ -68,6 +76,10 @@ export function CourseView({ screen, courseId = "course-1", groupId = "group-1" 
   const group = (routeGroup?.courseId === course?.id ? routeGroup : undefined) ?? data.groups.find((item) => item.courseId === course?.id && item.memberIds.includes(data.currentUserId));
   const user = byId(data.users, data.currentUserId);
   if (!course && screen !== 31 && screen !== 32) return <Empty text="暂无课程" />;
+  // 阶段 01：B 课程页面（35/38/39/40）按 course.read 判断阅读资格
+  if (course && [35, 38, 39, 40].includes(screen) && !can(data, data.currentUserId, "course.read", { kind: "course", id: course.id })) {
+    return <NoAccess text="此页面仅对课程成员及所属教学人员开放。" />;
+  }
   switch (screen) {
     case 31: return <MyCourses {...workspace} />;
     case 32: return <JoinCourse {...workspace} />;
@@ -99,10 +111,10 @@ function MyCourses({ data }: Workspace) {
       const project = group?.projectId ? byId(data.projects, group.projectId) : undefined;
       return <Box key={course.id}><div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900">{courseTitle(course)}</h2><p className="mt-1 text-xs text-slate-500">授课教师：{teacher?.name ?? "待指定"} · {course.code}</p></div><Badge tone={course.status === "active" ? "green" : "gray"}>{group ? statusText(course.status) : "组队中"}</Badge></div>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"><span>{group ? `当前小组：${group.name}` : "尚未加入小组"}</span><span>{project ? `项目进度 ${project.progress}%` : `组队截止 ${dateOnly(course.formationDeadline)}`}</span>{project && <span>截止 {dateOnly(course.projectDeadline)}</span>}</div>{project && <div className="mt-3"><Bar value={project.progress} /></div>}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm"><Link href={cid(course.id, "/rules")} className="font-medium text-blue-600 hover:underline">{course.status === "ended" ? "查看历史" : "查看课程规则"} <ArrowRight size={14} className="inline" /></Link><Link href={group ? (project ? `/projects/${project.id}` : cid(course.id, "/projects/new")) : cid(course.id, "/groups")} className="font-medium text-blue-600 hover:underline">{group ? "进入课程" : "开始组队"} <ArrowRight size={14} className="inline" /></Link></div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm"><Link href={cid(course.id, "/rules")} className="font-medium text-[var(--gp-action)] hover:underline">{course.status === "ended" ? "查看历史" : "查看课程规则"} <ArrowRight size={14} className="inline" /></Link><Link href={group ? (project ? `/projects/${project.id}` : cid(course.id, "/projects/new")) : cid(course.id, "/groups")} className="font-medium text-[var(--gp-action)] hover:underline">{group ? "进入课程" : "开始组队"} <ArrowRight size={14} className="inline" /></Link></div>
       </Box>;
     }) : <Box><Empty text="当前筛选下暂无课程" /></Box>}</div>
-      <Box title="课程待处理" action={<Link href="/action-items" className="text-xs font-medium text-blue-600">查看全部</Link>}>{pending.length ? <div className="divide-y divide-slate-100">{pending.map((item) => <Link key={item.id} href={item.href} className="flex items-center justify-between gap-3 py-3 text-sm hover:text-blue-600"><span>{item.title}</span><span className="shrink-0 text-xs text-amber-600">{dateOnly(item.dueAt)}</span></Link>)}</div> : <Empty text="暂无课程待处理事项" />}</Box>
+      <Box title="课程待处理" action={<Link href="/action-items" className="text-xs font-medium text-[var(--gp-action)]">查看全部</Link>}>{pending.length ? <div className="divide-y divide-slate-100">{pending.map((item) => <Link key={item.id} href={item.href} className="flex items-center justify-between gap-3 py-3 text-sm hover:text-[var(--gp-action)]"><span>{item.title}</span><span className="shrink-0 text-xs text-amber-600">{dateOnly(item.dueAt)}</span></Link>)}</div> : <Empty text="暂无课程待处理事项" />}</Box>
     </div></div>;
 }
 
@@ -121,7 +133,7 @@ function JoinCourse({ data, update }: Workspace) {
   };
   const join = () => { if (!match) return; update("courses", match.id, { memberIds: [...new Set([...match.memberIds, data.currentUserId])] }); setStep(2); };
   return <div><Header title="加入课程" description="输入课程邀请码，确认课程信息后加入。" crumbs={[{ title: "我的课程", href: "/courses" }, { title: "加入课程" }]} /><div className="mx-auto max-w-[740px]"><Steps items={["输入邀请码", "确认课程", "加入成功"]} current={step} />
-    {step === 0 && <><Box title="课程邀请码"><label className={label} htmlFor="invite-code">输入教师提供的邀请码</label><input id="invite-code" className={input} value={code} onChange={(event) => setCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") findCourse(); }} placeholder="例如 SE2026-GP" />{user?.verified ? <div className="mt-4"><Notice>已完成学校身份验证 · {user.email}</Notice></div> : <div className="mt-4"><Notice tone="amber">加入课程前需要验证学校邮箱。<Link className="ml-1 text-blue-600 underline" href="/onboarding/email-verification">前往验证</Link></Notice></div>}{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}<div className="mt-4 flex justify-end"><button type="button" onClick={findCourse} className={button}>下一步 <ArrowRight size={15} /></button></div></Box><div className="mt-4"><Box title="加入说明"><div className="divide-y divide-slate-100 text-sm text-slate-600"><p className="py-2">邀请码仅用于指定课程，加入前会显示课程基本信息。</p><p className="py-2">加入课程后，可按照课程规则创建或加入小组。</p><p className="py-2">课程内容仅对已验证的学生与教师开放。</p></div></Box></div></>}
+    {step === 0 && <><Box title="课程邀请码"><label className={label} htmlFor="invite-code">输入教师提供的邀请码</label><input id="invite-code" className={input} value={code} onChange={(event) => setCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") findCourse(); }} placeholder="例如 SE2026-GP" />{user?.verified ? <div className="mt-4"><Notice>已完成学校身份验证 · {user.email}</Notice></div> : <div className="mt-4"><Notice tone="amber">加入课程前需要验证学校邮箱。<Link className="ml-1 text-[var(--gp-action)] underline" href="/onboarding/email-verification">前往验证</Link></Notice></div>}{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}<div className="mt-4 flex justify-end"><button type="button" onClick={findCourse} className={button}>下一步 <ArrowRight size={15} /></button></div></Box><div className="mt-4"><Box title="加入说明"><div className="divide-y divide-slate-100 text-sm text-slate-600"><p className="py-2">邀请码仅用于指定课程，加入前会显示课程基本信息。</p><p className="py-2">加入课程后，可按照课程规则创建或加入小组。</p><p className="py-2">课程内容仅对已验证的学生与教师开放。</p></div></Box></div></>}
     {step === 1 && match && <Box title="确认课程"><div className="space-y-4 text-sm"><DataRow name="课程" value={courseTitle(match)} /><DataRow name="课程代码" value={match.code} /><DataRow name="授课教师" value={byId(data.users, match.teacherId)?.name ?? "待指定"} /><DataRow name="组队方式" value={match.groupingMode === "free" ? "自由组队" : "加入需教师审批"} /><DataRow name="组队截止" value={dateOnly(match.formationDeadline)} /></div><div className="mt-6 flex justify-end gap-2"><button className={secondary} onClick={() => setStep(0)}>上一步</button><button className={button} onClick={join}>确认加入</button></div></Box>}
     {step === 2 && match && <Box><div className="py-8 text-center"><CheckCircle2 size={42} className="mx-auto text-emerald-600" /><h2 className="mt-4 text-xl font-semibold">已加入{match.name}</h2><p className="mt-2 text-sm text-slate-500">接下来可以查看规则并加入课程小组。</p><div className="mt-6 flex justify-center gap-2"><Link href={cid(match.id, "/rules")} className={secondary}>查看课程规则</Link><Link href={cid(match.id, "/groups")} className={button}>开始组队 <ArrowRight size={15} /></Link></div></div></Box>}
   </div></div>;
@@ -202,12 +214,13 @@ function Members({ data, add, update, course, group }: Context) {
   return <div><Header title="小组成员管理" description="查看成员身份、账号绑定与成员变更状态。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: group.name, href: cid(course.id, "/groups") }]} />{feedback && <div className="mb-4"><Notice tone="green">{feedback}</Notice></div>}
     <Box title={group.name} action={leader && <button className={button} onClick={() => setInviteOpen((value) => !value)}><Plus size={15} />邀请成员</button>}><p className="-mt-2 mb-4 text-xs text-slate-500">{courseTitle(course)}</p>{inviteOpen && <div className="mb-4 flex flex-wrap gap-2 rounded bg-slate-50 p-3"><select className={`${input} max-w-sm`} aria-label="选择要邀请的课程成员" value={inviteId} onChange={(event) => setInviteId(event.target.value)}><option value="">选择课程成员</option>{available.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.studentId}</option>)}</select><button className={button} onClick={invite}>确认邀请</button></div>}
       <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-b border-slate-100 text-xs text-slate-400"><tr><th className="py-3 font-medium">成员</th><th className="font-medium">学号</th><th className="font-medium">账号绑定</th><th className="font-medium">身份状态</th><th className="font-medium">操作</th></tr></thead><tbody>{group.memberIds.map((id) => { const member = byId(data.users, id); if (!member) return null; return <tr key={id} className="border-b border-slate-100 last:border-0"><td className="py-3 font-medium">{member.name}<div className="text-xs font-normal text-slate-400">{id === group.leaderId ? "组长" : "成员"}</div></td><td>{member.studentId ?? "—"}</td><td> {id === data.currentUserId ? "已绑定 GitHub / 飞书" : "账号已连接"}</td><td><Badge tone={member.verified ? "green" : "amber"}>{member.verified ? "已验证" : "待完善"}</Badge></td><td className="relative"><button className="inline-flex items-center gap-1 text-xs font-medium text-slate-600" onClick={() => setMenuId(menuId === id ? "" : id)}>更多 <MoreHorizontal size={14} /></button>{menuId === id && <div className="absolute right-0 z-10 min-w-32 rounded border border-slate-200 bg-white p-1 shadow-lg"><Link className="block rounded px-3 py-2 text-xs hover:bg-slate-50" href={gid(course.id, group.id, "/change-leader")}>更换组长</Link>{leader && id !== group.leaderId && <button className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-slate-50" onClick={() => removeMember(id)}>移出成员</button>}</div>}</td></tr>; })}</tbody></table></div></Box>
-    <div className="mt-4 grid gap-4 lg:grid-cols-[2fr_1fr]"><Box title="小组信息"><DataRow name="创建时间" value={dateOnly(group.createdAt)} /><DataRow name="组队截止" value={dateOnly(course.formationDeadline)} /><DataRow name="当前人数" value={`${group.memberIds.length} / ${course.maxGroupSize}`} /><DataRow name="当前项目" value={group.projectId ? <Link className="text-blue-600" href={`/projects/${group.projectId}`}>{byId(data.projects, group.projectId)?.name ?? group.projectId}</Link> : <Link className="text-blue-600" href={cid(course.id, "/projects/new")}>创建课程项目</Link>} /><div className="mt-3 flex gap-4 text-sm"><Link href={gid(course.id, group.id, "/change-leader")} className="text-blue-600">更换组长</Link><Link href={gid(course.id, group.id, "/leave")} className="text-blue-600">退出小组</Link></div></Box><Box title="成员变更"><p className={muted}>组队截止前可自由调整；截止后退出或加入成员需要正式申请并保留变更记录。</p></Box></div>
+    <div className="mt-4 grid gap-4 lg:grid-cols-[2fr_1fr]"><Box title="小组信息"><DataRow name="创建时间" value={dateOnly(group.createdAt)} /><DataRow name="组队截止" value={dateOnly(course.formationDeadline)} /><DataRow name="当前人数" value={`${group.memberIds.length} / ${course.maxGroupSize}`} /><DataRow name="当前项目" value={group.projectId ? <Link className="text-[var(--gp-action)]" href={`/projects/${group.projectId}`}>{byId(data.projects, group.projectId)?.name ?? group.projectId}</Link> : <Link className="text-[var(--gp-action)]" href={cid(course.id, "/projects/new")}>创建课程项目</Link>} /><div className="mt-3 flex gap-4 text-sm"><Link href={gid(course.id, group.id, "/change-leader")} className="text-[var(--gp-action)]">更换组长</Link><Link href={gid(course.id, group.id, "/leave")} className="text-[var(--gp-action)]">退出小组</Link></div></Box><Box title="成员变更"><p className={muted}>组队截止前可自由调整；截止后退出或加入成员需要正式申请并保留变更记录。</p></Box></div>
   </div>;
 }
 
-function NewCourseProject({ data, add, update, course, group }: Context) {
+function NewCourseProject({ data, course, group }: Context) {
   const router = useRouter();
+  const commands = useCommands();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("GroupProof");
   const [description, setDescription] = useState("面向学生小组项目的证据驱动协作与贡献量化平台。");
@@ -215,19 +228,29 @@ function NewCourseProject({ data, add, update, course, group }: Context) {
   const [error, setError] = useState("");
   const ownGroup = group?.memberIds.includes(data.currentUserId) ? group : data.groups.find((item) => item.courseId === course.id && item.memberIds.includes(data.currentUserId));
   const existing = ownGroup?.projectId ? byId(data.projects, ownGroup.projectId) : undefined;
+  const createAllowed = ownGroup ? can(data, data.currentUserId, "project.create", { kind: "group", id: ownGroup.id }) : false;
+  const ruleRevision = publishedCourseRule(data, course.id);
   const next = () => { if (step === 0 && !name.trim()) { setError("请输入项目名称"); return; } setError(""); setStep((value) => Math.min(2, value + 1)); };
-  const create = () => {
+  const create = async () => {
     if (!ownGroup) { setError("请先加入课程小组"); return; }
     if (existing) { router.push(`/projects/${existing.id}`); return; }
-    const id = nextId("project");
-    const project: Project = { id, courseId: course.id, groupId: ownGroup.id, name: name.trim(), description: description.trim(), type: "course", finalDeadline: course.projectDeadline, setupStep: 0, setupStatus: "not_initialized", baselineVersion: 0, planVersion: 0, planConfirmed: false, confirmedBy: [], lifecycle: "active", progress: 0, coreProgress: 0, memberIds: ownGroup.memberIds, version: 1 };
-    add("projects", project);
-    if (template === "course") course.milestoneTemplate?.forEach((item) => add("milestones", { id: nextId(`milestone-${item.id}`), projectId: id, title: item.title, description: item.description, deadline: item.deadline, status: "not_started", progress: 0, taskIds: [], deliverables: [] }));
-    update("groups", ownGroup.id, { projectId: id }); router.push(`/projects/${id}`);
+    if (!createAllowed) { setError("只有小组组长可以创建课程项目。"); return; }
+    if (!ruleRevision) { setError("课程尚无已发布规则，无法创建课程项目。"); return; }
+    const outcome = await commands.createCourseProject({
+      groupId: ownGroup.id,
+      name: name.trim(),
+      description: description.trim(),
+      templateMode: template === "course" ? "course" : "blank",
+      expectedGroupVersion: ownGroup.version,
+      expectedCourseRuleRevisionId: ruleRevision.id,
+    });
+    if (!outcome.ok) { setError(outcome.error.message); return; }
+    if (outcome.result.alreadyExists) setError("当前小组已有课程项目，正在打开现有项目。");
+    router.push(`/projects/${outcome.result.project.id}`);
   };
   return <div><Header title="创建课程项目" description="基于课程规则创建小组项目，并自动带入课程要求。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: "创建项目" }]} /><div className="mx-auto max-w-[880px]"><Steps items={["基本信息", "应用课程规则", "确认创建"]} current={step} />
-    {!ownGroup && <div className="mb-4"><Notice tone="amber">请先加入课程小组。<Link className="ml-1 text-blue-600 underline" href={cid(course.id, "/groups")}>前往组队</Link></Notice></div>}{existing && <div className="mb-4"><Notice tone="amber">当前小组已有课程项目。<Link className="ml-1 text-blue-600 underline" href={`/projects/${existing.id}`}>进入项目</Link></Notice></div>}
-    <Box>{step === 0 ? <div className="space-y-4"><div><label className={label} htmlFor="project-name">项目名称</label><input id="project-name" className={input} value={name} onChange={(event) => setName(event.target.value)} /></div><div><label className={label}>所属课程</label><div className={`${input} bg-slate-50`}>{courseTitle(course)}</div></div><div><label className={label} htmlFor="project-description">项目简介</label><textarea id="project-description" className={`${input} min-h-24`} value={description} onChange={(event) => setDescription(event.target.value)} /></div><div><label className={label} htmlFor="course-template">课程项目模板（可选）</label><select id="course-template" className={input} value={template} onChange={(event) => setTemplate(event.target.value)}><option value="course">{course.name}课程项目模板</option><option value="none">不使用模板</option></select><p className="mt-1 text-xs text-slate-400">自动导入项目阶段、必交材料、课程规则与最终截止日期。</p></div><Notice>将自动带入课程要求<br />课程最终截止：{dateOnly(course.projectDeadline)} · 必交：{course.requiredFiles.join("、") || "项目报告、代码仓库"}</Notice></div> : step === 1 ? <div className="space-y-4 text-sm"><h2 className="font-semibold">课程规则</h2><DataRow name="组队方式" value={course.groupingMode === "free" ? "自由组队" : "教师审批"} /><DataRow name="项目截止" value={dateOnly(course.projectDeadline)} /><DataRow name="GitHub" value={course.rules.find((rule) => rule.includes("GitHub")) ?? "按课程要求绑定仓库"} /><div><h3 className="mb-2 font-medium">必交材料</h3><ul className="list-inside list-disc space-y-1 text-slate-600">{course.requiredFiles.map((file) => <li key={file}>{file}</li>)}</ul></div><Notice>课程规则优先于项目规则；后续变更会显示影响并要求确认。</Notice></div> : <div className="space-y-3 text-sm"><h2 className="font-semibold">确认创建</h2><DataRow name="项目名称" value={name} /><DataRow name="所属课程" value={courseTitle(course)} /><DataRow name="小组" value={ownGroup?.name ?? "未加入"} /><DataRow name="截止日期" value={dateOnly(course.projectDeadline)} /><DataRow name="模板" value={template === "course" ? `${course.name}课程项目模板` : "不使用模板"} /><p className="text-slate-500">创建后将进入项目初始化。</p></div>}{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}<div className="mt-6 flex justify-end gap-2"><button className={secondary} onClick={() => step ? setStep(step - 1) : router.push(cid(course.id, "/groups"))}>{step ? "上一步" : "取消"}</button><button className={button} onClick={step === 2 ? create : next} disabled={!ownGroup || Boolean(existing)}>{step === 2 ? "创建项目" : "下一步"}</button></div></Box>
+    {!ownGroup && <div className="mb-4"><Notice tone="amber">请先加入课程小组。<Link className="ml-1 text-[var(--gp-action)] underline" href={cid(course.id, "/groups")}>前往组队</Link></Notice></div>}{existing && <div className="mb-4"><Notice tone="amber">当前小组已有课程项目。<Link className="ml-1 text-[var(--gp-action)] underline" href={`/projects/${existing.id}`}>进入项目</Link></Notice></div>}
+    <Box>{step === 0 ? <div className="space-y-4"><div><label className={label} htmlFor="project-name">项目名称</label><input id="project-name" className={input} value={name} onChange={(event) => setName(event.target.value)} /></div><div><label className={label}>所属课程</label><div className={`${input} bg-slate-50`}>{courseTitle(course)}</div></div><div><label className={label} htmlFor="project-description">项目简介</label><textarea id="project-description" className={`${input} min-h-24`} value={description} onChange={(event) => setDescription(event.target.value)} /></div><div><label className={label} htmlFor="course-template">课程项目模板（可选）</label><select id="course-template" className={input} value={template} onChange={(event) => setTemplate(event.target.value)}><option value="course">{course.name}课程项目模板</option><option value="none">不使用模板</option></select><p className="mt-1 text-xs text-slate-400">自动导入项目阶段、必交材料、课程规则与最终截止日期。</p></div><Notice>将自动带入课程要求<br />采用规则版本：{ruleRevision ? `v${ruleRevision.number}（${ruleRevision.id}）` : "无已发布规则"}<br />课程最终截止：{dateOnly(course.projectDeadline)} · 必交：{course.requiredFiles.join("、") || "项目报告、代码仓库"}</Notice></div> : step === 1 ? <div className="space-y-4 text-sm"><h2 className="font-semibold">课程规则</h2><DataRow name="组队方式" value={course.groupingMode === "free" ? "自由组队" : "教师审批"} /><DataRow name="项目截止" value={dateOnly(course.projectDeadline)} /><DataRow name="GitHub" value={course.rules.find((rule) => rule.includes("GitHub")) ?? "按课程要求绑定仓库"} /><div><h3 className="mb-2 font-medium">必交材料</h3><ul className="list-inside list-disc space-y-1 text-slate-600">{course.requiredFiles.map((file) => <li key={file}>{file}</li>)}</ul></div><Notice>课程规则优先于项目规则；后续变更会显示影响并要求确认。</Notice></div> : <div className="space-y-3 text-sm"><h2 className="font-semibold">确认创建</h2><DataRow name="项目名称" value={name} /><DataRow name="所属课程" value={courseTitle(course)} /><DataRow name="小组" value={ownGroup?.name ?? "未加入"} /><DataRow name="截止日期" value={dateOnly(course.projectDeadline)} /><DataRow name="模板" value={template === "course" ? `${course.name}课程项目模板` : "不使用模板"} /><p className="text-slate-500">创建后将进入项目初始化。</p></div>}{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}{!createAllowed && ownGroup && <p className="mt-3 text-xs text-amber-700">只有小组组长可以创建课程项目。</p>}{!ruleRevision && <p className="mt-3 text-xs text-amber-700">课程尚无已发布规则，发布后才能创建课程项目。</p>}<div className="mt-6 flex justify-end gap-2"><button className={secondary} onClick={() => step ? setStep(step - 1) : router.push(cid(course.id, "/groups"))}>{step ? "上一步" : "取消"}</button><button className={button} onClick={step === 2 ? () => void create() : next} disabled={!ownGroup || Boolean(existing) || !createAllowed || !ruleRevision || commands.pending === "project.create"}>{commands.pending === "project.create" ? "创建中..." : step === 2 ? "创建项目" : "下一步"}</button></div></Box>
   </div></div>;
 }
 
@@ -255,7 +278,7 @@ function ChangeLeader({ data, add, update, course, group, user }: Context) {
     if (group.memberIds.length === 1) update("groups", group.id, { leaderId: candidate });
     setFeedback("申请已提交，等待全体成员确认。");
   };
-  return <div><Header title="更换组长" description="发起组长变更申请，并由全部成员确认。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: "小组管理", href: gid(course.id, group.id) }, { title: "更换组长" }]} /><div className="mx-auto max-w-[860px] space-y-4"><Notice tone="amber">更换组长需要全部成员确认；确认后保留完整变更记录。</Notice>{feedback && <Notice tone="green">{feedback}</Notice>}
+  return <div><Header title="更换组长" description="发起组长变更申请，并由全部成员确认。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: "小组管理", href: gid(course.id, group.id) }, { title: "更换组长" }]} /><div className="mx-auto max-w-[860px] space-y-4"><Notice tone="amber">更换组长需要全部成员确认；确认后保留完整变更记录。</Notice>{feedback && <Feedback tone={feedback.includes("失败") || feedback.includes("拒绝") || feedback.includes("被拒") ? "error" : "success"}>{feedback}</Feedback>}
     <Box><div className="space-y-5"><div><span className={label}>当前组长</span><p className="font-semibold">{byId(data.users, group.leaderId)?.name ?? "未知"}<span className="ml-2 text-xs font-normal text-slate-400">{byId(data.users, group.leaderId)?.studentId}</span></p></div><div><label className={label} htmlFor="new-leader">新组长候选人</label><select id="new-leader" className={input} value={candidate} onChange={(event) => setCandidate(event.target.value)}><option value="">选择小组成员</option>{group.memberIds.filter((id) => id !== group.leaderId).map((id) => <option key={id} value={id}>{byId(data.users, id)?.name}（{byId(data.users, id)?.studentId}）</option>)}</select></div><div><label className={label} htmlFor="leader-reason">申请原因</label><textarea id="leader-reason" className={`${input} min-h-24`} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请填写更换组长的原因" /></div><div><label className={label} htmlFor="leader-date">预计生效时间</label><input id="leader-date" type="date" className={input} value={effective} onChange={(event) => setEffective(event.target.value)} /></div><div className="flex justify-end gap-2"><Link className={secondary} href={gid(course.id, group.id)}>取消</Link><button className={button} onClick={submit} disabled={!user || !group.memberIds.includes(user.id)}>提交申请</button></div></div></Box>
     <Box title="成员确认"><div className="flex flex-wrap gap-2">{group.memberIds.map((id) => { const status = all.filter((item) => item.assigneeId === id).at(-1); return <span key={id} className="rounded border border-slate-200 px-3 py-2 text-xs">{byId(data.users, id)?.name} · {status ? status.status === "completed" ? "已确认" : "待确认" : "待提交"}</span>; })}</div>{pending.some((item) => item.assigneeId === data.currentUserId) && <button className={`${button} mt-4`} onClick={confirm}><Check size={15} />确认变更</button>}</Box>
   </div></div>;
@@ -289,33 +312,57 @@ function LeaveGroup({ data, add, update, course, group, user }: Context) {
   </div></div>;
 }
 
-function RuleChanges({ data, update, course }: Workspace & { course: Course }) {
-  const [done, setDone] = useState(false);
-  const action = data.actionItems.find((item) => item.assigneeId === data.currentUserId && item.courseId === course.id && item.type.includes("rule"));
-  const acknowledged = done || action?.status === "completed";
-  const projects = data.projects.filter((project) => project.courseId === course.id && project.memberIds.includes(data.currentUserId));
-  const acknowledge = () => { if (action?.status === "pending") update("actionItems", action.id, { status: "completed" }); projects.forEach((project) => update("projects", project.id, { finalDeadline: course.projectDeadline })); setDone(true); };
-  const impacts = ["所有里程碑截止日期自动顺延 10 天", "任务计划无需重新制定", "最终报告需要增加 Word 导出", "项目资料需增加演示视频"];
+function RuleChanges({ data, course }: Workspace & { course: Course }) {
+  const commands = useCommands();
+  const [feedback, setFeedback] = useState("");
+  const project = data.projects.find((item) => item.courseId === course.id && item.memberIds.includes(data.currentUserId));
+  const canApply = project ? can(data, data.currentUserId, "project.rules.apply", { kind: "project", id: project.id }) : false;
+  // 待复核规则版本：待处理项指向的版本，否则最新已发布版本
+  const reviewItem = data.actionItems.find((item) => item.assigneeId === data.currentUserId && item.courseId === course.id && item.type.startsWith("rule-review:"));
+  const toRevision = (reviewItem ? data.courseRuleRevisions.find((item) => item.id === reviewItem.type.slice("rule-review:".length)) : undefined) ?? publishedCourseRule(data, course.id);
+  const fromRevision = project?.appliedCourseRuleRevisionId ? data.courseRuleRevisions.find((item) => item.id === project.appliedCourseRuleRevisionId) : undefined;
+  const impact = project && toRevision && fromRevision?.id !== toRevision.id ? getRuleChangeImpact(data, project.id, toRevision.id) : undefined;
+  const handled = project && toRevision ? data.ruleChangeReviews.find((item) => item.projectId === project.id && item.courseRuleRevisionId === toRevision.id) : undefined;
+  const acknowledge = async () => {
+    if (!project || !toRevision) return;
+    const outcome = await commands.applyCourseRuleChange({ projectId: project.id, toRevisionId: toRevision.id, expectedVersion: project.version });
+    setFeedback(outcome.ok ? `已确认适用规则版本 v${toRevision.number}；需要调整的内容已生成待处理事项。` : outcome.error.message);
+  };
+  const timeText = (at?: string) => at ? dateOnly(at) : "未记录时间";
   return <div>
-    <Header title="课程规则变更" description="查看教师发布的新规则及其对当前项目的影响。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: "课程规则变更" }]} />
+    <Header title="课程规则变更" description="比较已采用规则与待复核规则的真实差异，并由项目组长确认适用版本。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: "课程规则变更" }]} />
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
       <div className="space-y-4">
-        <Notice>教师已发布课程规则变更<br />发布时间：2026-10-01 14:30 · 生效时间：2026-10-01</Notice>
-        <Box title="变更内容" action={<Badge tone={acknowledged ? "green" : "amber"}>{acknowledged ? "已确认" : "待确认"}</Badge>}>
-          <DataRow name="最终截止日期" value={<><span className="text-slate-400">2026-12-10</span> → <strong>{dateOnly(course.projectDeadline)}</strong></>} />
-          <DataRow name="报告格式" value={<>PDF → <strong>PDF + Word</strong></>} />
-          <DataRow name="GitHub 要求" value="必须绑定且在报告中体现" />
-          <DataRow name="演示视频" value="新增 5–10 分钟演示视频" />
+        <Notice>来源版本：{fromRevision ? `v${fromRevision.number}（${fromRevision.id} · ${timeText(fromRevision.publishedAt)}${fromRevision.legacy ? "（历史迁移）" : ""}）` : "未记录已采用版本"}<br />待复核版本：{toRevision ? `v${toRevision.number}（${toRevision.id} · ${toRevision.publishedBy ? `${data.users.find((user) => user.id === toRevision.publishedBy)?.name ?? toRevision.publishedBy} · ` : ""}${timeText(toRevision.publishedAt)}${toRevision.legacy ? "（历史迁移）" : ""}）` : "暂无已发布规则"}</Notice>
+        {feedback && <Feedback tone={feedback.includes("失败") || feedback.includes("拒绝") || feedback.includes("被拒") ? "error" : "success"}>{feedback}</Feedback>}
+        <Box title="变更内容" action={<Badge tone={handled ? "green" : "amber"}>{handled ? "已确认适用" : "待确认"}</Badge>}>
+          {impact && impact.changedFields.length ? impact.changedFields.map((item) => <DataRow key={item.field} name={item.field} value={<><span className="text-slate-400">{JSON.stringify(item.before)}</span> → <strong>{JSON.stringify(item.after)}</strong></>} />) : <p className={muted}>与已采用版本相比无字段变化。</p>}
+          {impact?.materialChanges.map((item) => <DataRow key={item} name="材料变化" value={item} />)}
         </Box>
-        <Box title="对项目的影响"><ul className="space-y-3 text-sm text-slate-600">{impacts.map((item, index) => <li key={item} className="flex items-center gap-2"><span className={`size-2 shrink-0 rounded-full ${index < 2 ? "bg-emerald-600" : "bg-amber-600"}`} />{item}</li>)}</ul></Box>
+        <Box title="对项目的影响">
+          <ul className="space-y-3 text-sm text-slate-600">
+            {impact?.deadlineChange && <li className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full bg-amber-600" />项目截止 {impact.deadlineChange.before} → {impact.deadlineChange.after}；不自动顺延里程碑。</li>}
+            {impact?.conflictingMilestoneIds.length ? <li className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full bg-red-600" />超期里程碑需人工调整：{impact.conflictingMilestoneIds.join("、")}。<Link href={`/projects/${project?.id}/milestones`} className="text-[var(--gp-action)]">前往里程碑</Link></li> : null}
+            {impact?.baselineReviewRequired && <li className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full bg-amber-600" />需要需求基线复核。<Link href={`/projects/${project?.id}/requirements`} className="text-[var(--gp-action)]">前往需求基线</Link></li>}
+            {impact?.planReviewRequired && <li className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full bg-amber-600" />需要任务计划复核。<Link href={`/projects/${project?.id}/planning`} className="text-[var(--gp-action)]">前往任务规划</Link></li>}
+            {impact?.rosterReviewRequired && <li className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full bg-amber-600" />组队规则变化，需要小组复核。<Link href={cid(course.id, "/groups")} className="text-[var(--gp-action)]">前往小组</Link></li>}
+            {impact && !impact.changedFields.length && !impact.materialChanges.length && <li className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full bg-emerald-600" />无实际变化需要处理。</li>}
+          </ul>
+          <p className="mt-3 text-xs text-slate-400">未知影响不会被写成自动完成；实际修改由需求、计划、里程碑等所属命令落实。</p>
+        </Box>
       </div>
-      <Box title="确认说明"><p className={muted}>课程规则更新不会静默覆盖项目基线。系统只更新受影响的课程级约束，并记录本次变更历史。</p><div className="mt-5 flex flex-col items-start gap-2"><Link href={cid(course.id, "/rules")} className={secondary}>查看详细规则</Link><button className={button} onClick={acknowledge} disabled={acknowledged || !course.memberIds.includes(data.currentUserId)}>确认并更新项目</button></div></Box>
+      <Box title="确认说明">
+        <p className={muted}>课程规则更新不会静默覆盖项目基线或正式计划。组长确认适用版本后，仅更新适用指针与课程级约束，并记录真实差异。</p>
+        {handled && <p className="mt-3 text-xs text-emerald-700">已由 {data.users.find((user) => user.id === handled.confirmedBy)?.name ?? handled.confirmedBy} 于 {timeText(handled.confirmedAt)} 确认适用 v{toRevision?.number}。</p>}
+        <div className="mt-5 flex flex-col items-start gap-2"><Link href={cid(course.id, "/rules")} className={secondary}>查看详细规则</Link><button className={button} onClick={() => void acknowledge()} disabled={Boolean(handled) || !canApply || !project || !toRevision}>确认适用规则版本</button>{!canApply && <p className="text-xs text-amber-700">只有项目组长可以确认规则适用；其他成员可查看影响说明。</p>}</div>
+      </Box>
     </div>
   </div>;
 }
 
 function ReopenProject({ data, add, update, course, group }: Context) {
   const router = useRouter();
+  const commands = useCommands();
   const ownedProjects = data.projects.filter((item) => item.courseId === course.id && item.memberIds.includes(data.currentUserId));
   const project = ownedProjects.find((item) => item.lifecycle !== "active") || (group?.projectId && byId(ownedProjects, group.projectId)) || ownedProjects[0];
   const [version, setVersion] = useState(project ? `v${project.version + 1}.0` : "v1.1");
@@ -324,56 +371,40 @@ function ReopenProject({ data, add, update, course, group }: Context) {
   const [retain, setRetain] = useState(true);
   const [feedback, setFeedback] = useState("");
   if (!project) return <Empty text="暂无课程项目" />;
-  const create = () => {
-    if (!version.trim() || !detail.trim()) { setFeedback("请填写新版本号和重新开启原因。"); return; }
+  const canReopen = can(data, data.currentUserId, "project.reopen", { kind: "project", id: project.id });
+  const create = async () => {
+    if (!canReopen) { setFeedback("只有该项目组长可以重新开启项目。"); return; }
+    if (!version.trim() || !detail.trim()) { setFeedback("请填写修订标签和重新开启原因。"); return; }
     if (project.lifecycle === "active") { setFeedback("项目需先定稿或归档，才能重新开启。"); return; }
-    const newProjectId = nextId("project");
-    const cloneId = (id: string) => `${id}-${newProjectId}`;
-    const newProject: Project = {
-      ...project,
-      id: newProjectId,
-      lifecycle: "active",
-      version: project.version + 1,
-      setupStatus: retain ? "frozen" : "not_initialized",
-      setupStep: retain ? project.setupStep : 0,
-      planVersion: retain ? project.planVersion : 0,
-      planConfirmed: false,
-      confirmedBy: [],
-      progress: retain ? project.progress : 0,
-      coreProgress: retain ? project.coreProgress : 0,
-      description: `${project.description}\n修订原因：${reason}。${detail.trim()}`,
-    };
-    add("projects", newProject);
-    data.modules.filter((item) => item.projectId === project.id).forEach((item) => add("modules", { ...item, id: cloneId(item.id), projectId: newProjectId, requirementIds: item.requirementIds.map(cloneId), progress: retain ? item.progress : 0 }));
-    data.requirements.filter((item) => item.projectId === project.id).forEach((item) => add("requirements", { ...item, id: cloneId(item.id), projectId: newProjectId, moduleId: cloneId(item.moduleId), status: retain ? item.status : "confirmed" }));
-    if (retain) {
-      const copiedTasks = data.tasks.filter((item) => item.projectId === project.id);
-      copiedTasks.forEach((item) => add("tasks", { ...item, id: cloneId(item.id), projectId: newProjectId, moduleId: cloneId(item.moduleId), requirementIds: item.requirementIds.map(cloneId), parentTaskId: item.parentTaskId ? cloneId(item.parentTaskId) : undefined, criterionIds: item.criterionIds.map(cloneId), milestoneIds: item.milestoneIds.map(cloneId), dependencyIds: item.dependencyIds.map(cloneId), version: 1, updatedAt: new Date().toISOString() }));
-      data.criteria.filter((item) => copiedTasks.some((task) => task.id === item.taskId)).forEach((item) => add("criteria", { ...item, id: cloneId(item.id), taskId: cloneId(item.taskId), version: 1 }));
-      data.evidence.filter((item) => item.projectId === project.id).forEach((item) => add("evidence", { ...item, id: cloneId(item.id), projectId: newProjectId, taskId: cloneId(item.taskId), criterionIds: item.criterionIds.map(cloneId), version: 1 }));
-      data.verifications.filter((item) => item.projectId === project.id).forEach((item) => add("verifications", { ...item, id: cloneId(item.id), projectId: newProjectId, taskId: cloneId(item.taskId), status: "outdated", criterionResults: item.criterionResults.map((result) => ({ ...result, criterionId: cloneId(result.criterionId), evidenceIds: result.evidenceIds.map(cloneId) })), version: 1 }));
-      data.milestones.filter((item) => item.projectId === project.id).forEach((item) => add("milestones", { ...item, id: cloneId(item.id), projectId: newProjectId, taskIds: item.taskIds.map(cloneId) }));
-    }
-    if (project.groupId) update("groups", project.groupId, { projectId: newProjectId });
-    add("logs", { id: nextId("log"), actorId: data.currentUserId, action: "项目重新开启", target: newProjectId, result: "success", ip: "mock", createdAt: new Date().toISOString(), detail: `基于 ${project.id} 创建 ${version.trim()}：${reason}。${detail.trim()}` });
-    setFeedback(`已创建 ${version.trim()} 修订版本。`); router.push(`/projects/${newProjectId}`);
+    const outcome = await commands.reopenProject({ projectId: project.id, revisionLabel: version.trim(), reason: `${reason}。${detail.trim()}`, retainTasksAndEvidence: retain, expectedVersion: project.version });
+    if (!outcome.ok) { setFeedback(outcome.error.message); return; }
+    setFeedback(`已创建 ${version.trim()} 修订版本；新修订需要重新确认基线与计划。`);
+    router.push(`/projects/${outcome.result.id}`);
   };
   return <div><Header title="项目重新开启" description="在保留原正式结果的基础上，创建新的修订版本。" crumbs={[{ title: project.name, href: `/projects/${project.id}` }, { title: "项目生命周期" }, { title: "重新开启" }]} /><div className="mx-auto max-w-[880px] space-y-4"><Notice tone="amber">重新开启会保留当前正式版本的所有数据，并创建一个新的活动修订版本。</Notice>{project.lifecycle === "active" && <Notice tone="amber">当前项目仍在进行中，需要先定稿或归档后才能重新开启。</Notice>}{feedback && <Notice tone="amber">{feedback}</Notice>}
-    <Box><div className="space-y-5"><div><span className={label}>当前正式版本</span><p className="font-semibold">v{project.version}.0 · {project.lifecycle === "archived" ? "已归档" : project.lifecycle === "finalized" ? "已定稿" : "进行中"}</p><p className="text-xs text-slate-400">最终报告与贡献已冻结</p></div><div><label className={label} htmlFor="reopen-version">新版本信息</label><input id="reopen-version" className={input} value={version} onChange={(event) => setVersion(event.target.value)} /></div><div><label className={label} htmlFor="reopen-reason">重新开启原因</label><select id="reopen-reason" className={input} value={reason} onChange={(event) => setReason(event.target.value)}><option>根据教师反馈进行修改</option><option>修复验收问题</option><option>补充项目材料</option><option>其他</option></select><textarea className={`${input} mt-3 min-h-24`} aria-label="详细说明重新开启原因" value={detail} onChange={(event) => setDetail(event.target.value)} placeholder="请详细说明重新开启原因" /></div><fieldset><legend className={label}>是否保留任务和证据</legend><label className="mb-2 flex items-center gap-2 text-sm"><input type="radio" checked={retain} onChange={() => setRetain(true)} />保留全部任务、证据与验收历史（推荐）</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={!retain} onChange={() => setRetain(false)} />仅复制需求基线与项目设置</label></fieldset><div className="flex justify-end gap-2"><Link className={secondary} href={`/projects/${project.id}`}>取消</Link><button className={button} onClick={create} disabled={project.lifecycle === "active"}>创建新版本</button></div></div></Box>
+    <Box><div className="space-y-5"><div><span className={label}>当前正式版本</span><p className="font-semibold">v{project.version}.0 · {project.lifecycle === "archived" ? "已归档" : project.lifecycle === "finalized" ? "已定稿" : "进行中"}</p><p className="text-xs text-slate-400">最终报告与贡献已冻结</p></div><div><label className={label} htmlFor="reopen-version">新版本信息</label><input id="reopen-version" className={input} value={version} onChange={(event) => setVersion(event.target.value)} /></div><div><label className={label} htmlFor="reopen-reason">重新开启原因</label><select id="reopen-reason" className={input} value={reason} onChange={(event) => setReason(event.target.value)}><option>根据教师反馈进行修改</option><option>修复验收问题</option><option>补充项目材料</option><option>其他</option></select><textarea className={`${input} mt-3 min-h-24`} aria-label="详细说明重新开启原因" value={detail} onChange={(event) => setDetail(event.target.value)} placeholder="请详细说明重新开启原因" /></div><fieldset><legend className={label}>是否保留任务和证据</legend><label className="mb-2 flex items-center gap-2 text-sm"><input type="radio" checked={retain} onChange={() => setRetain(true)} />保留全部任务、证据与验收历史（推荐）</label><label className="flex items-center gap-2 text-sm"><input type="radio" checked={!retain} onChange={() => setRetain(false)} />仅复制需求基线与项目设置</label></fieldset><div className="flex justify-end gap-2"><Link className={secondary} href={`/projects/${project.id}`}>取消</Link><button className={button} onClick={create} disabled={project.lifecycle === "active" || !canReopen}>创建新版本</button></div>{!canReopen && <p className="text-xs text-amber-700">只有该项目组长可以创建修订版本。</p>}</div></Box>
   </div></div>;
 }
 
 function CourseRules({ data, course }: Workspace & { course: Course }) {
   const [tab, setTab] = useState("课程规则");
   const teacher = byId(data.users, course.teacherId);
+  // 阶段 04：阅读最新已发布规则版本；未发布草稿不出现在学生总览
+  const published = publishedCourseRule(data, course.id);
+  const rulesText = published?.rulesText.length ? published.rulesText : course.rules;
+  const requiredFiles = published?.snapshot.requiredFiles.length ? published.snapshot.requiredFiles : course.requiredFiles;
+  const ruleDeadline = published?.snapshot.projectDeadline ?? course.projectDeadline;
+  const ruleFormationDeadline = published?.snapshot.formationDeadline ?? course.formationDeadline;
+  const ruleGrouping = published?.snapshot.groupingMode ?? course.groupingMode;
+  const ruleSize = published ? `${published.snapshot.minGroupSize}–${published.snapshot.maxGroupSize}` : `${course.minGroupSize}–${course.maxGroupSize}`;
   const courseFiles = data.files.filter((file) => file.courseId === course.id);
   const milestones = data.milestones.filter((item) => data.projects.some((project) => project.courseId === course.id && project.id === item.projectId)).slice(0, 4);
   return <div><Header title="课程规则 / 模板总览" description="查看课程项目要求、默认模板与必交材料。" crumbs={[{ title: courseTitle(course), href: "/courses" }, { title: "课程规则" }]} action={<Link href={courseFiles[0]?.id ? `#course-files` : "#required-files"} className={secondary}><Download size={15} />下载课程文件</Link>} /><Tabs items={["课程规则", "项目模板", "评分标准", "必交材料"]} active={tab} onChange={setTab} />
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]"><div className="space-y-4">{tab === "课程规则" && <><Box title={courseTitle(course)} action={<Badge tone={course.status === "active" ? "green" : "gray"}>{statusText(course.status)}</Badge>}><DataRow name="课程教师" value={teacher?.name ?? "待指定"} /><DataRow name="组队方式" value={`${course.groupingMode === "free" ? "自由组队" : "教师审批"}（${course.minGroupSize}–${course.maxGroupSize} 人）`} /><DataRow name="组队截止" value={dateOnly(course.formationDeadline)} /><DataRow name="项目截止" value={dateOnly(course.projectDeadline)} /><DataRow name="GitHub" value="必须绑定项目仓库" /><DataRow name="AI 辅助" value="允许，但最终提交需说明使用范围" /></Box><Box title="课程规则说明"><ul className="list-inside list-disc space-y-2 text-sm text-slate-600">{course.rules.map((rule) => <li key={rule}>{rule}</li>)}</ul></Box></>}
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]"><div className="space-y-4">{tab === "课程规则" && <><Box title={courseTitle(course)} action={<Badge tone={course.status === "active" ? "green" : "gray"}>{statusText(course.status)}</Badge>}><DataRow name="课程教师" value={teacher?.name ?? "待指定"} /><DataRow name="组队方式" value={`${ruleGrouping === "free" ? "自由组队" : "教师审批"}（${ruleSize} 人）`} /><DataRow name="组队截止" value={dateOnly(ruleFormationDeadline)} /><DataRow name="项目截止" value={dateOnly(ruleDeadline)} /><DataRow name="GitHub" value="必须绑定项目仓库" /><DataRow name="AI 辅助" value="允许，但最终提交需说明使用范围" /></Box><Box title="课程规则说明"><ul className="list-inside list-disc space-y-2 text-sm text-slate-600">{rulesText.map((rule) => <li key={rule}>{rule}</li>)}</ul></Box></>}
       {tab === "项目模板" && <Box title="项目模板包含内容"><ol className="list-inside list-decimal divide-y divide-slate-100 text-sm text-slate-600">{["项目方案（Proposal）", "需求规格说明（SRS）", "设计文档（Design Document）", "GitHub 代码仓库", "项目报告（PDF + Word）", "演示视频（5–10 分钟）"].map((item) => <li key={item} className="py-3">{item}</li>)}</ol></Box>}
       {tab === "评分标准" && <Box title="评分标准"><div className="space-y-3 text-sm text-slate-600"><DataRow name="功能完成" value="核心需求与验收结果" /><DataRow name="协作贡献" value="任务、证据与协作记录" /><DataRow name="成果报告" value="报告完整性与演示效果" /><Notice>具体分值以教师发布的课程文件为准。</Notice></div></Box>}
-      {tab === "必交材料" && <Box title="必交材料" className="space-y-3"><ul className="divide-y divide-slate-100 text-sm text-slate-600">{course.requiredFiles.map((file) => <li key={file} className="flex items-center justify-between py-3"><span><FileText size={16} className="mr-2 inline text-blue-600" />{file}</span><Badge tone="green">必交</Badge></li>)}</ul></Box>}
-      <Box title="课程文件" className="scroll-mt-6" ><div id="course-files" className="divide-y divide-slate-100">{courseFiles.length ? courseFiles.map((file) => <div key={file.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span>{file.name} <Badge>v{file.version}</Badge></span><button className="text-blue-600" onClick={() => { const blob = new Blob([`${file.name}\n${courseTitle(course)}\n此文件为 Mock 演示记录。`], { type: "text/plain" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = file.name.endsWith(".txt") ? file.name : `${file.name}.txt`; link.click(); URL.revokeObjectURL(url); }}>下载</button></div>) : <p className={muted}>暂无课程文件</p>}</div></Box>
-    </div><div className="space-y-4"><Box title="默认里程碑"><div className="divide-y divide-slate-100 text-sm text-slate-600">{(milestones.length ? milestones.map((item) => item.title) : ["M1 · 需求与基线确认", "M2 · 核心流程实现", "M3 · 证据与贡献体系", "M4 · 最终验收与报告"]).map((item) => <div key={item} className="py-3">{item}</div>)}</div></Box><Box title="必交材料"><div id="required-files" className="divide-y divide-slate-100 text-sm text-slate-600">{course.requiredFiles.map((item) => <div key={item} className="py-3">{item}</div>)}</div></Box></div></div>
+      {tab === "必交材料" && <Box title="必交材料" className="space-y-3"><ul className="divide-y divide-slate-100 text-sm text-slate-600">{requiredFiles.map((file) => <li key={file} className="flex items-center justify-between py-3"><span><FileText size={16} className="mr-2 inline text-[var(--gp-action)]" />{file}</span><Badge tone="green">必交</Badge></li>)}</ul></Box>}
+      <Box title="课程文件" className="scroll-mt-6" ><div id="course-files" className="divide-y divide-slate-100">{courseFiles.length ? courseFiles.map((file) => <div key={file.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span>{file.name} <Badge>v{file.version}</Badge></span><button className="text-[var(--gp-action)]" onClick={() => { const blob = new Blob([`${file.name}\n${courseTitle(course)}\n此文件为 Mock 演示记录。`], { type: "text/plain" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = file.name.endsWith(".txt") ? file.name : `${file.name}.txt`; link.click(); URL.revokeObjectURL(url); }}>下载</button></div>) : <p className={muted}>暂无课程文件</p>}</div></Box>
+    </div><div className="space-y-4"><Box title="默认里程碑"><div className="divide-y divide-slate-100 text-sm text-slate-600">{(milestones.length ? milestones.map((item) => item.title) : ["M1 · 需求与基线确认", "M2 · 核心流程实现", "M3 · 证据与贡献体系", "M4 · 最终验收与报告"]).map((item) => <div key={item} className="py-3">{item}</div>)}</div></Box><Box title="必交材料"><div id="required-files" className="divide-y divide-slate-100 text-sm text-slate-600">{requiredFiles.map((item) => <div key={item} className="py-3">{item}</div>)}</div></Box></div></div>
   </div>;
 }
