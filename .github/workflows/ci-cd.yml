@@ -123,7 +123,7 @@ jobs:
   deploy:
     name: Deploy to Railway
     needs: [quality, docker]
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy) || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/develop' && 'staging' || 'production') }}
