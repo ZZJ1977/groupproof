@@ -11,7 +11,7 @@
 | 测试 | `develop` | `groupproof-staging` | 联调、验收、演示 |
 | 生产 | `main` | `groupproof-production` | 面向真实用户 |
 
-当前前端已分别部署到 `groupproof-staging` 和 `groupproof-production`，分别跟踪 `develop` 与 `main`。两套环境目前都使用 Mock 数据；后端稳定并完成数据迁移后，再切换生产服务到真实 API。测试和生产使用不同的数据库、Redis、对象存储桶和 OAuth 回调地址。
+当前前端已分别部署到 `groupproof-staging` 和 `groupproof-production`。GitHub Actions 分别将 `develop` 部署到 Staging、将 `main` 部署到 Production。两套环境目前都使用 Mock 数据；后端稳定并完成数据迁移后，再切换生产服务到真实 API。测试和生产使用不同的数据库、Redis、对象存储桶和 OAuth 回调地址。
 
 每个项目建议使用以下服务名：
 
@@ -44,12 +44,11 @@ NEXT_PUBLIC_ADMIN_URL=https://<admin-domain>
 
 ## CI/CD 触发方式
 
-GitHub Actions 已经执行 lint、TypeScript、路由检查、生产构建和 Docker 冒烟测试。每个 Railway 项目选择一种部署触发方式：
+GitHub Actions 在推送 `develop` 或 `main` 时执行 lint、TypeScript、路由检查、生产构建和 Docker 冒烟测试；全部通过后才执行对应环境的 Railway 部署。Railway 服务自身的 GitHub 自动部署连接已断开，避免绕过 CI 或重复部署。
 
-1. 简单模式：Railway GitHub 集成分别连接 `develop` 和 `main`，由 Railway 在检查通过后部署。
-2. 门禁模式：关闭 Railway 的自动 GitHub 部署，由 `.github/workflows/ci-cd.yml` 的 deploy job 在质量检查和 Docker 检查通过后执行。
+GitHub 仓库 Actions Secret：`RAILWAY_TOKEN`，存放有 `zzj1977's Projects` 工作区权限的 Railway API Token。工作流将其映射为 Railway CLI 使用的 `RAILWAY_API_TOKEN`。GitHub Environment `staging` 和 `production` 各自设置 `RAILWAY_PROJECT_ID`、`RAILWAY_SERVICE_ID`，避免部署到错误项目。
 
-不要同时启用两种触发方式，否则一次推送会产生两次部署。生产分支应启用保护规则，并要求 `quality` 和 `docker` 检查通过。
+仓库级变量 `RAILWAY_DEPLOY_STAGING` 和 `RAILWAY_DEPLOY_PRODUCTION` 控制推送后的自动部署；两者为 `true` 时才自动部署。生产发布由负责人在 Staging 验收后推送 `main`。如 GitHub 套餐支持分支保护，可将质量和 Docker 检查设为必需检查。
 
 ## 未来扩展为多应用仓库
 

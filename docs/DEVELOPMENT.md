@@ -169,7 +169,6 @@ https://groupproof-production-production.up.railway.app
 3. 构建并启动 standalone 服务。
 4. 检查首页、健康检查和全部 56 个页面。
 5. 构建 Docker 镜像并检查容器。
-6. 按配置选择 Railway 部署。
+6. 检查通过后部署到对应的 Railway 项目。
 
-当前 Railway GitHub 集成负责自动部署，GitHub Actions 负责质量门禁。不要同时启用 Railway 自动部署和 Actions deploy job，避免一次推送产生重复部署。
-
+当前由 GitHub Actions 负责质量门禁和部署：`develop` 部署到 Staging，`main` 部署到 Production。Railway 服务自身的 GitHub 自动部署已断开，避免检查尚未通过时提前部署或重复部署。组员无需持有 Railway Token；部署凭据保存在 GitHub Actions Secret 中。
