@@ -129,6 +129,7 @@ jobs:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/develop' && 'staging' || 'production') }}
     env:
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
     steps:
       - name: Check out repository
@@ -139,10 +140,14 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${RAILWAY_API_TOKEN:-}" || { echo "::error::Set the RAILWAY_TOKEN repository secret before enabling Railway deploys."; exit 1; }
+          test -n "${RAILWAY_PROJECT_ID:-}" || { echo "::error::Set the RAILWAY_PROJECT_ID environment variable before enabling Railway deploys."; exit 1; }
           test -n "${RAILWAY_SERVICE_ID:-}" || { echo "::error::Set the RAILWAY_SERVICE_ID repository variable before enabling Railway deploys."; exit 1; }
 
       - name: Install Railway CLI
         run: npm install --global @railway/cli@5.63.3
+
+      - name: Link Railway project and service
+        run: railway link --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment production
 
       - name: Deploy source with Dockerfile to Railway
         run: railway up --ci --service "$RAILWAY_SERVICE_ID"
