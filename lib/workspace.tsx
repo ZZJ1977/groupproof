@@ -54,7 +54,7 @@ function WorkspaceState({ children }: { children: ReactNode }) {
       student: "member-21",
       leader: "member-1",
       teacher: "teacher-1",
-      ta: "teacher-1",
+      ta: "ta-1",
       admin: "admin-1",
     };
     commit((current) => ({ ...current, currentRole: role, currentUserId: userByRole[role] }));

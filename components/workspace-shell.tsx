@@ -8,10 +8,11 @@ import { Activity, Bell, BookOpen, Boxes, CheckSquare, ChevronDown, ClipboardLis
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/lib/workspace";
+import { projectNavItems, resolveObjectContext, teacherNavItems } from "@/lib/ux/navigation";
 import type { Role } from "@/types/domain";
 import { cn } from "@/lib/utils";
 
-type NavItem = { label: string; href: string; icon: typeof Home };
+type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
 
 const globalNav: NavItem[] = [
   { label: "首页", href: "/home", icon: Home },
@@ -21,32 +22,15 @@ const globalNav: NavItem[] = [
   { label: "个人动态", href: "/activity", icon: Activity },
 ];
 
-const projectNav: NavItem[] = [
-  { label: "项目总览", href: "/projects/project-1", icon: Folder },
-  { label: "项目初始化", href: "/projects/project-1/setup", icon: FileClock },
-  { label: "需求基线", href: "/projects/project-1/requirements", icon: FileText },
-  { label: "任务规划", href: "/projects/project-1/planning", icon: ClipboardList },
-  { label: "任务树", href: "/projects/project-1/tasks?view=tree", icon: ListTree },
-  { label: "任务看板", href: "/projects/project-1/tasks?view=board", icon: Boxes },
-  { label: "任务列表", href: "/projects/project-1/tasks?view=list", icon: CheckSquare },
-  { label: "里程碑", href: "/projects/project-1/milestones", icon: FileCheck },
-  { label: "证据中心", href: "/projects/project-1/evidence", icon: ShieldCheck },
-  { label: "GitHub", href: "/projects/project-1/github", icon: GitBranch },
-  { label: "协作记录", href: "/projects/project-1/collaboration", icon: MessageSquare },
-  { label: "文件资料", href: "/projects/project-1/files", icon: Folder },
-  { label: "讨论区", href: "/projects/project-1/discussions", icon: MessageSquare },
-  { label: "贡献", href: "/projects/project-1/contribution", icon: Users },
-  { label: "报告", href: "/projects/project-1/reports", icon: FileText },
-  { label: "项目设置", href: "/projects/project-1/settings", icon: Settings },
-];
+const iconByKey: Record<string, typeof Home> = {
+  folder: Folder, fileClock: FileClock, fileText: FileText, clipboardList: ClipboardList,
+  listTree: ListTree, fileCheck: FileCheck, shieldCheck: ShieldCheck, gitBranch: GitBranch,
+  messageSquare: MessageSquare, users: Users, settings: Settings, home: Home, checkSquare: CheckSquare,
+};
 
-const teacherNav: NavItem[] = [
-  { label: "课程总览", href: "/teacher/courses/course-1", icon: Home },
-  { label: "小组", href: "/teacher/courses/course-1/groups", icon: Users },
-  { label: "待处理", href: "/teacher/courses/course-1/actions", icon: CheckSquare },
-  { label: "报告", href: "/teacher/courses/course-1/reports", icon: FileText },
-  { label: "课程设置", href: "/teacher/courses/course-1/settings", icon: Settings },
-];
+function navFrom(items: { label: string; href: string; iconKey: string }[]): NavItem[] {
+  return items.map((item) => ({ label: item.label, href: item.href, icon: iconByKey[item.iconKey] ?? Folder, ignoreSearch: item.href.includes("?") }));
+}
 
 const adminNav: NavItem[] = [
   { label: "用户管理", href: "/admin/users", icon: Users },
@@ -62,7 +46,7 @@ const roleLabels: Record<Role, string> = { student: "学生", leader: "组长", 
 function NavLink({ item, pathname, search }: { item: NavItem; pathname: string; search: string }) {
   const Icon = item.icon;
   const [hrefPath, hrefSearch] = item.href.split("?");
-  const active = hrefPath === pathname && (!hrefSearch || hrefSearch === search);
+  const active = hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search);
   return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={17} strokeWidth={1.9} /><span>{item.label}</span></Link>;
 }
 
@@ -75,8 +59,11 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState("");
   const user = data.users.find((item) => item.id === data.currentUserId);
-  const projectMode = kind === "student" && pathname.startsWith("/projects/");
-  const nav = kind === "admin" ? adminNav : kind === "teacher" ? teacherNav : projectMode ? projectNav : globalNav;
+  const context = resolveObjectContext(data, pathname);
+  const defaultCourse = data.courses.find((item) => item.teacherId === data.currentUserId) ?? data.courses[0];
+  const navCourseId = context.courseId ?? defaultCourse?.id ?? "course-1";
+  const projectMode = kind === "student" && pathname.startsWith("/projects/") && Boolean(context.projectId);
+  const nav = kind === "admin" ? adminNav : kind === "teacher" ? navFrom(teacherNavItems(navCourseId)) : projectMode ? navFrom(projectNavItems(context.projectId as string)) : globalNav;
   const searchResults = useMemo(() => {
     if (!search.trim()) return [];
     const term = search.toLowerCase();
@@ -95,10 +82,10 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   return <div className="gp-shell">
     {mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label="关闭导航" onClick={() => setMobileOpen(false)} />}
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
-      <Link href={kind === "admin" ? "/admin/users" : kind === "teacher" ? "/teacher/courses/course-1" : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{t("name")}</Link>
+      <Link href={kind === "admin" ? "/admin/users" : kind === "teacher" ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{t("name")}</Link>
       {kind === "admin" && <div className="px-[22px] text-[11px] text-[#8fa4bf]">管理后台</div>}
-      {projectMode && <Link href="/projects/project-1" className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><Folder size={16} className="text-[#246bfa]" /> 软件工程 · GroupProof <ChevronDown size={13} className="ml-auto" /></Link>}
-      {kind === "teacher" && <div className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><BookOpen size={15} /> 软件工程 · 2026 <ChevronDown size={13} className="ml-auto" /></div>}
+      {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><Folder size={16} className="text-[#246bfa]" /> {context.courseName ? `${context.courseName} · ` : ""}{context.projectName ?? "项目"} <ChevronDown size={13} className="ml-auto" /></Link>}
+      {kind === "teacher" && <div className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><BookOpen size={15} /> {context.courseName ?? defaultCourse?.name ?? "课程"} <ChevronDown size={13} className="ml-auto" /></div>}
       <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
         {projectMode && <><div className="gp-nav-section">全局</div><NavLink item={globalNav[0]} pathname={pathname} search="" /><NavLink item={globalNav[1]} pathname={pathname} search="" /><div className="gp-nav-section">当前项目</div></>}
         {nav.map((item) => <NavLink key={item.href} item={item} pathname={pathname} search={searchParams.toString()} />)}

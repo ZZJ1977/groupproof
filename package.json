@@ -13,7 +13,22 @@
     "start:standalone": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check:routes": "tsx scripts/check-routes.mjs"
+    "check:routes": "tsx scripts/check-routes.mjs",
+    "check:access": "tsx scripts/check-access.mjs",
+    "check:versioning": "tsx scripts/check-versioning.mjs",
+    "check:commands": "tsx scripts/check-commands.mjs",
+    "check:course-rules": "tsx scripts/check-course-rules.mjs",
+    "check:project-create": "tsx scripts/check-project-create.mjs",
+    "check:baseline": "tsx scripts/check-baseline.mjs",
+    "check:setup": "tsx scripts/check-setup.mjs",
+    "check:plan": "tsx scripts/check-plan.mjs",
+    "check:rule-change": "tsx scripts/check-rule-change.mjs",
+    "check:files": "tsx scripts/check-files.mjs",
+    "check:lifecycle": "tsx scripts/check-lifecycle.mjs",
+    "check:overview": "tsx scripts/check-overview.mjs",
+    "check:e2e": "tsx scripts/check-e2e.mjs",
+    "check:ux": "tsx scripts/check-ux.mjs",
+    "check:browser": "tsx scripts/check-browser.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

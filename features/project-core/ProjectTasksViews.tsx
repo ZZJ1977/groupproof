@@ -13,7 +13,7 @@ type TaskView = "tree" | "board" | "list";
 
 function TaskAction({ core, task }: { core: ProjectCore; task: Task }) {
   if (!core.canEdit || core.project.setupStatus !== "frozen" || !core.project.planConfirmed) return null;
-  if (core.role !== "leader" && !task.responsibleIds.includes(core.data.currentUserId)) return null;
+  if (!core.canLead && !task.responsibleIds.includes(core.data.currentUserId)) return null;
   if (task.status === "not_started") return <button className={s.buttonSoft} type="button" onClick={() => core.update("tasks", task.id, { status: "in_progress", updatedAt: new Date().toISOString() })}>开始任务</button>;
   if (task.status === "in_progress") return <button className={s.buttonSoft} type="button" onClick={() => core.update("tasks", task.id, { status: "pending_submission", updatedAt: new Date().toISOString() })}>准备提交</button>;
   if (task.status === "pending_submission") return <Link className={s.buttonSoft} href={`${taskPath(core.project.id, task.id)}/submit`}>提交证据</Link>;
@@ -79,7 +79,7 @@ export function ProjectTaskDetail({ core, task }: { core: ProjectCore; task: Tas
   const saveProgress = () => {
     if (!progressReason.trim()) return setFeedback("人工修正进度需要填写原因。");
     if (progress < 0 || progress > 100) return setFeedback("进度需在 0–100% 之间。");
-    if (!core.canEdit || (core.role !== "leader" && !task.responsibleIds.includes(core.data.currentUserId))) return setFeedback("只有任务负责人或组长可以修正进度。");
+    if (!core.canEdit || (!core.canLead && !task.responsibleIds.includes(core.data.currentUserId))) return setFeedback("只有任务负责人或组长可以修正进度。");
     if (task.status === "completed") return setFeedback("已完成任务需要先重新开启后才能修改进度。");
     recordTaskProgress(core, task, progress);
     core.add("logs", { id: makeId("log"), actorId: core.data.currentUserId, action: "人工修正任务进度", target: task.id, result: "success", ip: "Mock", createdAt: new Date().toISOString(), detail: `${task.progress}% → ${progress}%；原因：${progressReason.trim()}` });
@@ -111,7 +111,7 @@ export function ProjectTaskDetail({ core, task }: { core: ProjectCore; task: Tas
       </div>
       <div className={s.detailAside}>
         <Panel title="任务信息"><div className={s.detailPair}><span>任务编号</span><span>{taskCode(task)}</span></div><div className={s.detailPair}><span>负责人</span><span>{task.responsibleIds.map((id) => personName(core, id)).join("、") || "未分配"}</span></div><div className={s.detailPair}><span>优先级</span><span>{priorityLabel(task.priority)}</span></div><div className={s.detailPair}><span>权重</span><span>{task.weight}%</span></div><div className={s.detailPair}><span>状态</span><span><Status value={task.status} /></span></div><div className={s.detailPair}><span>所属模块</span><span>{core.modules.find((item) => item.id === task.moduleId)?.name ?? "—"}</span></div><div className={s.detailPair}><span>关联需求</span><span>{linkedRequirements.map((item) => item.title).join("、") || "—"}</span></div><div className={s.detailPair}><span>里程碑</span><span>{linkedMilestones.map((item) => item.title).join("、") || "—"}</span></div><div className={s.detailPair}><span>依赖任务</span><span>{task.dependencyIds.map((id) => taskCode(core.tasks.find((item) => item.id === id) ?? task)).join("、") || "无"}</span></div></Panel>
-        <Panel title="任务进度"><div className={s.space}><strong className={s.blue}>{task.progress}%</strong><span className={s.muted}>人工修正需说明原因</span></div><Progress value={task.progress} />{core.canEdit && (core.role === "leader" || task.responsibleIds.includes(core.data.currentUserId)) && <div className={s.mt}><label className={s.fieldLabel}>进度 %</label><input className={s.field} type="number" min="0" max="100" value={progress} onChange={(event) => setProgress(Number(event.target.value))} /><label className={s.fieldLabel} style={{ marginTop: 9 }}>修正原因</label><input className={s.field} value={progressReason} onChange={(event) => setProgressReason(event.target.value)} placeholder="说明完成情况与估算差异" /><button className={s.buttonGhost} style={{ marginTop: 9 }} type="button" onClick={saveProgress}>保存进度</button></div>}</Panel>
+        <Panel title="任务进度"><div className={s.space}><strong className={s.blue}>{task.progress}%</strong><span className={s.muted}>人工修正需说明原因</span></div><Progress value={task.progress} />{core.canEdit && (core.canLead || task.responsibleIds.includes(core.data.currentUserId)) && <div className={s.mt}><label className={s.fieldLabel}>进度 %</label><input className={s.field} type="number" min="0" max="100" value={progress} onChange={(event) => setProgress(Number(event.target.value))} /><label className={s.fieldLabel} style={{ marginTop: 9 }}>修正原因</label><input className={s.field} value={progressReason} onChange={(event) => setProgressReason(event.target.value)} placeholder="说明完成情况与估算差异" /><button className={s.buttonGhost} style={{ marginTop: 9 }} type="button" onClick={saveProgress}>保存进度</button></div>}</Panel>
       </div>
     </div>
   </div>;

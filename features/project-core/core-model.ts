@@ -1,5 +1,7 @@
 "use client";
 
+import { can } from "@/lib/access/policy";
+import { weightedProgress } from "@/lib/overview";
 import { useWorkspace } from "@/lib/workspace";
 import type {
   AcceptanceCriterion,
@@ -30,8 +32,14 @@ export interface ProjectCore {
   verifications: Verification[];
   milestones: Milestone[];
   currentUser: User | undefined;
+  /** 业务内容阅读资格（project.content.read） */
   canView: boolean;
+  /** 仅公开总览资格（project.summary.read）；无业务阅读资格时展示公开 DTO */
+  canSummary: boolean;
+  /** 草稿编辑等成员写资格；生命周期等执行条件另由命令校验 */
   canEdit: boolean;
+  /** 目标项目组长资格（按 Group.leaderId 或无小组项目 ownerId 判断） */
+  canLead: boolean;
 }
 
 export function useProjectCore(projectId: string): ProjectCore | null {
@@ -41,8 +49,8 @@ export function useProjectCore(projectId: string): ProjectCore | null {
   if (!project) return null;
 
   const tasks = data.tasks.filter((item) => item.projectId === projectId);
-  const isMember = project.memberIds.includes(data.currentUserId);
-  const isCourseTeacher = (workspace.role === "teacher" || workspace.role === "ta") && data.courses.some((course) => course.id === project.courseId && course.teacherId === data.currentUserId);
+  const actorId = data.currentUserId;
+  const target = { kind: "project" as const, id: projectId };
   return {
     data,
     role: workspace.role,
@@ -58,8 +66,10 @@ export function useProjectCore(projectId: string): ProjectCore | null {
     verifications: data.verifications.filter((item) => item.projectId === projectId),
     milestones: data.milestones.filter((item) => item.projectId === projectId),
     currentUser: data.users.find((item) => item.id === data.currentUserId),
-    canView: isMember || isCourseTeacher,
-    canEdit: isMember && (workspace.role === "student" || workspace.role === "leader") && project.lifecycle === "active",
+    canView: can(data, actorId, "project.content.read", target),
+    canSummary: can(data, actorId, "project.summary.read", target),
+    canEdit: can(data, actorId, "project.draft.edit", target) && project.lifecycle === "active",
+    canLead: can(data, actorId, "project.publish", target),
   };
 }
 
@@ -134,16 +144,15 @@ export function recordTaskProgress(core: ProjectCore, task: Task, value: number)
   }
 
   const roots = core.tasks.filter((item) => !item.parentTaskId);
-  const totalWeight = roots.reduce((sum, item) => sum + item.weight, 0);
-  if (totalWeight) {
-    const progress = Math.round(roots.reduce((sum, item) => sum + item.weight * (next.get(item.id) ?? item.progress), 0) / totalWeight);
-    core.update("projects", core.project.id, { progress });
+  const overall = weightedProgress(roots.map((item) => ({ ...item, progress: next.get(item.id) ?? item.progress })));
+  if (overall !== null) {
+    core.update("projects", core.project.id, { progress: overall });
   }
   const functionalModule = core.modules.find((item) => item.id === task.moduleId);
   if (functionalModule) {
     const moduleTasks = roots.filter((item) => item.moduleId === functionalModule.id);
-    const moduleWeight = moduleTasks.reduce((sum, item) => sum + item.weight, 0);
-    if (moduleWeight) core.update("modules", functionalModule.id, { progress: Math.round(moduleTasks.reduce((sum, item) => sum + item.weight * (next.get(item.id) ?? item.progress), 0) / moduleWeight) });
+    const moduleProgress = weightedProgress(moduleTasks.map((item) => ({ ...item, progress: next.get(item.id) ?? item.progress })));
+    if (moduleProgress !== null) core.update("modules", functionalModule.id, { progress: moduleProgress });
   }
   for (const milestone of core.milestones.filter((item) => item.taskIds.some((id) => next.has(id)))) {
     const relatedTasks = core.tasks.filter((item) => milestone.taskIds.includes(item.id));

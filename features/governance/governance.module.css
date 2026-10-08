@@ -4,7 +4,7 @@
   gap: 20px;
   min-width: 0;
   padding-bottom: 28px;
-  color: #17233b;
+  color: var(--gp-ink);
 }
 
 .headingRow,
@@ -81,8 +81,8 @@
   place-items: center;
   flex: 0 0 auto;
   border-radius: 6px;
-  background: #eaf2ff;
-  color: #1d68e8;
+  background: var(--gp-action-soft);
+  color: var(--gp-action);
 }
 
 .metricLabel {
@@ -278,7 +278,7 @@
   border: 1px solid #dce4ef;
   border-radius: 5px;
   background: #fff;
-  color: #17233b;
+  color: var(--gp-ink);
   font: inherit;
   font-size: 13px;
 }
@@ -359,7 +359,7 @@
   white-space: nowrap;
 }
 
-.badgeBlue { background: #eaf2ff; color: #1765d5; }
+.badgeBlue { background: var(--gp-action-soft); color: #1765d5; }
 .badgeGreen { background: #e4f7ee; color: #0b8d57; }
 .badgeAmber { background: #fff3dd; color: #ab6900; }
 .badgeRed { background: #ffebeb; color: #c43636; }
