@@ -10,8 +10,8 @@
 | --- | --- |
 | Web 前端 | 已完成 56 个设计页和对应路由 |
 | 演示角色 | Student、Leader、Teacher、TA、Admin |
-| Docker | 已配置 Node 20 standalone 多阶段构建 |
-| CI/CD | GitHub Actions 已配置 lint、类型、路由、构建和 Docker 检查 |
+| Docker | 已配置 Node 20 standalone 多阶段构建；Compose 可启动 Web、API、worker、PostgreSQL/pgvector 和 Redis |
+| CI/CD | GitHub Actions 已配置前端质量、Python 后端格式/pytest、路由、构建和 Docker 检查 |
 | 测试环境 | Railway develop 分支，已部署 |
 | 生产环境 | Railway main 分支，已部署前端原型 |
 | 后端和数据服务 | 按技术方案逐步接入 |
@@ -40,6 +40,13 @@ npm run build
 ~~~
 
 完整的本地开发、Docker 和组员协作命令见 [开发与发布流程](./docs/DEVELOPMENT.md)。
+
+A1 全套本地环境：
+
+~~~bash
+cp .env.example .env
+docker compose up --build
+~~~
 
 ## 技术选型摘要
 
@@ -102,4 +109,3 @@ curl --fail http://localhost:3000/healthz
 ## 当前范围
 
 登录、邮箱验证、OAuth、权限、AI、GitHub、飞书、文件上传、报告导出、数据库和管理后台仍是后续接入项。当前生产环境运行的是前端原型，正式开放真实用户前需要完成后端和数据服务接入。
-

@@ -18,17 +18,26 @@
 | 服务 | 当前状态 | 说明 |
 | --- | --- | --- |
 | `web` | 已支持 | 当前仓库的 Next.js 用户端 |
-| `api` | 预留 | FastAPI 身份、权限和业务接口 |
+| `api` | A1 骨架 | FastAPI 健康检查和按成员划分的业务模块入口 |
 | `admin` | 预留 | 管理后台；可在同一仓库的 `apps/admin` 中维护 |
-| `worker` | 预留 | AI、报告导出和异步任务 |
-| `postgres` | 预留 | 业务数据库，生产必须独立于测试 |
-| `redis` | 预留 | 队列、缓存和 SSE 协调 |
+| `worker` | A1 骨架 | 可启动的后台任务进程；业务任务后续接入 |
+| `postgres` | A1 本地可用 | 本地 pgvector 数据库；生产必须独立于测试 |
+| `redis` | A1 本地可用 | 本地队列基础；Celery/SSE 后续接入 |
 
 不要把前端、API 和管理后台强行塞进同一个容器。它们应独立部署、独立扩缩容，并通过环境变量传递地址。
 
 ## 当前 Web 服务
 
 Railway 服务根目录保持在仓库根目录，平台会自动检测 `Dockerfile`。容器监听 Railway 注入的 `$PORT`，服务健康检查设置为 `/healthz`。当前服务不需要数据库或密钥就能运行，因为数据仍由浏览器 Mock 层提供。
+
+## A1 本地全套环境
+
+仓库根目录的 `docker-compose.yml` 可以同时启动 Web、FastAPI API、worker、PostgreSQL/pgvector 和 Redis。默认端口分别为 3000、8000、5432 和 6379；使用 `.env` 中的 `*_PORT` 变量可以覆盖宿主机端口。
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
 
 在 Railway 的 `web` 服务中配置：
 
@@ -44,7 +53,7 @@ NEXT_PUBLIC_ADMIN_URL=https://<admin-domain>
 
 ## CI/CD 触发方式
 
-GitHub Actions 在推送 `develop` 或 `main` 时执行 lint、TypeScript、路由检查、生产构建和 Docker 冒烟测试；全部通过后才执行对应环境的 Railway 部署。Railway 服务自身的 GitHub 自动部署连接已断开，避免绕过 CI 或重复部署。
+GitHub Actions 在目标分支的 PR 和推送 `develop` 或 `main` 时执行前端质量、Python 后端检查、路由检查、生产构建和 Docker 冒烟测试；全部通过后才执行对应环境的 Railway 部署。Railway 服务自身的 GitHub 自动部署连接已断开，避免绕过 CI 或重复部署。
 
 GitHub 仓库 Actions Secret：`RAILWAY_TOKEN`，存放有 `zzj1977's Projects` 工作区权限的 Railway API Token。工作流将其映射为 Railway CLI 使用的 `RAILWAY_API_TOKEN`。GitHub Environment `staging` 和 `production` 各自设置 `RAILWAY_PROJECT_ID`、`RAILWAY_SERVICE_ID`，避免部署到错误项目。
 
