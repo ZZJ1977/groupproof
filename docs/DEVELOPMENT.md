@@ -77,6 +77,22 @@ ruff check app tests
 pytest -q
 ~~~
 
+前端页面测试：
+
+首次运行需要安装 Chromium 浏览器：
+
+~~~bash
+npx playwright install chromium
+~~~
+
+之后运行 Playwright 示例：
+
+~~~bash
+npm run test:e2e
+~~~
+
+示例位于 `e2e/home.spec.ts`，覆盖从登录页点击“使用 Google 登录”进入首页的流程。新增页面测试时，复制该文件到 `e2e/`，修改 `page.goto`、可访问名称和断言即可。后端测试的复制说明见 `services/api/tests/README.md`；页面测试的详细说明见 `e2e/README.md`。
+
 启动开发服务器后，检查 56 个页面的 HTTP 状态：
 
 ~~~bash
@@ -164,7 +180,7 @@ PR 必须：
 4. 至少一名成员审查后才能合并；默认由 A 审查，A 的 PR 由 B/C/D 之一审查。
 5. 目标分支只能是 `develop`。测试环境验收通过后，由 A 将 `develop` 快进同步到 `main`。
 
-当前 GitHub 分支保护已将 CI 的 `Lint, typecheck, build, and route smoke test`、`Backend format and tests` 和 `Build and smoke test Docker image` 设为 `develop`/`main` 的必需检查，并禁止直接推送。仓库中的 `.github/labels.yml` 是 A/B/C/D 标签的版本化定义；重新创建仓库时按该文件恢复标签。
+当前 GitHub 分支保护已将 CI 的 `Lint, typecheck, build, and route smoke test`、`Backend format and tests`、`Playwright end-to-end tests` 和 `Build and smoke test Docker image` 设为 `develop`/`main` 的必需检查，并禁止直接推送。仓库中的 `.github/labels.yml` 是 A/B/C/D 标签的版本化定义；重新创建仓库时按该文件恢复标签。
 
 不要提交 .env.local、数据库密码、OAuth secret、AI key 或 Railway token。
 

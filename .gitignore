@@ -1,11 +1,14 @@
 node_modules/
 .next/
 out/
+.venv/
 .DS_Store
 *.tsbuildinfo
 .pytest_cache/
 .ruff_cache/
 __pycache__/
+test-results/
+playwright-report/
 .env*
 !.env.example
 .vercel/
