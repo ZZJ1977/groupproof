@@ -3,6 +3,9 @@ node_modules/
 out/
 .DS_Store
 *.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+__pycache__/
 .env*
 !.env.example
 .vercel/
