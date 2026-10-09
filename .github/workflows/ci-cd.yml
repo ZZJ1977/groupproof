@@ -3,6 +3,8 @@ name: CI/CD
 on:
   push:
     branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       deploy:
@@ -26,6 +28,7 @@ concurrency:
 
 env:
   NODE_VERSION: 20.x
+  PYTHON_VERSION: "3.12"
 
 jobs:
   quality:
@@ -79,6 +82,38 @@ jobs:
           CHECK_HTTP=1 npm run check:routes
           curl --fail --silent http://127.0.0.1:3000/healthz >/dev/null
 
+  backend:
+    name: Backend format and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: services/api/requirements*.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Check Python formatting
+        run: ruff format --check app tests
+
+      - name: Lint Python
+        run: ruff check app tests
+
+      - name: Compile worker scaffold
+        run: python -m compileall -q ../worker/app
+
+      - name: Run backend tests
+        run: pytest -q
+
   docker:
     name: Build and smoke test Docker image
     needs: quality
@@ -86,6 +121,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -122,7 +160,7 @@ jobs:
 
   deploy:
     name: Deploy to Railway
-    needs: [quality, docker]
+    needs: [quality, backend, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-latest
     environment:
