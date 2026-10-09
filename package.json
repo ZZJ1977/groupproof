@@ -13,7 +13,8 @@
     "start:standalone": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check:routes": "tsx scripts/check-routes.mjs"
+    "check:routes": "tsx scripts/check-routes.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -37,6 +38,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
