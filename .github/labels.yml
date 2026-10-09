@@ -1,0 +1,13 @@
+# A1-02 的角色标签定义。标签同时同步到 GitHub 仓库。
+- name: A
+  color: "1D4ED8"
+  description: "组长 A 负责的任务"
+- name: B
+  color: "047857"
+  description: "成员 B 负责的任务"
+- name: C
+  color: "B45309"
+  description: "成员 C 负责的任务"
+- name: D
+  color: "7C3AED"
+  description: "成员 D 负责的任务"
