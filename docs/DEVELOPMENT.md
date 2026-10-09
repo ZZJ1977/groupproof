@@ -77,6 +77,22 @@ ruff check app tests
 pytest -q
 ~~~
 
+前端页面测试：
+
+首次运行需要安装 Chromium 浏览器：
+
+~~~bash
+npx playwright install chromium
+~~~
+
+之后运行 Playwright 示例：
+
+~~~bash
+npm run test:e2e
+~~~
+
+示例位于 `e2e/home.spec.ts`，覆盖从登录页点击“使用 Google 登录”进入首页的流程。新增页面测试时，复制该文件到 `e2e/`，修改 `page.goto`、可访问名称和断言即可。后端测试的复制说明见 `services/api/tests/README.md`；页面测试的详细说明见 `e2e/README.md`。
+
 启动开发服务器后，检查 56 个页面的 HTTP 状态：
 
 ~~~bash
