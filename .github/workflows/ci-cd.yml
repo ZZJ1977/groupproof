@@ -114,6 +114,28 @@ jobs:
       - name: Run backend tests
         run: pytest -q
 
+  e2e:
+    name: Playwright end-to-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: npm run test:e2e
+
   docker:
     name: Build and smoke test Docker image
     needs: quality
@@ -160,7 +182,7 @@ jobs:
 
   deploy:
     name: Deploy to Railway
-    needs: [quality, backend, docker]
+    needs: [quality, backend, e2e, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-latest
     environment:
