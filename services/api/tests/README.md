@@ -14,6 +14,8 @@ pytest -q
 
 当前示例位于 `test_health.py`，使用 FastAPI 的 `TestClient` 直接调用应用，不需要启动独立的 API 进程。
 
+`test_database.py` 是 PostgreSQL 集成测试示例。先启动本地 Compose 数据库并执行 `alembic upgrade head`，再设置 `DATABASE_URL` 后运行 `pytest -q`；没有设置连接串时，该文件会跳过，不影响只测试 HTTP 路由的本地运行。
+
 ## 编写新测试
 
 1. 复制 `test_health.py`，改成描述功能的文件名，例如 `test_projects.py`。
