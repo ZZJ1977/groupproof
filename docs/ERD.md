@@ -1188,7 +1188,7 @@ erDiagram
 | 迁移 | 内容 | 负责范围 |
 |---|---|---|
 | 001 | `pgcrypto`、`vector` 扩展、时区和基础枚举约束 | A |
-| 002 | `users`、`courses`、`course_staff`、`course_members` | A/D |
+| 002 | `users`、`sessions`、`email_verifications`、`oauth_connections`、`courses`、`course_staff`、`course_members` | A/D |
 | 003 | `groups`、`group_members`、`projects`、`project_members` | A/D |
 | 004 | `functional_modules`、`requirements`、`source_references`、`milestones` | B |
 | 005 | `tasks`、任务关联表、`acceptance_criteria`、`progress_events` | B |
