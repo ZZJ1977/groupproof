@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,11 +18,14 @@ const toneByStatus: Record<string, "blue" | "green" | "amber" | "red" | "gray"> 
   in_progress: "blue", pending_verification: "blue", draft: "blue", candidate: "blue", pending_confirmation: "amber", pending_submission: "amber", pending: "amber", partially_passed: "amber", at_risk: "amber", uncertain: "amber",
   failed: "red", rejected: "red", disputed: "red", high: "red", disabled: "red", void: "red", withdrawn: "gray", not_started: "gray", archived: "gray", expired: "gray",
 };
-const labelByStatus: Record<string, string> = { completed: "已完成", passed: "通过", formal: "正式", active: "进行中", approved: "已通过", verified: "已验证", confirmed: "已确认", generated: "已生成", current: "当前", in_progress: "进行中", pending_verification: "待验证", draft: "草稿", candidate: "候选", pending_confirmation: "待确认", pending_submission: "待提交", pending: "待处理", partially_passed: "部分通过", at_risk: "有风险", uncertain: "不确定", failed: "未通过", rejected: "已拒绝", disputed: "申诉中", high: "高", disabled: "已停用", void: "已作废", withdrawn: "已撤回", not_started: "待开始", archived: "已归档", expired: "已过期" };
+
+const KNOWN_STATUS = new Set(Object.keys(toneByStatus));
 
 export function StatusBadge({ status, label, tone, className }: { status?: string; label?: string; tone?: "blue" | "green" | "amber" | "red" | "gray"; className?: string }) {
+  const t = useTranslations("common.status");
   const resolved = status ?? "gray";
-  return <span className={cn("gp-badge", tone ?? toneByStatus[resolved] ?? "gray", className)}><span className="h-[6px] w-[6px] rounded-full bg-current" />{label ?? labelByStatus[resolved] ?? resolved}</span>;
+  const text = label ?? (KNOWN_STATUS.has(resolved) ? t(resolved) : resolved);
+  return <span className={cn("gp-badge", tone ?? toneByStatus[resolved] ?? "gray", className)}><span className="h-[6px] w-[6px] rounded-full bg-current" />{text}</span>;
 }
 
 export function ProgressBar({ value, className, color }: { value: number; className?: string; color?: string }) {
@@ -38,6 +44,17 @@ export function EmptyState({ title, description, action }: { title: string; desc
   return <div className="gp-empty"><div className="font-semibold text-[#52647f]">{title}</div>{description && <p className="mt-1 text-[12px]">{description}</p>}{action && <div className="mt-4">{action}</div>}</div>;
 }
 
+/** 认证/账户服务不可用：可重试，不回退演示数据 */
+export function ServiceUnavailable() {
+  const t = useTranslations("common");
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-center" role="alert">
+      <p className="text-[13px] text-[#75849a]">{t("serviceUnavailable")}</p>
+      <button className="gp-link text-[12px]" onClick={() => window.location.reload()}>{t("retry")}</button>
+    </div>
+  );
+}
+
 /** 统一操作反馈（阶段 14 组件状态表）：成功/失败/提示，保留输入场景配合表单使用 */
 export function Feedback({ tone = "info", children, className }: { tone?: "info" | "success" | "error" | "warning"; children: ReactNode; className?: string }) {
   return <div className={cn("gp-feedback gp-fade-in", className)} data-tone={tone === "info" ? undefined : tone} role="status">{children}</div>;
@@ -45,6 +62,7 @@ export function Feedback({ tone = "info", children, className }: { tone?: "info"
 
 /** 表单保存状态：未保存/保存中/已保存/失败（含版本冲突提示） */
 export function SaveState({ state, children }: { state: "clean" | "dirty" | "saving" | "saved" | "error"; children?: ReactNode }) {
-  const text = children ?? { clean: "", dirty: "未保存", saving: "保存中…", saved: "已保存", error: "保存失败" }[state];
+  const t = useTranslations("common.saveState");
+  const text = children ?? (state === "clean" ? "" : t(state));
   return <span className="gp-save-state" data-state={state === "clean" ? undefined : state} role="status" aria-live="polite">{text}</span>;
 }

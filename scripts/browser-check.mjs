@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import assert from "node:assert/strict";
+import { spawn, execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 /**
@@ -119,6 +120,7 @@ export class Tab {
 
   /** 表单输入（触发 React 受控更新） */
   async type(selector, value) {
+    await this.waitForHydration(selector);
     await this.evaluate(`(() => {
       const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return false;
@@ -143,14 +145,20 @@ export class Tab {
 
   /** 按可见文本点击（button/a），真实鼠标事件 */
   async clickByText(text, tag = "button") {
-    const rect = await this.evaluate(`(() => {
-      const els = Array.from(document.querySelectorAll(${JSON.stringify(tag)}));
-      const el = els.find((e) => e.textContent.trim() === ${JSON.stringify(text)} && !e.disabled) || els.find((e) => e.textContent.trim().startsWith(${JSON.stringify(text)}) && !e.disabled);
-      if (!el) return null;
-      el.scrollIntoView({ block: "center", behavior: "instant" });
-      const r = el.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    })()`);
+    // 元素/水合就绪前重试（覆盖开发模式冷编译），找不到仍报错
+    let rect = null;
+    for (let i = 0; i < 20; i += 1) {
+      rect = await this.evaluate(`(() => {
+        const els = Array.from(document.querySelectorAll(${JSON.stringify(tag)}));
+        const el = els.find((e) => e.textContent.trim() === ${JSON.stringify(text)} && !e.disabled) || els.find((e) => e.textContent.trim().startsWith(${JSON.stringify(text)}) && !e.disabled);
+        if (!el) return null;
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      })()`);
+      if (rect) break;
+      await sleep(400);
+    }
     if (!rect) throw new Error(`未找到可点击文本：${text}`);
     await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: rect.x, y: rect.y });
     await this.send("Input.dispatchMouseEvent", { type: "mousePressed", x: rect.x, y: rect.y, button: "left", clickCount: 1 });
@@ -158,8 +166,18 @@ export class Tab {
     await sleep(360);
   }
 
-  /** 在包含 labelText 的 label 内输入（表单字段定位） */
+  /** 在包含 labelText 的 label 内输入（表单字段定位）；字段未渲染时短暂重试 */
   async typeInLabeled(labelText, value) {
+    for (let i = 0; i < 20; i += 1) {
+      const done = await this._typeInLabeledOnce(labelText, value);
+      if (done) return true;
+      await sleep(400);
+    }
+    return false;
+  }
+
+  async _typeInLabeledOnce(labelText, value) {
+    await this.waitForHydration("label");
     return this.evaluate(`(() => {
       const labels = Array.from(document.querySelectorAll("label"));
       const label = labels.find((l) => l.textContent.includes(${JSON.stringify(labelText)}));
@@ -171,11 +189,30 @@ export class Tab {
       el.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     })()`);
-    await sleep(160);
+    await sleep(320);
+  }
+
+  /** 等待目标元素完成 React 水合（fiber 已挂载），避免事件监听未就绪时输入丢失 */
+  async waitForHydration(selector, timeout = 8000) {
+    const start = Date.now();
+    for (;;) {
+      const ready = await this.evaluate(`(() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        return !!el && Object.keys(el).some((k) => k.startsWith("__react"));
+      })()`);
+      if (ready) return true;
+      if (Date.now() - start > timeout) return false;
+      await sleep(250);
+    }
   }
 
   async hasText(text) {
-    return (await this.text()).includes(text);
+    // 首次编译/水合较慢时重试（覆盖开发模式冷编译；不改变断言语义）
+    for (let i = 0; i < 24; i += 1) {
+      if ((await this.text()).includes(text)) return true;
+      await sleep(500);
+    }
+    return false;
   }
 
   async text() {
@@ -200,15 +237,105 @@ export async function openTab() {
   return tab;
 }
 
-/** 夹具：注入完整工作区状态（Node 侧准备），被验收操作仍经界面执行 */
+/**
+ * 夹具：注入完整工作区状态（Node 侧准备），被验收操作仍经界面执行。
+ * 存储键按当前会话用户隔离（真实门禁下需先登录）；同时写旧键以便兼容读取。
+ */
 export async function injectWorkspace(tab, data) {
   await tab.goto("/");
-  await tab.evaluate(`localStorage.setItem("groupproof-v1-workspace", ${JSON.stringify(JSON.stringify(data))}); "ok"`);
+  await tab.evaluate(`(async () => {
+    let scope = "anonymous";
+    try { const d = await (await fetch("/api/v1/auth/session")).json(); scope = d?.user?.id || "anonymous"; } catch {}
+    const payload = ${JSON.stringify(JSON.stringify(data))};
+    localStorage.setItem("groupproof-v1-workspace:" + scope, payload);
+    localStorage.setItem("groupproof-v1-workspace", payload);
+    return "ok";
+  })()`);
+  await sleep(200);
+}
+
+/** 原地覆写工作区夹具（不导航，保留页面输入）；写用户隔离键并兼容旧键 */
+export async function writeWorkspace(tab, data) {
+  await tab.evaluate(`(async () => {
+    let scope = "anonymous";
+    try { const d = await (await fetch("/api/v1/auth/session")).json(); scope = d?.user?.id || "anonymous"; } catch {}
+    const payload = ${JSON.stringify(JSON.stringify(data))};
+    localStorage.setItem("groupproof-v1-workspace:" + scope, payload);
+    localStorage.setItem("groupproof-v1-workspace", payload);
+    return "ok";
+  })()`);
   await sleep(200);
 }
 
 export async function readWorkspace(tab) {
-  return JSON.parse(await tab.evaluate(`localStorage.getItem("groupproof-v1-workspace")`));
+  return JSON.parse(await tab.evaluate(`(async () => {
+    let scope = "anonymous";
+    try { const d = await (await fetch("/api/v1/auth/session")).json(); scope = d?.user?.id || "anonymous"; } catch {}
+    return localStorage.getItem("groupproof-v1-workspace:" + scope) || localStorage.getItem("groupproof-v1-workspace");
+  })()`));
+}
+
+/**
+ * 确保浏览器处于已激活会话（真实门禁下业务页需要 active + full）。
+ * 走真实接口完成三步注册、资料与学校邮箱验证（隔离开发环境），再把会话 Cookie
+ * 注入浏览器（CDP）。验证码仅从开发邮件捕获器读取；真实收件验证另行人工联调。
+ */
+export async function ensureSignedIn(tab) {
+  const base = process.env.GP_BASE_URL ?? "http://localhost:3000";
+  const stamp = Date.now().toString().slice(-8);
+  const email = `ux-${stamp}@example.com`;
+  const username = `ux${stamp}`;
+  const password = "correct-horse-battery-1";
+  const schoolEmail = `20991${stamp}@student.must.edu.mo`;
+  const jar = [];
+  const call = async (path, body, csrf, method) => {
+    const res = await fetch(`${base}${path}`, {
+      method: method ?? (body ? "POST" : "GET"),
+      redirect: "manual",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: base,
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        ...(jar.length ? { Cookie: jar.join("; ") } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    for (const cookie of res.headers.getSetCookie?.() ?? []) {
+      const pair = cookie.split(";")[0];
+      const name = pair.split("=")[0];
+      const idx = jar.findIndex((item) => item.startsWith(name + "="));
+      if (idx >= 0) jar[idx] = pair; else jar.push(pair);
+    }
+    return res;
+  };
+
+  const created = await (await call("/api/v1/auth/email/registrations", { email, locale: "zh-Hans" })).json();
+  await call(`/api/v1/auth/email/registrations/${created.id}/verify`, { code: readCapturedCode(email) });
+  await call(`/api/v1/auth/email/registrations/${created.id}/complete`, { username, password });
+  const session = await (await call("/api/v1/auth/session")).json();
+  const csrf = session.csrfToken;
+  await call("/api/v1/me/profile", {
+    name: "UX走查用户", username, studentId: `20991${stamp}`, requestedIdentity: "student",
+    schoolEmail, expectedVersion: 1,
+  }, csrf, "PATCH");
+  const challenge = await (await call("/api/v1/me/school-email/challenges", {}, csrf)).json();
+  await call("/api/v1/me/school-email/verify", { challengeId: challenge.challengeId, code: readCapturedCode(schoolEmail) }, csrf);
+
+  const sessionCookie = jar.find((item) => item.startsWith("gp_session=") || item.startsWith("__Host-gp_session="));
+  assert(sessionCookie, "未取得会话 Cookie");
+  const [name, value] = sessionCookie.split("=");
+  await tab.send("Network.setCookie", { url: base, name, value, path: "/", httpOnly: true, sameSite: "Lax" });
+  await tab.goto("/home");
+}
+
+/** 仅隔离开发环境：从邮件捕获器读取验证码（生产无任何读码通道） */
+export function readCapturedCode(email) {
+  const body = execSync(
+    `docker exec gp-pg-test psql -U gp -d gp_dev -t -A -c "SELECT body FROM email_outbox WHERE to_email='${email}' ORDER BY id DESC LIMIT 1"`,
+    { encoding: "utf8" },
+  );
+  const match = /(\d{6})/.exec(body);
+  return match ? match[1] : "";
 }
 
 /** 模拟存储失败（夹具）：下一次 setItem 抛错，用于验证保存失败反馈 */

@@ -43,31 +43,31 @@ export interface NavItemLite {
 export function projectNavItems(projectId: string): { label: string; href: string; iconKey: string }[] {
   const base = `/projects/${projectId}`;
   return [
-    { label: "项目总览", href: base, iconKey: "folder" },
-    { label: "项目初始化", href: `${base}/setup`, iconKey: "fileClock" },
-    { label: "需求基线", href: `${base}/requirements`, iconKey: "fileText" },
-    { label: "任务规划", href: `${base}/planning`, iconKey: "clipboardList" },
-    { label: "任务", href: `${base}/tasks?view=tree`, iconKey: "listTree" },
-    { label: "里程碑", href: `${base}/milestones`, iconKey: "fileCheck" },
-    { label: "证据中心", href: `${base}/evidence`, iconKey: "shieldCheck" },
+    { label: "overview", href: base, iconKey: "folder" },
+    { label: "setup", href: `${base}/setup`, iconKey: "fileClock" },
+    { label: "requirements", href: `${base}/requirements`, iconKey: "fileText" },
+    { label: "planning", href: `${base}/planning`, iconKey: "clipboardList" },
+    { label: "tasks", href: `${base}/tasks?view=tree`, iconKey: "listTree" },
+    { label: "milestones", href: `${base}/milestones`, iconKey: "fileCheck" },
+    { label: "evidence", href: `${base}/evidence`, iconKey: "shieldCheck" },
     { label: "GitHub", href: `${base}/github`, iconKey: "gitBranch" },
-    { label: "协作记录", href: `${base}/collaboration`, iconKey: "messageSquare" },
-    { label: "文件资料", href: `${base}/files`, iconKey: "folder" },
-    { label: "讨论区", href: `${base}/discussions`, iconKey: "messageSquare" },
-    { label: "贡献", href: `${base}/contribution`, iconKey: "users" },
-    { label: "报告", href: `${base}/reports`, iconKey: "fileText" },
-    { label: "项目设置", href: `${base}/settings`, iconKey: "settings" },
+    { label: "collaboration", href: `${base}/collaboration`, iconKey: "messageSquare" },
+    { label: "files", href: `${base}/files`, iconKey: "folder" },
+    { label: "discussions", href: `${base}/discussions`, iconKey: "messageSquare" },
+    { label: "contribution", href: `${base}/contribution`, iconKey: "users" },
+    { label: "reports", href: `${base}/reports`, iconKey: "fileText" },
+    { label: "settings", href: `${base}/settings`, iconKey: "settings" },
   ];
 }
 
 export function teacherNavItems(courseId: string): { label: string; href: string; iconKey: string }[] {
   const base = `/teacher/courses/${courseId}`;
   return [
-    { label: "课程总览", href: base, iconKey: "home" },
-    { label: "小组", href: `${base}/groups`, iconKey: "users" },
-    { label: "待处理", href: `${base}/actions`, iconKey: "checkSquare" },
-    { label: "报告", href: `${base}/reports`, iconKey: "fileText" },
-    { label: "课程设置", href: `${base}/settings`, iconKey: "settings" },
+    { label: "overview", href: base, iconKey: "home" },
+    { label: "groups", href: `${base}/groups`, iconKey: "users" },
+    { label: "actions", href: `${base}/actions`, iconKey: "checkSquare" },
+    { label: "reports", href: `${base}/reports`, iconKey: "fileText" },
+    { label: "settings", href: `${base}/settings`, iconKey: "settings" },
   ];
 }
 

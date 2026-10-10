@@ -201,4 +201,17 @@ const moveRequirement = (revision, requirementId, moduleId) => payloadOf(revisio
   ok("发布日志记录影响任务数", repo.data.logs.some((item) => item.action === "需求基线发布" && item.detail.includes("影响任务")));
 }
 
+// Review regression: rejected stale baseline saves preserve the committed draft.
+{
+  const { repo, run } = setup();
+  const created = await run(createBaselineDraft, { projectId: "project-1", expectedVersion: projectVersion(repo) });
+  const input = { projectId: "project-1", revisionId: created.result.id, payload: payloadOf(created.result), reason: "first", expectedVersion: projectVersion(repo) };
+  const first = await run(saveBaselineDraft, input);
+  ok("基线首次保存成功", first.ok);
+  const before = JSON.stringify(draftBaseline(repo.data, "project-1"));
+  const stale = await run(saveBaselineDraft, { ...input, reason: "stale" });
+  ok("旧项目版本不能覆盖基线草稿", !stale.ok && stale.error.code === "VERSION_CONFLICT");
+  check("基线冲突不写入", JSON.stringify(draftBaseline(repo.data, "project-1")), before);
+}
+
 console.log(`需求基线检查通过：${passed} 项断言全部符合预期。`);

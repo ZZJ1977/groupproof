@@ -136,7 +136,7 @@ const grantTa = (repo, courseId, permissions) => {
     }],
   };
 
-  const published = await run(publishCourseRules, { courseId: "course-1", revisionId: draft.result.id, expectedVersion: course.version });
+  const published = await run(publishCourseRules, { courseId: "course-1", revisionId: draft.result.id, expectedVersion: repo.data.courses.find((item) => item.id === "course-1").version });
   ok("教师发布规则成功", published.ok === true);
   check("发布后草稿变为已发布", published.result.status, "published");
   check("发布记录发布者", published.result.publishedBy, "teacher-1");
@@ -161,7 +161,7 @@ const grantTa = (repo, courseId, permissions) => {
   const draftByTeacher = await run(saveCourseRuleDraft, { courseId: "course-1", payload: payloadOf(course), reason: "授权测试草稿", expectedVersion: course.version });
   ok("教师可保存规则草稿", draftByTeacher.ok === true);
 
-  const granted = await run(setAssistantPermissions, { courseId: "course-1", assistantId: "ta-1", permissions: ["course.rules.publish"], expectedVersion: course.version });
+  const granted = await run(setAssistantPermissions, { courseId: "course-1", assistantId: "ta-1", permissions: ["course.rules.publish"], expectedVersion: repo.data.courses.find((item) => item.id === "course-1").version });
   ok("教师可授予助教权限", granted.ok === true);
 
   state.actor = "ta-1";
@@ -232,6 +232,18 @@ const grantTa = (repo, courseId, permissions) => {
   const revokeEnded = await endedRun(setAssistantPermissions, { courseId: "course-3", assistantId: "ta-1", permissions: [], expectedVersion: endedCourse.version });
   ok("ended 课程仍可处理授权撤销", revokeEnded.ok === true);
   void endedState;
+}
+
+// Review regression: two editors cannot overwrite the same course draft snapshot.
+{
+  const { repo, run } = setup();
+  const course = repo.data.courses.find((item) => item.id === "course-1");
+  const input = { courseId: course.id, payload: payloadOf(course), reason: "review", expectedVersion: course.version };
+  const first = await run(saveCourseRuleDraft, input);
+  ok("规则草稿首次保存成功", first.ok);
+  const stale = await run(saveCourseRuleDraft, { ...input, reason: "stale overwrite" });
+  ok("旧课程版本不能覆盖新草稿", !stale.ok && stale.error.code === "VERSION_CONFLICT");
+  check("冲突后保留首个编辑", draftCourseRule(repo.data, course.id).reason, "review");
 }
 
 console.log(`课程规则与授权检查通过：${passed} 项断言全部符合预期。`);

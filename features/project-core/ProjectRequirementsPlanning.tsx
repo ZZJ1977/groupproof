@@ -108,3 +108,4 @@ export function ProjectRequirements({ core }: { core: ProjectCore }) {
     </div>
   </div>;
 }
+

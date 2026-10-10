@@ -263,6 +263,7 @@ export const saveBaselineDraft: Command<SaveBaselineDraftInput, BaselineRevision
       data: {
         ...data,
         baselineRevisions: data.baselineRevisions.map((item) => (item.id === revision.id ? next : item)),
+        projects: data.projects.map((item) => item.id === project.id ? { ...item, version: item.version + 1 } : item),
         logs: [...data.logs, logEntry(context, "基线草稿修改", revision.id, `内容版本 v${revision.contentVersion} → v${next.contentVersion}；原因：${input.reason}`)],
       },
       result: next,

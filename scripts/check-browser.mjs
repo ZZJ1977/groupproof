@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { seedData } from "../mocks/seed.ts";
-import { launchChrome, closeChrome, openTab, injectWorkspace, readWorkspace, armStorageFailure, sleep } from "./browser-check.mjs";
+import { launchChrome, closeChrome, openTab, injectWorkspace, writeWorkspace, readWorkspace, armStorageFailure, ensureSignedIn, sleep } from "./browser-check.mjs";
 
 /**
  * 阶段 14/15 浏览器验收：截图、导航、角色差异、UI 流程、失败/冲突/重复/刷新、
@@ -45,6 +45,8 @@ const createFixture = () => fixture((data) => {
 await launchChrome();
 const tab = await openTab();
 await tab.setViewport(1440, 900);
+// 真实门禁下业务页需要 active 会话：先经真实注册/登录流程建立会话
+await ensureSignedIn(tab);
 
 try {
   // ── S1 代表页截图（1440） ─────────────────────────────────────
@@ -159,7 +161,7 @@ try {
   await tab.typeInLabeled("项目名称", "冲突保留输入");
   const conflictData = await readWorkspace(tab);
   conflictData.projects = conflictData.projects.map((item) => item.id === "project-1" ? { ...item, version: item.version + 5 } : item);
-  await tab.evaluate(`localStorage.setItem("groupproof-v1-workspace", ${JSON.stringify(JSON.stringify(conflictData))}); "ok"`);
+  await writeWorkspace(tab, conflictData);
   await tab.clickByText("保存设置");
   ok("版本冲突：提示重新核对", await tab.hasText("重新核对") || await tab.hasText("刷新后重试"));
   ok("版本冲突：输入保留", (await tab.evaluate(`(() => { const l=[...document.querySelectorAll("label")].find(x=>x.textContent.includes("项目名称")); const el = l && (l.querySelector("input") || (l.nextElementSibling && l.nextElementSibling.matches("input") ? l.nextElementSibling : null)); return el ? el.value : ""; })()`)) === "冲突保留输入");
