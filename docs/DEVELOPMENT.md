@@ -170,22 +170,46 @@ curl --fail http://localhost:3000/
 
 仓库为私有仓库。负责人在 GitHub 的 Settings → Collaborators → Add people 中邀请成员，普通开发成员使用 Write 权限。
 
-每个成员从 `develop` 创建自己的功能分支。一个任务编号对应一个分支和一个 PR；分支名和 PR 标题都必须包含任务编号：
+仓库长期只保留两条共享分支和每名成员一条个人分支：
+
+| 分支 | 用途 | 规则 |
+| --- | --- | --- |
+| `main` | Production | 只接收经过 Staging 验收的 `develop`，禁止直接推送 |
+| `develop` | 集成和 Staging | 所有个人分支的 PR 目标，禁止直接推送 |
+| `feat/<成员>` | 成员个人开发 | 每名成员只保留一条；可以连续完成多个任务，不按任务重复建分支 |
+
+个人分支从最新 `develop` 创建。现有个人分支可以继续使用；新建分支统一使用 `feat/<成员>` 命名，例如 `feat/zzj1977`。任务编号写在提交信息、PR 标题和 PR 描述中，不再写入每个任务分支名：
 
 ~~~bash
 git fetch origin
 git switch develop
 git pull --ff-only origin develop
-git switch -c feat/C2-01-task-evidence
+git switch -c feat/<成员>
 ~~~
 
-本地检查通过后推送功能分支，向 `develop` 提 PR。组员不得直接推送或合并 `develop`，也不得直接推送 `main`：
+开始新的任务前，以及提交 PR 前，先同步个人分支：
+
+~~~bash
+git fetch origin
+git switch feat/<成员>
+git rebase origin/develop
+~~~
+
+如果个人分支已经被其他成员提交，或者 rebase 会影响正在进行的协作，可以改用 `git merge origin/develop`；冲突解决后必须重新运行本地检查。
+
+提交应保持一个清晰目的，并使用 `<type>(<任务编号>): <动作>` 格式。常用类型为 `feat`、`fix`、`test`、`docs`、`refactor` 和 `chore`：
 
 ~~~bash
 git add .
-git commit -m "feat(C2-01): add task evidence workflow"
-git push --set-upstream origin feat/C2-01-task-evidence
+git commit -m "feat(A2-02): add core database migrations"
+git commit -m "fix(B-03): validate task progress"
+git commit -m "docs(workflow): update branch policy"
+git push --set-upstream origin feat/<成员>
 ~~~
+
+同一个任务可以有多个提交，但每个提交都要能说明改了什么；不要使用 `update`、`修改一下` 或 `临时提交` 等无法识别内容的描述。
+
+本地检查通过后，使用个人分支向 `develop` 提 PR。组员不得直接推送或合并 `develop`，也不得直接推送 `main`：
 
 PR 必须：
 
@@ -194,6 +218,8 @@ PR 必须：
 3. 填写仓库中的 PR 模板，并说明正常路径、权限失败路径和测试结果。
 4. 至少一名成员审查后才能合并；默认由 A 审查，A 的 PR 由 B/C/D 之一审查。
 5. 目标分支只能是 `develop`。测试环境验收通过后，由 A 将 `develop` 快进同步到 `main`。
+
+个人分支合并后继续保留，用于该成员的下一项工作；不再为每个任务创建或保留新的分支。个人分支必须定期同步 `develop`，长期不再使用的分支由负责人确认后删除。其他成员的个人分支不能由未经确认的人删除。
 
 当前 GitHub 分支保护已将 CI 的 `Lint, typecheck, build, and route smoke test`、`Backend format and tests`、`Playwright end-to-end tests` 和 `Build and smoke test Docker image` 设为 `develop`/`main` 的必需检查，并禁止直接推送。仓库中的 `.github/labels.yml` 是 A/B/C/D 标签的版本化定义；重新创建仓库时按该文件恢复标签。
 
