@@ -178,7 +178,7 @@ curl --fail http://localhost:3000/
 | `develop` | 集成和 Staging | 所有个人分支的 PR 目标，禁止直接推送 |
 | `<成员>_task` | 成员个人开发 | 每名成员只保留一条；可以连续完成多个任务，不按任务重复建分支 |
 
-个人分支从最新 `develop` 创建，按成员标识命名为 `A_task`、`B_task`、`C_task` 或 `D_task`。任务编号写在提交信息、PR 标题和 PR 描述中，不再写入每个任务分支名：
+个人分支从最新 `develop` 创建，新分支按成员标识命名为 `A_task`、`B_task`、`C_task` 或 `D_task`。已有个人分支可以继续使用，是否重命名由对应成员决定。任务编号写在提交信息、PR 标题和 PR 描述中，不再写入每个任务分支名：
 
 ~~~bash
 git fetch origin
