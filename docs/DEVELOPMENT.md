@@ -176,22 +176,22 @@ curl --fail http://localhost:3000/
 | --- | --- | --- |
 | `main` | Production | 只接收经过 Staging 验收的 `develop`，禁止直接推送 |
 | `develop` | 集成和 Staging | 所有个人分支的 PR 目标，禁止直接推送 |
-| `feat/<成员>` | 成员个人开发 | 每名成员只保留一条；可以连续完成多个任务，不按任务重复建分支 |
+| `<成员>_task` | 成员个人开发 | 每名成员只保留一条；可以连续完成多个任务，不按任务重复建分支 |
 
-个人分支从最新 `develop` 创建。现有个人分支可以继续使用；新建分支统一使用 `feat/<成员>` 命名，例如 `feat/zzj1977`。任务编号写在提交信息、PR 标题和 PR 描述中，不再写入每个任务分支名：
+个人分支从最新 `develop` 创建，按成员标识命名为 `A_task`、`B_task`、`C_task` 或 `D_task`。任务编号写在提交信息、PR 标题和 PR 描述中，不再写入每个任务分支名：
 
 ~~~bash
 git fetch origin
 git switch develop
 git pull --ff-only origin develop
-git switch -c feat/<成员>
+git switch -c <成员>_task
 ~~~
 
 开始新的任务前，以及提交 PR 前，先同步个人分支：
 
 ~~~bash
 git fetch origin
-git switch feat/<成员>
+git switch <成员>_task
 git rebase origin/develop
 ~~~
 
@@ -204,7 +204,7 @@ git add .
 git commit -m "feat(A2-02): add core database migrations"
 git commit -m "fix(B-03): validate task progress"
 git commit -m "docs(workflow): update branch policy"
-git push --set-upstream origin feat/<成员>
+git push --set-upstream origin <成员>_task
 ~~~
 
 同一个任务可以有多个提交，但每个提交都要能说明改了什么；不要使用 `update`、`修改一下` 或 `临时提交` 等无法识别内容的描述。
