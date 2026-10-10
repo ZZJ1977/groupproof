@@ -31,6 +31,26 @@ jobs:
   quality:
     name: Lint, typecheck, build, and route smoke test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gp
+          POSTGRES_PASSWORD: gp_test_pw
+          POSTGRES_DB: gp_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U gp -d gp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_MODE: dev
+      MAIL_MODE: capture
+      GROUPPROOF_ENV_FILE: /dev/null
+      DATABASE_URL: postgresql+psycopg://gp:gp_test_pw@localhost:55432/gp_test
+      EMAIL_CHALLENGE_HMAC_KEY: ci-only-isolated-test-key
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -43,6 +63,20 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+
+      - name: Install identity service dependencies
+        run: python -m pip install -r server/requirements.txt
+
+      - name: Identity service regression tests
+        working-directory: server
+        run: python -m pytest tests/ -q
 
       - name: Lint
         run: npm run lint
@@ -65,11 +99,17 @@ jobs:
           cp -R public .next/standalone/public
           HOSTNAME=127.0.0.1 PORT=3000 npm run start:standalone > "$RUNNER_TEMP/next.log" 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          (
+            cd server
+            python -m alembic upgrade head
+            exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+          ) > "$RUNNER_TEMP/identity.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$server_pid" "$api_pid" 2>/dev/null || true' EXIT
 
           ready=0
           for _ in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null && curl --fail --silent http://127.0.0.1:8000/readyz >/dev/null; then
               ready=1
               break
             fi

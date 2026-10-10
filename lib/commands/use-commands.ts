@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { mockService } from "@/lib/api/mock-service";
+import { scopedWorkspaceKey, useWorkspace } from "@/lib/workspace";
 import { seedData } from "@/mocks/seed";
 import type { BaselineRevision, Course, CourseRuleRevision, MockData, Project } from "@/types/domain";
 import { createCommandRunner, type Command, type CommandOutcome, type WorkspaceRepository } from "./core";
@@ -58,8 +59,6 @@ import { applyCourseRuleChange, type ApplyCourseRuleChangeInput } from "./rule-c
 import { replaceProjectFile, uploadProjectFile, type FileMetadataInput } from "./files";
 import type { FileRecord, PlanRevision, RuleChangeReview, SetupDraft } from "@/types/domain";
 
-const workspaceQueryKey = ["workspace"] as const;
-
 const mockRepository: WorkspaceRepository = {
   read: () => mockService.getWorkspace(),
   save: (data) => mockService.saveWorkspace(data),
@@ -73,12 +72,15 @@ const mockRepository: WorkspaceRepository = {
 export function useCommands() {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<string | null>(null);
+  // 缓存键按用户隔离（与 WorkspaceProvider 一致），否则命令结果不回写当前用户视图
+  const { userId } = useWorkspace();
+  const workspaceQueryKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
 
   const runner = useMemo(() => createCommandRunner({
     repository: mockRepository,
     currentActorId: () => (queryClient.getQueryData<MockData>(workspaceQueryKey) ?? seedData).currentUserId,
     onSaved: (next) => queryClient.setQueryData(workspaceQueryKey, next),
-  }), [queryClient]);
+  }), [queryClient, workspaceQueryKey]);
 
   const bind = useCallback(<I, O>(command: Command<I, O>, name: string) =>
     async (input: I): Promise<CommandOutcome<O>> => {

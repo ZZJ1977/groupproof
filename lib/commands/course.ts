@@ -222,7 +222,11 @@ export const saveCourseRuleDraft: Command<SaveCourseRuleDraftInput, CourseRuleRe
         };
     const kept = data.courseRuleRevisions.filter((item) => item.id !== revision.id);
     return {
-      data: { ...data, courseRuleRevisions: [...kept, revision] },
+      data: {
+        ...data,
+        courseRuleRevisions: [...kept, revision],
+        courses: data.courses.map((item) => item.id === course.id ? { ...item, version: item.version + 1 } : item),
+      },
       result: revision,
     };
   },

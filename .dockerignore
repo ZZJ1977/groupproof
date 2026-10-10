@@ -9,3 +9,14 @@ node_modules
 coverage
 out
 Dockerfile*
+
+.next-dev
+.next-review
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mail-capture
+**/.env
+**/.env.*
+**/*临时密令.md
+.DS_Store

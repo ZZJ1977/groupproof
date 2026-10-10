@@ -317,6 +317,7 @@ export const savePlanDraft: Command<SavePlanDraftInput, PlanRevision> = {
       data: {
         ...data,
         planRevisions: data.planRevisions.map((item) => (item.id === revision.id ? next : item)),
+        projects: data.projects.map((item) => item.id === project.id ? { ...item, version: item.version + 1 } : item),
         logs: [...data.logs, logEntry(context, "任务计划草稿修改", revision.id, `内容版本 v${revision.contentVersion} → v${next.contentVersion}；任务 ${tasks.length} 个`)],
       },
       result: next,
@@ -374,10 +375,40 @@ function publishPlanProjection(
   override: { reason: string; unconfirmed: string[] } | undefined,
 ): { data: MockData; result: PlanRevision } {
   const published: PlanRevision = { ...revision, status: "published", version: revision.version + 1 };
-  const tasks = revision.payload.tasks;
+  const currentTasks = data.tasks.filter((item) => item.projectId === project.id);
+  const currentById = new Map(currentTasks.map((item) => [item.id, item]));
+  const previousTaskIds = new Set(currentById.keys());
   const otherTasks = data.tasks.filter((item) => item.projectId !== project.id);
-  const previousTaskIds = new Set(data.tasks.filter((item) => item.projectId === project.id).map((item) => item.id));
   const otherCriteria = data.criteria.filter((item) => !previousTaskIds.has(item.taskId));
+  const nextTaskIds = new Set(revision.payload.tasks.map((item) => item.id));
+  const affectedTaskIds = new Set(currentTasks.filter((item) => !nextTaskIds.has(item.id)).map((item) => item.id));
+  const criteriaDefinition = (criteria: AcceptanceCriterion[], taskId: string) =>
+    criteria.filter((item) => item.taskId === taskId)
+      .map((item) => ({ id: item.id, text: item.text })).sort((a, b) => a.id.localeCompare(b.id));
+  // 草稿只发布计划定义；执行中的进度、状态和验收事实不能从旧快照覆盖回来。
+  const tasks: Task[] = revision.payload.tasks.map((item) => {
+    const current = currentById.get(item.id);
+    if (!current) return { ...item, projectId: project.id, status: "not_started", progress: 0, version: 1, updatedAt: context.now };
+    const definitionChanged = (["title", "description", "moduleId", "parentTaskId", "requirementIds", "responsibleIds", "dependencyIds"] as const)
+      .some((key) => JSON.stringify(current[key]) !== JSON.stringify(item[key])) ||
+      JSON.stringify(criteriaDefinition(data.criteria, item.id)) !== JSON.stringify(criteriaDefinition(revision.payload.criteria, item.id));
+    if (definitionChanged) affectedTaskIds.add(item.id);
+    return {
+      ...item,
+      projectId: project.id,
+      progress: current.progress,
+      status: definitionChanged && current.status === "completed" ? "pending_submission" : current.status,
+      version: current.version + 1,
+      updatedAt: context.now,
+    };
+  });
+  const criteria: AcceptanceCriterion[] = revision.payload.criteria.map((item) => {
+    const current = data.criteria.find((entry) => entry.id === item.id && entry.taskId === item.taskId);
+    if (current && current.text === item.text && !affectedTaskIds.has(item.taskId)) return { ...item, result: current.result, humanConfirmedBy: [...current.humanConfirmedBy], version: current.version };
+    return { ...item, result: undefined, humanConfirmedBy: [], version: (current?.version ?? 0) + 1 };
+  });
+  const verifications = data.verifications.map((item) => item.projectId === project.id && item.status === "current" && affectedTaskIds.has(item.taskId)
+    ? { ...item, status: "outdated" as const } : item);
   const nextProject = {
     ...project,
     activePlanRevisionId: published.id,
@@ -391,8 +422,9 @@ function publishPlanProjection(
       ...data,
       planRevisions: data.planRevisions.map((item) => (item.id === revision.id ? published : item)),
       projects: data.projects.map((item) => (item.id === project.id ? nextProject : item)),
-      tasks: [...otherTasks, ...tasks.map((item) => ({ ...item, projectId: project.id }))],
-      criteria: [...otherCriteria, ...revision.payload.criteria.map((item) => ({ ...item }))],
+      tasks: [...otherTasks, ...tasks],
+      criteria: [...otherCriteria, ...criteria],
+      verifications,
       logs: [...data.logs, logEntry(
         context,
         override ? "任务计划例外发布" : "任务计划发布",
@@ -499,11 +531,7 @@ export const unlockPlan: Command<UnlockPlanInput, PlanRevision> = {
       version: 1,
       contentVersion: 1,
       status: "draft",
-      payload: {
-        tasks: active.payload.tasks.map((item) => ({ ...item })),
-        criteria: active.payload.criteria.map((item) => ({ ...item })),
-        milestoneLinks: active.payload.milestoneLinks.map((item) => ({ ...item, milestoneIds: [...item.milestoneIds] })),
-      },
+      payload: currentPayload(data, project.id),
       memberRoster: [...project.memberIds],
       confirmations: [],
       basedOnRevisionId: active.id,

@@ -3,14 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=20 <25"
-  },
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_DIST_DIR=.next-dev next dev",
     "build": "next build",
     "start": "next start",
-    "start:standalone": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check:routes": "tsx scripts/check-routes.mjs",
@@ -28,7 +24,16 @@
     "check:overview": "tsx scripts/check-overview.mjs",
     "check:e2e": "tsx scripts/check-e2e.mjs",
     "check:ux": "tsx scripts/check-ux.mjs",
-    "check:browser": "tsx scripts/check-browser.mjs"
+    "check:browser": "tsx scripts/check-browser.mjs",
+    "check:auth": "node scripts/check-auth.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "server:dev": "bash server/scripts/start-dev.sh",
+    "server:test": "cd server && ./.venv/bin/python -m pytest tests/ -q",
+    "server:readiness": "curl -fsS http://localhost:8000/readyz",
+    "check:auth-browser": "node scripts/check-auth-browser.mjs",
+    "check:registration-progress": "node scripts/check-registration-progress.mjs",
+    "start:standalone": "node .next/standalone/server.js",
+    "check:account-review": "node scripts/check-account-review.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -57,10 +62,13 @@
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.1.0",
-    "tsx": "^4.23.15",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "tsx": "^4.23.15"
   },
   "overrides": {
     "postcss": "^8.5.29"
+  },
+  "engines": {
+    "node": ">=20 <25"
   }
 }

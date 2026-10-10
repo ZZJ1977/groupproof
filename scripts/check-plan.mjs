@@ -180,4 +180,36 @@ const has = (list, code) => list.includes(code);
   ok("基线失效后计划不能发布", outcome.ok === false && outcome.error.code === "INVALID_STATE");
 }
 
+// Review regressions: stale edits and re-publishing after execution has advanced.
+{
+  const { repo, run } = setup();
+  const created = await run(createPlanDraft, { projectId: "project-1", baselineRevisionId: BASELINE, expectedVersion: version(repo) });
+  const input = { projectId: "project-1", revisionId: created.result.id, payload: validPayload(), expectedVersion: version(repo) };
+  ok("计划首次保存成功", (await run(savePlanDraft, input)).ok);
+  const stale = await run(savePlanDraft, input);
+  ok("旧项目版本不能覆盖计划草稿", !stale.ok && stale.error.code === "VERSION_CONFLICT");
+  const published = await run(forcePublishPlan, { projectId: "project-1", revisionId: created.result.id, reason: "review fixture", expectedVersion: version(repo) });
+  ok("回归夹具计划发布", published.ok);
+  const data = repo.data;
+  repo.data = { ...data,
+    tasks: data.tasks.map((t) => t.id === "tp-a" ? { ...t, progress: 80, status: "in_progress", version: t.version + 1 } : t),
+    criteria: data.criteria.map((c) => ({ ...c, result: "passed", humanConfirmedBy: ["member-1"] })),
+    verifications: [...data.verifications, { ...data.verifications[0], id: "review-check", projectId: "project-1", taskId: "tp-b", status: "current" }],
+  };
+  const unlocked = await run(unlockPlan, { projectId: "project-1", expectedVersion: version(repo) });
+  ok("解锁计划成功", unlocked.ok);
+  check("新草稿读取最新执行进度", unlocked.result.payload.tasks.find((t) => t.id === "tp-a").progress, 80);
+  const duringEdit = repo.data;
+  repo.data = { ...duringEdit, tasks: duringEdit.tasks.map((t) => t.id === "tp-a" ? { ...t, progress: 97, version: t.version + 1 } : t) };
+  const edited = structuredClone(unlocked.result.payload);
+  edited.criteria.find((c) => c.taskId === "tp-b").text = "new acceptance requirement";
+  ok("修改验收标准保存", (await run(savePlanDraft, { projectId: "project-1", revisionId: unlocked.result.id, payload: edited, expectedVersion: version(repo) })).ok);
+  ok("重新发布成功", (await run(forcePublishPlan, { projectId: "project-1", revisionId: unlocked.result.id, reason: "review change", expectedVersion: version(repo) })).ok);
+  check("发布不覆盖草稿期间的执行进度", repo.data.tasks.find((t) => t.id === "tp-a").progress, 97);
+  check("未改变任务的执行状态保留", repo.data.tasks.find((t) => t.id === "tp-a").status, "in_progress");
+  check("未改变标准的人工确认保留", repo.data.criteria.find((c) => c.taskId === "tp-a").humanConfirmedBy, ["member-1"]);
+  check("改变标准清空旧结果", repo.data.criteria.find((c) => c.taskId === "tp-b").result, undefined);
+  check("改变标准使旧验收过期", repo.data.verifications.find((v) => v.id === "review-check").status, "outdated");
+}
+
 console.log(`任务规划与发布检查通过：${passed} 项断言全部符合预期。`);

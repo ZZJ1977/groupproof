@@ -6,3 +6,25 @@ out/
 .env*
 !.env.example
 .vercel/
+
+# Local Next.js development output
+.next-dev/
+.next-review/
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+# Local runtime artifacts and private configuration
+.mail-capture/
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+.env.*
+!.env.example
+# Local-only credential handoff notes
+docs/development-stages/stage-reports/*临时密令.md

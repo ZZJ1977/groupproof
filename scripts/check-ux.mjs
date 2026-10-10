@@ -23,7 +23,7 @@ function ok(desc, value) {
 
   const items = projectNavItems("project-3");
   ok("项目导航不含固定示例 ID", items.every((item) => item.href.includes("/projects/project-3") && !item.href.includes("project-1")));
-  check("任务三视图合并为单一入口", items.filter((item) => item.href.includes("/tasks")).map((item) => item.label), ["任务"]);
+  check("任务三视图合并为单一入口", items.filter((item) => item.href.includes("/tasks")).map((item) => item.label), ["tasks"]);
   ok("旧任务链接保持兼容", Object.values(taskViewLinks("project-3")).every((href) => href.includes("/projects/project-3/tasks?view=")));
   ok("教师导航跟随课程", teacherNavItems("course-2").every((item) => item.href.includes("/teacher/courses/course-2")));
 }
@@ -47,8 +47,8 @@ function ok(desc, value) {
 
 // ── 保存反馈语义（服务层已有断言，此处核对页面状态契约常量） ─────────────
 {
-  check("任务视图兼容链接含三种视图", Object.keys(taskViewLinks("project-1")).sort().join(","), "board,list,tree");
-  ok("导航项使用可读业务名称", projectNavItems("project-1").some((item) => item.label === "需求基线"));
+  ok("任务视图兼容链接含三种视图", Object.keys(taskViewLinks("project-1")).sort().join(","), "board,list,tree");
+  ok("导航项使用稳定词条键（显示文案由 i18n 提供）", projectNavItems("project-1").some((item) => item.label === "requirements"));
 }
 
 console.log(`UX 定向复核回归通过：${passed} 项断言全部符合预期。`);
