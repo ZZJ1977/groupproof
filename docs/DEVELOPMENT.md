@@ -48,6 +48,8 @@ NEXT_PUBLIC_ENABLE_MOCKS=true
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 API_INTERNAL_URL=http://localhost:8000
 NEXT_PUBLIC_ADMIN_URL=http://localhost:3002
+DATABASE_URL=postgresql://groupproof:groupproof-local@localhost:5432/groupproof
+DATABASE_TIMEZONE=Asia/Shanghai
 ~~~
 
 NEXT_PUBLIC_ 变量会进入浏览器包，只能放公开地址和功能开关。数据库连接串、JWT 密钥、OAuth secret、对象存储密钥、AI 密钥和 Railway token 只能放在 .env.local、Railway Variables 或 GitHub Secrets。
@@ -72,10 +74,23 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r services/api/requirements.txt -r services/api/requirements-dev.txt
 cd services/api
-ruff format --check app tests
-ruff check app tests
+ruff format --check app migrations scripts tests
+ruff check app migrations scripts tests
 pytest -q
 ~~~
+
+数据库迁移和演示数据：
+
+~~~bash
+cd services/api
+export DATABASE_URL=postgresql://groupproof:groupproof-local@localhost:5432/groupproof
+export DATABASE_TIMEZONE=Asia/Shanghai
+alembic upgrade head
+python -m scripts.seed_core
+alembic check
+~~~
+
+迁移文件的唯一目录是 `services/api/migrations/`。每次结构变化都要新增迁移并在干净 PostgreSQL 上执行；`seed_core` 只用于本地和测试环境。
 
 前端页面测试：
 

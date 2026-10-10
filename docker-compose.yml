@@ -34,6 +34,7 @@ services:
       context: ./services/api
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-groupproof}:${POSTGRES_PASSWORD:-groupproof-local}@postgres:5432/${POSTGRES_DB:-groupproof}
+      DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
       REDIS_URL: redis://redis:6379/0
       APP_ENV: ${APP_ENV:-development}
     ports:
