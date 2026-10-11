@@ -1,8 +1,17 @@
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/api/c", tags=["c"])
+from app.modules.c.evidence_router import router as evidence_router
+from app.modules.c.execution_router import router as execution_router
+from app.modules.c.note_router import router as note_router
+
+router = APIRouter(tags=["c"])
 
 
-@router.get("/ready", include_in_schema=False)
+@router.get("/api/c/ready", include_in_schema=False)
 def ready() -> dict[str, str]:
     return {"module": "c", "status": "ready"}
+
+
+router.include_router(execution_router, prefix="/api/v1")
+router.include_router(evidence_router, prefix="/api/v1")
+router.include_router(note_router, prefix="/api/v1")
