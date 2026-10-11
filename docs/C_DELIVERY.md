@@ -3,9 +3,10 @@
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
 Current snapshot (2026-10-12): PR #10 is merged. The new batch has partial
-code/contract coverage for **35/35 C task IDs, not 35 accepted tasks**. Seventeen
-backend/integration/UI/test commits are recorded through `90311d2`; the final
-documentation commit and new PR are pending. The latest validation section supersedes
+code/contract coverage for **35/35 C task IDs, not 35 accepted tasks**. Eighteen
+backend/integration/UI/test/documentation commits were pushed through `8809269`
+in [draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This follow-up
+records the published handoff. The latest validation section supersedes
 earlier batch counts without changing their history. All acceptance rows remain open.
 
 ## Sources checked on 2026-10-11
@@ -370,9 +371,12 @@ Nine subsequent integration/UI/test commits are also recorded:
 | `55bc5f0` | Snapshot-aware notification and assigned-action pages |
 | `90311d2` | Isolated API entry routing and contract browser CI configuration |
 
-There are **17 new commits** at this checkpoint, ahead of merged `develop`
-`22b99ac`; this final documentation update is not yet committed. A new PR has not
-been created, and neither its remote CI nor review is reported as complete.
+The 17 implementation/test commits above plus delivery commit `8809269` were
+pushed ahead of merged `develop` `22b99ac` in
+[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This follow-up
+adds the publication record. Live remote results are available in the
+[PR checks](https://github.com/ZZJ1977/groupproof/pull/11/checks); this record
+does not predeclare their outcome or the team's review/acceptance.
 
 Implemented scope and provider boundaries:
 
@@ -440,6 +444,7 @@ Course-file coverage separately includes 96 SQLite/HTTP and 7 PostgreSQL cases.
 
 The browser reruns above follow corrections to test locators using observed
 accessible combobox/alert roles; they do not weaken product permissions or
-business assertions. Pending delivery is the final documentation commit, new
-PR and its remote CI/review. The production build and daily results above were
+business assertions. All code and handoff records have been pushed to `C_task`;
+review and staging acceptance remain open in PR #11. Remote CI is tracked by
+the live PR checks above. The production build and daily results above were
 rerun for this batch. No whole-system or 35-task acceptance is claimed.

@@ -101,6 +101,7 @@ new API suite's **45/45 passed** result. Filtering-control locator corrections
 use observed accessible combobox roles; product assertions remain unchanged.
 The inbox fixture explicitly uses SQLite even when another suite is configured
 for PostgreSQL; no PostgreSQL result is claimed. The current-batch production
-build and daily **4/4** rerun passed. Final documentation commit and new PR/CI
-are still pending in [the delivery record](C_DELIVERY.md). C1 acceptance still requires A's actual
+build and daily **4/4** rerun passed. Implementation and handoff are published in
+[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11), with CI/review tracked
+in [the delivery record](C_DELIVERY.md). C1 acceptance still requires A's actual
 notification/action providers and canonical production identity.

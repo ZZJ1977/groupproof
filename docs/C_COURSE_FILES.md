@@ -186,5 +186,6 @@ The course-file browser cases passed **8/8**, included in the completed **45/45*
 new API browser suite; the last pending inbox filter locator also passed its rerun. The
 current-batch production build and daily **4/4** rerun also passed. These HTTP
 fixtures do not claim a live A login, byte storage integration or complete
-C5-04 acceptance. The final documentation commit, new PR and remote CI/review
-remain pending in [the delivery record](C_DELIVERY.md).
+C5-04 acceptance. The implementation and handoff are published in
+[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11); live CI and remaining
+review/acceptance are tracked in [the delivery record](C_DELIVERY.md).

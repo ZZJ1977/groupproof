@@ -15,9 +15,10 @@ The current batch, recorded through commit `90311d2`, has partial code or
 typed contract coverage for **35 of 35 task IDs**. **None of the 35 complete task
 acceptance rows is closed by this coverage count.** Account restore/create,
 actual uploaded bytes, production authorization, external adapters and D
-acceptance are not complete. **17 substantive commits** are recorded, including
-eight backend/test commits and nine integration/UI/browser commits. This document
-update is still awaiting its own commit, and a new PR has not yet been created.
+acceptance are not complete. **17 substantive implementation/test commits** and
+delivery commit `8809269` have been pushed in
+[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This documentation
+follow-up records the publication; remote CI is tracked in the live PR checks.
 See `C_DELIVERY.md` for exact commits, completed checks and pending delivery.
 
 ## What is implemented
@@ -50,8 +51,9 @@ See `C_DELIVERY.md` for exact commits, completed checks and pending delivery.
 
 The prior six independently implementable areas now have code/contracts. Browser
 locator repairs, API/daily reruns and the production build have passed. Remaining
-delivery work is to commit these final records, create the new PR and verify its
-remote CI/review. Local results do not substitute for remote checks or staging.
+delivery work has been pushed to PR #11; remote CI, review and integration
+acceptance are tracked there. Local results do not substitute for remote checks
+or staging.
 
 Further C work includes user restore/create flows against an agreed A identity
 service contract, and complete UI/API/error/permission acceptance after providers
@@ -85,8 +87,9 @@ Current batch snapshot (2026-10-12; prior batch results below remain historical)
   passed**, including the locator corrections and inbox **8/8** rerun. Daily API
   cases passed **4/4** in this batch: **85 C browser cases** in total. The production
   build passed compilation, type checking, static generation and trace collection.
-- Seventeen backend/integration/UI/test commits are recorded. The documentation
-  commit, new PR, remote CI and team/staging acceptance remain pending.
+- Implementation/test and documentation commits are published in draft PR #11.
+  [Remote checks](https://github.com/ZZJ1977/groupproof/pull/11/checks) provide the
+  current CI result; review and team/staging acceptance remain open.
 
 - The first 17 commits passed GitHub CI at `341c646`.
 - With the Admin directory addition, the canonical PostgreSQL suite passed
