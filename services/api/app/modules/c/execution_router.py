@@ -6,7 +6,7 @@ authentication. No alternate user header, role selection, or session bypass exis
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -14,11 +14,17 @@ from app.api.responses import ErrorResponse, SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
 from app.modules.c.execution_schemas import (
+    PrepareSubmissionRequest,
+    PrepareSubmissionView,
     StartTaskRequest,
     TaskExecutionView,
     UpdateProgressRequest,
 )
-from app.modules.c.task_execution import SqlExecutionRepository, TaskExecutionService
+from app.modules.c.task_execution import (
+    SqlExecutionRepository,
+    TaskExecutionService,
+    TaskSubmissionService,
+)
 
 router = APIRouter(prefix="/tasks", tags=["c-task-execution"])
 ERROR_RESPONSES = {status: {"model": ErrorResponse} for status in (401, 403, 404, 409, 422, 503)}
@@ -26,6 +32,10 @@ ERROR_RESPONSES = {status: {"model": ErrorResponse} for status in (401, 403, 404
 
 def get_execution_service(session: Session = Depends(get_session)) -> TaskExecutionService:
     return TaskExecutionService(SqlExecutionRepository(session))
+
+
+def get_submission_service(session: Session = Depends(get_session)) -> TaskSubmissionService:
+    return TaskSubmissionService(session)
 
 
 @router.get(
@@ -81,3 +91,21 @@ def update_progress(
         ),
         request,
     )
+
+
+@router.post(
+    "/{task_id}/prepare-submission",
+    response_model=SuccessResponse[PrepareSubmissionView],
+    responses=ERROR_RESPONSES,
+)
+def prepare_submission(
+    task_id: UUID,
+    payload: PrepareSubmissionRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=128),
+    user: User = Depends(get_current_user),
+    service: TaskSubmissionService = Depends(get_submission_service),
+) -> SuccessResponse[PrepareSubmissionView]:
+    response.headers["Cache-Control"] = "private, no-store"
+    return success(service.prepare(task_id, user, payload, idempotency_key), request)

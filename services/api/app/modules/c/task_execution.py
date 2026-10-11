@@ -28,10 +28,14 @@ from app.db.models import (
     User,
 )
 from app.modules.c.execution_schemas import (
+    PrepareSubmissionRequest,
+    PrepareSubmissionView,
     TaskDependencyView,
     TaskExecutionView,
     TaskStatus,
 )
+from app.modules.c.integration_events import claim_request, emit_event, finish_request
+from app.modules.c.note_service import get_note, save_note
 from app.modules.c.permissions import (
     ExecutionPermissions,
     execution_permissions,
@@ -505,3 +509,90 @@ class TaskExecutionService:
         return self.change_task_status(
             task_id, user, expected_version, "in_progress", reason, provider=provider
         )
+
+
+class TaskSubmissionService:
+    """C2-08 saves the draft and hands the task to D's check page, not verification.
+
+    The dedicated request transaction includes note versions, source invalidation,
+    progress audit, replay and outbox records. No D provider/result is invoked.
+    """
+
+    def __init__(self, session: Session):
+        self.session = session
+        self.repository = SqlExecutionRepository(session)
+        self.execution = TaskExecutionService(self.repository)
+
+    def prepare(
+        self, task_id: UUID, user: User, command: PrepareSubmissionRequest, key: str
+    ) -> PrepareSubmissionView:
+        try:
+            scope = self.repository.load(task_id, user, lock=True)
+            require_read(scope.permissions)
+            require_verified_email(user)
+            require_execution_write(scope.project, scope.course)
+            require_task_plan(scope.latest_plan, task_id)
+            if not scope.permissions.can_start:
+                raise ApiError(
+                    403, "TASK_ASSIGNEE_REQUIRED", "Only a task assignee can prepare submission."
+                )
+            record, replay = claim_request(
+                self.session,
+                actor_id=user.id,
+                project_id=scope.project.id,
+                operation=f"task.prepare_submission:{task_id}",
+                key=key,
+                payload=command.model_dump(mode="json"),
+            )
+            if replay is not None:
+                result = PrepareSubmissionView.model_validate(replay)
+                self.session.commit()
+                return result
+            task = scope.task
+            self.execution._version(task, command.expected_version)
+            if task.status not in {"in_progress", "pending_submission"}:
+                raise ApiError(
+                    409, "INVALID_TASK_STATE", "This task cannot prepare a submission draft."
+                )
+            if command.note is not None:
+                # The newly generated outer record ID prevents collisions with
+                # client-chosen keys in the existing note.save operation.
+                note = save_note(
+                    self.session,
+                    user,
+                    scope.project.id,
+                    task_id,
+                    command.note,
+                    f"prepare-submission:{record.id}",
+                )
+            else:
+                note = get_note(self.session, user, scope.project.id, task_id)
+            # save_note never commits. Status, evidence-source invalidation and
+            # every note/outbox row still belong to this one transaction.
+            before = task.status
+            task.status = "pending_submission"
+            task.lock_version += 1
+            task.updated_at = datetime.now(BEIJING)
+            self.execution._event(
+                task, user, before, task.progress_percent, "Prepared submission draft for checking."
+            )
+            emit_event(
+                self.session,
+                project_id=scope.project.id,
+                aggregate_id=task_id,
+                event_type="task.submission_prepared",
+                payload={
+                    "task_id": str(task_id),
+                    "actor_id": str(user.id),
+                    "lock_version": task.lock_version,
+                    "note_id": note["id"] if note else None,
+                    "note_version_no": note["current_version_no"] if note else None,
+                },
+            )
+            result = PrepareSubmissionView(execution=execution_view(scope), note=note)
+            finish_request(self.session, record, result.model_dump(mode="json"))
+            self.session.commit()
+            return result
+        except Exception:
+            self.session.rollback()
+            raise

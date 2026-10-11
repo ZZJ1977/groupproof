@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.modules.c.note_schemas import SaveTaskNote, TaskNoteDTO
+
 TaskStatus = Literal[
     "not_started", "in_progress", "pending_submission", "pending_verification", "completed"
 ]
@@ -50,3 +52,13 @@ class TaskExecutionView(BaseModel):
     can_start: bool
     can_update_progress: bool
     read_only: bool
+
+
+class PrepareSubmissionRequest(StartTaskRequest):
+    # Absence preserves the current draft. D checks whether required work is missing.
+    note: SaveTaskNote | None = None
+
+
+class PrepareSubmissionView(BaseModel):
+    execution: TaskExecutionView
+    note: TaskNoteDTO | None
