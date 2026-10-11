@@ -6,6 +6,7 @@ assert.deepEqual(parseFeatureOverrides("workspace=real,tasks:mock,ignored=real")
   tasks: "mock",
 });
 assert.deepEqual(parseFeatureOverrides(undefined), {});
+assert.deepEqual(parseFeatureOverrides("daily=real,workspace=mock"), { daily: "real", workspace: "mock" });
 assert.deepEqual(parseFeatureOverrides("workspace=invalid,evidence=real"), { evidence: "real" });
 assert.equal(resolveApiMode("workspace", { globalMocksEnabled: true }), "mock");
 assert.equal(resolveApiMode("workspace", { globalMocksEnabled: false }), "real");
