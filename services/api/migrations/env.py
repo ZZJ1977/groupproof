@@ -10,8 +10,10 @@ from app.db.models import core  # noqa: F401 - register all model tables
 from app.db.settings import get_database_timezone, get_database_url
 from app.modules.c import (
     activity_models,  # noqa: F401 - register C activity tables
+    course_files_models,  # noqa: F401 - register C course file tables
     discussion_models,  # noqa: F401 - register C discussion tables
     files_models,  # noqa: F401 - register C file/version tables
+    governance_models,  # noqa: F401 - register C governance tables
 )
 from app.modules.c import models as c_models  # noqa: F401 - register C model tables
 

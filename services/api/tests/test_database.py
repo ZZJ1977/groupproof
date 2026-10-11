@@ -54,7 +54,7 @@ def database_session() -> Session:
 def test_core_schema_is_migrated(database_session: Session) -> None:
     assert (
         database_session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        == "0010"
+        == "0012"
     )
     assert CORE_TABLES <= set(inspect(engine).get_table_names())
 
