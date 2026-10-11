@@ -102,6 +102,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://groupproof:groupproof@127.0.0.1:5432/groupproof
       DATABASE_TIMEZONE: Asia/Shanghai
+      APP_ENV: test
     defaults:
       run:
         working-directory: services/api
@@ -214,6 +215,7 @@ jobs:
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+      RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT || 'production' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -230,4 +232,4 @@ jobs:
         run: npm install --global @railway/cli@5.63.3
 
       - name: Deploy source with Dockerfile to Railway
-        run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment production
+        run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
