@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .config import config_source_summary, get_settings
 from .errors import AppError, app_error_handler
-from .routers import admin, auth, business, me
+from .routers import admin, auth, business, c_admin, me
 from .services import acceptance
 
 # 脱敏日志：只记录错误类别、requestId 与安全摘要，不记录密码/验证码/令牌/连接串
@@ -121,6 +121,7 @@ def capabilities() -> JSONResponse:
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(admin.router)
+app.include_router(c_admin.router)
 app.include_router(business.router)
 
 
