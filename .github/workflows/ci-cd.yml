@@ -143,6 +143,8 @@ jobs:
       DATABASE_URL: postgresql://groupproof:groupproof@127.0.0.1:5432/groupproof
       DATABASE_TIMEZONE: Asia/Shanghai
       APP_ENV: test
+      C_TEST_DATABASE_URL: postgresql+psycopg://groupproof:groupproof@127.0.0.1:5432/groupproof
+      C_EXECUTION_TEST_DATABASE_URL: postgresql+psycopg://groupproof:groupproof@127.0.0.1:5432/groupproof
     defaults:
       run:
         working-directory: services/api
@@ -199,6 +201,15 @@ jobs:
 
       - name: Run Playwright tests
         run: npm run test:e2e
+
+      - name: Run C workspace browser regressions
+        run: npx playwright test --config playwright.c.config.ts
+
+      - name: Check C filters, evidence sources, and generated client
+        run: |
+          npx tsx scripts/check-c-url-filters.mjs
+          npx tsx scripts/check-c-evidence-source.mjs
+          npx tsx scripts/check-c-api-client.mjs
 
   docker:
     name: Build and smoke test Docker image
