@@ -114,5 +114,54 @@ GroupProof-specific functions: [GitHub Apps](https://docs.github.com/en/apps/cre
 
 ## Validation and review record
 
-Append verified commands and their results here as each C slice is delivered.
-Do not mark the ledger complete on the basis of generated code alone.
+### First implementation slice (2026-10-11)
+
+- C2-01/03/04: canonical execution service, assignee-only idempotent start,
+  dependency checks, frozen-plan membership, versioned progress with reason,
+  weighted rollups and transaction rollback. Completion remains gated by a
+  trusted D adapter. See [execution contract](C_TASK_EXECUTION.md).
+- C2-05/07 and C3-01–05: PostgreSQL evidence and note models, migration 0007,
+  immutable snapshots and note versions, candidate/adopt/withdraw/source-change
+  commands, effective-evidence queries, project permissions, optimistic versions,
+  idempotency and transactional pending events. See [evidence contract](C_EVIDENCE.md).
+- C2-02/06 and C3-01 UI: URL-backed tabs and combined evidence filters; safe
+  original-source links; resetting all source-specific fields; candidate creation
+  preserves task status. File upload is explicitly unavailable until storage exists.
+- Generated OpenAPI types and `lib/api/c-client.ts` expose the canonical routes.
+  This client is not enabled in mock-ID workspace pages. A must connect verified
+  identity and B must deliver canonical project/task/criterion IDs first.
+- Added isolated browser fixtures and CI steps for the C tests. The existing
+  anonymous login suite keeps its separate identity fixture. CI database variables
+  enable the seven C PostgreSQL-only tests rather than silently skipping them.
+
+Verified frontend checks: full lint, typecheck, production build, 56 route mappings,
+43 URL/filter assertions, 51 source-flow assertions, 18 API-client contract
+assertions, 53 existing permission assertions and 40 existing workflow assertions.
+Six Playwright cases passed across the URL and source-flow suites. These exercise
+explicit mock workspace data, not real third-party integration or production login.
+
+The first real PostgreSQL run passed 175 tests with zero skips. Empty-database
+migration 0001→0007, `alembic check`, and 0007→0006→0007 rollback/reapply passed.
+Ruff check and format checks passed. An independent review then identified and
+prompted regression fixes for adoption after plan unlock, adapter-provided unsafe
+URLs, and malformed HTTP-200 client envelopes; final rerun results are recorded below.
+
+After those fixes, the full API suite on real PostgreSQL passed **201 tests with
+zero skips** (26.12 seconds); the 81 evidence/note/HTTP/concurrency cases also
+passed separately. The new regression cases cover rejected adapter URLs and
+adoption after plan unlock; withdrawing existing evidence remains permitted.
+
+### Outstanding scope
+
+This slice is **not completion of all C tasks**. C1 and C4–C7 remain in the open
+ledger. C2-08 has no prepared-submission HTTP endpoint yet. The existing mock
+implementation-note UI still represents the note as manual evidence because D's
+mock completeness/verification screens depend on that representation; it has not
+been switched to the new versioned note API. Task detail verification still awaits
+D's real query. The source adapters return explicit 503 until A implements them;
+pending outbox records are durable but have no delivery worker or D consumer yet.
+Production identity, file bytes, real synchronization, downstream invalidation,
+team review and staging acceptance have not been verified.
+
+All 35 task rows therefore remain open; the code and tests above are inspectable
+partial deliverables, not fabricated completion or contribution scores.
