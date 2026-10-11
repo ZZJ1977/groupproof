@@ -31,8 +31,9 @@ export const setNotificationRead: Command<NotificationReadInput, number> = {
 
 export function notificationPage(data: MockData, actorId: string, tab: string, requestedPage: number) {
   const mine = data.notifications.filter((item) => item.userId === actorId);
+  const timestamp = (value: string) => { const parsed = Date.parse(value); return Number.isFinite(parsed) ? parsed : 0; };
   const filtered = mine.filter((item) => tab === "all" || (tab === "unread" ? !item.read : item.type === tab))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+    .sort((a, b) => timestamp(b.createdAt) - timestamp(a.createdAt) || a.id.localeCompare(b.id));
   const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
   const page = Math.min(pageCount, Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1);
   return { items: filtered.slice((page - 1) * 10, page * 10) as Notification[], total: filtered.length,

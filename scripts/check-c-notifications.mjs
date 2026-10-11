@@ -42,4 +42,10 @@ assert.equal(updated, 1);
 assert.equal(notificationPage(stored, actorId, "all", 1).unread, 0);
 await run(setNotificationRead, { scope: "one", id: "notice-00", read: false });
 assert.equal(notificationPage(stored, actorId, "all", 1).unread, 1);
-console.log("C1 notifications: 24 assertions passed");
+const mixedOffsets = structuredClone(data);
+mixedOffsets.notifications = [
+  { ...template, id: "older", userId: actorId, createdAt: "2026-10-12T09:30:00+08:00" },
+  { ...template, id: "newer", userId: actorId, createdAt: "2026-10-12T02:30:00Z" },
+];
+assert.deepEqual(notificationPage(mixedOffsets, actorId, "all", 1).items.map((item) => item.id), ["newer", "older"]);
+console.log("C1 notifications: 25 assertions passed");
