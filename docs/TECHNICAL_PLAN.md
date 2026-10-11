@@ -99,5 +99,6 @@ infra/                       Compose、数据库迁移和运维脚本
 - 登录、邮箱验证码、OAuth 和权限目前是前端演示逻辑。
 - 数据只保存在当前浏览器的 localStorage 中，不是共享数据。
 - AI、GitHub、飞书、文件上传、报告导出和审批目前使用 Mock 实现。
-- 真实 API、PostgreSQL、pgvector、Supabase Storage、Redis、Celery、SSE、Sentry 和生产管理后台尚未接入。
-- A1 已将 pytest 接入后端骨架的 CI；Playwright 仍需在前端业务功能稳定后补充页面级测试。
+- A2 已接入 FastAPI 示例 API、PostgreSQL/pgvector 的 Alembic 迁移、统一响应与错误合同、OpenAPI 生成客户端、按功能切换 Mock/Real，以及 Redis + Celery + SSE 的示例任务链路。
+- A2 已提供可重复的开发/测试 seed、pytest 后端示例和 Playwright 页面示例；真实认证、业务模块、Supabase Storage、Sentry 和生产管理后台仍按后续任务接入。
+- Railway 的 Staging 和 Production 已分别创建 Web、API、worker、PostgreSQL 和 Redis 服务；API/worker 的数据库与 Redis 连接使用各自项目内的变量引用，时区统一为 `Asia/Shanghai`。Staging 已完成迁移和 seed；A2 新代码通过功能分支合入 `develop` 后再部署，Production 等代码合并到 `main` 后执行迁移和正式切流。
