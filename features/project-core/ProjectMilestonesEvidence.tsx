@@ -4,8 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Check, Info, Plus } from "lucide-react";
 import type { Evidence, Milestone } from "@/types/domain";
+import { evidenceSources, evidenceStatuses, filterEvidence, readEvidenceFilters, readEvidenceView, safeEvidenceSourceUrl } from "@/features/c/url-filters";
+import { useUrlQuery } from "@/features/c/use-url-query";
 import type { ProjectCore } from "./core-model";
-import { displayDate, makeId, milestoneCode, personName, projectPath, sourceLabel, taskCode, taskPath } from "./core-model";
+import { displayDate, makeId, milestoneCode, personName, projectPath, sourceLabel, statusLabel, taskCode, taskPath } from "./core-model";
 import { Empty, Header, Panel, Progress, Stat, Status, Tabs, TaskLink } from "./CoreUI";
 import s from "./project-core.module.css";
 
@@ -51,13 +53,19 @@ export function ProjectMilestoneDetail({ core, milestone }: { core: ProjectCore;
 }
 
 export function ProjectEvidenceCenter({ core }: { core: ProjectCore }) {
-  const [tab, setTab] = useState("task");
-  const [query, setQuery] = useState("");
-  const [source, setSource] = useState("all");
+  const { query: urlQuery, updateQuery } = useUrlQuery();
+  const tab = readEvidenceView(urlQuery);
+  const filters = readEvidenceFilters(urlQuery);
+  const setFilter = (key: keyof typeof filters, value: string) => updateQuery({ [key]: value === "all" && key !== "q" ? null : value });
   const [selectedId, setSelectedId] = useState("");
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
-  const evidence = core.evidence.filter((item) => `${item.title} ${item.description} ${personName(core, item.authorId)} ${core.tasks.find((task) => task.id === item.taskId)?.title ?? ""}`.toLowerCase().includes(query.toLowerCase()) && (source === "all" || item.source === source));
+  const taskById = new Map(core.tasks.map((task) => [task.id, task]));
+  const evidence = filterEvidence(core.evidence, filters, {
+    task: (id) => { const task = taskById.get(id); return task ? `${taskCode(task)} ${task.title}` : ""; },
+    author: (id) => personName(core, id),
+  });
+  const authorIds = Array.from(new Set([...core.project.memberIds, ...core.evidence.map((item) => item.authorId)]));
   const selected = core.evidence.find((item) => item.id === selectedId);
   const taskGroups = core.tasks.filter((task) => evidence.some((item) => item.taskId === task.id));
   const sourceGroups = Array.from(new Set(evidence.map((item) => item.source)));
@@ -74,13 +82,52 @@ export function ProjectEvidenceCenter({ core }: { core: ProjectCore }) {
     setFeedback("证据已纳入正式证据链，相关验收需重新运行。");
   };
 
-  const evidenceRows = (items: Evidence[]) => <div className={s.tableWrap}><table className={s.table}><thead><tr><th>证据名称</th><th>来源</th><th>提交人</th><th>时间</th><th>关联任务</th><th>状态</th><th>操作</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.title}</strong><span className={s.cellSub}>{item.description}</span></td><td>{sourceLabel(item.source)}</td><td>{personName(core, item.authorId)}</td><td>{displayDate(item.createdAt)}</td><td><Link className={s.link} href={taskPath(core.project.id, item.taskId)}>{core.tasks.find((task) => task.id === item.taskId)?.title ?? "任务"}</Link></td><td><Status value={item.status} /></td><td>{core.canEdit && (item.status === "candidate" || item.status === "pending_confirmation") && <button className={s.buttonSoft} type="button" onClick={() => confirmCandidate(item)}>确认采纳</button>}{core.canEdit && item.status === "formal" && (core.canLead || item.authorId === core.data.currentUserId) && <button className={s.buttonGhost} type="button" onClick={() => setSelectedId(item.id)}>撤回</button>}</td></tr>)}</tbody></table></div>;
+  const evidenceRows = (items: Evidence[]) => <div className={s.tableWrap}><table className={s.table}>
+    <thead><tr><th>证据名称</th><th>来源</th><th>提交人</th><th>时间</th><th>关联任务 / 标准</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>{items.map((item) => {
+      const sourceUrl = safeEvidenceSourceUrl(item.sourceUrl);
+      return <tr key={item.id}>
+        <td><strong>{item.title}</strong><span className={s.cellSub}>{item.description}</span></td>
+        <td>{sourceLabel(item.source)}{sourceUrl ? <a className={s.cellSub} href={sourceUrl} target="_blank" rel="noopener noreferrer">打开原始来源 ↗</a> : item.sourceUrl ? <span className={s.cellSub}>来源链接无效</span> : <span className={s.cellSub}>未提供来源链接</span>}</td>
+        <td>{personName(core, item.authorId)}</td><td>{displayDate(item.createdAt)}</td>
+        <td><Link className={s.link} href={`${taskPath(core.project.id, item.taskId)}?tab=evidence`}>{taskById.get(item.taskId)?.title ?? "任务"}</Link><span className={s.cellSub}>{item.criterionIds.map((id) => core.criteria.find((criterion) => criterion.id === id)?.text ?? id).join("；") || "未关联验收标准"}</span></td>
+        <td><Status value={item.status} /></td>
+        <td>{core.canEdit && (item.status === "candidate" || item.status === "pending_confirmation") && <button className={s.buttonSoft} type="button" onClick={() => confirmCandidate(item)}>确认采纳</button>}{core.canEdit && item.status === "formal" && (core.canLead || item.authorId === core.data.currentUserId) && <button className={s.buttonGhost} type="button" onClick={() => setSelectedId(item.id)}>撤回</button>}</td>
+      </tr>;
+    })}</tbody>
+  </table></div>;
 
   return <div className={s.page}>
     <Header eyebrow={core.project.name} title="证据中心" subtitle="按任务、时间线和来源组织证据，保留完整追溯关系。" actions={<Link className={s.buttonSoft} href={`${projectPath(core.project.id)}/tasks?view=list`}><Plus size={14} />选择任务添加证据</Link>} />
     {feedback && <div className={s.notice} role="status"><Info size={15} />{feedback}</div>}
     <div className={s.grid}>
-      <div><Panel><Tabs value={tab} onChange={setTab} items={[{ value: "task", label: "按任务" }, { value: "timeline", label: "时间线" }, { value: "source", label: "来源" }]} /><div className={s.toolbar}><input className={s.field} style={{ maxWidth: 320 }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索证据名称、任务或提交人" aria-label="搜索证据" /><select className={s.select} style={{ width: 130 }} value={source} onChange={(event) => setSource(event.target.value)} aria-label="筛选来源"><option value="all">全部来源</option>{["github", "file", "screenshot", "feishu", "discussion", "manual"].map((item) => <option key={item} value={item}>{sourceLabel(item)}</option>)}</select></div>{!evidence.length && <Empty>没有匹配的证据</Empty>}{tab === "task" && taskGroups.map((task) => <div key={task.id} style={{ marginBottom: 18 }}><div className={s.space} style={{ marginBottom: 8 }}><TaskLink core={core} task={task} /><span className={s.muted}>{evidence.filter((item) => item.taskId === task.id).length} 条证据</span></div>{evidenceRows(evidence.filter((item) => item.taskId === task.id))}</div>)}{tab === "timeline" && evidenceRows([...evidence].sort((a, b) => b.createdAt.localeCompare(a.createdAt)))}{tab === "source" && sourceGroups.map((kind) => <div key={kind} style={{ marginBottom: 18 }}><h3 className={s.panelTitle} style={{ marginBottom: 9 }}>{sourceLabel(kind)}</h3>{evidenceRows(evidence.filter((item) => item.source === kind))}</div>)}</Panel></div>
+      <div><Panel>
+        <Tabs value={tab} onChange={(view) => updateQuery({ view })} items={[{ value: "task", label: "按任务" }, { value: "timeline", label: "时间线" }, { value: "source", label: "来源" }]} />
+        <div className={s.toolbar}>
+          <input className={s.field} style={{ maxWidth: 320 }} value={filters.q} onChange={(event) => setFilter("q", event.target.value)} placeholder="搜索证据名称、任务或提交人" aria-label="搜索证据" />
+          <select className={s.select} style={{ width: 160 }} value={filters.task} onChange={(event) => setFilter("task", event.target.value)} aria-label="筛选任务">
+            <option value="all">全部任务</option>{filters.task !== "all" && !taskById.has(filters.task) && <option value={filters.task}>不可用的任务</option>}{core.tasks.map((task) => <option key={task.id} value={task.id}>{taskCode(task)} · {task.title}</option>)}
+          </select>
+          <select className={s.select} style={{ width: 130 }} value={filters.source} onChange={(event) => setFilter("source", event.target.value)} aria-label="筛选来源">
+            <option value="all">全部来源</option>{evidenceSources.map((item) => <option key={item} value={item}>{sourceLabel(item)}</option>)}
+          </select>
+          <select className={s.select} style={{ width: 130 }} value={filters.author} onChange={(event) => setFilter("author", event.target.value)} aria-label="筛选提交人">
+            <option value="all">全部提交人</option>{filters.author !== "all" && !authorIds.includes(filters.author) && <option value={filters.author}>不可用的提交人</option>}{authorIds.map((id) => <option key={id} value={id}>{personName(core, id)}</option>)}
+          </select>
+          <select className={s.select} style={{ width: 180 }} value={filters.criterion} onChange={(event) => setFilter("criterion", event.target.value)} aria-label="筛选验收标准">
+            <option value="all">全部验收标准</option>{filters.criterion !== "all" && !core.criteria.some((item) => item.id === filters.criterion) && <option value={filters.criterion}>不可用的验收标准</option>}{core.criteria.map((criterion) => <option key={criterion.id} value={criterion.id}>{taskById.get(criterion.taskId)?.title ?? "任务"} · {criterion.text}</option>)}
+          </select>
+          <select className={s.select} style={{ width: 130 }} value={filters.status} onChange={(event) => setFilter("status", event.target.value)} aria-label="筛选证据状态">
+            <option value="all">全部状态</option>{evidenceStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+          </select>
+          <button className={s.buttonGhost} type="button" onClick={() => updateQuery({ task: null, source: null, author: null, criterion: null, status: null, q: null })}>清除筛选</button>
+        </div>
+        <p className={s.muted} role="status">匹配 {evidence.length} / {core.evidence.length} 条证据</p>
+        {!evidence.length && <Empty>没有匹配的证据，可调整或清除筛选条件。</Empty>}
+        {tab === "task" && taskGroups.map((task) => <div key={task.id} style={{ marginBottom: 18 }}><div className={s.space} style={{ marginBottom: 8 }}><TaskLink core={core} task={task} /><span className={s.muted}>{evidence.filter((item) => item.taskId === task.id).length} 条证据</span></div>{evidenceRows(evidence.filter((item) => item.taskId === task.id))}</div>)}
+        {tab === "timeline" && evidenceRows([...evidence].sort((a, b) => b.createdAt.localeCompare(a.createdAt)))}
+        {tab === "source" && sourceGroups.map((kind) => <div key={kind} style={{ marginBottom: 18 }}><h3 className={s.panelTitle} style={{ marginBottom: 9 }}>{sourceLabel(kind)}</h3>{evidenceRows(evidence.filter((item) => item.source === kind))}</div>)}
+      </Panel></div>
       <div><Panel title="证据原则"><div className={s.listRow}><div><strong>可验证来源</strong><div className={s.muted}>优先引用代码仓库、系统日志和原始文档。</div></div></div><div className={s.listRow}><div><strong>关联验收标准</strong><div className={s.muted}>每条证据应指向具体任务或验收标准。</div></div></div><div className={s.listRow}><div><strong>团队共同确认</strong><div className={s.muted}>低置信度或冲突证据先人工确认。</div></div></div></Panel><Panel title="来源说明"><div className={s.listRow}><span>GitHub PR / Commit</span><span className={s.muted}>原始代码活动</span></div><div className={s.listRow}><span>项目文件</span><span className={s.muted}>设计与测试资料</span></div><div className={s.listRow}><span>截图 / 飞书</span><span className={s.muted}>界面与协作记录</span></div></Panel>{selected && <Panel title="撤回正式证据"><p className={s.small}>{selected.title}</p><label className={s.fieldLabel}>撤回原因 *</label><textarea className={s.textarea} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明为何这份证据不再代表当前有效结果" /><div className={s.actions} style={{ justifyContent: "flex-start", marginTop: 10 }}><button type="button" className={s.buttonGhost} onClick={() => { setSelectedId(""); setReason(""); }}>取消</button><button type="button" className={s.buttonDanger} onClick={withdraw} disabled={!reason.trim()}>确认撤回</button></div></Panel>}</div>
     </div>
   </div>;
