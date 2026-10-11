@@ -222,3 +222,47 @@ actual concurrent multi-user persistence is verified separately in PostgreSQL.
   from `C_task` to `develop`. Commits identify their task IDs and contain actual
   implementation, regression tests or handoff documentation; no empty activity
   commits are used. A's review and staging acceptance remain outstanding.
+
+### Follow-up audit and implementation (2026-10-12)
+
+The earlier batch ended after its checks; that was not evidence that all remaining
+C work was blocked. [Remaining-work audit](C_REMAINING_WORK.md) separates independent
+implementation from actual A/B/D integration dependencies. Existing `server/`
+account disable and teacher-review capabilities are team baseline, not new C work.
+
+- C1-02: atomic local single/all-read operations, ten-item pagination, correct
+  unread totals, timestamp ordering across offsets, and failed-save recovery.
+  C1 real workspace mode explicitly reports unavailable instead of presenting
+  fallback seed records as real data. Canonical notification persistence is pending.
+- C4-01–04: URL filters/pagination; authorized GitHub task-number suggestions and
+  manual associations; reasoned Feishu adopt/ignore/restore. Adoption creates one
+  candidate with a source snapshot in one local save. A's connection/sync area is
+  retained; live ingestion and canonical association persistence are not implemented.
+- C5-01/03: scoped project-file filters, sorting and pagination; official-version
+  designation requires a reason, current project version and idempotency key. Old
+  versions and frozen references remain. Save failure preserves the input.
+- C5-04: precise course access, assigned-TA read-only behavior and teacher-only
+  reasoned draft/replacement/publication commands. Publication saves history and
+  local audit atomically, keeps old versions and leaves B's frozen references intact.
+  The page explicitly saves demo metadata, not file bytes or delivered notifications.
+- C7-01: canonical Admin-only paginated user list/detail endpoints, literal search
+  and minimal DTO projection; typed client and real-mode read-only UI. API errors
+  never merge mock users. Production session/role mapping is still A's dependency.
+  See [Admin directory contract](C_ADMIN_DIRECTORY.md).
+- C7-06: removed invented window totals, trends and health assertions. Missing
+  timestamped usage remains unavailable; this is not a completed usage API.
+
+Verification: full PostgreSQL **302 passed, zero skipped**, including 31 new Admin
+directory cases; Ruff lint and format checks passed for all 77 Python files.
+Frontend lint, typecheck, production build and 56 route mappings passed.
+Ten C scripts verify 43 URL + 51 source + 31 client + 76 discussion + 103 evidence
++ 25 notification + 69 file-filter + 78 file-decision + 127 activity-record
++ 83 course-file assertions (686 total). All 36 browser scenarios passed across
+the full run and a targeted rerun after correcting ambiguous test locators; no
+product behavior was weakened for those assertions. Final remote CI is recorded
+in PR #9. Test fixtures and intercepted directory responses do not prove
+production login, real storage, external synchronization or staging acceptance.
+
+All 35 complete task acceptance rows remain open. Remaining independent work
+includes canonical C1 read models, C4/C5 persistence, C7 course lifecycle and
+access-approval records; those items must not be described as merely waiting for A.
