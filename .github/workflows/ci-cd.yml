@@ -212,6 +212,11 @@ jobs:
           npx tsx scripts/check-c-api-client.mjs
           npx tsx scripts/check-c-discussions.mjs
           npx tsx scripts/check-c-evidence-decisions.mjs
+          npx tsx scripts/check-c-notifications.mjs
+          npx tsx scripts/check-c-file-filters.mjs
+          npx tsx scripts/check-c-file-decisions.mjs
+          npx tsx scripts/check-c-activity-records.mjs
+          npx tsx scripts/check-c-course-files.mjs
 
   docker:
     name: Build and smoke test Docker image
