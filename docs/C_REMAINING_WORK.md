@@ -6,33 +6,40 @@ Definition of Done. The 17-commit first delivery implemented parts of 21 task ID
 it did not complete 21 tasks. Existing baseline work is identified separately.
 
 PR #9 contained 27 commits covering parts of 29 task IDs and was merged into
-`develop` on 2026-10-12 (Asia/Shanghai). The next batch adds canonical C1 read
-models/pages, C4 persistence and C5 file/version persistence. Verified receipt
-registration and authorized download-link contracts now provide a substantive
-partial C5-02 deliverable, bringing coverage to **30 of 35 task IDs**. This is
-implementation coverage, not a completion percentage: uploading actual bytes,
-upload progress and A's signing adapter remain unfinished. The five IDs without
-a new main business deliverable are C7-02/03/04/05/07.
+`develop` on 2026-10-12 (Asia/Shanghai). The following C1/C4/C5 batch reached
+**30 of 35 task IDs** with partial implementation, including the C5-02 verified
+receipt/download contract. That is the historical PR #10 result, not a current
+task-completion percentage. PR #10 is now merged (`22b99ac`).
+
+The current batch, recorded through commit `90311d2`, has partial code or
+typed contract coverage for **35 of 35 task IDs**. **None of the 35 complete task
+acceptance rows is closed by this coverage count.** Account restore/create,
+actual uploaded bytes, production authorization, external adapters and D
+acceptance are not complete. **17 substantive commits** are recorded, including
+eight backend/test commits and nine integration/UI/browser commits. This document
+update is still awaiting its own commit, and a new PR has not yet been created.
+See `C_DELIVERY.md` for exact commits, completed checks and pending delivery.
 
 ## What is implemented
 
 | Area | Implemented C work | Still missing for complete acceptance |
 | --- | --- | --- |
-| C1 (4 tasks) | Canonical membership-scoped home aggregation, weighted task-tree progress and personal activity queries; independent real-mode pages, URL filters and error recovery; local notification read commands | Persistent A notifications/actions, production identity, canonical destination pages and external activity ingestion |
-| C2 (8 tasks) | Canonical execution state machine, assignee/dependency checks, reasoned progress and rollups, versioned notes, candidate capture, atomic prepare-submission; typed client and UI source/tab rules | Production identity and canonical workspace IDs; connect pages to these APIs; A source/storage providers and D verification query/completion authority |
-| C3 (5 tasks) | Persistent snapshots/decisions/effective queries; adopt/withdraw/source-change rules, reasons, versions, idempotency; local UI filters/history/permissions | Real A source change events; reliable outbox delivery and D invalidation consumption; real UI integration |
-| C4 (4 tasks) | Canonical association/triage records, immutable decisions, provider query contracts with filters before pagination, reasoned candidate adoption in one transaction; local UI filtering and task-number suggestions | Real UI adapter, A source query/sync providers, stable B task codes and automatic association consumer, A/D source-change delivery and production end-to-end verification |
-| C5 (4 tasks) | Canonical project-file receipt registration, immutable versions, reasoned official designation, authorized download-link contract and history; local project/course-file commands preserve frozen references | Actual upload bytes/progress, A receipt/signing adapter, project-file UI integration, canonical course-file persistence and notification delivery; existing upload UI is still a demo |
-| C6 (3 tasks) | Canonical linked discussions, concurrent replies, mentions, important snapshots and immediate linked-evidence source-change marking; local UI commands | Connect real pages and canonical identity; deliver A notifications; process D downstream events |
-| C7 (7 tasks) | Canonical Admin user directory API and real-mode read-only UI; removed fabricated AI window totals, trends and health assertions | Identity lifecycle integration, teacher review UI/contracts, course lifecycle/invites, audit queries, timestamped AI usage aggregation, scoped expiring access approvals |
+| C1 (4 tasks) | Canonical membership-scoped home/progress/activity reads; A inbox/action ports with recipient/count/snapshot validation and transactional read receipts; real API pages | A notification/action adapters and delivery, production UUID identity and external feeds; home inbox counts remain unavailable |
+| C2 (8 tasks) | Execution transitions, assignee/dependency checks, progress/rollups/history, notes, candidate capture and atomic prepare-submission; canonical selectors and real task API pages | A production session/UUID entry context and source/storage providers; D verification query, acceptance and authoritative completion |
+| C3 (5 tasks) | Persistent snapshots/decisions/effective queries, reasoned adopt/withdraw/source-change rules and real evidence API page | A source events, reliable outbox delivery, D invalidation/verification/contribution/report consumers and staging acceptance |
+| C4 (4 tasks) | Canonical association/triage, immutable decisions, source-query contracts, atomic candidate adoption and real GitHub/Feishu API pages | A authorized query/sync adapters, stable B task codes and automatic association consumer, source-change delivery and live external verification |
+| C5 (4 tasks) | Project/course logical files, immutable versions, receipts, official designation/publication, authorized link contracts, retained history and real API pages | A actual byte upload/progress, validated project/course receipts, signing and preview/download adapters; notification delivery and B frozen-reference acceptance |
+| C6 (3 tasks) | Canonical discussions, concurrent replies, mentions, important snapshots and linked-evidence source changes; real discussion API page | Production UUID identity, A notification delivery, D event consumption and multi-member staging acceptance |
+| C7 (7 tasks) | Admin directory; C wrappers reuse A disable/session revocation and teacher review; course lifecycle/invites, expiring approval records, audit/actual-usage contracts and real pages | User restore/create, A canonical identity/audit/usage/access-enforcement providers, B invitation/join and lifecycle coordination, team acceptance |
 
 ## Existing team code that must be reused
 
 - `server/` already implements teacher application persistence/review and account
-  disable with session revocation. These are baseline identity capabilities, not
-  new C work. Current Admin pages still use local workspace operations for those
-  actions. The identity API also needs nonempty rejection/disable reasons and a
-  self-disable guard to meet C7's specification.
+  disable with session revocation. Those services remain A's baseline. New C
+  routes/pages delegate to them with Admin/CSRF checks, nonblank reasons,
+  self-disable prevention, current review basis and version conflicts. They do
+  not translate identity-service string IDs into canonical business UUIDs.
+  Restore/create users and the production identity bridge remain unfinished.
 - `lib/commands/files.ts` already validates local file metadata, manages version
   history and preserves baseline source references. It does not upload bytes.
 - `services/api` has canonical UUID User/Course/project models. Its development
@@ -41,24 +48,15 @@ a new main business deliverable are C7-02/03/04/05/07.
 
 ## Work that can continue without third-party credentials
 
-These are implementation tasks, not reasons to wait for A:
+The prior six independently implementable areas now have code/contracts. Browser
+locator repairs, API/daily reruns and the production build have passed. Remaining
+delivery work is to commit these final records, create the new PR and verify its
+remote CI/review. Local results do not substitute for remote checks or staging.
 
-1. Continue canonical C4/C5 page adapters against explicit API fixtures, following
-   the separate daily feature flag pattern; canonical route context remains needed
-   before enabling them in production. Do not map mock string IDs to made-up UUIDs.
-2. Implement canonical C5-04 course-file publication and retained replacements,
-   reusing the verified receipt boundary and B's frozen-reference contract.
-3. Implement C7-04 course draft/publish/end transitions, reasoned history and
-   idempotency. Settle invite ownership and the assignment's unique-course-code
-   rule against the existing `(code, semester)` database constraint before migration.
-4. Implement C7-05/06 read contracts and real timestamp aggregation once the A
-   record schema is agreed; missing historical fields must not be invented.
-5. Implement C7-07 structured approval records, scope, expiry and replay protection;
-   actual permission activation must call A's authorization service.
-6. Continue C7-02/03 page contracts, required reasons, self-disable prevention and
-   failure recovery against explicit fixtures; reuse the existing identity review
-   service when A reconciles identity IDs and server-side authorization. UI checks
-   alone cannot deliver session revocation or secure teacher promotion.
+Further C work includes user restore/create flows against an agreed A identity
+service contract, and complete UI/API/error/permission acceptance after providers
+are connected. An unavailable typed port does not implement its provider. Do not
+invent UUID mappings or write A/B/D-owned data to make a demonstration look complete.
 
 ## Dependencies that cannot be supplied by vendor documentation
 
@@ -66,12 +64,29 @@ These are implementation tasks, not reasons to wait for A:
 | --- | --- | --- |
 | A | Verified session and real role -> canonical UUID current user | Production business APIs remain closed; no demo-header bypass |
 | A/B | Canonical workspace/project/task/criterion loading and route context | Mock string IDs must not be translated into fabricated UUIDs |
-| A | A4 notifications/actions/audit, validated upload receipts and signed URLs | No actual notification delivery or persistent file bytes |
+| A | A4 notification/action queries, transactional read mutations, audit source and A7 timestamped usage | Default ports return 503; no fake rows, zero counts or estimated usage; home inbox counters stay null |
+| A | Validated project/course upload receipts, actual byte storage and signed preview/download URLs | No real upload/progress or storage success from metadata-only commands |
 | A | Authorized GitHub/Feishu query and stable source snapshots | C cannot prove that local source lists equal external services |
-| D | Verification query, authoritative completion and evidence-change consumer | No C bypass of acceptance; pending events do not mean delivered invalidation |
+| A | Transactional, scoped and expiring access activation/enforcement | Approval cannot become a real grant without the exact A receipt; enforcement remains A-owned |
+| B | Invitation consumption, enrollment/join rules and course lifecycle coordination | C invite resolver does not create membership; publishing/ending needs B integration acceptance |
+| D | Verification query, authoritative completion and evidence-change/contribution/report consumers | No C bypass of acceptance; pending events do not mean delivered invalidation |
 | A/team | PR review and staging acceptance using a clean database | No task is marked finally accepted solely because CI passed |
 
 ## Verification and scope
+
+Current batch snapshot (2026-10-12; prior batch results below remain historical):
+
+- Full canonical backend: **813 passed, zero skipped**. PG-specific checks ran
+  against the disposable database; this total also includes SQLite/HTTP fixtures
+  and must not be called 813 PostgreSQL tests. Identity service: **128 passed**.
+- Migration head **0012** and `alembic check` passed. Ruff passed, including the
+  reported 137-file check. Frontend lint/typecheck and **710 script assertions** passed.
+- Existing C browser suite: **36/36 passed**. New API browser suite: **45/45
+  passed**, including the locator corrections and inbox **8/8** rerun. Daily API
+  cases passed **4/4** in this batch: **85 C browser cases** in total. The production
+  build passed compilation, type checking, static generation and trace collection.
+- Seventeen backend/integration/UI/test commits are recorded. The documentation
+  commit, new PR, remote CI and team/staging acceptance remain pending.
 
 - The first 17 commits passed GitHub CI at `341c646`.
 - With the Admin directory addition, the canonical PostgreSQL suite passed
@@ -82,8 +97,9 @@ These are implementation tasks, not reasons to wait for A:
   enabled with zero skips. See the exact run breakdown in `C_DELIVERY.md`.
 - C browser tests deliberately distinguish local workspace behavior from intercepted
   canonical API responses. They do not assert live OAuth/storage/vendor acceptance.
-- The canonical C1/C4/C5 implementation and interface boundaries are described in
-  `C_DAILY_READS.md`, `C_ACTIVITY_RECORDS.md` and `C_PROJECT_FILES.md`.
+- Contracts include `C_DAILY_READS.md`, `C_INBOX.md`, `C_ACTIVITY_RECORDS.md`,
+  `C_PROJECT_FILES.md` and `C_COURSE_FILES.md`. Provider-dependent coverage is not
+  production integration or acceptance.
 - Per-feature tests, later commits and final CI are recorded in `C_DELIVERY.md`
   and the linked PRs. Every remaining task still requires the relevant API/UI/error/permission
   checks and actual team acceptance; a single percentage would conceal those gaps.
