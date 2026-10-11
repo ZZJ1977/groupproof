@@ -64,8 +64,8 @@ def test_database_connection_uses_beijing_timezone(database_session: Session) ->
 
 
 def test_seed_core_is_idempotent(database_session: Session) -> None:
-    first = seed_core(database_session)
-    second = seed_core(database_session)
+    first = seed_core(database_session, environment="test")
+    second = seed_core(database_session, environment="test")
 
     assert first == second
     counts = (
@@ -76,18 +76,46 @@ def test_seed_core_is_idempotent(database_session: Session) -> None:
                 (SELECT count(*) FROM users
                  WHERE email LIKE 'seed.%@groupproof.local') AS users_count,
                 (SELECT count(*) FROM courses WHERE code = 'GP-DEMO') AS courses_count,
+                (SELECT count(*) FROM groups WHERE name = 'Seed Team') AS groups_count,
                 (SELECT count(*) FROM projects WHERE name = 'Seed Project') AS projects_count,
-                (SELECT count(*) FROM tasks WHERE title = 'Create task persistence') AS tasks_count
+                (SELECT count(*) FROM functional_modules
+                 WHERE project_id = CAST(:project_id AS UUID)) AS modules_count,
+                (SELECT count(*) FROM requirements
+                 WHERE project_id = CAST(:project_id AS UUID)) AS requirements_count,
+                (SELECT count(*) FROM tasks
+                 WHERE project_id = CAST(:project_id AS UUID)) AS tasks_count,
+                (SELECT count(*) FROM acceptance_criteria ac
+                 JOIN tasks t ON ac.task_id = t.id
+                 WHERE t.project_id = CAST(:project_id AS UUID)) AS criteria_count,
+                (SELECT count(*) FROM task_dependencies td
+                 JOIN tasks t ON td.task_id = t.id
+                 WHERE t.project_id = CAST(:project_id AS UUID)) AS dependencies_count,
+                (SELECT count(*) FROM baseline_confirmations bc
+                 JOIN baseline_versions bv ON bc.baseline_version_id = bv.id
+                 WHERE bv.project_id = CAST(:project_id AS UUID)) AS baseline_confirmations_count,
+                (SELECT count(*) FROM plan_confirmations pc
+                 JOIN plan_versions pv ON pc.plan_version_id = pv.id
+                 WHERE pv.project_id = CAST(:project_id AS UUID)) AS plan_confirmations_count,
+                (SELECT count(*) FROM progress_events
+                 WHERE project_id = CAST(:project_id AS UUID)) AS progress_events_count
             """
-            )
+            ).bindparams(project_id=first["project_id"])
         )
         .mappings()
         .one()
     )
 
     assert counts == {
-        "users_count": 2,
+        "users_count": 4,
         "courses_count": 1,
+        "groups_count": 1,
         "projects_count": 1,
-        "tasks_count": 1,
+        "modules_count": 2,
+        "requirements_count": 2,
+        "tasks_count": 3,
+        "criteria_count": 4,
+        "dependencies_count": 2,
+        "baseline_confirmations_count": 2,
+        "plan_confirmations_count": 2,
+        "progress_events_count": 1,
     }
