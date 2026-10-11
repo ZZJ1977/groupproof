@@ -5,6 +5,10 @@ type Schema = components["schemas"];
 type EvidenceQuery = paths["/api/v1/projects/{project_id}/evidence"]["get"]["parameters"]["query"];
 type DiscussionQuery = paths["/api/v1/projects/{project_id}/discussions"]["get"]["parameters"]["query"];
 export type AdminUserQuery = paths["/api/v1/admin/users"]["get"]["parameters"]["query"];
+export type DailyActivityQuery = paths["/api/v1/me/activity"]["get"]["parameters"]["query"];
+export type ActivitySourceType = "github" | "feishu";
+export type ActivityQuery = paths["/api/v1/projects/{project_id}/activities/{source_type}"]["get"]["parameters"]["query"];
+export type ProjectFileQuery = paths["/api/v1/projects/{project_id}/files"]["get"]["parameters"]["query"];
 
 export class CApiError extends Error {
   constructor(
@@ -45,6 +49,63 @@ function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Resp
  */
 export function createCClient(client = createApiClient()) {
   return {
+    async homeSummary() {
+      return unwrap<Schema["DailyHomeDTO"]>(await client.GET("/api/v1/home/summary"));
+    },
+    async personalActivity(query: DailyActivityQuery = {}) {
+      return unwrap(await client.GET("/api/v1/me/activity", { params: { query } }));
+    },
+    async activities(projectId: string, sourceType: ActivitySourceType, query: ActivityQuery = {}) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/activities/{source_type}", {
+        params: { path: { project_id: projectId, source_type: sourceType }, query },
+      }));
+    },
+    async activity(projectId: string, sourceType: ActivitySourceType, sourceId: string) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/activities/{source_type}/{source_id}", {
+        params: { path: { project_id: projectId, source_type: sourceType, source_id: sourceId } },
+      }));
+    },
+    async activityHistory(projectId: string, sourceType: ActivitySourceType, sourceId: string) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/activities/{source_type}/{source_id}/history", {
+        params: { path: { project_id: projectId, source_type: sourceType, source_id: sourceId } },
+      }));
+    },
+    async associateActivity(projectId: string, sourceType: ActivitySourceType, sourceId: string, input: Schema["AssociateActivity"], key: string) {
+      return unwrap(await client.PUT("/api/v1/projects/{project_id}/activities/{source_type}/{source_id}/association", {
+        params: { path: { project_id: projectId, source_type: sourceType, source_id: sourceId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async decideActivity(projectId: string, sourceType: ActivitySourceType, sourceId: string, input: Schema["DecideActivity"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/activities/{source_type}/{source_id}/decisions", {
+        params: { path: { project_id: projectId, source_type: sourceType, source_id: sourceId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async files(projectId: string, query: ProjectFileQuery = {}) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/files", { params: { path: { project_id: projectId }, query } }));
+    },
+    async file(projectId: string, fileId: string) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/files/{file_id}", { params: { path: { project_id: projectId, file_id: fileId } } }));
+    },
+    async registerFile(projectId: string, input: Schema["RegisterFile"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/files", {
+        params: { path: { project_id: projectId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async appendFileVersion(projectId: string, fileId: string, input: Schema["AppendFileVersion"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/files/{file_id}/versions", {
+        params: { path: { project_id: projectId, file_id: fileId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async designateFileVersion(projectId: string, fileId: string, input: Schema["DesignateFileVersion"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/files/{file_id}/designate", {
+        params: { path: { project_id: projectId, file_id: fileId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async fileLink(projectId: string, fileId: string, versionId: string, purpose: "preview" | "download" = "download") {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/files/{file_id}/versions/{version_id}/link", {
+        params: { path: { project_id: projectId, file_id: fileId, version_id: versionId }, query: { purpose } },
+      }));
+    },
     async adminUsers(query: AdminUserQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/users", { params: { query } }));
     },
