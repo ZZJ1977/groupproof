@@ -4,6 +4,7 @@ import type { components, paths } from "@/packages/domain/api.generated";
 type Schema = components["schemas"];
 type EvidenceQuery = paths["/api/v1/projects/{project_id}/evidence"]["get"]["parameters"]["query"];
 type DiscussionQuery = paths["/api/v1/projects/{project_id}/discussions"]["get"]["parameters"]["query"];
+export type AdminUserQuery = paths["/api/v1/admin/users"]["get"]["parameters"]["query"];
 
 export class CApiError extends Error {
   constructor(
@@ -44,6 +45,12 @@ function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Resp
  */
 export function createCClient(client = createApiClient()) {
   return {
+    async adminUsers(query: AdminUserQuery = {}) {
+      return unwrap(await client.GET("/api/v1/admin/users", { params: { query } }));
+    },
+    async adminUser(userId: string) {
+      return unwrap(await client.GET("/api/v1/admin/users/{user_id}", { params: { path: { user_id: userId } } }));
+    },
     async execution(taskId: string) {
       return unwrap(await client.GET("/api/v1/tasks/{task_id}/execution", {
         params: { path: { task_id: taskId } },

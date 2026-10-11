@@ -30,6 +30,8 @@ export default defineConfig({
         NEXT_DIST_DIR: ".next-e2e",
         NEXT_PUBLIC_APP_MODE: "mock",
         NEXT_PUBLIC_ENABLE_MOCKS: "true",
+        NEXT_PUBLIC_API_FEATURES: "admin=real",
+        NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:13006",
       },
     },
   ],
