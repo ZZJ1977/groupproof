@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, FileUp, Info, RefreshCcw, ShieldCheck, Sparkles } from "lucide-react";
 import type { Evidence, Task, VerificationResult } from "@/types/domain";
+import { buildCandidateEvidence, draftFromFeishu, draftFromGithub, emptyEvidenceDraft, taskAcceptsEvidence } from "@/features/c/evidence-source";
 import type { ProjectCore } from "./core-model";
 import { displayDate, latestVerification, makeId, personName, projectPath, recordTaskProgress, sourceLabel, taskCode, taskPath, taskTitle } from "./core-model";
 import { Empty, Header, Panel, Progress, Stat, Status } from "./CoreUI";
@@ -22,16 +23,12 @@ export function ProjectTaskSubmit({ core, task }: { core: ProjectCore; task: Tas
   const router = useRouter();
   const savedNote = core.evidence.find((item) => item.taskId === task.id && item.source === "manual" && item.title === "任务实现说明" && item.authorId === core.data.currentUserId && item.status === "formal");
   const [implementationNote, setImplementationNote] = useState(savedNote?.description ?? "");
-  const [evidenceDescription, setEvidenceDescription] = useState("");
-  const [title, setTitle] = useState("");
-  const [source, setSource] = useState<Evidence["source"]>("github");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [selectedCriteria, setSelectedCriteria] = useState<string[]>([]);
+  const [evidenceDraft, setEvidenceDraft] = useState(() => emptyEvidenceDraft("github"));
+  const { source, title, description: evidenceDescription, sourceUrl, file, criterionIds: selectedCriteria, sourceRecordId, sourceRecordUrl, sourceSnapshot } = evidenceDraft;
   const [feedback, setFeedback] = useState("");
   const criteria = core.criteria.filter((item) => item.taskId === task.id);
   const evidence = core.evidence.filter((item) => item.taskId === task.id);
-  const canSubmit = core.canEdit && core.project.setupStatus === "frozen" && task.status !== "completed";
+  const canSubmit = core.canEdit && core.project.setupStatus === "frozen" && taskAcceptsEvidence(task.status);
 
   const saveNote = () => {
     if (!implementationNote.trim()) return setFeedback("请填写实现说明。");
@@ -41,21 +38,17 @@ export function ProjectTaskSubmit({ core, task }: { core: ProjectCore; task: Tas
   };
 
   const addEvidence = () => {
-    const evidenceTitle = title.trim() || file?.name || "";
-    if (!evidenceTitle || !evidenceDescription.trim()) return setFeedback("请填写证据名称和说明。");
-    if (!selectedCriteria.length) return setFeedback("请至少关联一条验收标准。");
-    if ((source === "file" || source === "screenshot") && !file) return setFeedback("请选择要上传的文件。");
-    if (file && file.size > 50 * 1024 * 1024) return setFeedback("单个文件不能超过 50MB。");
-    if ((source === "github" || source === "feishu") && !sourceUrl.trim()) return setFeedback("请填写原始来源链接。");
-    core.add("evidence", { id: makeId("evidence"), projectId: core.project.id, taskId: task.id, criterionIds: selectedCriteria, authorId: core.data.currentUserId, title: evidenceTitle, description: evidenceDescription.trim(), source, sourceUrl: sourceUrl.trim() || undefined, status: "formal", createdAt: new Date().toISOString(), version: 1 });
-    if (task.status === "in_progress" || task.status === "not_started") core.update("tasks", task.id, { status: "pending_submission", updatedAt: new Date().toISOString() });
-    setTitle(""); setEvidenceDescription(""); setSourceUrl(""); setFile(null); setSelectedCriteria([]);
-    setFeedback("证据已关联到本任务。可以继续补充或运行完整性检查。");
+    const result = buildCandidateEvidence(evidenceDraft, { id: makeId("evidence"), projectId: core.project.id, taskId: task.id, taskStatus: task.status, authorId: core.data.currentUserId, criterionIds: criteria.map((item) => item.id), canSubmit, createdAt: new Date().toISOString() });
+    if (!result.ok) return setFeedback(result.message);
+    core.add("evidence", result.evidence);
+    setEvidenceDraft(emptyEvidenceDraft(source));
+    setFeedback("候选证据已保存到本地演示数据，待人工采纳后才计入正式证据；任务状态保持不变。");
   };
 
   return <div className={s.page}>
     <Header eyebrow={<Link className={s.link} href={taskPath(core.project.id, task.id)}>返回任务</Link>} title="提交任务" subtitle={`${taskCode(task)} · ${taskTitle(task)}：提交实现说明并附上可追溯证据。`} actions={<Link className={s.buttonSoft} href={`${taskPath(core.project.id, task.id)}/evidence-check`}>完整性检查 <ArrowRight size={14} /></Link>} />
     {feedback && <div className={s.notice} role="status"><Info size={15} />{feedback}</div>}
+    {!canSubmit && <div className={s.notice}><Info size={15} />只有进行中或待提交的任务可以补充证据，且需要项目编辑权限与已冻结的项目初始化。</div>}
     <div className={s.grid}>
       <div>
         <Panel title="1. 提交说明">
@@ -66,16 +59,17 @@ export function ProjectTaskSubmit({ core, task }: { core: ProjectCore; task: Tas
         </Panel>
         <Panel title="2. 关联证据">
           <div className={s.formGrid}>
-            <label><span className={s.fieldLabel}>来源类型</span><select className={s.select} value={source} onChange={(event) => { setSource(event.target.value as Evidence["source"]); setFile(null); setSourceUrl(""); }} disabled={!canSubmit}>{sourceOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-            <label><span className={s.fieldLabel}>证据名称 *</span><input className={s.field} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如 PR #128 核心功能实现" disabled={!canSubmit} /></label>
-            {source === "github" && <label className={s.full}><span className={s.fieldLabel}>从已同步的 GitHub 活动选择</span><select className={s.select} value="" onChange={(event) => { const item = core.data.github.find((entry) => entry.id === event.target.value); if (item) { setTitle(item.title); setSourceUrl(item.url); setEvidenceDescription(`${item.type.toUpperCase()} · ${item.status}`); } }} disabled={!canSubmit}><option value="">选择开发活动</option>{core.data.github.filter((item) => item.projectId === core.project.id).map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
-            {source === "feishu" && <label className={s.full}><span className={s.fieldLabel}>从已同步的飞书记录选择</span><select className={s.select} value="" onChange={(event) => { const item = core.data.feishu.find((entry) => entry.id === event.target.value); if (item) { setTitle(item.summary); setSourceUrl(`${projectPath(core.project.id)}/collaboration#${item.id}`); setEvidenceDescription(`${item.groupName} · ${item.type}`); } }} disabled={!canSubmit}><option value="">选择协作记录</option>{core.data.feishu.filter((item) => item.projectId === core.project.id).map((item) => <option value={item.id} key={item.id}>{item.summary}</option>)}</select></label>}
-            {(source === "github" || source === "feishu" || source === "manual") && <label className={s.full}><span className={s.fieldLabel}>原始来源链接 {source === "manual" ? "（可选）" : "*"}</span><input className={s.field} value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://" disabled={!canSubmit} /></label>}
-            <label className={s.full}><span className={s.fieldLabel}>证据说明 *</span><textarea className={s.textarea} value={evidenceDescription} onChange={(event) => setEvidenceDescription(event.target.value)} placeholder="说明这条记录如何支持对应的验收标准" disabled={!canSubmit} /></label>
+            <label><span className={s.fieldLabel}>来源类型</span><select className={s.select} value={source} onChange={(event) => { setEvidenceDraft(emptyEvidenceDraft(event.target.value as Evidence["source"])); setFeedback(""); }} disabled={!canSubmit}>{sourceOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+            <label><span className={s.fieldLabel}>证据名称 *</span><input className={s.field} value={title} onChange={(event) => setEvidenceDraft((old) => ({ ...old, title: event.target.value }))} placeholder="例如 PR #128 核心功能实现" disabled={!canSubmit} /></label>
+            {source === "github" && <label className={s.full}><span className={s.fieldLabel}>从已有 GitHub 活动选择（演示数据）</span><select className={s.select} value={sourceRecordId} onChange={(event) => { const item = core.data.github.find((entry) => entry.id === event.target.value && entry.projectId === core.project.id); setEvidenceDraft(item ? draftFromGithub(item) : emptyEvidenceDraft("github")); }} disabled={!canSubmit}><option value="">手动填写链接</option>{core.data.github.filter((item) => item.projectId === core.project.id).map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
+            {source === "feishu" && <label className={s.full}><span className={s.fieldLabel}>从已有飞书记录选择（演示数据）</span><select className={s.select} value={sourceRecordId} onChange={(event) => { const item = core.data.feishu.find((entry) => entry.id === event.target.value && entry.projectId === core.project.id); setEvidenceDraft(item ? draftFromFeishu(item) : emptyEvidenceDraft("feishu")); }} disabled={!canSubmit}><option value="">手动填写链接</option>{core.data.feishu.filter((item) => item.projectId === core.project.id).map((item) => <option value={item.id} key={item.id}>{item.summary}</option>)}</select></label>}
+            {(source === "github" || source === "feishu" || source === "manual") && <label className={s.full}><span className={s.fieldLabel}>原始来源链接 {source === "manual" ? "（可选）" : sourceRecordId && !sourceUrl ? "（所选记录未提供）" : "*"}</span><input className={s.field} value={sourceUrl} onChange={(event) => setEvidenceDraft((old) => ({ ...old, sourceUrl: event.target.value }))} placeholder={source === "github" ? "https://github.com/" : "https://"} disabled={!canSubmit} readOnly={Boolean(sourceRecordId)} /></label>}
+            {sourceSnapshot?.source === "feishu" && <div className={s.full}><div className={s.fieldLabel}>所选记录快照</div><p className={s.small}>{sourceSnapshot.record.summary}</p><p className={s.muted}>{sourceSnapshot.record.groupName} · {personName(core, sourceSnapshot.record.authorId)} · {displayDate(sourceSnapshot.record.timestamp)}。现有数据仅含记录摘要，未取得外部文档全文。</p>{sourceRecordUrl && <Link className={s.link} href={sourceRecordUrl}>查看本地协作记录（非原始来源链接）</Link>}</div>}
+            <label className={s.full}><span className={s.fieldLabel}>证据说明 *</span><textarea className={s.textarea} value={evidenceDescription} onChange={(event) => setEvidenceDraft((old) => ({ ...old, description: event.target.value }))} placeholder="说明这条记录如何支持对应的验收标准" disabled={!canSubmit} /></label>
           </div>
-          {(source === "file" || source === "screenshot") && <div className={`${s.dropzone} ${s.mt}`}><FileUp size={20} /><div>{file?.name ?? "选择文件或截图"}</div><input type="file" aria-label="选择证据文件" accept={source === "screenshot" ? "image/png,image/jpeg" : ".pdf,.doc,.docx,.ppt,.pptx,.xlsx,.txt,.md,.zip"} disabled={!canSubmit} onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><span className={s.muted}>单文件不超过 50MB</span></div>}
-          <div className={s.mt}><span className={s.fieldLabel}>关联验收标准 *</span><div className={s.checks}>{criteria.map((criterion, index) => <label className={s.check} key={criterion.id}><input type="checkbox" checked={selectedCriteria.includes(criterion.id)} disabled={!canSubmit} onChange={(event) => setSelectedCriteria((old) => event.target.checked ? [...old, criterion.id] : old.filter((id) => id !== criterion.id))} /><span>AC-{index + 1} · {criterion.text}</span></label>)}</div></div>
-          <div className={s.actions} style={{ justifyContent: "flex-start", marginTop: 17 }}><button type="button" className={s.button} disabled={!canSubmit} onClick={addEvidence}><Check size={14} />添加证据</button><button type="button" className={s.buttonSoft} disabled={!canSubmit || !evidence.length} onClick={() => router.push(`${taskPath(core.project.id, task.id)}/evidence-check`)}>检查完整性 <ArrowRight size={14} /></button></div>
+          {(source === "file" || source === "screenshot") && <div className={`${s.dropzone} ${s.mt}`}><FileUp size={20} /><div>{file?.name ?? "文件上传暂不可用"}</div><input key={source} type="file" aria-label="选择证据文件" accept={source === "screenshot" ? "image/png,image/jpeg" : ".pdf,.doc,.docx,.ppt,.pptx,.xlsx,.txt,.md,.zip"} disabled /><span className={s.muted}>文件存储尚未接入，不会创建已上传证据；请改用来源链接。</span></div>}
+          <div className={s.mt}><span className={s.fieldLabel}>关联验收标准 *</span><div className={s.checks}>{criteria.map((criterion, index) => <label className={s.check} key={criterion.id}><input type="checkbox" checked={selectedCriteria.includes(criterion.id)} disabled={!canSubmit} onChange={(event) => setEvidenceDraft((old) => ({ ...old, criterionIds: event.target.checked ? [...old.criterionIds, criterion.id] : old.criterionIds.filter((id) => id !== criterion.id) }))} /><span>AC-{index + 1} · {criterion.text}</span></label>)}</div></div>
+          <div className={s.actions} style={{ justifyContent: "flex-start", marginTop: 17 }}><button type="button" className={s.button} disabled={!canSubmit || source === "file" || source === "screenshot"} onClick={addEvidence}><Check size={14} />添加候选证据</button><button type="button" className={s.buttonSoft} disabled={!canSubmit || !evidence.length} onClick={() => router.push(`${taskPath(core.project.id, task.id)}/evidence-check`)}>检查完整性 <ArrowRight size={14} /></button></div>
         </Panel>
         <Panel title="已关联证据">{evidence.length ? <div className={s.tableWrap}><table className={s.table}><thead><tr><th>证据</th><th>来源</th><th>验收标准</th><th>状态</th></tr></thead><tbody>{evidence.map((item) => <tr key={item.id}><td><strong>{item.title}</strong><span className={s.cellSub}>{item.description}</span></td><td>{sourceLabel(item.source)}</td><td>{item.criterionIds.map((id) => `AC-${criteria.findIndex((criterion) => criterion.id === id) + 1}`).join("、")}</td><td><Status value={item.status} /></td></tr>)}</tbody></table></div> : <Empty>尚未添加证据</Empty>}</Panel>
       </div>

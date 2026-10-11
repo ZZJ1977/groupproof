@@ -22,6 +22,9 @@ async def request_context(request: Request, call_next):
     request.state.request_id = str(uuid4())
     response = await call_next(request)
     response.headers["X-Request-Id"] = request.state.request_id
+    # Authenticated business responses and errors must not be shared by caches.
+    if request.url.path.startswith("/api/v1/"):
+        response.headers["Cache-Control"] = "private, no-store"
     return response
 
 
