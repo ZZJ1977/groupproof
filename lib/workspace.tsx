@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { mockService } from "@/lib/api/mock-service";
+import { workspaceService } from "@/lib/api/workspace-service";
 import { seedData } from "@/mocks/seed";
 import type { CollectionEntity, CollectionKey, MockData, Role } from "@/types/domain";
 
@@ -25,7 +25,7 @@ function WorkspaceState({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const { data = seedData } = useQuery({
     queryKey,
-    queryFn: mockService.getWorkspace,
+    queryFn: workspaceService.getWorkspace,
     initialData: seedData,
     staleTime: Infinity,
     refetchOnMount: false,
@@ -34,9 +34,12 @@ function WorkspaceState({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void mockService.getWorkspace().then((stored) => {
+    void workspaceService.getWorkspace().then((stored) => {
       if (!active) return;
       queryClient.setQueryData(queryKey, stored);
+      setLoaded(true);
+    }).catch(() => {
+      // A real workspace adapter is enabled only after its backend contract is available.
       setLoaded(true);
     });
     return () => { active = false; };
@@ -46,7 +49,7 @@ function WorkspaceState({ children }: { children: ReactNode }) {
     const current = queryClient.getQueryData<MockData>(queryKey) ?? seedData;
     const next = change(current);
     queryClient.setQueryData(queryKey, next);
-    void mockService.saveWorkspace(next);
+    void workspaceService.saveWorkspace(next);
   }, [queryClient]);
 
   const setRole = useCallback((role: Role) => {
@@ -110,7 +113,7 @@ function WorkspaceState({ children }: { children: ReactNode }) {
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: 0 } } }));
   return (
-    <NextIntlClientProvider locale="zh" timeZone="Asia/Macau" messages={{ app: { name: "GroupProof", home: "首页", login: "登录" } }}>
+    <NextIntlClientProvider locale="zh" timeZone="Asia/Shanghai" messages={{ app: { name: "GroupProof", home: "首页", login: "登录" } }}>
       <QueryClientProvider client={queryClient}>
         <WorkspaceState>{children}</WorkspaceState>
       </QueryClientProvider>
