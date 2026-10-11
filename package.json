@@ -13,7 +13,11 @@
     "start:standalone": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check:routes": "tsx scripts/check-routes.mjs"
+    "check:routes": "tsx scripts/check-routes.mjs",
+    "test:e2e": "playwright test",
+    "api:generate": "node scripts/generate-api-client.mjs",
+    "test:api-config": "tsx scripts/api-config-smoke.ts",
+    "test:api-client": "tsx scripts/api-client-smoke.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -29,6 +33,7 @@
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "next-intl": "^4.14.9",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.0",
@@ -37,11 +42,13 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.1.0",
+    "openapi-typescript": "^7.13.0",
     "tsx": "^4.23.15",
     "typescript": "^5.7.0"
   },
