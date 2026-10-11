@@ -153,8 +153,8 @@ adoption after plan unlock; withdrawing existing evidence remains permitted.
 
 ### Outstanding scope
 
-This slice is **not completion of all C tasks**. C1 and C4–C7 remain in the open
-ledger. C2-08 has no prepared-submission HTTP endpoint yet. The existing mock
+This delivery is **not completion of all C tasks**. C1 and C4/C5/C7 remain in the open
+ledger. The existing mock
 implementation-note UI still represents the note as manual evidence because D's
 mock completeness/verification screens depend on that representation; it has not
 been switched to the new versioned note API. Task detail verification still awaits
@@ -165,3 +165,60 @@ team review and staging acceptance have not been verified.
 
 All 35 task rows therefore remain open; the code and tests above are inspectable
 partial deliverables, not fabricated completion or contribution scores.
+
+### Submission, discussions and daily entries (2026-10-11)
+
+- C2-08 now exposes `POST /api/v1/tasks/{id}/prepare-submission`: optional note
+  draft, task state, audit and idempotent response save in one transaction. Empty
+  evidence/notes may proceed to D's completeness check; this does not approve them.
+  Task and note version conflicts roll back everything. Its 32 tests passed on
+  PostgreSQL, including competing and repeated submissions.
+- C6-01/02/03 adds persistent linked discussions, independent replies, mentions,
+  important decisions with reasons and immutable sources. A reply or importance
+  change immediately marks linked C evidence as source-changed in the same
+  transaction. A notifications and D downstream processing remain pending events.
+  See [discussion handoff](C_DISCUSSIONS.md).
+- Migration 0008 creates discussion tables and permits the discussion source type.
+  Upgrade, schema check and empty-table downgrade/reapply passed. A PG test verifies
+  that downgrade refuses to delete existing discussions even without linked evidence.
+- C6 UI supports four same-project references, guarded duplicate actions, per-thread
+  reply drafts, discard confirmation, reasons for importance, failed-save recovery
+  and immutable candidate snapshots. 76 command assertions and four browser cases
+  passed. Candidate creation does not modify D verification records.
+- C1 UI removes arbitrary action-item completion and fabricated weekly growth;
+  notifications/actions/activity tabs persist in URLs. Two browser cases passed.
+  The real A notification/action services and server-side home statistics remain pending.
+- Canonical client contracts now include submission and discussion routes; 25 client
+  assertions passed. All 271 API tests passed on real PostgreSQL with zero skips;
+  Ruff checked and formatted all 73 Python files. Revision is 0008.
+
+The browser checks above use the explicitly isolated mock fixture. Production
+identity mapping, canonical workspace loading, signed file storage, GitHub/Feishu
+adapters and notification/D event delivery have not become available as a result
+of these tests. C6's frontend command queue protects the local demo process;
+actual concurrent multi-user persistence is verified separately in PostgreSQL.
+
+### Evidence decisions, activity links and final local checks (2026-10-11)
+
+- C3-02/03 UI now requires a reason and checks author/leader/course-teacher
+  eligibility, active membership, baseline/plan state and current evidence version.
+  Repeated requests save one decision; failed persistence keeps the reason and
+  original state. Decision history and source snapshots remain available after
+  withdrawal. Source-changed candidates cannot be adopted. The local command does
+  not update D verification/contribution records or claim notification delivery.
+- Independent review found no blocking C3 UI issue. All 103 command assertions
+  and four browser scenarios passed, including forbidden actors and failed-save
+  recovery. The assertions are now required by CI.
+- C4-01 activity links accept only HTTPS on the GitHub origin; malformed and
+  lookalike-domain links render as unavailable. Its browser regression passed.
+  This change does not implement A's repository connection or synchronization.
+- Final local frontend lint, typecheck, production build and 56-route mapping
+  checks passed. Across the six C browser files, all 17 cases passed in their
+  respective runs. These are mock-workspace browser checks, not production E2E.
+- Independent integration review confirmed that runtime OpenAPI, its checked-in
+  snapshot and regenerated TypeScript agree. The 25 client assertions passed.
+  CI includes all five C command/client scripts and all six C browser files.
+- Work is submitted through [draft PR #9](https://github.com/ZZJ1977/groupproof/pull/9)
+  from `C_task` to `develop`. Commits identify their task IDs and contain actual
+  implementation, regression tests or handoff documentation; no empty activity
+  commits are used. A's review and staging acceptance remain outstanding.
