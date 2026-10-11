@@ -352,7 +352,14 @@ export interface Discussion {
   body: string;
   authorId: string;
   taskId?: string;
-  replies: { id: string; authorId: string; text: string; at: string }[];
+  requirementId?: string;
+  moduleId?: string;
+  milestoneId?: string;
+  important?: boolean;
+  importantReason?: string;
+  createdAt?: string;
+  version?: number;
+  replies: { id: string; authorId: string; text: string; at: string; mentionedUserIds?: string[] }[];
   updatedAt: string;
 }
 
