@@ -205,6 +205,9 @@ jobs:
       - name: Run C workspace browser regressions
         run: npx playwright test --config playwright.c.config.ts
 
+      - name: Run C canonical daily-page contracts
+        run: npx playwright test --config playwright.c-daily.config.ts
+
       - name: Check C business commands and generated client
         run: |
           npx tsx scripts/check-c-url-filters.mjs

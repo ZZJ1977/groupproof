@@ -218,10 +218,12 @@ actual concurrent multi-user persistence is verified separately in PostgreSQL.
 - Independent integration review confirmed that runtime OpenAPI, its checked-in
   snapshot and regenerated TypeScript agree. The 25 client assertions passed.
   CI includes all five C command/client scripts and all six C browser files.
-- Work is submitted through [draft PR #9](https://github.com/ZZJ1977/groupproof/pull/9)
+- The first two batches were submitted through [PR #9](https://github.com/ZZJ1977/groupproof/pull/9)
   from `C_task` to `develop`. Commits identify their task IDs and contain actual
   implementation, regression tests or handoff documentation; no empty activity
-  commits are used. A's review and staging acceptance remain outstanding.
+  commits are used. PR #9 was subsequently merged on 2026-10-12 (Asia/Shanghai)
+  as `01c2bb43903c11655663ddc83e3569235b5c3ce4`. That merge alone does not prove
+  production integration or clean-database staging acceptance.
 
 ### Follow-up audit and implementation (2026-10-12)
 
@@ -263,6 +265,64 @@ product behavior was weakened for those assertions. Final remote CI is recorded
 in PR #9. Test fixtures and intercepted directory responses do not prove
 production login, real storage, external synchronization or staging acceptance.
 
-All 35 complete task acceptance rows remain open. Remaining independent work
-includes canonical C1 read models, C4/C5 persistence, C7 course lifecycle and
-access-approval records; those items must not be described as merely waiting for A.
+At the end of PR #9, all 35 complete task acceptance rows remained open. The
+next batch below implements the independent canonical C1/C4/C5 work identified
+in that audit; C7 course lifecycle and access approvals can also continue.
+
+### Canonical daily reads, source decisions and project files (2026-10-12)
+
+This batch starts from merged `origin/develop` at `01c2bb4` on the existing
+`C_task` branch. It does not modify `main` or merge its own PR.
+
+- C1-01/04: current-user home counts, canonical weighted task-tree progress and
+  a paginated union of actual progress, note, evidence and discussion history.
+  Current membership and source-object existence control every read; Admin does
+  not inherit access to all projects. Notifications, actions and external feeds
+  remain explicitly unavailable. Independent `daily=real` pages use server DTOs,
+  retain URL filters and hide old data after permission/errors or while refetching.
+  See [daily read contract](C_DAILY_READS.md).
+- C4-01–04: authorized A source-query protocol, combined filters before pagination,
+  persistent task links and Feishu ignore/restore/adopt decisions. Adoption saves
+  one C3 candidate, source snapshot, decisions and pending events atomically.
+  Version checks and idempotency prevent competing or repeated writes. Migration
+  `0009` adds only C-owned tables. Source-change display and task-code suggestions
+  do not claim D invalidation or automatic A ingestion. The page still uses its
+  explicit mock adapter. See [activity contract](C_ACTIVITY_RECORDS.md).
+- C5-01/02/03: logical project files, retained immutable versions, verified storage
+  receipt registration, authorized signed-link contracts, combination queries and
+  reasoned official-version designation. Appending a differently named version
+  retains the logical file name and the old official version. Migration `0010`
+  protects stored provenance from destructive downgrade. Storage receipts and
+  links must come from A's trusted adapter; default 503 does not simulate file
+  bytes, upload progress or delivered notifications. Course-file publication is
+  still local. See [file contract](C_PROJECT_FILES.md).
+- All new routes are mounted in the canonical API, exported to OpenAPI and
+  generated TypeScript, and wrapped in the typed C client. Existing schemas and
+  paths retain their exact contracts. Browser requests do not send a development
+  identity override. Daily browser contracts are now included in CI.
+
+The [remaining-work audit](C_REMAINING_WORK.md) now records substantive partial
+coverage of 30/35 IDs, including the receipt/download contract part of C5-02.
+None of those numbers is a task completion percentage. A's canonical production
+identity, source/storage adapters and event delivery, B's route context, D's
+verification integration and clean-database staging acceptance remain necessary.
+
+Validation for this batch:
+
+- PostgreSQL migration `0008 -> 0009 -> 0010` and `alembic check` passed. Both
+  new migrations have empty rollback/reapply and populated-history protection
+  tests; file migration tests separately protect pending outbox and replay rows.
+- The initial full canonical run had 532 passes and one stale assertion expecting
+  migration `0008`. Updating that expected head to `0010` passed all 3 database
+  tests. A further 4 file-migration and 4 daily PostgreSQL regressions passed;
+  **541 distinct backend cases** passed across the full run and targeted reruns,
+  with zero database skips. This is not a claim that every case uses PostgreSQL:
+  relational/HTTP fixture tests also use SQLite; PG-specific tests used isolated
+  schemas in the disposable local database.
+- Ruff lint/format, frontend lint/typecheck, production build and 56 route
+  mappings passed. Ten C command/client scripts passed **705 assertions**.
+  Existing C browser cases passed **36/36**, and daily API page contracts passed
+  **4/4**. These test responses are not real vendor or production identity evidence.
+- Independent read-only reviews of daily access/UI, C4 transactions and C5
+  storage/version authorization found no remaining blocking issue. Runtime
+  OpenAPI adds 12 paths/33 schemas while preserving every pre-existing path/schema.

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Activity, ArrowRight, Bell, BookOpen, Check, CheckSquare, ChevronRight, Folder, Github, Mail, ShieldCheck, Users } from "lucide-react";
 import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
 import { NotificationsPage } from "@/features/c/NotificationsPage";
+import { ActivityApiPage, HomeApiPage } from "@/features/c/DailyApiPages";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { useUrlQuery } from "@/features/c/use-url-query";
@@ -51,6 +52,10 @@ function ActivityPage() {
 }
 
 export function CoreView({ screen }: { screen: number }) {
+  if (apiMode("daily") === "real") {
+    if (screen === 4) return <HomeApiPage />;
+    if (screen === 30) return <ActivityApiPage />;
+  }
   if (apiMode("workspace") !== "mock" && [4, 5, 6, 30].includes(screen)) {
     return <EmptyState title="日常入口数据暂不可用" description="首页、通知、待办及动态服务尚未接入，请稍后重试。" />;
   }
