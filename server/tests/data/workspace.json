@@ -1,0 +1,85 @@
+{
+  "users": [
+    { "id": "member-1", "role": "leader", "status": "active", "teacherStatus": null },
+    { "id": "member-2", "role": "student", "status": "active", "teacherStatus": null },
+    { "id": "member-21", "role": "student", "status": "active", "teacherStatus": null },
+    { "id": "member-9", "role": "student", "status": "disabled", "teacherStatus": null },
+    { "id": "teacher-1", "role": "teacher", "status": "active", "teacherStatus": "approved" },
+    { "id": "ta-1", "role": "ta", "status": "active", "teacherStatus": null },
+    { "id": "ta-2", "role": "ta", "status": "active", "teacherStatus": null },
+    { "id": "admin-1", "role": "admin", "status": "active", "teacherStatus": null }
+  ],
+  "courses": [
+    {
+      "id": "course-1",
+      "name": "软件工程",
+      "teacherId": "teacher-1",
+      "memberIds": ["member-1", "member-2", "member-21"],
+      "assistantGrants": [{ "userId": "ta-1", "permissions": ["course.rules.edit"] }]
+    },
+    {
+      "id": "course-2",
+      "name": "编译原理",
+      "teacherId": "teacher-1",
+      "memberIds": ["member-9"],
+      "assistantGrants": []
+    }
+  ],
+  "groups": [
+    {
+      "id": "group-1",
+      "courseId": "course-1",
+      "leaderId": "member-1",
+      "memberIds": ["member-1", "member-2"]
+    },
+    {
+      "id": "group-2",
+      "courseId": "course-1",
+      "leaderId": "member-21",
+      "memberIds": ["member-21"]
+    }
+  ],
+  "projects": [
+    {
+      "id": "project-1",
+      "courseId": "course-1",
+      "groupId": "group-1",
+      "name": "证据驱动协作平台",
+      "description": "课程项目",
+      "progress": 42,
+      "lifecycle": "active",
+      "visibility": "course",
+      "memberIds": ["member-1", "member-2"],
+      "requirementIds": ["req-1"],
+      "taskIds": ["task-1"]
+    },
+    {
+      "id": "project-2",
+      "courseId": "course-1",
+      "groupId": null,
+      "ownerId": "member-1",
+      "name": "无小组项目",
+      "description": "个人项目",
+      "progress": 10,
+      "lifecycle": "active",
+      "visibility": "members",
+      "memberIds": ["member-1"],
+      "requirementIds": [],
+      "taskIds": []
+    },
+    {
+      "id": "project-3",
+      "courseId": "course-2",
+      "groupId": null,
+      "ownerId": "member-9",
+      "name": "编译器项目",
+      "description": "跨课程项目",
+      "progress": 5,
+      "lifecycle": "active",
+      "visibility": "course",
+      "memberIds": ["member-9"],
+      "requirementIds": [],
+      "taskIds": []
+    }
+  ]
+}

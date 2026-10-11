@@ -1,4 +1,5 @@
 import type { MockData, Task, AcceptanceCriterion } from "@/types/domain";
+import { buildLegacyRevisions } from "../lib/versioning.ts";
 
 const now = "2026-10-05T09:00:00.000Z";
 
@@ -14,6 +15,7 @@ const users: MockData["users"] = [
   { id: "teacher-1", name: "李老师", username: "teacherli", email: "li@must.edu.mo", college: "计算机科学与工程学院", role: "teacher", verified: true, status: "active", teacherStatus: "approved", avatarColor: "#dde7fc" },
   { id: "teacher-2", name: "王老师", username: "teacherwang", email: "wang@must.edu.mo", college: "商学院", role: "teacher", verified: true, status: "active", teacherStatus: "approved", avatarColor: "#e8e0fb" },
   { id: "teacher-3", name: "刘老师", username: "teacherliu", email: "liu@must.edu.mo", college: "计算机科学与工程学院", role: "teacher", verified: true, status: "pending", teacherStatus: "pending", avatarColor: "#e0f1e8" },
+  { id: "ta-1", name: "陈助教", username: "tachen", email: "chenta@must.edu.mo", college: "计算机科学与工程学院", role: "ta", verified: true, status: "active", avatarColor: "#e3f0e8" },
   { id: "admin-1", name: "系统管理员", username: "admin", email: "admin@must.edu.mo", college: "信息技术处", role: "admin", verified: true, status: "active", avatarColor: "#dbe6f7" },
   ...Array.from({ length: 15 }, (_, index) => {
     const number = index + 6;
@@ -22,7 +24,7 @@ const users: MockData["users"] = [
 ];
 
 const courses: MockData["courses"] = [
-  { id: "course-1", name: "软件工程 · 2026", code: "SE2026", college: "计算机科学与工程学院", semester: "2026 秋季学期", teacherId: "teacher-1", status: "active", projectDeadline: "2026-12-20", formationDeadline: "2026-10-15", groupingMode: "free", minGroupSize: 3, maxGroupSize: 4, memberIds: Array.from({ length: 21 }, (_, index) => `member-${index + 1}`), version: 2, rules: ["自由组队，每组 3-4 人", "项目需绑定 GitHub 仓库", "正式证据需关联任务与验收标准", "最终提交 PDF 与 Word 报告"], requiredFiles: ["项目方案", "需求规格说明", "设计文档", "项目报告", "演示视频"], milestoneTemplate: [{ id: "template-m1", title: "M1 需求与基线确认", description: "完成组队与需求确认", deadline: "2026-10-15" }, { id: "template-m2", title: "M2 核心流程实现", description: "完成核心功能", deadline: "2026-10-25" }, { id: "template-m3", title: "M3 证据与贡献体系", description: "完成证据验收", deadline: "2026-11-20" }, { id: "template-m4", title: "M4 最终验收与报告", description: "完成正式报告", deadline: "2026-12-20" }] },
+  { id: "course-1", name: "软件工程 · 2026", code: "SE2026", college: "计算机科学与工程学院", semester: "2026 秋季学期", teacherId: "teacher-1", status: "active", projectDeadline: "2026-12-20", formationDeadline: "2026-10-15", groupingMode: "free", minGroupSize: 3, maxGroupSize: 4, memberIds: Array.from({ length: 21 }, (_, index) => `member-${index + 1}`), assistantGrants: [{ userId: "ta-1", permissions: [] }], version: 2, rules: ["自由组队，每组 3-4 人", "项目需绑定 GitHub 仓库", "正式证据需关联任务与验收标准", "最终提交 PDF 与 Word 报告"], requiredFiles: ["项目方案", "需求规格说明", "设计文档", "项目报告", "演示视频"], milestoneTemplate: [{ id: "template-m1", title: "M1 需求与基线确认", description: "完成组队与需求确认", deadline: "2026-10-15" }, { id: "template-m2", title: "M2 核心流程实现", description: "完成核心功能", deadline: "2026-10-25" }, { id: "template-m3", title: "M3 证据与贡献体系", description: "完成证据验收", deadline: "2026-11-20" }, { id: "template-m4", title: "M4 最终验收与报告", description: "完成正式报告", deadline: "2026-12-20" }] },
   { id: "course-2", name: "数据结构与算法 · 2026", code: "DSA2026", college: "计算机科学与工程学院", semester: "2026 秋季学期", teacherId: "teacher-1", status: "active", projectDeadline: "2026-12-10", formationDeadline: "2026-10-18", groupingMode: "free", minGroupSize: 3, maxGroupSize: 4, memberIds: ["member-1", "member-5"], version: 1, rules: ["课程项目需覆盖核心算法分析", "小组人数 3-4 人"], requiredFiles: ["项目报告", "代码仓库"] },
   { id: "course-3", name: "人工智能基础 · 2025", code: "AI2025", college: "计算机科学与工程学院", semester: "2025 秋季学期", teacherId: "teacher-2", status: "ended", projectDeadline: "2025-12-18", formationDeadline: "2025-10-15", groupingMode: "approval", minGroupSize: 3, maxGroupSize: 5, memberIds: ["member-1", "member-22", "member-23"], version: 1, rules: ["课程项目已归档"], requiredFiles: ["最终报告"] },
 ];
@@ -38,10 +40,10 @@ const groups: MockData["groups"] = [
 ];
 
 const projects: MockData["projects"] = [
-  { id: "project-1", courseId: "course-1", groupId: "group-1", name: "GroupProof", description: "基于证据的高校小组项目协作平台", type: "课程项目", finalDeadline: "2026-12-20", setupStep: 2, setupStatus: "frozen", baselineVersion: 1, planVersion: 3, planConfirmed: true, confirmedBy: ["member-1", "member-2", "member-3", "member-4"], lifecycle: "active", progress: 72, coreProgress: 74, memberIds: ["member-1", "member-2", "member-3", "member-4"], version: 3 },
-  { id: "project-2", courseId: "course-2", name: "校园服务导航", description: "为学生提供校园服务统一入口", type: "课程项目", finalDeadline: "2026-12-10", setupStep: 1, setupStatus: "not_initialized", baselineVersion: 0, planVersion: 0, planConfirmed: false, confirmedBy: [], lifecycle: "active", progress: 0, coreProgress: 0, memberIds: ["member-1", "member-5"], version: 1 },
-  { id: "project-3", courseId: "course-1", groupId: "group-2", name: "智能交通分析", description: "基于数据的城市交通现状分析与优化建议", type: "课程报告", finalDeadline: "2026-12-20", setupStep: 6, setupStatus: "frozen", baselineVersion: 1, planVersion: 1, planConfirmed: true, confirmedBy: ["member-5", "member-6", "member-7"], lifecycle: "active", progress: 92, coreProgress: 88, memberIds: ["member-5", "member-6", "member-7"], version: 2 },
-  { id: "project-4", courseId: "course-3", groupId: "group-7", name: "校园数据分析", description: "课程历史项目，正式版本已归档。", type: "课程项目", finalDeadline: "2025-12-18", setupStep: 6, setupStatus: "frozen", baselineVersion: 1, planVersion: 1, planConfirmed: true, confirmedBy: ["member-1", "member-22", "member-23"], lifecycle: "archived", progress: 100, coreProgress: 100, memberIds: ["member-1", "member-22", "member-23"], version: 1 },
+  { id: "project-1", courseId: "course-1", groupId: "group-1", name: "GroupProof", description: "基于证据的高校小组项目协作平台", type: "课程项目", visibility: "course", finalDeadline: "2026-12-20", setupStep: 2, setupStatus: "frozen", baselineVersion: 1, planVersion: 3, planConfirmed: true, confirmedBy: ["member-1", "member-2", "member-3", "member-4"], lifecycle: "active", progress: 72, coreProgress: 74, memberIds: ["member-1", "member-2", "member-3", "member-4"], version: 3 },
+  { id: "project-2", courseId: "course-2", ownerId: "member-1", name: "校园服务导航", description: "为学生提供校园服务统一入口", type: "课程项目", visibility: "members", finalDeadline: "2026-12-10", setupStep: 1, setupStatus: "not_initialized", baselineVersion: 0, planVersion: 0, planConfirmed: false, confirmedBy: [], lifecycle: "active", progress: 0, coreProgress: 0, memberIds: ["member-1", "member-5"], version: 1 },
+  { id: "project-3", courseId: "course-1", groupId: "group-2", name: "智能交通分析", description: "基于数据的城市交通现状分析与优化建议", type: "课程报告", visibility: "members", finalDeadline: "2026-12-20", setupStep: 6, setupStatus: "frozen", baselineVersion: 1, planVersion: 1, planConfirmed: true, confirmedBy: ["member-5", "member-6", "member-7"], lifecycle: "active", progress: 92, coreProgress: 88, memberIds: ["member-5", "member-6", "member-7"], version: 2 },
+  { id: "project-4", courseId: "course-3", groupId: "group-7", name: "校园数据分析", description: "课程历史项目，正式版本已归档。", type: "课程项目", visibility: "members", finalDeadline: "2025-12-18", setupStep: 6, setupStatus: "frozen", baselineVersion: 1, planVersion: 1, planConfirmed: true, confirmedBy: ["member-1", "member-22", "member-23"], lifecycle: "archived", progress: 100, coreProgress: 100, memberIds: ["member-1", "member-22", "member-23"], version: 1 },
 ];
 
 const modules: MockData["modules"] = [
@@ -123,7 +125,8 @@ const milestones: MockData["milestones"] = [
   { id: "milestone-4", projectId: "project-1", title: "M4 最终验收与报告", description: "完成贡献确认和正式报告。", deadline: "2026-12-20", status: "not_started", progress: 20, taskIds: ["task-4"], deliverables: ["项目报告 PDF + Word", "演示视频"] },
 ];
 
-export const seedData: MockData = {
+export const seedData: MockData = buildLegacyRevisions({
+  schemaVersion: 1,
   currentUserId: "member-1",
   currentRole: "leader",
   users,
@@ -206,4 +209,9 @@ export const seedData: MockData = {
     { id: "ai-usage-3", workflow: "证据验收", model: "Qwen", calls: 142, failures: 3, avgLatencyMs: 1650, cost: 13.8 },
     { id: "ai-usage-4", workflow: "报告生成", model: "Claude 3.5", calls: 31, failures: 1, avgLatencyMs: 2870, cost: 11.2 },
   ],
-};
+  baselineRevisions: [],
+  planRevisions: [],
+  courseRuleRevisions: [],
+  ruleChangeReviews: [],
+  setupDrafts: [],
+});
