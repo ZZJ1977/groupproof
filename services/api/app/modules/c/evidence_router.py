@@ -20,6 +20,7 @@ from app.modules.c.evidence_schemas import (
     EvidenceDetailDTO,
     EvidenceDTO,
     EvidencePageDTO,
+    EvidenceSourceType,
 )
 from app.modules.c.evidence_service import (
     check_source,
@@ -86,8 +87,7 @@ def collection(
     q: str | None = Query(default=None, max_length=200),
     status: Literal["candidate", "pending_confirmation", "formal", "withdrawn", "void"]
     | None = None,
-    source_type: Literal["manual", "task_note", "file", "screenshot", "github", "feishu"]
-    | None = None,
+    source_type: EvidenceSourceType | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
     offset: int | None = Query(default=None, ge=0, deprecated=True),

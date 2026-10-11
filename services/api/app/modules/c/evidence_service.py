@@ -277,6 +277,10 @@ def create_evidence(
         )
     elif command.source_type == "task_note":
         source = note_source(session, project_id, command.task_id, command.source_id)
+    elif command.source_type == "discussion":
+        from app.modules.c.discussion_service import resolve_discussion_source
+
+        source = resolve_discussion_source(session, user, project_id, command.source_id)
     else:
         source = source_port.resolve(
             project_id=project_id,
@@ -546,12 +550,19 @@ def check_source(
     )
     if original is None or original.content_json.get("source_id") != str(command.source_id):
         raise ApiError(422, "SOURCE_IDENTITY_CONFLICT", "Use the original source identifier.")
-    source = source_port.resolve(
-        project_id=project_id,
-        actor_id=user.id,
-        source_type=row.source_type,
-        source_id=command.source_id,
-    )
+    if row.source_type == "discussion":
+        from app.modules.c.discussion_service import resolve_discussion_source
+
+        source = resolve_discussion_source(
+            session, user, project_id, command.source_id, require_important=False
+        )
+    else:
+        source = source_port.resolve(
+            project_id=project_id,
+            actor_id=user.id,
+            source_type=row.source_type,
+            source_id=command.source_id,
+        )
     append_source_change(session, row, user.id, source, command.reason)
     return finish_request(session, record, evidence_data(session, row))
 
