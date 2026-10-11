@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useProjectCore, projectPath } from "./core-model";
+import { ProjectAccessDenied, ProjectPublicSummary } from "./ProjectPublicSummary";
+import { getProjectSummary } from "@/lib/overview";
 import { ProjectOverview, ProjectSetup } from "./ProjectOverviewSetup";
-import { ProjectRequirements, ProjectPlanning } from "./ProjectRequirementsPlanning";
+import { ProjectRequirements } from "./ProjectRequirementsPlanning";
+import { ProjectPlanning } from "./ProjectPlanningView";
 import { ProjectTasks, ProjectTaskDetail } from "./ProjectTasksViews";
 import { ProjectTaskSubmit, ProjectEvidenceCheck, ProjectVerification } from "./ProjectTaskWorkflow";
 import { ProjectMilestones, ProjectMilestoneDetail, ProjectEvidenceCenter } from "./ProjectMilestonesEvidence";
@@ -15,7 +18,10 @@ export type ProjectCoreScreen = 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 1
 export default function ProjectCoreView({ screen, projectId, taskId, milestoneId }: { screen: number; projectId: string; taskId?: string; milestoneId?: string }) {
   const core = useProjectCore(projectId);
   if (!core) return <main className={s.page}><h1 className={s.title}>项目不存在</h1><p className={s.subtitle}>该项目可能已被移除，或当前数据中没有对应记录。</p><Link className={s.buttonSoft} href="/home"><ArrowLeft size={14} />返回首页</Link></main>;
-  if (!core.canView) return <main className={s.page}><h1 className={s.title}>无权查看此项目</h1><p className={s.subtitle}>项目内容仅对成员及对应课程教师开放。</p><Link className={s.buttonSoft} href="/home"><ArrowLeft size={14} />返回首页</Link></main>;
+  if (!core.canView) {
+    if (core.canSummary) return <ProjectPublicSummary summary={getProjectSummary(core.data, core.data.currentUserId, core.project.id)} />;
+    return <ProjectAccessDenied message="项目内容仅对成员及所属课程教学人员开放。" />;
+  }
 
   const task = core.tasks.find((item) => item.id === taskId);
   const milestone = core.milestones.find((item) => item.id === milestoneId);
