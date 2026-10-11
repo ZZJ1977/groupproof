@@ -1,5 +1,6 @@
 export const apiFeatures = [
   "workspace",
+  "daily",
   "auth",
   "courses",
   "groups",

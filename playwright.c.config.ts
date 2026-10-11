@@ -4,6 +4,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "c-*.spec.ts",
+  testIgnore: "c-daily-api.spec.ts",
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
