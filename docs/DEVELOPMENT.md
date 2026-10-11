@@ -45,6 +45,7 @@ docker compose down -v
 ~~~env
 NEXT_PUBLIC_APP_ENV=development
 NEXT_PUBLIC_ENABLE_MOCKS=true
+NEXT_PUBLIC_API_FEATURES=
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 API_INTERNAL_URL=http://localhost:8000
 NEXT_PUBLIC_ADMIN_URL=http://localhost:3002
@@ -54,7 +55,22 @@ DATABASE_TIMEZONE=Asia/Shanghai
 
 NEXT_PUBLIC_ 变量会进入浏览器包，只能放公开地址和功能开关。数据库连接串、JWT 密钥、OAuth secret、对象存储密钥、AI 密钥和 Railway token 只能放在 .env.local、Railway Variables 或 GitHub Secrets。
 
-接入真实 API 后，将 NEXT_PUBLIC_ENABLE_MOCKS 改为 false，并设置 API 地址。
+接入真实 API 后，将 `NEXT_PUBLIC_ENABLE_MOCKS` 改为 `false`，并设置 API 地址。后端只完成部分功能时，可以按功能切换，例如 `NEXT_PUBLIC_API_FEATURES=projects=real,evidence=mock`。支持的功能名包括 `auth`、`courses`、`groups`、`projects`、`tasks`、`evidence`、`verification`、`contributions`、`reports`、`admin` 和 `workspace`。未列出的功能遵循全局开关；当前默认值保持 Mock。
+
+## OpenAPI 客户端
+
+前端 API 类型和调用客户端从 OpenAPI 生成。默认使用仓库中的基线快照；后端服务运行后，可以从 FastAPI 的 `/openapi.json` 重新生成：
+
+~~~bash
+npm run api:generate
+OPENAPI_URL=http://localhost:8000/openapi.json npm run api:generate
+npm run test:api-config
+npm run test:api-client
+~~~
+
+生成文件是 `packages/domain/api.generated.ts`，调用封装在 `lib/api/client.ts` 和 `lib/api/real-service.ts`。不要直接编辑生成文件；后端接口变更后先更新 OpenAPI，再重新生成并检查类型。
+
+当前后端只提供项目示例接口，因此 `projects=real` 仅用于验证 OpenAPI 客户端链路，并要求使用后端的 UUID 和登录会话；`workspace`、`tasks`、`evidence`、`verification` 在对应 API 完成前继续使用 Mock。
 
 ## 本地检查
 
@@ -83,14 +99,15 @@ pytest -q
 
 ~~~bash
 cd services/api
+export APP_ENV=development
 export DATABASE_URL=postgresql://groupproof:groupproof-local@localhost:5432/groupproof
 export DATABASE_TIMEZONE=Asia/Shanghai
 alembic upgrade head
-python -m scripts.seed_core
+APP_ENV=development python -m scripts.seed_core
 alembic check
 ~~~
 
-迁移文件的唯一目录是 `services/api/migrations/`。每次结构变化都要新增迁移并在干净 PostgreSQL 上执行；`seed_core` 只用于本地和测试环境。
+迁移文件的唯一目录是 `services/api/migrations/`。每次结构变化都要新增迁移并在干净 PostgreSQL 上执行；`seed_core` 会覆盖核心工作流的演示数据，并在 `APP_ENV` 不是 `development` 或 `test` 时拒绝执行，只用于本地和测试环境。
 
 前端页面测试：
 
