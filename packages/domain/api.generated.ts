@@ -74,6 +74,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin Requests */
+        get: operations["admin_requests_api_v1_admin_access_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/access-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Request Detail */
+        get: operations["request_detail_api_v1_admin_access_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/access-requests/{request_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Decision */
+        post: operations["request_decision_api_v1_admin_access_requests__request_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ai-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Usage */
+        get: operations["usage_api_v1_admin_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Collection */
+        get: operations["audit_collection_api_v1_admin_audit_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit-logs/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Record */
+        get: operations["audit_record_api_v1_admin_audit_logs__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Course List */
+        get: operations["course_list_api_v1_admin_courses_get"];
+        put?: never;
+        /** Course Create */
+        post: operations["course_create_api_v1_admin_courses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/courses/{course_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Course Detail */
+        get: operations["course_detail_api_v1_admin_courses__course_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/courses/{course_id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Course Transition */
+        post: operations["course_transition_api_v1_admin_courses__course_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -108,6 +262,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{course_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection */
+        get: operations["collection_api_v1_courses__course_id__files_get"];
+        put?: never;
+        /** Register */
+        post: operations["register_api_v1_courses__course_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_v1_courses__course_id__files__file_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/files/{file_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish */
+        post: operations["publish_api_v1_courses__course_id__files__file_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/files/{file_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append */
+        post: operations["append_api_v1_courses__course_id__files__file_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/files/{file_id}/versions/{version_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Link */
+        get: operations["link_api_v1_courses__course_id__files__file_id__versions__version_id__link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/home/summary": {
         parameters: {
             query?: never;
@@ -117,6 +357,41 @@ export interface paths {
         };
         /** Home Summary */
         get: operations["home_summary_api_v1_home_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Own Requests */
+        get: operations["own_requests_api_v1_me_access_requests_get"];
+        put?: never;
+        /** Request Access */
+        post: operations["request_access_api_v1_me_access_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/action-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Action List */
+        get: operations["action_list_api_v1_me_action_items_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -136,6 +411,57 @@ export interface paths {
         get: operations["personal_activity_api_v1_me_activity_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Notification List */
+        get: operations["notification_list_api_v1_me_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read One */
+        post: operations["read_one_api_v1_me_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read All */
+        post: operations["read_all_api_v1_me_notifications_read_all_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -219,6 +545,23 @@ export interface paths {
         };
         /** History */
         get: operations["history_api_v1_projects__project_id__activities__source_type___source_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/c-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Context */
+        get: operations["context_api_v1_projects__project_id__c_context_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -507,6 +850,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/progress-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Progress History */
+        get: operations["progress_history_api_v1_projects__project_id__tasks__task_id__progress_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/execution": {
         parameters: {
             query?: never;
@@ -596,6 +956,188 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessRequestDetailDTO */
+        AccessRequestDetailDTO: {
+            /**
+             * Applicant Id
+             * Format: uuid
+             */
+            applicant_id: string;
+            /** Approval Expired */
+            approval_expired: boolean;
+            /** Approved Expires At */
+            approved_expires_at: string | null;
+            /** Authorization Receipt */
+            authorization_receipt: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+            /**
+             * Authorization State
+             * @enum {string}
+             */
+            authorization_state: "not_activated" | "receipt_recorded_current_access_not_checked";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** History */
+            history: components["schemas"]["GovernanceHistoryDTO"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Requested Expires At
+             * Format: date-time
+             */
+            requested_expires_at: string;
+            scope: components["schemas"]["AccessScope"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+        };
+        /** AccessRequestDTO */
+        AccessRequestDTO: {
+            /**
+             * Applicant Id
+             * Format: uuid
+             */
+            applicant_id: string;
+            /** Approval Expired */
+            approval_expired: boolean;
+            /** Approved Expires At */
+            approved_expires_at: string | null;
+            /** Authorization Receipt */
+            authorization_receipt: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+            /**
+             * Authorization State
+             * @enum {string}
+             */
+            authorization_state: "not_activated" | "receipt_recorded_current_access_not_checked";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Requested Expires At
+             * Format: date-time
+             */
+            requested_expires_at: string;
+            scope: components["schemas"]["AccessScope"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+        };
+        /** AccessRequestPageDTO */
+        AccessRequestPageDTO: {
+            /** Items */
+            items: components["schemas"]["AccessRequestDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** AccessScope */
+        AccessScope: {
+            /**
+             * Operation
+             * @default read
+             * @constant
+             */
+            operation: "read";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Resource Id
+             * Format: uuid
+             */
+            resource_id: string;
+            /**
+             * Resource Type
+             * @enum {string}
+             */
+            resource_type: "project" | "task" | "evidence";
+        };
+        /** ActionItemDTO */
+        ActionItemDTO: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "task" | "verification" | "evidence" | "rule" | "appeal" | "member" | "course";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Due At */
+            due_at: string | null;
+            /** Href */
+            href: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "low" | "medium" | "high";
+            /**
+             * Recipient Id
+             * Format: uuid
+             */
+            recipient_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "completed" | "rejected";
+            target: components["schemas"]["InboxTarget"];
+            /** Title */
+            title: string;
+        };
+        /** ActionItemPageDTO */
+        ActionItemPageDTO: {
+            /** Items */
+            items: components["schemas"]["ActionItemDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
         /** ActivityDecisionDTO */
         ActivityDecisionDTO: {
             /**
@@ -864,6 +1406,18 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AppendCourseFileVersion */
+        AppendCourseFileVersion: {
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+        };
         /** AppendFileVersion */
         AppendFileVersion: {
             /** Expected Version */
@@ -885,6 +1439,115 @@ export interface components {
             /** Task Id */
             task_id: string | null;
         };
+        /** AuditPageDTO */
+        AuditPageDTO: {
+            /** Items */
+            items: components["schemas"]["AuditRecord"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** AuditRecord */
+        AuditRecord: {
+            /** Action */
+            action: string;
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Actor Role
+             * @enum {string}
+             */
+            actor_role: "student" | "leader" | "teacher" | "ta" | "admin" | "system";
+            /** After */
+            after: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Before */
+            before: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "success" | "failure";
+            /** Target Id */
+            target_id: string | null;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "user" | "course" | "project" | "task" | "evidence" | "system";
+        };
+        /** CContextActorDTO */
+        CContextActorDTO: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Leader */
+            is_leader: boolean;
+            /** Is Member */
+            is_member: boolean;
+            /** Is Teacher */
+            is_teacher: boolean;
+        };
+        /** CContextPermissionsDTO */
+        CContextPermissionsDTO: {
+            /** Can Capture Evidence */
+            can_capture_evidence: boolean;
+            /** Can Discuss */
+            can_discuss: boolean;
+            /** Can Manage Activity */
+            can_manage_activity: boolean;
+            /** Can Manage Files */
+            can_manage_files: boolean;
+        };
+        /** CContextProjectDTO */
+        CContextProjectDTO: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lifecycle */
+            lifecycle: string;
+            /** Name */
+            name: string;
+            /** Setup Status */
+            setup_status: string;
+        };
+        /** CCriterionSelectorDTO */
+        CCriterionSelectorDTO: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Text */
+            text: string;
+            /** Version */
+            version: number;
+        };
         /** CheckEvidenceSource */
         CheckEvidenceSource: {
             /** Expected Version */
@@ -896,6 +1559,402 @@ export interface components {
              * Format: uuid
              */
             source_id: string;
+        };
+        /** CourseDetailDTO */
+        CourseDetailDTO: {
+            /** Code */
+            code: string;
+            /** College */
+            college: string;
+            /** Formation Deadline */
+            formation_deadline: string | null;
+            /**
+             * Grouping Mode
+             * @enum {string}
+             */
+            grouping_mode: "free" | "approval";
+            /** History */
+            history: components["schemas"]["GovernanceHistoryDTO"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invite Code */
+            invite_code: string | null;
+            /** Invite Revoked At */
+            invite_revoked_at: string | null;
+            /** Lock Version */
+            lock_version: number;
+            /** Max Group Size */
+            max_group_size: number;
+            /** Min Group Size */
+            min_group_size: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Project Deadline */
+            project_deadline: string | null;
+            /** Semester */
+            semester: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "ended";
+        };
+        /** CourseDTO */
+        CourseDTO: {
+            /** Code */
+            code: string;
+            /** College */
+            college: string;
+            /** Formation Deadline */
+            formation_deadline: string | null;
+            /**
+             * Grouping Mode
+             * @enum {string}
+             */
+            grouping_mode: "free" | "approval";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Max Group Size */
+            max_group_size: number;
+            /** Min Group Size */
+            min_group_size: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Project Deadline */
+            project_deadline: string | null;
+            /** Semester */
+            semester: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "active" | "ended";
+        };
+        /** CourseFileDecisionDTO */
+        CourseFileDecisionDTO: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "created" | "appended" | "published";
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Previous Official Version No */
+            previous_official_version_no: number | null;
+            /** Reason */
+            reason: string;
+            /** Resulting Lock Version */
+            resulting_lock_version: number;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** CourseFileDetailDTO */
+        CourseFileDetailDTO: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "documents" | "images" | "exports";
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Decisions */
+            decisions: components["schemas"]["CourseFileDecisionDTO"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Latest Version No */
+            latest_version_no: number;
+            /** Lock Version */
+            lock_version: number;
+            /** Name */
+            name: string;
+            /** Official Version No */
+            official_version_no: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Versions */
+            versions: components["schemas"]["CourseFileVersionDTO"][];
+        };
+        /** CourseFileDTO */
+        CourseFileDTO: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "documents" | "images" | "exports";
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Latest Version No */
+            latest_version_no: number;
+            /** Lock Version */
+            lock_version: number;
+            /** Name */
+            name: string;
+            /** Official Version No */
+            official_version_no: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Versions */
+            versions: components["schemas"]["CourseFileVersionDTO"][];
+        };
+        /** CourseFileListItemDTO */
+        CourseFileListItemDTO: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "documents" | "images" | "exports";
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Extension */
+            extension: string;
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Mime Type */
+            mime_type: string;
+            /** Name */
+            name: string;
+            /** Original Name */
+            original_name: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "current" | "superseded";
+            /**
+             * Uploaded By
+             * Format: uuid
+             */
+            uploaded_by: string;
+            /** Version No */
+            version_no: number;
+        };
+        /** CourseFilePageDTO */
+        CourseFilePageDTO: {
+            /** Can Write */
+            can_write: boolean;
+            /** Items */
+            items: components["schemas"]["CourseFileListItemDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** CourseFileVersionDTO */
+        CourseFileVersionDTO: {
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Extension */
+            extension: string;
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mime Type */
+            mime_type: string;
+            /** Original Name */
+            original_name: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "current" | "superseded";
+            /**
+             * Uploaded By
+             * Format: uuid
+             */
+            uploaded_by: string;
+            /** Version No */
+            version_no: number;
+        };
+        /** CoursePageDTO */
+        CoursePageDTO: {
+            /** Items */
+            items: components["schemas"]["CourseDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** CProjectContextDTO */
+        CProjectContextDTO: {
+            actor: components["schemas"]["CContextActorDTO"];
+            /** Members */
+            members: components["schemas"]["CSelectorDTO"][];
+            /** Milestones */
+            milestones: components["schemas"]["CSelectorDTO"][];
+            /** Modules */
+            modules: components["schemas"]["CSelectorDTO"][];
+            permissions: components["schemas"]["CContextPermissionsDTO"];
+            project: components["schemas"]["CContextProjectDTO"];
+            /** Requirements */
+            requirements: components["schemas"]["CSelectorDTO"][];
+            /** Tasks */
+            tasks: components["schemas"]["CTaskSelectorDTO"][];
+        };
+        /** CreateAccessRequest */
+        CreateAccessRequest: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Reason */
+            reason: string;
+            scope: components["schemas"]["AccessScope"];
+        };
+        /** CreateCourse */
+        CreateCourse: {
+            /** Code */
+            code: string;
+            /** College */
+            college: string;
+            /** Formation Deadline */
+            formation_deadline?: string | null;
+            /**
+             * Grouping Mode
+             * @default free
+             * @enum {string}
+             */
+            grouping_mode: "free" | "approval";
+            /**
+             * Max Group Size
+             * @default 8
+             */
+            max_group_size: number;
+            /**
+             * Min Group Size
+             * @default 1
+             */
+            min_group_size: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /**
+             * Project Deadline
+             * Format: date-time
+             */
+            project_deadline: string;
+            /** Reason */
+            reason: string;
+            /** Semester */
+            semester: string;
         };
         /** CreateDiscussion */
         CreateDiscussion: {
@@ -939,6 +1998,34 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+            /** Title */
+            title: string;
+        };
+        /** CSelectorDTO */
+        CSelectorDTO: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** CTaskSelectorDTO */
+        CTaskSelectorDTO: {
+            /** Can Associate */
+            can_associate: boolean;
+            /** Can Capture Evidence */
+            can_capture_evidence: boolean;
+            /** Criteria */
+            criteria: components["schemas"]["CCriterionSelectorDTO"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
             /** Title */
             title: string;
         };
@@ -1084,6 +2171,20 @@ export interface components {
             pending_submission: number;
             /** Pending Verification */
             pending_verification: number;
+        };
+        /** DecideAccessRequest */
+        DecideAccessRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Expected Version */
+            expected_version: number;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Reason */
+            reason: string;
         };
         /** DecideActivity */
         DecideActivity: {
@@ -1650,10 +2751,59 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** GovernanceHistoryDTO */
+        GovernanceHistoryDTO: {
+            /** Action */
+            action: string;
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /** After */
+            after: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Before */
+            before: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string;
+            /** Version No */
+            version_no: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InboxTarget */
+        InboxTarget: {
+            /** Course Id */
+            course_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "project" | "task" | "verification" | "evidence" | "discussion" | "course" | "member_change" | "appeal" | "baseline" | "plan" | "rule_change";
+            /** Project Id */
+            project_id?: string | null;
         };
         JsonValue: unknown;
         /** LogicalFileDTO */
@@ -1699,6 +2849,16 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["FileVersionDTO"][];
         };
+        /** MarkAllNotificationsRead */
+        MarkAllNotificationsRead: {
+            /** Expected Inbox Version */
+            expected_inbox_version: number;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+        };
         /** MarkDiscussionImportant */
         MarkDiscussionImportant: {
             /** Expected Version */
@@ -1707,6 +2867,117 @@ export interface components {
             is_important: boolean;
             /** Reason */
             reason: string;
+        };
+        /** MarkNotificationRead */
+        MarkNotificationRead: {
+            /** Expected Inbox Version */
+            expected_inbox_version: number;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+        };
+        /** NotificationDTO */
+        NotificationDTO: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "course" | "project" | "system";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Href */
+            href: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Read At */
+            read_at: string | null;
+            /**
+             * Recipient Id
+             * Format: uuid
+             */
+            recipient_id: string;
+            target: components["schemas"]["InboxTarget"] | null;
+            /** Title */
+            title: string;
+        };
+        /** NotificationPageDTO */
+        NotificationPageDTO: {
+            /** Inbox Version */
+            inbox_version: number;
+            /** Items */
+            items: components["schemas"]["NotificationDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+            /** Total */
+            total: number;
+            /** Total All */
+            total_all: number;
+            /** Unread Total */
+            unread_total: number;
+        };
+        /** NotificationReadReceipt */
+        NotificationReadReceipt: {
+            /** Expected Inbox Version */
+            expected_inbox_version: number;
+            /** Expected Version */
+            expected_version: number | null;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Marked Count */
+            marked_count: number;
+            /** Notification Id */
+            notification_id: string | null;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "single" | "all";
+            /**
+             * Read At
+             * Format: date-time
+             */
+            read_at: string;
+            /**
+             * Recipient Id
+             * Format: uuid
+             */
+            recipient_id: string;
+            /** Resulting Inbox Version */
+            resulting_inbox_version: number;
+            /** Resulting Version */
+            resulting_version: number | null;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+            /** Total All */
+            total_all: number;
+            /** Unread After */
+            unread_after: number;
+            /** Unread Before */
+            unread_before: number;
         };
         /** PrepareSubmissionRequest */
         PrepareSubmissionRequest: {
@@ -1718,6 +2989,42 @@ export interface components {
         PrepareSubmissionView: {
             execution: components["schemas"]["TaskExecutionView"];
             note: components["schemas"]["TaskNoteDTO"] | null;
+        };
+        /** ProgressHistoryEventDTO */
+        ProgressHistoryEventDTO: {
+            /** Actor Name */
+            actor_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** From Status */
+            from_status: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Progress After */
+            progress_after: number | null;
+            /** Progress Before */
+            progress_before: number | null;
+            /** Reason */
+            reason: string | null;
+            /** To Status */
+            to_status: string | null;
+        };
+        /** ProgressHistoryPageDTO */
+        ProgressHistoryPageDTO: {
+            /** Items */
+            items: components["schemas"]["ProgressHistoryEventDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
         };
         /** ProjectExample */
         ProjectExample: {
@@ -1739,6 +3046,34 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** PublishCourseFileVersion */
+        PublishCourseFileVersion: {
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** RegisterCourseFile */
+        RegisterCourseFile: {
+            /**
+             * Category
+             * @default documents
+             * @enum {string}
+             */
+            category: "documents" | "images" | "exports";
+            /** Reason */
+            reason: string;
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
         };
         /** RegisterFile */
         RegisterFile: {
@@ -1786,6 +3121,26 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** SignedCourseFileLinkDTO */
+        SignedCourseFileLinkDTO: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "preview" | "download";
+            /** Url */
+            url: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
         /** SignedFileLinkDTO */
         SignedFileLinkDTO: {
             /**
@@ -1810,6 +3165,21 @@ export interface components {
         StartTaskRequest: {
             /** Expected Version */
             expected_version: number;
+        };
+        /** SuccessResponse[AccessRequestDetailDTO] */
+        SuccessResponse_AccessRequestDetailDTO_: {
+            data: components["schemas"]["AccessRequestDetailDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AccessRequestPageDTO] */
+        SuccessResponse_AccessRequestPageDTO_: {
+            data: components["schemas"]["AccessRequestPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[ActionItemPageDTO] */
+        SuccessResponse_ActionItemPageDTO_: {
+            data: components["schemas"]["ActionItemPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[ActivityDTO] */
         SuccessResponse_ActivityDTO_: {
@@ -1839,6 +3209,46 @@ export interface components {
         /** SuccessResponse[AdminUserPageDTO] */
         SuccessResponse_AdminUserPageDTO_: {
             data: components["schemas"]["AdminUserPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AuditPageDTO] */
+        SuccessResponse_AuditPageDTO_: {
+            data: components["schemas"]["AuditPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AuditRecord] */
+        SuccessResponse_AuditRecord_: {
+            data: components["schemas"]["AuditRecord"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CourseDetailDTO] */
+        SuccessResponse_CourseDetailDTO_: {
+            data: components["schemas"]["CourseDetailDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CourseFileDetailDTO] */
+        SuccessResponse_CourseFileDetailDTO_: {
+            data: components["schemas"]["CourseFileDetailDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CourseFileDTO] */
+        SuccessResponse_CourseFileDTO_: {
+            data: components["schemas"]["CourseFileDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CourseFilePageDTO] */
+        SuccessResponse_CourseFilePageDTO_: {
+            data: components["schemas"]["CourseFilePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CoursePageDTO] */
+        SuccessResponse_CoursePageDTO_: {
+            data: components["schemas"]["CoursePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CProjectContextDTO] */
+        SuccessResponse_CProjectContextDTO_: {
+            data: components["schemas"]["CProjectContextDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[DailyActivityPageDTO] */
@@ -1901,14 +3311,34 @@ export interface components {
             data: components["schemas"]["LogicalFileDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[NotificationPageDTO] */
+        SuccessResponse_NotificationPageDTO_: {
+            data: components["schemas"]["NotificationPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[NotificationReadReceipt] */
+        SuccessResponse_NotificationReadReceipt_: {
+            data: components["schemas"]["NotificationReadReceipt"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[PrepareSubmissionView] */
         SuccessResponse_PrepareSubmissionView_: {
             data: components["schemas"]["PrepareSubmissionView"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[ProgressHistoryPageDTO] */
+        SuccessResponse_ProgressHistoryPageDTO_: {
+            data: components["schemas"]["ProgressHistoryPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[ProjectExample] */
         SuccessResponse_ProjectExample_: {
             data: components["schemas"]["ProjectExample"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[SignedCourseFileLinkDTO] */
+        SuccessResponse_SignedCourseFileLinkDTO_: {
+            data: components["schemas"]["SignedCourseFileLinkDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[SignedFileLinkDTO] */
@@ -1934,6 +3364,11 @@ export interface components {
         /** SuccessResponse[Union[TaskNoteDTO, NoneType]] */
         SuccessResponse_Union_TaskNoteDTO__NoneType__: {
             data: components["schemas"]["TaskNoteDTO"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[UsageSummaryDTO] */
+        SuccessResponse_UsageSummaryDTO_: {
+            data: components["schemas"]["UsageSummaryDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** TaskDependencyView */
@@ -2073,6 +3508,18 @@ export interface components {
              */
             updated_at: string;
         };
+        /** TransitionCourse */
+        TransitionCourse: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "publish" | "end";
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason: string;
+        };
         /** UpdateProgressRequest */
         UpdateProgressRequest: {
             /** Expected Version */
@@ -2081,6 +3528,89 @@ export interface components {
             progress: number;
             /** Reason */
             reason: string;
+        };
+        /** UsageBreakdownDTO */
+        UsageBreakdownDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Key */
+            key: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Requests */
+            requests: number;
+            /** Succeeded */
+            succeeded: number;
+        };
+        /** UsageDayDTO */
+        UsageDayDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Requests */
+            requests: number;
+            /** Succeeded */
+            succeeded: number;
+        };
+        /** UsageSummaryDTO */
+        UsageSummaryDTO: {
+            /** Aggregation Scope */
+            aggregation_scope: string;
+            /** By Feature */
+            by_feature: components["schemas"]["UsageBreakdownDTO"][];
+            /** By Model */
+            by_model: components["schemas"]["UsageBreakdownDTO"][];
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Daily */
+            daily: components["schemas"]["UsageDayDTO"][];
+            /**
+             * Days
+             * @enum {integer}
+             */
+            days: 7 | 30 | 90;
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Requests */
+            requests: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Source Snapshot Id */
+            source_snapshot_id: string;
+            /** Succeeded */
+            succeeded: number;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2377,6 +3907,817 @@ export interface operations {
             };
         };
     };
+    admin_requests_api_v1_admin_access_requests_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: ("pending" | "approved" | "rejected") | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessRequestPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    request_detail_api_v1_admin_access_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessRequestDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    request_decision_api_v1_admin_access_requests__request_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessRequestDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    usage_api_v1_admin_ai_usage_get: {
+        parameters: {
+            query?: {
+                days?: 7 | 30 | 90;
+                feature?: string | null;
+                model?: string | null;
+                user_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_UsageSummaryDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    audit_collection_api_v1_admin_audit_logs_get: {
+        parameters: {
+            query?: {
+                action?: string | null;
+                actor_id?: string | null;
+                actor_role?: ("student" | "leader" | "teacher" | "ta" | "admin" | "system") | null;
+                page?: number;
+                page_size?: number;
+                result?: ("success" | "failure") | null;
+                since?: string | null;
+                target_id?: string | null;
+                target_type?: ("user" | "course" | "project" | "task" | "evidence" | "system") | null;
+                until?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AuditPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    audit_record_api_v1_admin_audit_logs__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AuditRecord_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    course_list_api_v1_admin_courses_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                q?: string | null;
+                semester?: string | null;
+                status?: ("draft" | "active" | "ended") | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CoursePageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    course_create_api_v1_admin_courses_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCourse"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    course_detail_api_v1_admin_courses__course_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    course_transition_api_v1_admin_courses__course_id__transitions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransitionCourse"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     collection_api_v1_admin_users_get: {
         parameters: {
             query?: {
@@ -2505,6 +4846,504 @@ export interface operations {
             };
         };
     };
+    collection_api_v1_courses__course_id__files_get: {
+        parameters: {
+            query?: {
+                category?: "all" | "documents" | "images" | "exports" | "archived";
+                file_type?: string | null;
+                page?: number;
+                page_size?: number;
+                q?: string | null;
+                sort?: "updated_desc" | "updated_asc" | "name_asc" | "size_desc";
+                status?: ("draft" | "current" | "superseded") | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseFilePageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    register_api_v1_courses__course_id__files_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterCourseFile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseFileDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    detail_api_v1_courses__course_id__files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseFileDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    publish_api_v1_courses__course_id__files__file_id__publish_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishCourseFileVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseFileDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    append_api_v1_courses__course_id__files__file_id__versions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppendCourseFileVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseFileDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    link_api_v1_courses__course_id__files__file_id__versions__version_id__link_get: {
+        parameters: {
+            query?: {
+                purpose?: "preview" | "download";
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                file_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_SignedCourseFileLinkDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     home_summary_api_v1_home_summary_get: {
         parameters: {
             query?: never;
@@ -2545,6 +5384,248 @@ export interface operations {
             };
             /** @description Invalid category, UUID, dates or pagination. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    own_requests_api_v1_me_access_requests_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: ("pending" | "approved" | "rejected") | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessRequestPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    request_access_api_v1_me_access_requests_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessRequestDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    action_list_api_v1_me_action_items_get: {
+        parameters: {
+            query?: {
+                category?: "all" | "task" | "verification" | "evidence" | "rule" | "appeal" | "member" | "course";
+                page?: number;
+                page_size?: number;
+                status?: "all" | "pending" | "completed" | "rejected";
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ActionItemPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2603,6 +5684,251 @@ export interface operations {
             };
             /** @description Invalid category, UUID, dates or pagination. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    notification_list_api_v1_me_notifications_get: {
+        parameters: {
+            query?: {
+                category?: "all" | "course" | "project" | "system";
+                page?: number;
+                page_size?: number;
+                state?: "all" | "unread" | "read";
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_NotificationPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_one_api_v1_me_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkNotificationRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_NotificationReadReceipt_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_all_api_v1_me_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkAllNotificationsRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_NotificationReadReceipt_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3028,6 +6354,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    context_api_v1_projects__project_id__c_context_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CProjectContextDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4723,6 +8082,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_TaskNoteDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    progress_history_api_v1_projects__project_id__tasks__task_id__progress_history_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ProgressHistoryPageDTO_"];
                 };
             };
             /** @description Verified A authentication is required. */

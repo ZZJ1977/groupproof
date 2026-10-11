@@ -49,6 +49,14 @@ function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Resp
  */
 export function createCClient(client = createApiClient()) {
   return {
+    async progressHistory(projectId: string, taskId: string, page = 1, pageSize = 10) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/tasks/{task_id}/progress-history", {
+        params: { path: { project_id: projectId, task_id: taskId }, query: { page, page_size: pageSize } },
+      }));
+    },
+    async projectContext(projectId: string) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/c-context", { params: { path: { project_id: projectId } } }));
+    },
     async homeSummary() {
       return unwrap<Schema["DailyHomeDTO"]>(await client.GET("/api/v1/home/summary"));
     },
