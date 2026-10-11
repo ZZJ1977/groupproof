@@ -38,4 +38,16 @@ for (const body of [null, { status: "ok" }, { error: { code: "FALSE_SUCCESS" } }
 }
 nextResponse = { status: 200, body: { data: null, meta: { request_id: "no-note" } } };
 assert.equal(await client.note(id, id), null);
-console.log("C generated API client: 18 contract assertions passed");
+nextResponse = { status: 200, body: { data: {}, meta: { request_id: "c-command" } } };
+await client.prepareSubmission(id, { expected_version: 4 }, "prepare-retry");
+assert.equal(requests.at(-1).headers.get("Idempotency-Key"), "prepare-retry");
+assert.deepEqual(await requests.at(-1).json(), { expected_version: 4 });
+await client.createDiscussion(id, { title: "Decision", body: "Reason", task_id: id }, "new-thread");
+assert.equal(requests.at(-1).headers.get("Idempotency-Key"), "new-thread");
+await client.reply(id, id, { expected_version: 0, body: "First reply" }, "reply-key");
+assert.match(new URL(requests.at(-1).url).pathname, /\/discussions\/.+\/replies$/);
+assert.equal(requests.at(-1).headers.get("Idempotency-Key"), "reply-key");
+await client.markImportant(id, id, { expected_version: 1, is_important: true, reason: "Agreed decision" }, "mark-key");
+assert.equal(requests.at(-1).method, "PUT");
+assert.equal(requests.at(-1).headers.get("Idempotency-Key"), "mark-key");
+console.log("C generated API client: 25 contract assertions passed");

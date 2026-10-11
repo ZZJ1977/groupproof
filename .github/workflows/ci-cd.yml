@@ -205,11 +205,12 @@ jobs:
       - name: Run C workspace browser regressions
         run: npx playwright test --config playwright.c.config.ts
 
-      - name: Check C filters, evidence sources, and generated client
+      - name: Check C business commands and generated client
         run: |
           npx tsx scripts/check-c-url-filters.mjs
           npx tsx scripts/check-c-evidence-source.mjs
           npx tsx scripts/check-c-api-client.mjs
+          npx tsx scripts/check-c-discussions.mjs
 
   docker:
     name: Build and smoke test Docker image

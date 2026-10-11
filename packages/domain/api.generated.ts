@@ -74,6 +74,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/discussions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection */
+        get: operations["collection_api_v1_projects__project_id__discussions_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_v1_projects__project_id__discussions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/discussions/{discussion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_v1_projects__project_id__discussions__discussion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/discussions/{discussion_id}/important": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Important */
+        put: operations["important_api_v1_projects__project_id__discussions__discussion_id__important_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/discussions/{discussion_id}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Replies */
+        get: operations["replies_api_v1_projects__project_id__discussions__discussion_id__replies_get"];
+        put?: never;
+        /** Reply */
+        post: operations["reply_api_v1_projects__project_id__discussions__discussion_id__replies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/evidence": {
         parameters: {
             query?: never;
@@ -215,6 +285,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/prepare-submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Submission */
+        post: operations["prepare_submission_api_v1_tasks__task_id__prepare_submission_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/progress": {
         parameters: {
             query?: never;
@@ -282,6 +369,28 @@ export interface components {
              */
             source_id: string;
         };
+        /** CreateDiscussion */
+        CreateDiscussion: {
+            /** Body */
+            body: string;
+            /**
+             * Expected Version
+             * @default 0
+             */
+            expected_version: number;
+            /** Mention User Ids */
+            mention_user_ids?: string[];
+            /** Milestone Id */
+            milestone_id?: string | null;
+            /** Module Id */
+            module_id?: string | null;
+            /** Requirement Id */
+            requirement_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Title */
+            title: string;
+        };
         /** CreateEvidence */
         CreateEvidence: {
             /** Criterion Ids */
@@ -294,7 +403,7 @@ export interface components {
              * Source Type
              * @enum {string}
              */
-            source_type: "manual" | "task_note" | "file" | "screenshot" | "github" | "feishu";
+            source_type: "manual" | "task_note" | "file" | "screenshot" | "github" | "feishu" | "discussion";
             /** Source Url */
             source_url?: string | null;
             /**
@@ -329,6 +438,126 @@ export interface components {
              * @default 5
              */
             steps: number;
+        };
+        /** DiscussionDTO */
+        DiscussionDTO: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence Source Id */
+            evidence_source_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Important */
+            is_important: boolean;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Mention User Ids */
+            mention_user_ids: string[];
+            /** Milestone Id */
+            milestone_id: string | null;
+            /** Module Id */
+            module_id: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Reply Count */
+            reply_count: number;
+            /** Requirement Id */
+            requirement_id: string | null;
+            /** Source Snapshot Id */
+            source_snapshot_id: string | null;
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** DiscussionPageDTO */
+        DiscussionPageDTO: {
+            /** Items */
+            items: components["schemas"]["DiscussionDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** DiscussionRepliesPageDTO */
+        DiscussionRepliesPageDTO: {
+            /** Discussion Lock Version */
+            discussion_lock_version: number;
+            /** Items */
+            items: components["schemas"]["DiscussionReplyDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** DiscussionReplyDTO */
+        DiscussionReplyDTO: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Discussion Id
+             * Format: uuid
+             */
+            discussion_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mention User Ids */
+            mention_user_ids: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** DiscussionReplyResultDTO */
+        DiscussionReplyResultDTO: {
+            discussion: components["schemas"]["DiscussionDTO"];
+            reply: components["schemas"]["DiscussionReplyDTO"];
         };
         /** ErrorBody */
         ErrorBody: {
@@ -418,7 +647,7 @@ export interface components {
              * Source Type
              * @enum {string}
              */
-            source_type: "manual" | "task_note" | "file" | "screenshot" | "github" | "feishu";
+            source_type: "manual" | "task_note" | "file" | "screenshot" | "github" | "feishu" | "discussion";
             /** Source Url */
             source_url: string | null;
             /**
@@ -477,7 +706,7 @@ export interface components {
              * Source Type
              * @enum {string}
              */
-            source_type: "manual" | "task_note" | "file" | "screenshot" | "github" | "feishu";
+            source_type: "manual" | "task_note" | "file" | "screenshot" | "github" | "feishu" | "discussion";
             /** Source Url */
             source_url: string | null;
             /**
@@ -544,6 +773,26 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         JsonValue: unknown;
+        /** MarkDiscussionImportant */
+        MarkDiscussionImportant: {
+            /** Expected Version */
+            expected_version: number;
+            /** Is Important */
+            is_important: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /** PrepareSubmissionRequest */
+        PrepareSubmissionRequest: {
+            /** Expected Version */
+            expected_version: number;
+            note?: components["schemas"]["SaveTaskNote"] | null;
+        };
+        /** PrepareSubmissionView */
+        PrepareSubmissionView: {
+            execution: components["schemas"]["TaskExecutionView"];
+            note: components["schemas"]["TaskNoteDTO"] | null;
+        };
         /** ProjectExample */
         ProjectExample: {
             /** Description */
@@ -572,6 +821,15 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ReplyDiscussion */
+        ReplyDiscussion: {
+            /** Body */
+            body: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Mention User Ids */
+            mention_user_ids?: string[];
+        };
         /** ResponseMeta */
         ResponseMeta: {
             /** Request Id */
@@ -591,6 +849,26 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** SuccessResponse[DiscussionDTO] */
+        SuccessResponse_DiscussionDTO_: {
+            data: components["schemas"]["DiscussionDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[DiscussionPageDTO] */
+        SuccessResponse_DiscussionPageDTO_: {
+            data: components["schemas"]["DiscussionPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[DiscussionRepliesPageDTO] */
+        SuccessResponse_DiscussionRepliesPageDTO_: {
+            data: components["schemas"]["DiscussionRepliesPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[DiscussionReplyResultDTO] */
+        SuccessResponse_DiscussionReplyResultDTO_: {
+            data: components["schemas"]["DiscussionReplyResultDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[EvidenceDetailDTO] */
         SuccessResponse_EvidenceDetailDTO_: {
             data: components["schemas"]["EvidenceDetailDTO"];
@@ -604,6 +882,11 @@ export interface components {
         /** SuccessResponse[EvidencePageDTO] */
         SuccessResponse_EvidencePageDTO_: {
             data: components["schemas"]["EvidencePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[PrepareSubmissionView] */
+        SuccessResponse_PrepareSubmissionView_: {
+            data: components["schemas"]["PrepareSubmissionView"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[ProjectExample] */
@@ -1072,6 +1355,505 @@ export interface operations {
             };
         };
     };
+    collection_api_v1_projects__project_id__discussions_get: {
+        parameters: {
+            query?: {
+                is_important?: boolean | null;
+                milestone_id?: string | null;
+                module_id?: string | null;
+                page?: number;
+                page_size?: number;
+                q?: string | null;
+                requirement_id?: string | null;
+                task_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_DiscussionPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_api_v1_projects__project_id__discussions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDiscussion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_DiscussionDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    detail_api_v1_projects__project_id__discussions__discussion_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                discussion_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_DiscussionDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    important_api_v1_projects__project_id__discussions__discussion_id__important_put: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                discussion_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkDiscussionImportant"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_DiscussionDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    replies_api_v1_projects__project_id__discussions__discussion_id__replies_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                discussion_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_DiscussionRepliesPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reply_api_v1_projects__project_id__discussions__discussion_id__replies_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                discussion_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplyDiscussion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_DiscussionReplyResultDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     collection_api_v1_projects__project_id__evidence_get: {
         parameters: {
             query?: {
@@ -1084,7 +1866,7 @@ export interface operations {
                 page?: number;
                 page_size?: number;
                 q?: string | null;
-                source_type?: ("manual" | "task_note" | "file" | "screenshot" | "github" | "feishu") | null;
+                source_type?: ("manual" | "task_note" | "file" | "screenshot" | "github" | "feishu" | "discussion") | null;
                 status?: ("candidate" | "pending_confirmation" | "formal" | "withdrawn" | "void") | null;
                 task_id?: string | null;
             };
@@ -1844,6 +2626,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_TaskExecutionView_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    prepare_submission_api_v1_tasks__task_id__prepare_submission_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepareSubmissionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_PrepareSubmissionView_"];
                 };
             };
             /** @description Unauthorized */
