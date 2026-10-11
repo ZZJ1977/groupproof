@@ -56,7 +56,8 @@ class Evidence(TimestampMixin, LockVersionMixin, Base):
             name="ck_evidence_status",
         ),
         CheckConstraint(
-            "source_type IN ('manual', 'task_note', 'file', 'screenshot', 'github', 'feishu')",
+            "source_type IN "
+            "('manual', 'task_note', 'file', 'screenshot', 'github', 'feishu', 'discussion')",
             name="ck_evidence_source_type",
         ),
     )

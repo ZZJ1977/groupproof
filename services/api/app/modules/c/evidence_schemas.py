@@ -15,7 +15,9 @@ from pydantic import (
 )
 
 EvidenceStatus = Literal["candidate", "pending_confirmation", "formal", "withdrawn", "void"]
-EvidenceSourceType = Literal["manual", "task_note", "file", "screenshot", "github", "feishu"]
+EvidenceSourceType = Literal[
+    "manual", "task_note", "file", "screenshot", "github", "feishu", "discussion"
+]
 
 
 class EvidenceDTO(BaseModel):
@@ -78,7 +80,7 @@ class CreateEvidence(Command):
     task_id: UUID
     title: str = Field(min_length=1, max_length=240)
     description: str = Field(min_length=1, max_length=30000)
-    source_type: Literal["manual", "task_note", "file", "screenshot", "github", "feishu"]
+    source_type: EvidenceSourceType
     source_id: UUID | None = None
     source_url: HttpUrl | None = None
     criterion_ids: list[UUID] = Field(min_length=1, max_length=100)
