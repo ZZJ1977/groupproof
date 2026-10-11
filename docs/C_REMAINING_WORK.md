@@ -5,21 +5,24 @@ Passing tests or touching a task ID does not mean that task has passed the Feish
 Definition of Done. The 17-commit first delivery implemented parts of 21 task IDs;
 it did not complete 21 tasks. Existing baseline work is identified separately.
 
-The follow-up adds substantive partial deliverables for C4-02/03/04,
-C5-01/03/04 and C7-01/06, bringing the coverage to **29 of 35 task IDs**.
-This is implementation coverage, not a completion percentage. The six remaining
-IDs without a new main business deliverable are C5-02 and C7-02/03/04/05/07;
-small incidental edits to an upload button do not count as delivering C5-02.
+PR #9 contained 27 commits covering parts of 29 task IDs and was merged into
+`develop` on 2026-10-12 (Asia/Shanghai). The next batch adds canonical C1 read
+models/pages, C4 persistence and C5 file/version persistence. Verified receipt
+registration and authorized download-link contracts now provide a substantive
+partial C5-02 deliverable, bringing coverage to **30 of 35 task IDs**. This is
+implementation coverage, not a completion percentage: uploading actual bytes,
+upload progress and A's signing adapter remain unfinished. The five IDs without
+a new main business deliverable are C7-02/03/04/05/07.
 
 ## What is implemented
 
 | Area | Implemented C work | Still missing for complete acceptance |
 | --- | --- | --- |
-| C1 (4 tasks) | URL tabs, retained baseline project entry links, removal of arbitrary action completion and fixed growth; atomic local notification read actions, pagination and failed-save recovery | Persistent A notifications/actions, canonical home aggregation and activity queries, real record navigation |
+| C1 (4 tasks) | Canonical membership-scoped home aggregation, weighted task-tree progress and personal activity queries; independent real-mode pages, URL filters and error recovery; local notification read commands | Persistent A notifications/actions, production identity, canonical destination pages and external activity ingestion |
 | C2 (8 tasks) | Canonical execution state machine, assignee/dependency checks, reasoned progress and rollups, versioned notes, candidate capture, atomic prepare-submission; typed client and UI source/tab rules | Production identity and canonical workspace IDs; connect pages to these APIs; A source/storage providers and D verification query/completion authority |
 | C3 (5 tasks) | Persistent snapshots/decisions/effective queries; adopt/withdraw/source-change rules, reasons, versions, idempotency; local UI filters/history/permissions | Real A source change events; reliable outbox delivery and D invalidation consumption; real UI integration |
-| C4 (4 tasks) | Local record filtering/pagination, safe GitHub links, task-number matching and manual associations, Feishu reasoned candidate/ignore/restore operations | Persist C association/triage decisions against canonical A source IDs; A source query/sync providers; production end-to-end verification |
-| C5 (4 tasks) | Project-file URL filters/pagination; reasoned atomic official-version designation; scoped course-file publication commands; old versions and frozen references retained | Signed storage URLs and actual bytes, canonical file/version persistence, notification delivery; current upload metadata is explicitly a demo |
+| C4 (4 tasks) | Canonical association/triage records, immutable decisions, provider query contracts with filters before pagination, reasoned candidate adoption in one transaction; local UI filtering and task-number suggestions | Real UI adapter, A source query/sync providers, stable B task codes and automatic association consumer, A/D source-change delivery and production end-to-end verification |
+| C5 (4 tasks) | Canonical project-file receipt registration, immutable versions, reasoned official designation, authorized download-link contract and history; local project/course-file commands preserve frozen references | Actual upload bytes/progress, A receipt/signing adapter, project-file UI integration, canonical course-file persistence and notification delivery; existing upload UI is still a demo |
 | C6 (3 tasks) | Canonical linked discussions, concurrent replies, mentions, important snapshots and immediate linked-evidence source-change marking; local UI commands | Connect real pages and canonical identity; deliver A notifications; process D downstream events |
 | C7 (7 tasks) | Canonical Admin user directory API and real-mode read-only UI; removed fabricated AI window totals, trends and health assertions | Identity lifecycle integration, teacher review UI/contracts, course lifecycle/invites, audit queries, timestamped AI usage aggregation, scoped expiring access approvals |
 
@@ -40,20 +43,19 @@ small incidental edits to an upload button do not count as delivering C5-02.
 
 These are implementation tasks, not reasons to wait for A:
 
-1. Implement C1 home/activity read models over canonical current memberships and
-   C-owned task/evidence/discussion data. Expose unavailable A-owned totals explicitly.
-2. Persist C4 task associations and Feishu triage commands behind typed A source
-   providers; test them with deterministic provider fixtures before live adapters exist.
-3. Persist C5 logical files, immutable versions and official/publication decisions;
-   require a verified storage receipt before accepting a real uploaded file.
-4. Implement C7-04 course draft/publish/end transitions, reasoned history and
+1. Continue canonical C4/C5 page adapters against explicit API fixtures, following
+   the separate daily feature flag pattern; canonical route context remains needed
+   before enabling them in production. Do not map mock string IDs to made-up UUIDs.
+2. Implement canonical C5-04 course-file publication and retained replacements,
+   reusing the verified receipt boundary and B's frozen-reference contract.
+3. Implement C7-04 course draft/publish/end transitions, reasoned history and
    idempotency. Settle invite ownership and the assignment's unique-course-code
    rule against the existing `(code, semester)` database constraint before migration.
-5. Implement C7-05/06 read contracts and real timestamp aggregation once the A
+4. Implement C7-05/06 read contracts and real timestamp aggregation once the A
    record schema is agreed; missing historical fields must not be invented.
-6. Implement C7-07 structured approval records, scope, expiry and replay protection;
+5. Implement C7-07 structured approval records, scope, expiry and replay protection;
    actual permission activation must call A's authorization service.
-7. Continue C7-02/03 page contracts, required reasons, self-disable prevention and
+6. Continue C7-02/03 page contracts, required reasons, self-disable prevention and
    failure recovery against explicit fixtures; reuse the existing identity review
    service when A reconciles identity IDs and server-side authorization. UI checks
    alone cannot deliver session revocation or secure teacher promotion.
@@ -74,8 +76,14 @@ These are implementation tasks, not reasons to wait for A:
 - The first 17 commits passed GitHub CI at `341c646`.
 - With the Admin directory addition, the canonical PostgreSQL suite passed
   **302 tests, zero skipped**. C7-01 adds 31 cases; no new migration is needed.
+- The post-merge C1/C4/C5 batch adds 239 cases: **541 distinct backend cases**
+  passed across a full run and targeted reruns (including the corrected schema
+  head expectation and 8 added PostgreSQL cases). Database-dependent tests were
+  enabled with zero skips. See the exact run breakdown in `C_DELIVERY.md`.
 - C browser tests deliberately distinguish local workspace behavior from intercepted
   canonical API responses. They do not assert live OAuth/storage/vendor acceptance.
+- The canonical C1/C4/C5 implementation and interface boundaries are described in
+  `C_DAILY_READS.md`, `C_ACTIVITY_RECORDS.md` and `C_PROJECT_FILES.md`.
 - Per-feature tests, later commits and final CI are recorded in `C_DELIVERY.md`
-  and PR #9. Every remaining task still requires the relevant API/UI/error/permission
+  and the linked PRs. Every remaining task still requires the relevant API/UI/error/permission
   checks and actual team acceptance; a single percentage would conceal those gaps.
