@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileText, FolderOpen, Info, Plus, ShieldCheck, UploadCloud, Users } from "lucide-react";
-import { useWorkspace } from "@/lib/workspace";
+import { scopedWorkspaceKey, useWorkspace } from "@/lib/workspace";
+import { apiMode } from "@/lib/api/config";
+import { workspaceService } from "@/lib/api/workspace-service";
+import { createCommandRunner } from "@/lib/commands/core";
+import { changeCourseFile, courseFileAccess, listCourseFiles, type CourseFileInput } from "@/features/c/course-file-commands";
 import { can, isCourseStaff } from "@/lib/access/policy";
 import { completedModuleCount, teacherProjectStats } from "@/lib/ux/stats";
 import { compareCourseRuleSnapshots } from "@/lib/commands/rule-change";
@@ -11,7 +16,7 @@ import { useCommands } from "@/lib/commands/use-commands";
 import { SaveState } from "@/components/common";
 import { draftCourseRule, publishedCourseRule } from "@/lib/versioning";
 import type { DelegatedPermission } from "@/types/domain";
-import type { Course, FileRecord, Group, Project } from "@/types/domain";
+import type { Course, FileRecord, Group, MockData, Project } from "@/types/domain";
 import { auditRecord, Badge, Box, Empty, formatDate, formatDateTime, Header, Metric, newId, Notice, Progress, SearchField, Table } from "./primitives";
 import styles from "./governance.module.css";
 
@@ -458,43 +463,69 @@ export function TeacherAppeals({ courseId }: { courseId?: string }) {
 }
 
 export function TeacherFiles({ courseId }: { courseId?: string }) {
-  const { data, course, groups, role, update, add } = useCourseData(courseId);
+  const { userId, data } = useWorkspace();
+  return <TeacherCourseFiles key={`${userId}:${data.currentUserId}:${courseId ?? ""}`} courseId={courseId} />;
+}
+
+function TeacherCourseFiles({ courseId }: { courseId?: string }) {
+  const { data, userId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const workspaceKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
+  const runner = useMemo(() => createCommandRunner({
+    repository: { read: async () => queryClient.getQueryData<MockData>(workspaceKey) ?? await workspaceService.getWorkspace(), save: workspaceService.saveWorkspace },
+    currentActorId: () => queryClient.getQueryData<MockData>(workspaceKey)?.currentUserId ?? "",
+    onSaved: (next) => queryClient.setQueryData(workspaceKey, next),
+  }), [queryClient, workspaceKey]);
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState("");
   const [reason, setReason] = useState("");
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState({ message: "", ok: false });
+  const [pendingFile, setPendingFile] = useState<{ fileId: string; name: string; sizeBytes: number; mimeType: string; replacesFileId?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const attempt = useRef<{ signature: string; input: CourseFileInput } | null>(null);
+  const { course, readable, writable } = courseFileAccess(data, data.currentUserId, courseId);
+  if (apiMode("workspace") !== "mock") return <div className={styles.page}><Header title="课程文件管理" description="真实课程资料服务尚未接入。" /><Notice>暂时无法读取或发布真实课程资料，文件存储与通知服务等待 A 接入。</Notice></div>;
   if (!course) return <CourseMissing />;
-  const canEdit = role === "admin" || (role === "teacher" && data.currentUserId === course.teacherId);
-  const files = data.files.filter((item) => item.courseId === course.id);
+  if (!readable) return <StaffOnly />;
+  const canEdit = writable;
+  const files = listCourseFiles(data, data.currentUserId, course.id);
   const current = files.filter((item) => item.status !== "superseded" && `${item.name} ${item.type}`.toLowerCase().includes(query.toLowerCase()));
   const selected = selectedName || current[0]?.name;
   const history = files.filter((item) => item.name === selected).sort((a, b) => b.version - a.version);
   const upload = (file: File, replace?: FileRecord) => {
-    if (!canEdit) return;
-    const extension = file.name.split(".").pop()?.toUpperCase() ?? "";
-    if (!["PDF", "DOC", "DOCX", "PPT", "PPTX", "XLS", "XLSX", "MD", "TXT"].includes(extension)) { setFeedback("不支持此文件格式。"); return; }
-    if (file.size > 50 * 1024 * 1024) { setFeedback("单个文件不得超过 50MB。"); return; }
-    const name = replace?.name ?? file.name;
-    const version = Math.max(0, ...files.filter((item) => item.name === name).map((item) => item.version)) + 1;
-    add("files", { id: newId("course-file"), courseId: course.id, name, type: extension, source: "课程文件", uploaderId: data.currentUserId, version, status: "draft", updatedAt: new Date().toISOString(), size: file.size >= 1024 * 1024 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB` });
-    setSelectedName(name); setFeedback(`已添加 ${name} v${version} 草稿，请填写发布原因后发布。`);
+    if (!canEdit || busy.current) return;
+    setPendingFile({ fileId: crypto.randomUUID(), name: file.name, sizeBytes: file.size, mimeType: file.type || "application/octet-stream", replacesFileId: replace?.id });
+    setFeedback({ message: "", ok: false }); attempt.current = null;
   };
-  const publish = (file: FileRecord) => {
-    if (!canEdit) return;
-    if (!reason.trim()) { setFeedback("发布新版本前请填写变更原因。"); return; }
-    files.filter((item) => item.name === file.name && item.status === "current").forEach((item) => update("files", item.id, { status: "superseded" }));
-    update("files", file.id, { status: "current", updatedAt: new Date().toISOString() });
-    add("logs", auditRecord(data, "课程文件发布", file.id, `${file.name} v${file.version}；${reason.trim()}`));
-    groups.forEach((group) => add("actionItems", { id: newId("action"), assigneeId: group.leaderId, courseId: course.id, projectId: group.projectId, groupId: group.id, type: "course_file", title: `复核课程文件 ${file.name} v${file.version}`, description: `课程文件已更新：${reason.trim()}。请检查对现有需求基线的影响。`, status: "pending", dueAt: course.projectDeadline, href: `/courses/${course.id}/rule-changes`, priority: "medium" }));
-    setFeedback("新版本已发布，各小组将收到影响复核提醒。"); setReason("");
+  type WithoutKey<T> = T extends unknown ? Omit<T, "idempotencyKey"> : never;
+  const save = async (input: WithoutKey<CourseFileInput>) => {
+    if (!canEdit || busy.current) return;
+    const signature = JSON.stringify(input);
+    if (attempt.current?.signature !== signature) attempt.current = { signature, input: { ...input, idempotencyKey: crypto.randomUUID() } };
+    busy.current = true; setSaving(true); setFeedback({ message: "", ok: false });
+    try {
+      const result = await runner(changeCourseFile, attempt.current.input);
+      if (!result.ok) { setFeedback({ message: commandFeedback(result.error), ok: false }); return; }
+      setSelectedName(result.result.name); setReason(""); setPendingFile(null); attempt.current = null;
+      setFeedback({ message: input.action === "publish" ? `已发布 ${result.result.name} v${result.result.version} 的演示元数据；真实通知未发送。` : `已保存 ${result.result.name} v${result.result.version} 的演示草稿；文件字节尚未上传。`, ok: true });
+    } catch { setFeedback({ message: "保存失败，请重试；文件与填写的原因已保留。", ok: false }); }
+    finally { busy.current = false; setSaving(false); }
+  };
+  const saveDraft = () => {
+    if (!pendingFile) return;
+    const common = { courseId: course.id, fileId: pendingFile.fileId, expectedCourseVersion: course.version, reason,
+      name: pendingFile.name, sizeBytes: pendingFile.sizeBytes, mimeType: pendingFile.mimeType };
+    void save(pendingFile.replacesFileId ? { ...common, action: "replace", replacesFileId: pendingFile.replacesFileId } : { ...common, action: "upload" });
   };
   return <div className={styles.page}>
-    <Header title="课程文件管理" description="上传、替换与发布课程要求文件，并追踪版本历史。" breadcrumb={`${course.name} / 课程文件`} />
-    {canEdit ? <label className={styles.dropzone} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (event.dataTransfer.files[0]) upload(event.dataTransfer.files[0]); }}><input type="file" hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ""; }} /><UploadCloud size={28} /><strong>拖拽文件到此处，或点击上传</strong><span>PDF、DOCX、PPTX、XLSX、MD 等格式，单文件不超过 50MB</span></label> : null}
-    <Notice>发布新版本后，系统会提示受影响的小组复核；已冻结的项目基线不会自动覆盖。</Notice>
-    {feedback ? <div className={feedback.startsWith("已添加") || feedback.startsWith("新版本") ? styles.successMessage : styles.errorMessage}>{feedback}</div> : null}
-    <div className={styles.twoColumns}><Box title="课程文件列表" action={<div style={{ width: 190 }}><SearchField value={query} onChange={setQuery} placeholder="搜索文件名" /></div>}><Table><thead><tr><th>文件名</th><th>类型</th><th>当前版本</th><th>最近更新</th><th>范围</th><th>操作</th></tr></thead><tbody>{current.map((file) => <tr key={file.id}><td><strong>{file.name}</strong></td><td>{file.type}</td><td><Badge tone={file.status === "current" ? "blue" : "amber"}>v{file.version}{file.status === "draft" ? " 草稿" : ""}</Badge></td><td>{formatDateTime(file.updatedAt)}</td><td>全部小组</td><td><div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => setSelectedName(file.name)}>查看</button>{canEdit && file.status === "draft" ? <button type="button" className={styles.textButton} onClick={() => publish(file)}>发布</button> : null}{canEdit ? <label className={styles.textButton} style={{ cursor: "pointer" }}>替换<input type="file" hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) upload(selectedFile, file); event.target.value = ""; }} /></label> : null}</div></td></tr>)}</tbody></Table>{current.length === 0 ? <Empty>暂无课程文件</Empty> : null}</Box>
-      <div className={styles.sideStack}><Box title="版本历史"><div className={styles.panelBody}><strong>{selected || "请选择文件"}</strong>{history.map((file) => <div className={styles.row} key={file.id}><div className={styles.rowMain}><Badge tone={file.status === "current" ? "blue" : file.status === "draft" ? "amber" : "gray"}>v{file.version}</Badge><div className={styles.rowMeta}>{formatDateTime(file.updatedAt)} · {data.users.find((user) => user.id === file.uploaderId)?.name ?? "—"}</div></div><span className={styles.muted}>{file.status === "current" ? "已发布" : file.status === "draft" ? "草稿" : "历史"}</span></div>)}{history.length === 0 ? <Empty>暂无版本记录</Empty> : null}</div></Box>{canEdit ? <Box title="发布说明"><div className={styles.panelBody}><label className={styles.field}>本次文件更新原因<textarea className={styles.textarea} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} placeholder="说明内容变化及可能影响的小组" /></label></div></Box> : null}</div>
+    <Header title="课程文件管理" description="保存、替换与发布课程资料的演示元数据，并保留版本历史。" breadcrumb={`${course.name} / 课程文件`} />
+    <Notice>当前仅保存演示元数据，不上传文件字节，不提供真实预览或下载，也不发送通知。冻结项目的原资料引用保持不变。</Notice>
+    {!canEdit && <Notice>当前为只读：助教只能查看；课程结束或教师邮箱未验证时不能修改资料。</Notice>}
+    {canEdit ? <label className={styles.dropzone} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (event.dataTransfer.files[0]) upload(event.dataTransfer.files[0]); }}><input type="file" aria-label="选择课程资料" disabled={saving} hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ""; }} /><UploadCloud size={28} /><strong>选择文件以登记演示元数据</strong><span>PDF、DOCX、PPTX、XLSX、MD 等格式，单文件不超过 50MB</span></label> : null}
+    {feedback.message ? <div role={feedback.ok ? "status" : "alert"} className={feedback.ok ? styles.successMessage : styles.errorMessage}>{feedback.message}</div> : null}
+    <div className={styles.twoColumns}><Box title="课程文件列表" action={<div style={{ width: 190 }}><SearchField value={query} onChange={setQuery} placeholder="搜索文件名" /></div>}><Table><thead><tr><th>文件名</th><th>类型</th><th>当前版本</th><th>最近更新</th><th>范围</th><th>操作</th></tr></thead><tbody>{current.map((file) => <tr key={file.id}><td><strong>{file.name}</strong></td><td>{file.type}</td><td><Badge tone={file.status === "current" ? "blue" : "amber"}>v{file.version}{file.status === "draft" ? " 草稿" : ""}</Badge></td><td>{formatDateTime(file.updatedAt)}</td><td>全部小组</td><td><div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => setSelectedName(file.name)}>查看</button>{canEdit && file.status === "draft" ? <button type="button" className={styles.textButton} disabled={saving || Boolean(pendingFile)} onClick={() => void save({ action: "publish", courseId: course.id, fileId: file.id, expectedCourseVersion: course.version, reason })}>发布</button> : null}{canEdit && !files.some((item) => item.name === file.name && item.version > file.version) ? <label className={styles.textButton} style={{ cursor: "pointer" }}>替换<input type="file" aria-label={`替换 ${file.name} v${file.version}`} disabled={saving} hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) upload(selectedFile, file); event.target.value = ""; }} /></label> : null}</div></td></tr>)}</tbody></Table>{current.length === 0 ? <Empty>暂无课程文件</Empty> : null}</Box>
+      <div className={styles.sideStack}><Box title="版本历史"><div className={styles.panelBody}><strong>{selected || "请选择文件"}</strong>{history.map((file) => <div className={styles.row} key={file.id}><div className={styles.rowMain}><Badge tone={file.status === "current" ? "blue" : file.status === "draft" ? "amber" : "gray"}>v{file.version}</Badge><div className={styles.rowMeta}>{formatDateTime(file.updatedAt)} · {data.users.find((user) => user.id === file.uploaderId)?.name ?? "—"}</div>{file.cCourseFileHistory?.map((change) => <p className={styles.rowMeta} key={change.idempotencyKey}>{change.action === "publish" ? "发布" : "草稿"}：{change.reason}</p>)}</div><span className={styles.muted}>{file.status === "current" ? "已发布" : file.status === "draft" ? "草稿" : "历史"}</span></div>)}{history.length === 0 ? <Empty>暂无版本记录</Empty> : null}</div></Box>{canEdit ? <Box title="变更说明"><div className={styles.panelBody}>{pendingFile && <p>待保存：{pendingFile.name}（{pendingFile.replacesFileId ? "替换草稿" : "新增草稿"}）</p>}<label className={styles.field}>本次文件更新原因<textarea className={styles.textarea} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} disabled={saving} placeholder="说明内容变化及可能影响的小组；每次保存或发布均需填写" /></label>{pendingFile && <div className={styles.actions}><button type="button" className={styles.primaryButton} disabled={saving} onClick={saveDraft}>{saving ? "正在保存…" : "保存演示草稿"}</button><button type="button" className={styles.button} disabled={saving} onClick={() => { setPendingFile(null); attempt.current = null; }}>取消选择</button></div>}</div></Box> : null}</div>
     </div>
   </div>;
 }
