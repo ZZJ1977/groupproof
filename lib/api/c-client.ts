@@ -3,6 +3,7 @@ import type { components, paths } from "@/packages/domain/api.generated";
 
 type Schema = components["schemas"];
 type EvidenceQuery = paths["/api/v1/projects/{project_id}/evidence"]["get"]["parameters"]["query"];
+type DiscussionQuery = paths["/api/v1/projects/{project_id}/discussions"]["get"]["parameters"]["query"];
 
 export class CApiError extends Error {
   constructor(
@@ -58,6 +59,11 @@ export function createCClient(client = createApiClient()) {
         params: { path: { task_id: taskId } }, body: input,
       }));
     },
+    async prepareSubmission(taskId: string, input: Schema["PrepareSubmissionRequest"], key: string) {
+      return unwrap(await client.POST("/api/v1/tasks/{task_id}/prepare-submission", {
+        params: { path: { task_id: taskId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
     async evidence(projectId: string, query: EvidenceQuery = {}) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/evidence", {
         params: { path: { project_id: projectId }, query },
@@ -101,6 +107,36 @@ export function createCClient(client = createApiClient()) {
     async saveNote(projectId: string, taskId: string, input: Schema["SaveTaskNote"], key: string) {
       return unwrap(await client.PUT("/api/v1/projects/{project_id}/tasks/{task_id}/note", {
         params: { path: { project_id: projectId, task_id: taskId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async discussions(projectId: string, query: DiscussionQuery = {}) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/discussions", {
+        params: { path: { project_id: projectId }, query },
+      }));
+    },
+    async discussion(projectId: string, discussionId: string) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/discussions/{discussion_id}", {
+        params: { path: { project_id: projectId, discussion_id: discussionId } },
+      }));
+    },
+    async createDiscussion(projectId: string, input: Schema["CreateDiscussion"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/discussions", {
+        params: { path: { project_id: projectId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async replies(projectId: string, discussionId: string, page = 1, pageSize = 50) {
+      return unwrap(await client.GET("/api/v1/projects/{project_id}/discussions/{discussion_id}/replies", {
+        params: { path: { project_id: projectId, discussion_id: discussionId }, query: { page, page_size: pageSize } },
+      }));
+    },
+    async reply(projectId: string, discussionId: string, input: Schema["ReplyDiscussion"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/discussions/{discussion_id}/replies", {
+        params: { path: { project_id: projectId, discussion_id: discussionId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
+    async markImportant(projectId: string, discussionId: string, input: Schema["MarkDiscussionImportant"], key: string) {
+      return unwrap(await client.PUT("/api/v1/projects/{project_id}/discussions/{discussion_id}/important", {
+        params: { path: { project_id: projectId, discussion_id: discussionId }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },
   };
