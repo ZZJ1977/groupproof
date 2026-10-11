@@ -41,9 +41,12 @@ import { workspaceService } from "@/lib/api/workspace-service";
 import { apiMode } from "@/lib/api/config";
 import { canMarkDiscussionImportant, canWriteDiscussion, createDiscussion, discussionAsEvidence, discussionMentionTargets, markDiscussionImportant, replyDiscussion } from "@/features/c/discussions";
 import { useUrlQuery } from "@/features/c/use-url-query";
-import { GithubActivityLink } from "@/features/c/github-activity-link";
+import { GithubRecordPanels, FeishuRecordPanel } from "@/features/c/ActivityRecordPanels";
+import { feishuActivityFilters } from "@/features/c/activity-records";
+import { fileCategories, fileCategoryLabels, fileFilterPatch, filePageSizes, queryProjectFiles, readFileFilters, type FileFilters } from "@/features/c/file-filters";
+import { canWriteProjectFiles, designateProjectFile, type FileWithCDecisions } from "@/features/c/file-decisions";
 import { ProjectAccessDenied, ProjectPublicSummary } from "@/features/project-core/ProjectPublicSummary";
-import type { Contribution, Evidence, FeishuRecord, FileRecord, GithubActivity, Project, Report, Task, User } from "@/types/domain";
+import type { Contribution, Evidence, FileRecord, GithubActivity, Project, Report, Task, User } from "@/types/domain";
 
 type Workspace = ReturnType<typeof useWorkspace>;
 type Screen = 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29;
@@ -102,20 +105,12 @@ export function ProjectSupportView({ screen, projectId, memberId }: ViewProps) {
 
 function GithubPage({ data, add, update, project }: ProjectContext) {
   const records = data.github.filter((item) => item.projectId === project.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  const [kind, setKind] = useState("全部类型");
-  const [days, setDays] = useState("全部时间");
-  const [expanded, setExpanded] = useState(false);
   const [repoInput, setRepoInput] = useState("");
   const [changing, setChanging] = useState(false);
   const [notice, setNotice] = useState("");
   const lastConnection = records.find((item) => item.type === "sync");
   const repository = lastConnection?.repository || records[0]?.repository || "尚未绑定";
   const disconnected = project.githubEnabled === false || lastConnection?.status === "已解除绑定";
-  const filtered = records.filter((item) => {
-    const within = days === "全部时间" || Date.now() - new Date(item.timestamp).getTime() <= Number(days) * 86400000;
-    return (kind === "全部类型" || item.type === kind) && within;
-  });
-  const shown = expanded ? filtered : filtered.slice(0, 6);
   const sync = () => {
     if (disconnected || repository === "尚未绑定") { setNotice("请先绑定 GitHub 仓库。"); return; }
     const activity: GithubActivity = { id: id("gh"), projectId: project.id, repository, type: "sync", title: "手动同步仓库活动", authorId: data.currentUserId, status: "已同步", timestamp: new Date().toISOString(), url: repository.startsWith("http") ? repository : `https://github.com/${repository}` };
@@ -133,87 +128,126 @@ function GithubPage({ data, add, update, project }: ProjectContext) {
       {changing && <div className="mb-4 flex flex-wrap gap-2"><input className={`${field} max-w-md`} aria-label="GitHub 仓库" placeholder="owner/repository" value={repoInput} onChange={(event) => setRepoInput(event.target.value)} /><button className={primary} onClick={changeRepo}>保存绑定</button><button className={outline} onClick={() => setChanging(false)}>取消</button></div>}
       <div className="flex items-center gap-3 text-base font-semibold"><Github size={22} />{repository}<StatusBadge tone={disconnected ? "gray" : "blue"} label={disconnected ? "未连接" : "已连接"} /></div><div className="mt-4 grid gap-4 text-sm sm:grid-cols-4"><div><div className="text-slate-400">默认分支</div><div className="mt-1">main</div></div><div><div className="text-slate-400">上次同步时间</div><div className="mt-1">{date(records[0]?.timestamp ?? "")}</div></div><div><div className="text-slate-400">同步状态</div><StatusBadge status={disconnected ? "disabled" : "current"} label={disconnected ? "未连接" : "已同步"} /></div><div><div className="text-slate-400">仓库链接</div>{!disconnected && <a className={linkClass} target="_blank" rel="noreferrer" href={repository.startsWith("http") ? repository : `https://github.com/${repository}`}>在 GitHub 中打开 <ExternalLink size={13} className="inline" /></a>}</div></div>
       </Panel>
-      <Panel title="最近开发活动" action={<div className="flex flex-wrap items-center gap-2"><select className={`${field} w-auto`} aria-label="活动类型" value={kind} onChange={(event) => setKind(event.target.value)}><option>全部类型</option><option value="commit">Commit</option><option value="pr">PR</option><option value="ci">CI</option><option value="sync">同步</option></select><select className={`${field} w-auto`} aria-label="活动时间" value={days} onChange={(event) => setDays(event.target.value)}><option>全部时间</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option></select><button className={linkClass} onClick={() => setExpanded((value) => !value)}>{expanded ? "收起" : "查看全部"}</button></div>} noPadding>
-        <div className="overflow-x-auto"><table className="gp-table min-w-[700px]"><thead><tr><th>时间</th><th>类型</th><th>标题</th><th>作者</th><th>关联任务</th><th>状态</th></tr></thead><tbody>{shown.map((item) => <tr key={item.id}><td>{date(item.timestamp)}</td><td className="uppercase">{item.type}</td><td><GithubActivityLink className={linkClass} url={item.url} title={item.title} /></td><td>{memberName(data, item.authorId)}</td><td>{item.taskId ? <Link className={linkClass} href={projectUrl(project.id, `/tasks/${item.taskId}`)}>{taskName(data, item.taskId)}</Link> : "—"}</td><td><StatusBadge tone={item.status.includes("失败") ? "red" : "green"} label={item.status} /></td></tr>)}</tbody></table>{!shown.length && <Empty title="没有符合条件的活动" />}</div>
-      </Panel>
-      <Panel title="任务关联映射" action={<Link className={linkClass} href={projectUrl(project.id, "/tasks?view=list")}>查看全部</Link>} noPadding><div className="overflow-x-auto"><table className="gp-table min-w-[650px]"><thead><tr><th>任务</th><th>关联的 GitHub 记录</th><th>类型</th><th>作者</th><th>状态</th></tr></thead><tbody>{records.filter((item) => item.taskId).slice(0, 6).map((item) => <tr key={item.id}><td><Link className={linkClass} href={projectUrl(project.id, `/tasks/${item.taskId}`)}>{taskName(data, item.taskId)}</Link></td><td>{item.title}</td><td className="uppercase">{item.type}</td><td>{memberName(data, item.authorId)}</td><td><StatusBadge tone="green" label="已关联" /></td></tr>)}</tbody></table></div></Panel>
+      <GithubRecordPanels projectId={project.id} />
     </div><div className="space-y-4"><Panel title="同步状态"><KV title="上次同步时间" value={date(records[0]?.timestamp ?? "")} /><KV title="同步状态" value={<StatusBadge tone={disconnected ? "gray" : "green"} label={disconnected ? "未连接" : "已同步"} />} /><KV title="同步内容" value="Commit、PR、Issue、CI" /><KV title="最近同步范围" value="最近 30 天的活动" /><button className={`${primary} mt-4 w-full`} onClick={sync} disabled={disconnected}><RefreshCw size={15} />立即同步</button></Panel><Panel title="Webhook 状态" action={<Link href={projectUrl(project.id, "/settings")} className={linkClass}>配置</Link>}><KV title="连接状态" value={disconnected ? "未启用" : "已启用"} /><KV title="最近触发时间" value={date(records[0]?.timestamp ?? "")} /><KV title="触发事件" value="Push、Pull Request、Issue" /></Panel><Panel title="定时兜底同步"><KV title="状态" value="已开启" /><KV title="同步周期" value="每 6 小时" /><KV title="同步范围" value="最近 30 天的活动" /></Panel></div></div>
   </div>;
 }
 
-function FeishuPage({ data, add, update, project }: ProjectContext) {
+function FeishuPage({ data, add, project }: ProjectContext) {
   const records = data.feishu.filter((item) => item.projectId === project.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const groups = [...new Set(records.map((item) => item.groupName))];
-  const [groupName, setGroupName] = useState("全部群组");
-  const [filter, setFilter] = useState("全部记录");
+  const { query: recordQuery, updateQuery: updateRecordQuery } = useUrlQuery();
+  const recordFilters = feishuActivityFilters(recordQuery);
+  const groupName = recordFilters.group === "all" ? "全部群组" : recordFilters.group;
+  const filter = recordFilters.status === "all" ? "全部记录" : recordFilters.status;
+  const setGroupName = (value: string) => updateRecordQuery({ group: value === "全部群组" ? null : value, page: null });
+  const setFilter = (value: string) => updateRecordQuery({ status: value === "全部记录" ? null : value, page: null });
   const [notice, setNotice] = useState("");
-  const visible = records.filter((item) => (groupName === "全部群组" || item.groupName === groupName) && (filter === "全部记录" || item.status === filter));
-  const adopt = (record: FeishuRecord) => {
-    if (record.status === "adopted") return;
-    update("feishu", record.id, { status: "adopted" });
-    if (record.taskId && !data.evidence.some((item) => item.source === "feishu" && item.sourceUrl === `feishu:${record.id}`)) {
-      const evidence: Evidence = { id: id("evidence"), projectId: project.id, taskId: record.taskId, criterionIds: [], authorId: record.authorId, title: `飞书协作记录：${record.summary.slice(0, 30)}`, description: record.summary, source: "feishu", sourceUrl: `feishu:${record.id}`, status: "candidate", createdAt: record.timestamp, version: 1 };
-      add("evidence", evidence);
-    }
-    setNotice("记录已采纳，并在相关任务中建立证据候选。");
-  };
   const sync = () => { add("feishu", { id: id("feishu"), projectId: project.id, groupName: groupName === "全部群组" ? groups[0] || "项目群组" : groupName, type: "discussion", summary: "本次同步已完成，待确认是否采纳为项目协作记录。", authorId: data.currentUserId, timestamp: new Date().toISOString(), status: "candidate" }); setNotice("同步完成，新增一条待确认记录。"); };
   return <div><Header project={project} title="飞书协作记录" description="保留项目群聊与相关私聊中的关键协作证据。" icon={MessageCircle} />{notice && <div className="mb-4"><Notice>{notice}</Notice></div>}
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="space-y-4"><Panel><div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"><div><label className={label}>项目群组</label><select className={field} value={groupName} onChange={(event) => setGroupName(event.target.value)}><option>全部群组</option>{groups.map((group) => <option key={group}>{group}</option>)}</select></div><div><label className={label}>关联性筛选</label><select className={field} value={filter} onChange={(event) => setFilter(event.target.value)}><option>全部记录</option><option value="candidate">待确认</option><option value="adopted">已采纳</option><option value="ignored">已忽略</option></select></div><div className="flex items-end"><StatusBadge tone={project.feishuEnabled === false ? "gray" : "green"} label={project.feishuEnabled === false ? "未连接" : "已同步"} /></div><div className="flex items-end"><button className={outline} onClick={sync} disabled={project.feishuEnabled === false}><RefreshCw size={15} />立即同步</button></div></div></Panel>
-      <Panel title={`协作记录（${visible.length}）`} noPadding><div className="overflow-x-auto"><table className="gp-table min-w-[720px]"><thead><tr><th>消息来源</th><th>发送人</th><th>时间</th><th>提取类型</th><th>摘要内容</th><th>采纳状态</th><th>操作</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id} id={item.id}><td>{item.groupName}</td><td>{memberName(data, item.authorId)}</td><td>{date(item.timestamp)}</td><td><StatusBadge label={item.type === "task" ? "任务候选" : item.type === "decision" ? "决策候选" : "讨论记录"} tone={item.type === "discussion" ? "gray" : "blue"} /></td><td className="max-w-[280px] truncate" title={item.summary}>{item.summary}</td><td><StatusBadge label={item.status === "candidate" ? "待确认" : item.status === "adopted" ? "已采纳" : "已忽略"} tone={item.status === "candidate" ? "amber" : item.status === "adopted" ? "green" : "gray"} /></td><td><div className="flex gap-2">{item.status === "candidate" && <><button className={linkClass} onClick={() => adopt(item)}>采纳</button><button className="text-xs text-slate-500 hover:underline" onClick={() => update("feishu", item.id, { status: "ignored" })}>忽略</button></>}{item.taskId && <Link className={linkClass} href={projectUrl(project.id, `/tasks/${item.taskId}`)}>任务</Link>}</div></td></tr>)}</tbody></table>{!visible.length && <Empty title="暂无相关协作记录" />}</div></Panel>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="space-y-4"><Panel><div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"><div><label className={label}>项目群组</label><select className={field} aria-label="项目群组" value={groupName} onChange={(event) => setGroupName(event.target.value)}><option>全部群组</option>{groupName !== "全部群组" && !groups.includes(groupName) && <option value={groupName}>不可用的群组</option>}{groups.map((group) => <option key={group}>{group}</option>)}</select></div><div><label className={label}>关联性筛选</label><select className={field} aria-label="关联性筛选" value={filter} onChange={(event) => setFilter(event.target.value)}><option>全部记录</option><option value="candidate">待确认</option><option value="adopted">已采纳</option><option value="ignored">已忽略</option></select></div><div className="flex items-end"><StatusBadge tone={project.feishuEnabled === false ? "gray" : "green"} label={project.feishuEnabled === false ? "未连接" : "已同步"} /></div><div className="flex items-end"><button className={outline} onClick={sync} disabled={project.feishuEnabled === false}><RefreshCw size={15} />立即同步</button></div></div></Panel>
+      <FeishuRecordPanel projectId={project.id} />
     </div><div className="space-y-4"><Panel title="记录说明"><InfoLine title="自动识别关键协作内容" text="基于上下文识别任务、决策、贡献和讨论等关键内容，生成可追溯记录。" /><InfoLine title="关联项目任务与模块" text="记录将与项目任务、模块和里程碑关联，便于后续引用和验收。" /><InfoLine title="人工确认与采纳" text="系统提供候选记录，由成员确认后采纳为正式证据候选。" /></Panel><Panel title="隐私边界"><InfoLine title="仅同步授权范围内内容" text="只同步已加入白名单的项目群聊及相关成员的私聊内容。" /><InfoLine title="敏感信息自动脱敏" text="对个人敏感信息进行脱敏处理。" /><InfoLine title="访问权限控制" text="按照项目成员权限控制记录可见范围。" /></Panel><Panel title="同步统计"><div className="grid grid-cols-3 gap-2 text-center"><div><strong className="text-xl text-[var(--gp-action)]">{records.length}</strong><p className="text-xs text-slate-500">已同步</p></div><div><strong className="text-xl text-emerald-600">{records.filter((item) => item.status === "adopted").length}</strong><p className="text-xs text-slate-500">已采纳</p></div><div><strong className="text-xl text-amber-600">{records.filter((item) => item.status === "candidate").length}</strong><p className="text-xs text-slate-500">待确认</p></div></div></Panel></div></div>
   </div>;
 }
 
 function InfoLine({ title, text }: { title: string; text: string }) { return <div className="border-b border-slate-100 py-3 last:border-b-0"><h3 className="text-sm font-semibold text-slate-700">{title}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{text}</p></div>; }
 
-function FilesPage({ data, add, update, project }: ProjectContext) {
+function FilesPage({ data, project, userId }: ProjectContext) {
+  const queryClient = useQueryClient();
+  const workspaceKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
+  const runner = useMemo(() => createCommandRunner({
+    repository: {
+      read: async () => queryClient.getQueryData<Workspace["data"]>(workspaceKey) ?? await workspaceService.getWorkspace(),
+      save: workspaceService.saveWorkspace,
+    },
+    currentActorId: () => queryClient.getQueryData<Workspace["data"]>(workspaceKey)?.currentUserId ?? "",
+    onSaved: (next) => queryClient.setQueryData(workspaceKey, next),
+  }), [queryClient, workspaceKey]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const canWrite = can(data, data.currentUserId, "project.files.write", { kind: "project", id: project.id });
+  const canWrite = apiMode("workspace") === "mock" && canWriteProjectFiles(data, data.currentUserId, project.id);
   const commands = useCommands();
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
-  const [category, setCategory] = useState("全部资料");
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("全部类型");
-  const [sort, setSort] = useState("最近上传");
+  const { query: urlQuery, updateQuery } = useUrlQuery();
+  const filters = readFileFilters(urlQuery);
+  const setFilter = (key: keyof FileFilters, value: string) => updateQuery(fileFilterPatch(key, value));
   const [selected, setSelected] = useState("");
   const [notice, setNotice] = useState("");
-  const files = data.files.filter((item) => item.projectId === project.id);
-  const latest = category === "已归档" ? files.filter((item) => item.status === "superseded") : files.filter((item) => item.status !== "superseded");
+  const [designation, setDesignation] = useState<{ fileId: string; expectedProjectVersion: number; idempotencyKey: string } | null>(null);
+  const [designationReason, setDesignationReason] = useState("");
+  const [savingDesignation, setSavingDesignation] = useState(false);
+  const busyDesignation = useRef(false);
+  const result = queryProjectFiles(data, data.currentUserId, project.id, filters);
+  const { files, items: visible } = result;
+  const fileTypes = [...new Set(files.map((item) => item.type.trim().toUpperCase()))].sort();
   const selectedFile = find(files, selected);
-  const visible = latest.filter((item) => {
-    const matchesCategory = category === "全部资料" || (category === "正式文档" && item.status === "current" && !/png|jpg|jpeg|gif/i.test(item.type)) || (category === "图片截图" && /png|jpg|jpeg|gif|image/i.test(item.type)) || (category === "导出文件" && item.source === "报告导出") || (category === "已归档" && item.status === "superseded");
-    return matchesCategory && (kind === "全部类型" || item.type.toUpperCase() === kind) && `${item.name} ${item.source} ${memberName(data, item.uploaderId)}`.toLowerCase().includes(query.toLowerCase());
-  }).sort((a, b) => sort === "最近上传" ? b.updatedAt.localeCompare(a.updatedAt) : a.name.localeCompare(b.name));
+  const selectFile = (fileId: string) => {
+    if (busyDesignation.current || selected === fileId) return;
+    if (designationReason.trim() && !window.confirm("放弃尚未保存的正式版本原因？")) return;
+    setSelected(fileId); setDesignation(null); setDesignationReason("");
+  };
+  const confirmDesignation = async () => {
+    if (!designation || !designationReason.trim() || !canWrite || busyDesignation.current) return;
+    busyDesignation.current = true; setSavingDesignation(true);
+    try {
+      const outcome = await runner(designateProjectFile, { projectId: project.id, ...designation, reason: designationReason });
+      if (!outcome.ok) { setNotice(outcome.error.message); return; }
+      setDesignation(null); setDesignationReason("");
+      setNotice("已设为本地正式版本，旧版本、冻结基线引用和原因已保留；真实文件存储与成员通知尚未接入。");
+    } catch {
+      setNotice("保存失败，原因已保留，请重试。");
+    } finally {
+      busyDesignation.current = false; setSavingDesignation(false);
+    }
+  };
   const upload = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (busyDesignation.current || designation) { setNotice("请先完成或取消当前文件版本确认。"); event.target.value = ""; return; }
     if (!canWrite) { setNotice("只有项目成员可以上传或替换项目资料。"); event.target.value = ""; return; }
     const selectedFiles = Array.from(event.target.files ?? []);
     const target = replaceTarget ? find(files, replaceTarget) : undefined;
     event.target.value = "";
     setReplaceTarget(null);
+    busyDesignation.current = true;
     let expectedVersion = project.version;
     const results: string[] = [];
-    for (const file of selectedFiles) {
-      const input = {
-        projectId: project.id,
-        name: target ? target.name : file.name,
-        mimeType: file.type || "application/octet-stream",
-        sizeBytes: file.size,
-        expectedVersion,
-        ...(target ? { replacesFileId: target.id } : {}),
-      };
-      const outcome = target ? await commands.replaceProjectFile(input) : await commands.uploadProjectFile(input);
-      if (!outcome.ok) { results.push(`${file.name}：失败（${outcome.error.message}）`); continue; }
-      expectedVersion = expectedVersion + 1;
-      setSelected(outcome.result.id);
-      results.push(`${file.name}：成功 v${outcome.result.version}（模拟上传，仅保存元数据）`);
+    try {
+      for (const file of selectedFiles) {
+        const input = {
+          projectId: project.id,
+          name: target ? target.name : file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+          expectedVersion,
+          ...(target ? { replacesFileId: target.id } : {}),
+        };
+        const outcome = target ? await commands.replaceProjectFile(input) : await commands.uploadProjectFile(input);
+        if (!outcome.ok) { results.push(`${file.name}：失败（${outcome.error.message}）`); continue; }
+        expectedVersion = expectedVersion + 1;
+        setSelected(outcome.result.id);
+        results.push(`${file.name}：成功 v${outcome.result.version}（模拟上传，仅保存元数据）`);
+      }
+    } catch {
+      results.push("文件记录保存失败，请重试。");
+    } finally {
+      busyDesignation.current = false;
     }
     if (results.length) setNotice(results.join("；"));
   };
   return <div><Header project={project} title="文件资料" description="集中管理 Proposal、PDF、Word、README 与其他项目资料。" icon={FolderOpen} /><div className="mb-4"><Notice tone="blue">模拟文件环境：上传、预览与下载均为演示操作，仅保存元数据，不存储真实文件字节。</Notice></div>{notice && <div className="mb-4"><Notice tone="green">{notice}</Notice></div>}
-    <div className="grid gap-4 xl:grid-cols-[160px_minmax(0,1fr)_280px]"><nav aria-label="文件类别" className="rounded-md border border-slate-200 bg-white p-2">{["全部资料", "正式文档", "图片截图", "导出文件", "已归档"].map((item) => <button key={item} className={`mb-1 w-full rounded px-3 py-2.5 text-left text-sm ${category === item ? "bg-blue-50 font-semibold text-[var(--gp-action)]" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => setCategory(item)}>{item}</button>)}</nav><Panel noPadding><div className="flex flex-wrap gap-2 border-b border-slate-100 p-4"><input ref={fileInput} className="hidden" type="file" multiple onChange={upload} />{canWrite && <button className={primary} onClick={() => fileInput.current?.click()}><Upload size={15} />上传文件</button>}{!canWrite && <span className="self-center text-xs text-slate-500">只有项目成员可以上传或替换资料。</span>}<div className="relative min-w-[180px] flex-1"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} pl-9`} placeholder="搜索文件名、来源或上传者" value={query} onChange={(event) => setQuery(event.target.value)} /></div><select className={`${field} w-auto`} aria-label="文件类型" value={kind} onChange={(event) => setKind(event.target.value)}><option>全部类型</option>{[...new Set(files.map((item) => item.type.toUpperCase()))].map((type) => <option key={type}>{type}</option>)}</select><select className={`${field} w-auto`} aria-label="排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近上传</option><option>文件名</option></select></div>
-      <div className="overflow-x-auto"><table className="gp-table min-w-[700px]"><thead><tr><th>文件名</th><th>类型</th><th>来源</th><th>上传者</th><th>更新时间</th><th>关联项目 / 任务</th><th>状态</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id} className="cursor-pointer" onClick={() => setSelected(item.id)}><td><span className={linkClass}>{item.name}</span><div className="text-xs text-slate-400">{item.size} · v{item.version}</div></td><td>{item.type}</td><td>{item.source}</td><td>{memberName(data, item.uploaderId)}</td><td>{date(item.updatedAt)}</td><td>{project.name}</td><td><StatusBadge label={item.status === "current" ? "正式" : item.status === "draft" ? "草稿" : "已归档"} tone={item.status === "current" ? "green" : item.status === "draft" ? "blue" : "gray"} /></td></tr>)}</tbody></table>{!visible.length && <Empty title="没有符合条件的文件" />}</div></Panel>
-      <div className="space-y-4"><Panel title={selectedFile ? "版本管理" : "资料使用说明"}>{selectedFile ? <><h3 className="break-all font-semibold">{selectedFile.name}</h3><p className="mt-1 text-xs text-slate-500">当前版本 v{selectedFile.version}</p><div className="mt-4 space-y-2">{getFileVersions(data, data.currentUserId, selectedFile.id).map((item) => <div key={item.id} className="border-b border-slate-100 py-2 text-sm"><span className="font-medium">v{item.version}</span> · {date(item.updatedAt)}<p className="text-xs text-slate-500">{memberName(data, item.uploaderId)} · {item.size}{item.mimeType ? ` · ${item.mimeType}` : ""} · {item.status === "superseded" ? "历史版本" : "当前版本"}</p></div>)}</div><div className="mt-4 flex gap-2">{canWrite && <button className={outline} onClick={() => { setReplaceTarget(selectedFile.id); fileInput.current?.click(); }}>上传新版本</button>}{canWrite && selectedFile.status === "draft" && <button className={outline} onClick={() => update("files", selectedFile.id, { status: "current" })}>设为正式</button>}{!canWrite && <p className="text-xs text-slate-500">你没有上传或替换资料的操作资格。</p>}</div><div className="mt-3 flex gap-2"><button className={outline} onClick={() => setNotice(getFilePreview(data, data.currentUserId, selectedFile.id).message)}>预览（模拟）</button><button className={outline} onClick={() => setNotice(getFileDownload(data, data.currentUserId, selectedFile.id).message)}>下载（模拟）</button></div></> : <><InfoLine title="版本管理" text="上传同名文件时保留历史版本，方便追溯变更。" /><InfoLine title="支持的文件格式" text="PDF、Word、PPT、Excel、PNG、JPG、ZIP、Markdown 等。" /><InfoLine title="可追溯性" text="记录来源、上传者与更新时间，可关联任务和验收证据。" /></>}</Panel></div></div>
+    <div className="grid gap-4 xl:grid-cols-[160px_minmax(0,1fr)_280px]"><nav aria-label="文件类别" className="rounded-md border border-slate-200 bg-white p-2">{fileCategories.map((item) => <button key={item} type="button" aria-pressed={filters.category === item} className={`mb-1 w-full rounded px-3 py-2.5 text-left text-sm ${filters.category === item ? "bg-blue-50 font-semibold text-[var(--gp-action)]" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => setFilter("category", item)}>{fileCategoryLabels[item]}</button>)}</nav><Panel noPadding><div className="flex flex-wrap gap-2 border-b border-slate-100 p-4"><input ref={fileInput} className="hidden" type="file" multiple onChange={upload} />{canWrite && <button className={primary} onClick={() => fileInput.current?.click()}><Upload size={15} />上传文件</button>}{!canWrite && <span className="self-center text-xs text-slate-500">只有项目成员可以上传或替换资料。</span>}<div className="relative min-w-[180px] flex-1"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} pl-9`} placeholder="搜索文件名、来源或上传者" aria-label="搜索文件" value={filters.q} onChange={(event) => setFilter("q", event.target.value)} /></div><select className={`${field} w-auto`} aria-label="文件类型" value={filters.type} onChange={(event) => setFilter("type", event.target.value)}><option value="all">全部类型</option>{filters.type !== "all" && !fileTypes.includes(filters.type) && <option value={filters.type}>不可用的类型：{filters.type}</option>}{fileTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select><select className={`${field} w-auto`} aria-label="排序" value={filters.sort} onChange={(event) => setFilter("sort", event.target.value)}><option value="recent">最近上传</option><option value="name">文件名</option></select><button type="button" className={outline} onClick={() => updateQuery({ category: null, q: null, type: null, sort: null, page: null })}>清除筛选</button></div>
+      <div className="overflow-x-auto"><table className="gp-table min-w-[700px]" aria-label="项目文件列表"><thead><tr><th>文件名</th><th>类型</th><th>来源</th><th>上传者</th><th>更新时间</th><th>关联项目 / 任务</th><th>状态</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}><td><button type="button" className={linkClass} disabled={savingDesignation} onClick={() => selectFile(item.id)}>{item.name}</button><div className="text-xs text-slate-400">{item.size} · v{item.version}</div></td><td>{item.type}</td><td>{item.source}</td><td>{memberName(data, item.uploaderId)}</td><td>{date(item.updatedAt)}</td><td>{project.name}</td><td><StatusBadge label={item.status === "current" ? "正式" : item.status === "draft" ? "草稿" : "已归档"} tone={item.status === "current" ? "green" : item.status === "draft" ? "blue" : "gray"} /></td></tr>)}</tbody></table>{!visible.length && <Empty title="没有符合条件的文件" />}</div>
+      <nav aria-label="文件分页" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4">
+        <span className="text-sm text-slate-500" role="status">第 {result.page} / {result.pageCount} 页 · 共 {result.total} 个文件</span>
+        <div className="flex items-center gap-2"><select className={`${field} w-auto`} aria-label="每页文件数" value={filters.pageSize} onChange={(event) => setFilter("pageSize", event.target.value)}>{filePageSizes.map((size) => <option key={size} value={size}>{size} / 页</option>)}</select><button type="button" className={outline} disabled={result.page <= 1} onClick={() => setFilter("page", String(result.page - 1))}>上一页</button><button type="button" className={outline} disabled={result.page >= result.pageCount} onClick={() => setFilter("page", String(result.page + 1))}>下一页</button></div>
+      </nav></Panel>
+      <div className="space-y-4"><Panel title={selectedFile ? "版本管理" : "资料使用说明"}>{selectedFile ? <><h3 className="break-all font-semibold">{selectedFile.name}</h3><p className="mt-1 text-xs text-slate-500">所选版本 v{selectedFile.version}</p><div className="mt-4 space-y-2">{getFileVersions(data, data.currentUserId, selectedFile.id).map((item) => <div key={item.id} className="border-b border-slate-100 py-2 text-sm"><span className="font-medium">v{item.version}</span> · {date(item.updatedAt)}<p className="text-xs text-slate-500">{memberName(data, item.uploaderId)} · {item.size}{item.mimeType ? ` · ${item.mimeType}` : ""} · {item.status === "superseded" ? "历史版本" : item.status === "draft" ? "草稿版本" : "当前正式版本"}</p>{(item as FileWithCDecisions).cDesignationHistory?.map((decision) => <p key={decision.idempotencyKey} className="mt-1 text-xs text-slate-500">设为正式 · {memberName(data, decision.actorId)} · {date(decision.decidedAt)}：{decision.reason}</p>)}</div>)}</div><div className="mt-4 flex gap-2">{canWrite && <button className={outline} disabled={savingDesignation || Boolean(designation)} onClick={() => { setReplaceTarget(selectedFile.id); fileInput.current?.click(); }}>上传新版本</button>}{canWrite && selectedFile.status === "draft" && <button className={outline} disabled={savingDesignation || Boolean(designation)} onClick={() => { setDesignation({ fileId: selectedFile.id, expectedProjectVersion: project.version, idempotencyKey: id("file-designation") }); setDesignationReason(""); setNotice(""); }}>设为正式</button>}{!canWrite && <p className="text-xs text-slate-500">当前身份、课程或项目状态不允许上传、替换或设置正式版本。</p>}</div><div className="mt-3 flex gap-2"><button className={outline} onClick={() => setNotice(getFilePreview(data, data.currentUserId, selectedFile.id).message)}>预览（模拟）</button><button className={outline} onClick={() => setNotice(getFileDownload(data, data.currentUserId, selectedFile.id).message)}>下载（模拟）</button></div></> : <><InfoLine title="版本管理" text="上传同名文件时保留历史版本，方便追溯变更。" /><InfoLine title="支持的文件格式" text="PDF、Word、PPT、Excel、PNG、JPG、ZIP、Markdown 等。" /><InfoLine title="可追溯性" text="记录来源、上传者与更新时间，可关联任务和验收证据。" /></>}</Panel>
+      {designation && selectedFile && designation.fileId === selectedFile.id && <Panel title="确认正式文件版本">
+        <p className="mb-3 text-sm text-slate-600">{selectedFile.name} v{selectedFile.version} 将成为本地正式版本；保留同名旧版本及冻结基线引用，不会发送真实成员通知。</p>
+        <label className={label} htmlFor="c-file-designation-reason">设为正式原因 *</label>
+        <textarea id="c-file-designation-reason" className={field} value={designationReason} disabled={savingDesignation} maxLength={2000} onChange={(event) => setDesignationReason(event.target.value)} placeholder="说明为何选择此版本作为当前正式资料" />
+        {project.version !== designation.expectedProjectVersion && <button type="button" className={`${outline} mt-2`} disabled={savingDesignation} onClick={() => setDesignation({ ...designation, expectedProjectVersion: project.version, idempotencyKey: id("file-designation") })}>已核对最新项目资料，保留原因</button>}
+        <div className="mt-3 flex gap-2"><button type="button" className={outline} disabled={savingDesignation} onClick={() => { if (!designationReason.trim() || window.confirm("放弃尚未保存的正式版本原因？")) { setDesignation(null); setDesignationReason(""); } }}>取消</button><button type="button" className={primary} disabled={savingDesignation || !designationReason.trim() || !canWrite || selectedFile.status !== "draft" || project.version !== designation.expectedProjectVersion} onClick={confirmDesignation}>{savingDesignation ? "保存中…" : "确认设为正式"}</button></div>
+      </Panel>}</div></div>
   </div>;
 }
 
