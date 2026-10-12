@@ -41,7 +41,11 @@ export function HomeApiPage() {
         <Stat label="我的已完成任务" value={data.my_completed_tasks} icon={CheckSquare} />
         <Stat label={t("pending")} value={data.pending_action_items ?? "—"} />
       </div>
-      <p className="mb-4 text-sm text-slate-600">包含仍可访问的已结束课程及归档项目；已完成任务按验收后的任务状态统计。待办和通知服务尚未接入。</p>
+      <p className="mb-3 text-sm text-slate-600">包含仍可访问的已结束课程及归档项目；已完成任务按验收后的任务状态统计。</p>
+      <div className="mb-4 flex flex-wrap gap-4 text-sm">
+        <Link className="gp-link" href="/notifications">未读通知：{data.unread_notifications ?? "暂不可用"}</Link>
+        <Link className="gp-link" href="/action-items">待处理事项：{data.pending_action_items ?? "暂不可用"}</Link>
+      </div>
       <div className="gp-grid-2">
         <Panel title={t("myProjects")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 个项目</p>
           <div className="space-y-4">{data.projects.map((project) => <div key={project.id} className="border-b border-slate-100 pb-3">
