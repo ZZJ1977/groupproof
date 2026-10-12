@@ -1,6 +1,11 @@
 export const apiFeatures = [
   "workspace",
   "daily",
+  "inbox",
+  "cworkspace",
+  "coursefiles",
+  "cidentity",
+  "governance",
   "auth",
   "courses",
   "groups",
