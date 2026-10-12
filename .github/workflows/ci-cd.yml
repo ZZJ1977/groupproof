@@ -299,17 +299,14 @@ jobs:
           test -n "$RAILWAY_API_TOKEN"
           railway status --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --json | node scripts/railway-service-summary.mjs
           node scripts/railway-auth-config-check.mjs
-          railway api describe volumeInstanceBackupCreate
-          railway api search backup
-          railway api search workflow
-          railway api describe VolumeInstance
-          railway api describe ServiceInstanceUpdateInput
+          node scripts/deploy-staging.mjs --check-only
 
   deploy:
     name: Deploy to Railway
     needs: [quality, backend, e2e, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/develop' && 'staging' || 'production') }}
     env:
@@ -332,5 +329,10 @@ jobs:
       - name: Install Railway CLI
         run: npm install --global @railway/cli@5.63.3
 
-      - name: Deploy source with Dockerfile to Railway
+      - name: Back up, migrate, and deploy unified staging API and Web
+        if: github.ref == 'refs/heads/develop'
+        run: node scripts/deploy-staging.mjs
+
+      - name: Deploy production source with Dockerfile to Railway
+        if: github.ref == 'refs/heads/main'
         run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"

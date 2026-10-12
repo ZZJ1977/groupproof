@@ -1,5 +1,29 @@
 # 部署基线
 
+## A3 统一认证测试发布（2026-10-12）
+
+本轮代码来源为 `~/GroupProof-team/groupproof` 的 `compat/unified-auth-resend`（`b2d1f2c`），交付 PR 为 [#14](https://github.com/ZZJ1977/groupproof/pull/14)。`services/api` 统一承载认证和业务，`server/` 保留为历史参考；以下历史基础设施描述不代表旧身份服务仍是正式入口。
+
+`develop` 的 GitHub Actions 在全部质量检查通过后运行 `scripts/deploy-staging.mjs`，按以下顺序发布到既有 `groupproof-staging` 项目：
+
+1. 核对固定的测试项目、API、Web、PostgreSQL 卷和部署接口；保留团队 API 原数据库连接。
+2. 在 Railway 中创建数据库卷备份，确认备份工作流完成且新备份可查询；失败时不继续迁移。
+3. 配置统一 API 的认证变量、迁移前置命令和 `/readyz`，部署 `services/api`；就绪检查同时核对数据库迁移 head。
+4. API 成功后，将 Web 的 `API_INTERNAL_URL` 从旧 `identity` 切到 `http://groupproof.railway.internal:8000`，再部署 Web。
+5. 从测试网站验证同源认证封装、匿名会话、邮件限制、个人中心 401 和业务页登录跳转。
+
+GitHub Environment `staging` 的项目 ID 和 Web 服务 ID仍使用现有配置。Railway 项目内部环境名为 `production`，但脚本同时校验项目 ID/名称并只接受 `develop`，不会把这次改造发布到生产项目。
+
+PR 上的 preflight 只读取服务、备份和配置是否存在，不更改平台配置、不迁移、不部署、不打印密钥。实际发布依赖 `develop` 的团队审查/保护规则；不能通过 PR 的检查成功宣布已经部署。
+
+测试站点：<https://groupproof-staging-production.up.railway.app>。
+
+当前现场核对：统一 API 和旧 `identity` 尚未配置 Resend/Google 凭据，Web 仍指向旧身份服务。发布会明确使用 `MAIL_MODE=resend`、`MAIL_PUBLIC_ENABLED=false`，禁用邮件捕获、演示身份、debug 和验收密令；使用稳定的服务端 HMAC 密钥。Google 按钮按交付代码显示，未配置凭据时实际登录返回暂不可用。没有发信凭据/域名时，真实注册、学校验证和密码恢复不作为线上已验收项；已有有效密码账号可登录。
+
+本地旧账号、密码散列及旧会话不会由 CI 自动上传或导入。旧数据导入须另行备份、dry-run 和冲突核对。回退应用时保留升级后的数据库和新记录，不自动 downgrade 或清库。
+
+本轮只改造 Staging 发布链路。生产发布仍需由负责人完成生产认证配置、迁移和成套 API/Web 验收，再决定发布。
+
 当前仓库是 GroupProof 的 Next.js 前端原型。它可以作为一个独立的 Railway Web 服务运行；真实 API、管理后台、异步任务和数据服务接入后，再按服务边界扩展 Railway 项目。
 
 ## 环境策略
