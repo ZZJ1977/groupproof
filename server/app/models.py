@@ -280,7 +280,7 @@ class PreRegistrationRequest(Base):
 class EmailOutbox(Base):
     """邮件捕获（仅 APP_MODE != real 的隔离开发/测试环境使用）。
 
-    capture 模式下保存投递请求内容供测试读取；smtp 模式不写入本表，避免验证码进入日志/存储。
+    capture 模式下保存投递请求内容供测试读取；smtp/resend 模式不写入本表，避免验证码进入日志/存储。
     """
 
     __tablename__ = "email_outbox"
