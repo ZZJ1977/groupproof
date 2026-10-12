@@ -298,6 +298,9 @@ jobs:
           test -n "$RAILWAY_PROJECT_ID"
           test -n "$RAILWAY_API_TOKEN"
           railway status --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --json | node scripts/railway-service-summary.mjs
+          node scripts/railway-auth-config-check.mjs
+          railway api describe volumeInstanceBackupCreate
+          railway api describe volumeInstanceBackups
 
   deploy:
     name: Deploy to Railway
