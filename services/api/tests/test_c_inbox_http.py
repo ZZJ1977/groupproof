@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.auth import get_current_user
 from app.api.errors import install_exception_handlers
 from app.db.session import get_session
+from app.modules.c.daily_router import router as daily_router
 from app.modules.c.inbox_ports import UnavailableInboxPort, get_inbox_port
 from app.modules.c.inbox_router import router
 
@@ -29,6 +30,7 @@ def api(db, scope, inbox):
 
     install_exception_handlers(app)
     app.include_router(router, prefix="/api/v1")
+    app.include_router(daily_router, prefix="/api/v1")
     app.dependency_overrides[get_session] = lambda: db
     app.dependency_overrides[get_current_user] = lambda: scope.users["author"]
     app.dependency_overrides[get_inbox_port] = lambda: inbox
@@ -49,6 +51,33 @@ def single(client):
         "expected_inbox_version": page["inbox_version"],
         "snapshot_id": page["snapshot_id"],
     }
+
+
+def test_home_counts_follow_committed_reads_and_keep_other_recipient_isolated(client, api, scope):
+    def counts():
+        response = client.get("/api/v1/home/summary")
+        assert response.status_code == 200, response.text
+        return response.json()["data"]
+
+    assert counts()["unread_notifications"] == 11
+    assert counts()["pending_action_items"] == 1
+    path, body = single(client)
+    result = client.post(path, json=body, headers={"Idempotency-Key": "home-read"})
+    assert result.status_code == 200
+    assert counts()["unread_notifications"] == 10
+    replay = client.post(path, json=body, headers={"Idempotency-Key": "home-read"})
+    assert replay.status_code == 200
+    assert counts()["unread_notifications"] == 10
+    page = client.get("/api/v1/me/notifications").json()["data"]
+    result = client.post(
+        "/api/v1/me/notifications/read-all",
+        json={"expected_inbox_version": page["inbox_version"], "snapshot_id": page["snapshot_id"]},
+        headers={"Idempotency-Key": "home-all"},
+    )
+    assert result.status_code == 200
+    assert counts()["unread_notifications"] == 0
+    api.dependency_overrides[get_current_user] = lambda: scope.users["outsider"]
+    assert counts()["unread_notifications"] == 11
 
 
 def test_http_list_read_retry_all_and_action_targets(client, scope):

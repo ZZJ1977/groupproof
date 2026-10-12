@@ -21,8 +21,13 @@ no-store cache policy.
 - Project progress reuses C2's tree-weighted `progress_projection`, so parents and
   children are not double counted. Missing weighted tasks or invalid trees return
   null plus `progress_status`; the UI does not substitute zero.
-- Notification and action totals are null. Their names appear in
-  `unavailable_sources`; no notification rows are inferred from pending outbox data.
+- Notification and pending-action totals reuse the current recipient's validated
+  inbox queries through the same injected `InboxPort` as pages 05/06. Each reads
+  one record plus the provider's complete total, not every page. A successful empty
+  source returns zero. A missing, unavailable or invalid source returns null only
+  for its own counter and is listed in `unavailable_sources`; unrelated home facts
+  remain visible. Provider 401/403 errors fail the entire response. The default A
+  adapter remains unavailable, and no counts are inferred from pending outbox data.
 
 The query count is bounded rather than querying once per project. A new request
 sees task mutations without stale workspace snapshots.
@@ -76,6 +81,11 @@ counts, pagination, UTC ranges and production refusal. The separate
 cross-session membership revocation, tree weights and committed progress changes.
 `e2e/c-daily-api.spec.ts`
 checks refresh, links, filters, errors and recovery with intercepted API responses.
+`test_c_inbox_http.py` also exercises actual fixture persistence across single
+read, duplicate replay, all-read and switching recipients, verifying the home and
+inbox routes return matching counts. This is a SQLite A-contract fixture, not A's
+production delivery adapter. The home links distinguish zero from unavailable and
+lead to the existing notification and action pages.
 Run its isolated browser configuration after the ordinary C suite:
 
 ```sh

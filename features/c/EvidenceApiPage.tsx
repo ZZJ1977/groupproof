@@ -16,6 +16,23 @@ const states = { candidate: "候选", pending_confirmation: "待确认", formal:
 const sources = { manual: "手工说明", task_note: "任务说明", discussion: "重要讨论", file: "文件", screenshot: "截图", github: "GitHub", feishu: "飞书" } as const;
 const decisions = { submitted: "提交候选", adopted: "采纳正式", withdrawn: "撤回", source_changed: "来源变化" } as const;
 
+function snapshotRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+function SourceSnapshotContent({ snapshot, sourceType }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"] }) {
+  // Canonical snapshots wrap the immutable source payload; never dump IDs or provider metadata.
+  const source = snapshotRecord(snapshot.content.source);
+  const text = ["title", "body", "summary", "description"].map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
+  const replies = sourceType === "discussion" && Array.isArray(source.replies) ? source.replies.map(snapshotRecord).map((reply) => reply.body).filter((body): body is string => typeof body === "string") : [];
+  return <>
+    {snapshot.content.availability === "deleted" && <p className="my-2">此快照记录了来源已删除。</p>}
+    {sourceType === "task_note" && typeof source.version_no === "number" && <p className="my-2 text-sm">任务说明 v{source.version_no}</p>}
+    {sourceType === "discussion" && source.is_important === false && <p className="my-2">此快照中的讨论已取消重要标记。</p>}
+    <p className="whitespace-pre-wrap">{text || "该来源快照不包含可直接展示的文字。"}</p>
+    {replies.length > 0 && <div className="mt-3"><h4 className="font-semibold">快照中的回复</h4>{replies.map((body, index) => <p key={index} className="my-2 whitespace-pre-wrap">{body}</p>)}</div>}
+  </>;
+}
+
 export function EvidenceApiPage({ projectId }: { projectId: string }) {
   const { userId } = useWorkspace();
   return <EvidencePage key={`${userId}:${projectId}`} userId={userId} projectId={projectId} />;
@@ -56,6 +73,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
     const input = { expected_version: command.expected, reason: command.reason.trim() };
     try {
       await projectApi[command.action](projectId, item.id, input, key({ projectId, evidenceId: item.id, action: command.action, input }));
+      key.reset();
       setCommand(null); setNotice(command.action === "adopt" ? "证据已采纳为正式；验收结论需由验收服务决定。" : "证据已撤回，历史和快照仍保留。"); await refresh();
     } catch (next) { setError(next); if (accessFailure(next)) deny(next); }
     finally { busyRef.current = false; setBusy(false); }
@@ -91,7 +109,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
             {item.source_changed && <p className="my-3 text-amber-800">来源已变化，原快照保留；该证据当前不计入有效证据。</p>}
             <h3 className="mb-2 mt-4 font-semibold">对应标准</h3>{item.criterion_ids.map((id) => <p key={id}>{access.tasks.flatMap((task) => task.criteria).find((criterion) => criterion.id === id)?.text ?? "历史关联标准"}</p>)}
             {canDecide(item) && <div className="my-3 flex gap-2">{["candidate", "pending_confirmation"].includes(item.status) && !item.source_changed && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "adopt", expected: item.lock_version, reason: "" }); setError(null); }}>采纳为正式证据</button>}{["candidate", "pending_confirmation", "formal"].includes(item.status) && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "withdraw", expected: item.lock_version, reason: "" }); setError(null); }}>撤回证据</button>}</div>}
-            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><p className="whitespace-pre-wrap">{["title", "body", "summary", "description"].map((field) => typeof snapshot.content[field] === "string" ? snapshot.content[field] : null).filter(Boolean).join("\n") || "该来源快照不包含可直接展示的文字。"}</p></details>)}
+            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} /></details>)}
             <h3 className="mt-4 font-semibold">决定历史</h3>{item.decisions.map((decision) => <p key={decision.id} className="my-2 text-sm">{decisions[decision.decision]} · {decision.reason} · {formatDate(decision.created_at)}</p>)}</>}
         </Panel>}
         {command && command.id === selectedId && item && canDecide(item) && <Panel title={command.action === "adopt" ? "确认采纳" : "确认撤回"}><p className="mb-3 text-sm">{command.action === "adopt" ? "采纳不会自动形成验收结论。" : "撤回会使证据不再计入有效证据，历史仍保留。"}</p><label htmlFor="evidence-reason">证据决定原因</label><textarea id="evidence-reason" className={`${apiInput} block w-full`} value={command.reason} maxLength={4000} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void save()}>确认决定</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{versionFailure(error) && <button className={apiButton} onClick={() => void reviewLatest()}>刷新并核对证据</button>}</div></Panel>}

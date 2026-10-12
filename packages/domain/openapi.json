@@ -2730,8 +2730,16 @@
             "type": "integer"
           },
           "pending_action_items": {
-            "title": "Pending Action Items",
-            "type": "null"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Action Items"
           },
           "project_count": {
             "title": "Project Count",
@@ -2766,8 +2774,16 @@
             "type": "array"
           },
           "unread_notifications": {
-            "title": "Unread Notifications",
-            "type": "null"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unread Notifications"
           }
         },
         "required": [

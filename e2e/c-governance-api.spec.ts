@@ -106,9 +106,95 @@ test("C7-04 conflict preserves reason; refreshed version publishes once and end 
   await page.getByRole("button", { name: "刷新详情", exact: true }).click();
   await page.getByRole("button", { name: "确认发布课程", exact: true }).click();
   await expect(page.getByText("fixture-unique-invite", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "开始结束确认", exact: true }).click();
   await page.getByLabel("变更理由", { exact: true }).fill("课程教学工作结束");
   await page.getByRole("button", { name: "确认结束课程", exact: true }).click();
   await expect(page.getByText(/（已撤销）/)).toBeVisible(); expect(writes).toBe(3);
+});
+
+test("C7-04 a background course version change requires explicit refresh before publishing", async ({ page }) => {
+  let row = course; let writes = 0;
+  await page.route(courseList, (route) => route.fulfill({ json: envelope({ items: [row], page: 1, page_size: 10, total: 1 }) }));
+  await page.route(`**/api/v1/admin/courses/${courseId}`, (route) => route.fulfill({ json: envelope(row) }));
+  await page.route(`**/api/v1/admin/courses/${courseId}/transitions`, (route) => {
+    writes++;
+    expect(route.request().postDataJSON()).toEqual({ action: "publish", expected_version: 1, reason: "已核对发布设置" });
+    row = { ...row, status: "active", lock_version: 2, invite_code: "published-after-review" };
+    return route.fulfill({ json: envelope(row) });
+  });
+  await page.goto(`/admin/courses?course=${courseId}`);
+  await page.getByLabel("变更理由", { exact: true }).fill("已核对发布设置");
+  row = { ...course, lock_version: 1 };
+  await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
+  await expect(page.getByText("课程状态或版本已变化，当前操作已暂停。请刷新详情并核对；填写的理由已保留。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认发布课程", exact: true })).toBeDisabled();
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveValue("已核对发布设置");
+  expect(writes).toBe(0);
+  await page.getByRole("button", { name: "刷新详情", exact: true }).click();
+  await expect(page.getByRole("button", { name: "确认发布课程", exact: true })).toBeEnabled();
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveValue("已核对发布设置");
+  await page.getByRole("button", { name: "确认发布课程", exact: true }).click();
+  await expect(page.getByText("published-after-review", { exact: true })).toBeVisible();
+  expect(writes).toBe(1);
+});
+
+test("C7-04 another administrator publishing cannot turn the old publish reason into an end command", async ({ page }) => {
+  let row = course; let writes = 0;
+  await page.route(courseList, (route) => route.fulfill({ json: envelope({ items: [row], page: 1, page_size: 10, total: 1 }) }));
+  await page.route(`**/api/v1/admin/courses/${courseId}`, (route) => route.fulfill({ json: envelope(row) }));
+  await page.route(`**/api/v1/admin/courses/${courseId}/transitions`, (route) => {
+    writes++;
+    expect(route.request().postDataJSON()).toEqual({ action: "end", expected_version: 1, reason: "重新核对后确认结束教学" });
+    row = { ...row, status: "ended", lock_version: 2, invite_revoked_at: "2026-10-12T01:00:00Z" };
+    return route.fulfill({ json: envelope(row) });
+  });
+  await page.goto(`/admin/courses?course=${courseId}`);
+  await page.getByLabel("变更理由", { exact: true }).fill("旧的发布理由不能结束课程");
+  row = { ...course, status: "active", lock_version: 1, invite_code: "published-by-other-admin" };
+  await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
+  await expect(page.getByText("published-by-other-admin", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认发布课程", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "确认结束课程", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveValue("旧的发布理由不能结束课程");
+  expect(writes).toBe(0);
+  await page.getByRole("button", { name: "刷新详情", exact: true }).click();
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "开始结束确认", exact: true }).click();
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "确认结束课程", exact: true })).toBeDisabled();
+  await page.getByLabel("变更理由", { exact: true }).fill("重新核对后确认结束教学");
+  await page.getByRole("button", { name: "确认结束课程", exact: true }).click();
+  await expect(page.getByText(/（已撤销）/)).toBeVisible();
+  expect(writes).toBe(1);
+});
+
+test("C7-04 a committed publish with a 503 response stays a publish attempt until refreshed", async ({ page }) => {
+  let row = course; const actions: string[] = [];
+  await page.route(courseList, (route) => route.fulfill({ json: envelope({ items: [row], page: 1, page_size: 10, total: 1 }) }));
+  await page.route(`**/api/v1/admin/courses/${courseId}`, (route) => route.fulfill({ json: envelope(row) }));
+  await page.route(`**/api/v1/admin/courses/${courseId}/transitions`, (route) => {
+    const body = route.request().postDataJSON(); actions.push(body.action);
+    expect(body).toEqual({ action: "publish", expected_version: 0, reason: "发布设置已核对" });
+    row = { ...course, status: "active", lock_version: 1, invite_code: "committed-despite-response-failure" };
+    return route.fulfill({ status: 503, json: failure("RESPONSE_UNAVAILABLE") });
+  });
+  await page.goto(`/admin/courses?course=${courseId}`);
+  await page.getByLabel("变更理由", { exact: true }).fill("发布设置已核对");
+  await page.getByRole("button", { name: "确认发布课程", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("服务尚不可用");
+  await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
+  await expect(page.getByText("committed-despite-response-failure", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认发布课程", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "确认结束课程", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveValue("发布设置已核对");
+  await page.getByRole("button", { name: "刷新详情", exact: true }).click();
+  await expect(page.getByText("课程已经发布，原发布确认已关闭。若需结束课程，请开始新的结束确认。", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "确认结束课程", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "开始结束确认", exact: true }).click();
+  await expect(page.getByLabel("变更理由", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "确认结束课程", exact: true })).toBeDisabled();
+  expect(actions).toEqual(["publish"]);
 });
 
 test("C7-07 unavailable activation retains pending and reason; retry preserves exact scope/key", async ({ page }) => {
@@ -151,6 +237,50 @@ test("C7-07 conflict requires a fresh version before rejection and preserves the
   await expect(page.getByLabel("审批理由", { exact: true })).toHaveValue("申请范围不必要");
   await page.getByRole("button", { name: "确认审批决定", exact: true }).click();
   await expect(page.getByText(/状态：已拒绝/)).toBeVisible(); expect(writes).toBe(2);
+});
+
+test("C7-07 an expired pending request cannot be approved but can be rejected with a reason", async ({ page }) => {
+  let row: Schema["AccessRequestDetailDTO"] = { ...access, requested_expires_at: "2000-01-01T00:00:00Z" };
+  let writes = 0;
+  await page.route(accessList, (route) => route.fulfill({ json: envelope({ items: [row], page: 1, page_size: 10, total: 1 }) }));
+  await page.route(`**/api/v1/admin/access-requests/${requestId}`, (route) => route.fulfill({ json: envelope(row) }));
+  await page.route(`**/api/v1/admin/access-requests/${requestId}/decisions`, (route) => {
+    writes++;
+    expect(route.request().postDataJSON()).toEqual({ decision: "rejected", expected_version: 0, reason: "原申请期限已过，请重新申请", expires_at: null });
+    row = { ...row, status: "rejected", lock_version: 1 };
+    return route.fulfill({ json: envelope(row) });
+  });
+  await page.goto(`/admin/access-requests?request=${requestId}`);
+  await expect(page.getByText("申请期限已过，无法批准；可填写理由拒绝此申请。", { exact: true })).toBeVisible();
+  await page.getByLabel("审批理由", { exact: true }).fill("原申请期限已过，请重新申请");
+  await expect(page.getByRole("button", { name: "确认审批决定", exact: true })).toBeDisabled();
+  await expect(page.getByRole("combobox", { name: "审批决定", exact: true }).locator('option[value="approved"]')).toBeDisabled();
+  await expect(page.getByLabel("批准截止时间", { exact: true })).toBeDisabled();
+  expect(writes).toBe(0);
+  await page.getByRole("combobox", { name: "审批决定", exact: true }).selectOption("rejected");
+  await page.getByLabel("审批理由", { exact: true }).fill("");
+  await expect(page.getByRole("button", { name: "确认审批决定", exact: true })).toBeDisabled();
+  await page.getByLabel("审批理由", { exact: true }).fill("原申请期限已过，请重新申请");
+  await page.getByRole("button", { name: "确认审批决定", exact: true }).click();
+  await expect(page.getByText(/状态：已拒绝/)).toBeVisible();
+  expect(writes).toBe(1);
+});
+
+test("C7-07 an open approval form expires without discarding its reason", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-12T00:00:00Z") });
+  const row = { ...access, requested_expires_at: "2026-10-12T00:01:00Z" };
+  await page.route(accessList, (route) => route.fulfill({ json: envelope({ items: [row], page: 1, page_size: 10, total: 1 }) }));
+  await page.route(`**/api/v1/admin/access-requests/${requestId}`, (route) => route.fulfill({ json: envelope(row) }));
+  let writes = 0;
+  await page.route(`**/api/v1/admin/access-requests/${requestId}/decisions`, (route) => { writes++; return route.fulfill({ status: 422, json: failure("ACCESS_EXPIRY_INVALID") }); });
+  await page.goto(`/admin/access-requests?request=${requestId}`);
+  await page.getByLabel("审批理由", { exact: true }).fill("正在核对申请范围");
+  await expect(page.getByRole("button", { name: "确认审批决定", exact: true })).toBeEnabled();
+  await page.clock.fastForward(60_001);
+  await expect(page.getByText("申请期限已过，无法批准；可填写理由拒绝此申请。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认审批决定", exact: true })).toBeDisabled();
+  await expect(page.getByLabel("审批理由", { exact: true })).toHaveValue("正在核对申请范围");
+  expect(writes).toBe(0);
 });
 
 test("C7-05 audit filters and pagination use canonical users, and detail renders metadata as text", async ({ page }) => {

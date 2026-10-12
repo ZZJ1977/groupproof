@@ -74,6 +74,7 @@ function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectI
         const input = { expected_version: important.expected, is_important: important.value, reason: important.reason.trim() };
         await projectApi.markImportant(projectId, important.id, input, key({ projectId, id: important.id, action, input })); setImportant(null);
       }
+      key.reset();
       setNotice("讨论变更已保存；通知投递不在本次完成范围内。"); await refresh();
     } catch (next) { setError(next); if (accessFailure(next)) deny(next); }
     finally { busyRef.current = false; setBusy(false); }

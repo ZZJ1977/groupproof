@@ -69,12 +69,13 @@
 
 ## 5. 来源与快照
 
-`source_type` 支持 `manual`、`task_note`、`file`、`screenshot`、`github`、`feishu`。
+`source_type` 支持 `manual`、`task_note`、`discussion`、`file`、`screenshot`、`github`、`feishu`。
 
 | 来源 | 来源身份与真实性边界 |
 |---|---|
 | `manual` | 保存用户提交的标题、正文及可选 HTTP(S) `source_url`，快照明确标记为用户手工内容；不声称已抓取或验证 URL 内容，不接受 `source_id` |
 | `task_note` | `source_id` 是本任务当前 `TaskNoteVersion.id`；服务端读取数据库原文。旧版本不能作为“当前说明”提交新候选 |
+| `discussion` | `source_id` 是同项目的重要、开放讨论 ID；服务端读取不可变讨论快照，包含当时的回复。新增回复或取消重要标记会使关联证据来源变化，原快照保留 |
 | `file` / `screenshot` | `source_id` 交给 A 文件适配器验证；当前未接入，明确 503 |
 | `github` / `feishu` | `source_id` 交给可信外部来源适配器验证连接、事件和项目归属；当前未接入，明确 503 |
 
@@ -97,6 +98,8 @@ SourcePort.resolve(
 
 每份证据的快照版本从 1 开始；第 1 版一直保留原始采集内容。后续内容或 revision 发生变化时新增快照，同时记录来源状态和 SHA-256 内容散列。来源 identity 不允许被替换。相同 revision、相同内容和相同 availability 的复查不制造新快照或事件。
 
+详情响应的 `source_snapshots[].content` 是 `{source_id, availability, source}` 包装结构，原文位于 `content.source`，不是直接位于 `content.title/body`。真实证据页按此结构展示手工正文、任务说明版本和讨论正文/当时的回复；仅投影可读字段，不展示原始 UUID 或整份提供方元数据。来源变化后的快照单独展示，不替换第 1 版。
+
 `check-source` 只接受原始 source ID、期望锁版本和原因，真正的变化事实来自可信适配器。它不支持手工内容或任务说明；任务说明由保存命令在同一数据库事务中处理。
 
 ## 6. 任务说明版本
@@ -106,6 +109,8 @@ SourcePort.resolve(
 `GET note` 只返回当前版本，`history=true` 按版本号倒序返回历史。每版包含编辑者、服务器时间、标题、正文和内容散列。客户端应保留读取到的 `lock_version`，冲突后先刷新并核对，而不是自动覆盖他人的新版本。
 
 某个说明版本已转为证据后，再次保存说明会找到引用该任务说明的活跃候选/正式证据，逐条追加来源变化快照、决策和 outbox 事件。原说明版本、原证据快照与正式证据历史均保留。
+
+真实任务页的说明历史与候选来源选择共用按当前账号、项目、任务隔离的 `taskNoteQuery`（`history=true`）。来源下拉只允许 `version_no == current_version_no` 的版本；保存说明或提交准备后统一刷新服务端结果。刷新确认旧来源失效时清空来源选择，保留候选标题、说明和验收标准。候选提交遇到 409 可“刷新并核对来源”，重新选择实际当前版本后再保存，不自动改用新版本提交。
 
 ## 7. 乐观锁、幂等与事务 outbox
 
@@ -118,6 +123,8 @@ SourcePort.resolve(
 - 重试仍校验当前身份与项目权限，不允许借旧 key 绕过已失去的访问资格。
 - 幂等行、业务变更、历史快照、决策与 outbox 在一个事务里提交；失败整体回滚。
 - 领域服务不自行提交；HTTP 层 `commit_command` 统一提交/回滚。内部调用方同样必须负责事务边界。
+
+真实 C2/C3/C6 页面在写请求确认成功后重置该次命令的幂等 key，再刷新读取结果；后续主动发送相同内容属于新的操作，使用新 key。响应失败或结果尚未确认时，相同输入重试保留原 key，避免已提交但未收到回执的写入重复落库。后续 GET 刷新失败不撤销已经确认的写入成功。
 
 持久化 outbox 事件包括：
 
