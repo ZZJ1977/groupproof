@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
+import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { createGovernanceClient, type AccessQuery, type AuditQuery, type CourseQuery, type UsageQuery } from "@/lib/api/c-governance-client";
@@ -25,6 +25,18 @@ function choice<T extends string>(value: string | null, choices: Record<T, strin
 function inputValue(form: FormData, key: string) { return String(form.get(key) ?? "").trim(); }
 function localTime(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? "" : new Date(date.valueOf() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
 function isoTime(value: string) { const date = new Date(value); return value && !Number.isNaN(date.valueOf()) ? date.toISOString() : undefined; }
+function useExpiredAt(value: string | undefined) {
+  const deadline = value ? Date.parse(value) : NaN;
+  const [checkedAt, setCheckedAt] = useState(Date.now);
+  const expired = Number.isFinite(deadline) && deadline <= Math.max(checkedAt, Date.now());
+  useEffect(() => {
+    if (!Number.isFinite(deadline) || expired) return;
+    // Long deadlines are checked in bounded intervals; an open form also expires on time.
+    const timer = window.setTimeout(() => setCheckedAt(Date.now()), Math.min(deadline - Date.now() + 1, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [deadline, expired, checkedAt]);
+  return expired;
+}
 
 function message(error: Error | null) {
   if (error instanceof CApiError) {
@@ -68,7 +80,11 @@ function useCommand(onUnauthorized?: (error: CApiError) => void) {
     catch (caught) { setError(caught instanceof Error ? caught : new Error("网络请求失败，请重试。")); setFailedAt(Date.now()); if (unauthorized(caught)) onUnauthorized?.(caught); }
     finally { active.current = false; setBusy(false); }
   }
-  return { busy, error, failedAt, run };
+  function reset() {
+    if (active.current) return;
+    prior.current = null; setError(null); setFailedAt(0);
+  }
+  return { busy, error, failedAt, run, reset };
 }
 
 function conflictNeedsRefresh(command: ReturnType<typeof useCommand>, dataUpdatedAt: number) {
@@ -125,20 +141,52 @@ function CoursePanel({ id, onChanged, close, onUnauthorized }: { id: string; onC
   const detail = useQuery({ queryKey: ["c-governance-course", userId, id], queryFn: async () => { try { return await api.course(id); } catch (error) { if (unauthorized(error)) onUnauthorized(error); throw error; } }, ...querySettings });
   const data = detail.isSuccess && !detail.isFetching ? detail.data : undefined;
   const [reason, setReason] = useState(""); const command = useCommand(onUnauthorized);
+  const [initialized, setInitialized] = useState(false);
+  const [intent, setIntent] = useState<Pick<Schema["TransitionCourse"], "action" | "expected_version"> | null>(null);
+  const [notice, setNotice] = useState("");
+  const currentAction = data?.status === "draft" ? "publish" : data?.status === "active" ? "end" : null;
+  if (!initialized && data) {
+    setInitialized(true);
+    if (currentAction) setIntent({ action: currentAction, expected_version: data.lock_version });
+  }
+  const changed = Boolean(data && intent && (intent.action !== currentAction || intent.expected_version !== data.lock_version));
+  async function refresh() {
+    const latest = await detail.refetch();
+    if (!latest.isSuccess || !intent) return;
+    const action = latest.data.status === "draft" ? "publish" : latest.data.status === "active" ? "end" : null;
+    if (action === intent.action) {
+      setIntent({ ...intent, expected_version: latest.data.lock_version });
+      setNotice("最新课程设置已读取，理由已保留；请核对后重新确认。");
+    } else {
+      setIntent(null); setReason(""); command.reset();
+      setNotice(latest.data.status === "active" ? "课程已经发布，原发布确认已关闭。若需结束课程，请开始新的结束确认。" : "课程已经结束，原操作确认已关闭。");
+    }
+  }
+  function beginNextAction() {
+    if (!data || !currentAction || command.busy) return;
+    setReason(""); setNotice(""); command.reset();
+    setIntent({ action: currentAction, expected_version: data.lock_version });
+  }
   function submit(event: FormEvent) {
-    event.preventDefault(); if (!data || data.status === "ended") return;
-    const body: Schema["TransitionCourse"] = { action: data.status === "draft" ? "publish" : "end", reason: reason.trim(), expected_version: data.lock_version };
-    void command.run(body, (key) => api.transitionCourse(id, body, key), (result) => { cache.setQueryData(["c-governance-course", userId, id], result); setReason(""); onChanged(); });
+    event.preventDefault(); if (!data || !intent || changed || !reason.trim() || conflictNeedsRefresh(command, detail.dataUpdatedAt)) return;
+    const body: Schema["TransitionCourse"] = { ...intent, reason: reason.trim() };
+    void command.run(body, (key) => api.transitionCourse(id, body, key), (result) => {
+      cache.setQueryData(["c-governance-course", userId, id], result); setReason(""); setIntent(null);
+      setNotice(body.action === "publish" ? "发布已保存。如需结束课程，请开始新的结束确认。" : "课程结束操作已保存。"); onChanged();
+    });
   }
   return <Box title="课程详情" action={<button type="button" className={styles.button} onClick={close}>关闭详情</button>}><div className={styles.panelBody}>
-    <button className={styles.button} type="button" disabled={command.busy || detail.isFetching} onClick={() => void detail.refetch()}>刷新详情</button>
+    <button className={styles.button} type="button" disabled={command.busy || detail.isFetching} onClick={() => void refresh()}>刷新详情</button>
     {detail.isFetching && <p role="status">正在读取课程详情…</p>}<ErrorBox error={detail.error} />
     {data && <><h3>{data.name}</h3><p>{data.code} · {data.semester} · {courseStatuses[data.status]} · 版本 {data.lock_version}</p><p>负责教师：{data.owner_id} · 项目截止：{formatDateTime(data.project_deadline ?? undefined)}</p>
       <p>组队方式：{data.grouping_mode === "free" ? "自由组队" : "审批组队"} · 组员人数：{data.min_group_size}–{data.max_group_size} · 组队截止：{formatDateTime(data.formation_deadline ?? undefined)}</p>
       {data.invite_code && <Notice>课程邀请码：<strong>{data.invite_code}</strong>{data.invite_revoked_at ? "（已撤销）" : "。加入课程流程尚待对接，此处不代表加入操作已可用。"}</Notice>}<History items={data.history} /></>}
-    {(!data || data.status !== "ended") && <form className={styles.stack} onSubmit={submit}><Field label="变更理由"><textarea className={styles.textarea} required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} disabled={command.busy} /></Field>
-      {data && <Notice>{data.status === "draft" ? "发布会激活课程并生成唯一邀请码，请确认课程设置。" : "结束后课程将停止活动，邀请码会撤销。"}</Notice>}
-      <button className={styles.primaryButton} type="submit" disabled={!data || command.busy || !reason.trim() || conflictNeedsRefresh(command, detail.dataUpdatedAt)}>{command.busy ? "正在提交…" : data?.status === "active" ? "确认结束课程" : "确认发布课程"}</button></form>}
+    {changed && <Notice>课程状态或版本已变化，当前操作已暂停。请刷新详情并核对；填写的理由已保留。</Notice>}
+    {notice && <Notice>{notice}</Notice>}
+    {intent && <form className={styles.stack} onSubmit={submit}><Field label="变更理由"><textarea className={styles.textarea} required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} disabled={command.busy} /></Field>
+      <Notice>{intent.action === "publish" ? "发布会激活课程并生成唯一邀请码，请确认课程设置。" : "结束后课程将停止活动，邀请码会撤销。"}</Notice>
+      <button className={styles.primaryButton} type="submit" disabled={!data || changed || command.busy || !reason.trim() || conflictNeedsRefresh(command, detail.dataUpdatedAt)}>{command.busy ? "正在提交…" : intent.action === "end" ? "确认结束课程" : "确认发布课程"}</button></form>}
+    {!intent && data && currentAction && <button className={styles.button} type="button" disabled={command.busy} onClick={beginNextAction}>{currentAction === "end" ? "开始结束确认" : "开始发布确认"}</button>}
     <ErrorBox error={command.error} />
   </div></Box>;
 }
@@ -169,8 +217,10 @@ function AccessPanel({ id, onChanged, close, onUnauthorized }: { id: string; onC
   const detail = useQuery({ queryKey: ["c-governance-request", userId, id], queryFn: async () => { try { return await api.accessRequest(id); } catch (error) { if (unauthorized(error)) onUnauthorized(error); throw error; } }, ...querySettings });
   const data = detail.isSuccess && !detail.isFetching ? detail.data : undefined;
   const [reason, setReason] = useState(""); const [expiry, setExpiry] = useState<string | null>(null); const [decision, setDecision] = useState<"approved" | "rejected">("approved");
+  const requestExpired = useExpiredAt(data?.status === "pending" ? data.requested_expires_at : undefined);
   function submit(event: FormEvent) {
     event.preventDefault(); if (!data || data.status !== "pending") return;
+    if (decision === "approved" && Date.parse(data.requested_expires_at) <= Date.now()) return;
     const expires = decision === "approved" ? isoTime(expiry ?? localTime(data.requested_expires_at)) : undefined;
     if (decision === "approved" && !expires) return;
     const body: Schema["DecideAccessRequest"] = { decision, reason: reason.trim(), expected_version: data.lock_version, expires_at: expires ?? null };
@@ -180,9 +230,10 @@ function AccessPanel({ id, onChanged, close, onUnauthorized }: { id: string; onC
     <button className={styles.button} type="button" disabled={detail.isFetching || command.busy} onClick={() => void detail.refetch()}>刷新详情</button>{detail.isFetching && <p role="status">正在读取申请详情…</p>}<ErrorBox error={detail.error} />
     {data && <><p>申请人：{data.applicant_id}</p><p>申请理由：{data.reason}</p><p>状态：{requestStatuses[data.status]} · 版本 {data.lock_version}</p><p>访问范围：{targetTypes[data.scope.resource_type]} / {data.scope.resource_id} · 只读 · 所属项目 {data.scope.project_id}</p><p>申请截止：{formatDateTime(data.requested_expires_at)}</p>
       {data.status === "approved" && <Notice>此处显示审批结果；实际访问还需通过权限检查。{data.approval_expired ? "授权期限已过。" : `批准截止：${formatDateTime(data.approved_expires_at ?? undefined)}`}</Notice>}<History items={data.history} /></>}
-    {(!data || data.status === "pending") && <form className={styles.stack} onSubmit={submit}><Field label="审批决定"><select className={styles.select} aria-label="审批决定" value={decision} disabled={command.busy} onChange={(event) => setDecision(event.target.value as "approved" | "rejected")}><option value="approved">批准只读访问</option><option value="rejected">拒绝</option></select></Field>
-      {decision === "approved" && <><Field label="批准截止时间"><input className={styles.input} type="datetime-local" required value={expiry ?? (data ? localTime(data.requested_expires_at) : "")} max={data ? localTime(data.requested_expires_at) : undefined} disabled={command.busy} onChange={(event) => setExpiry(event.target.value)} /></Field><Notice>当前批准功能需授权服务支持；操作失败时申请会保持待审批。</Notice></>}
-      <Field label="审批理由"><textarea className={styles.textarea} required maxLength={2000} value={reason} disabled={command.busy} onChange={(event) => setReason(event.target.value)} /></Field><button className={styles.primaryButton} type="submit" disabled={!data || command.busy || !reason.trim() || conflictNeedsRefresh(command, detail.dataUpdatedAt)}>{command.busy ? "正在提交…" : "确认审批决定"}</button></form>}
+    {requestExpired && <Notice>申请期限已过，无法批准；可填写理由拒绝此申请。</Notice>}
+    {(!data || data.status === "pending") && <form className={styles.stack} onSubmit={submit}><Field label="审批决定"><select className={styles.select} aria-label="审批决定" value={decision} disabled={command.busy} onChange={(event) => setDecision(event.target.value as "approved" | "rejected")}><option value="approved" disabled={requestExpired}>批准只读访问</option><option value="rejected">拒绝</option></select></Field>
+      {decision === "approved" && <><Field label="批准截止时间"><input className={styles.input} type="datetime-local" required value={expiry ?? (data ? localTime(data.requested_expires_at) : "")} max={data ? localTime(data.requested_expires_at) : undefined} disabled={command.busy || requestExpired} onChange={(event) => setExpiry(event.target.value)} /></Field><Notice>当前批准功能需授权服务支持；操作失败时申请会保持待审批。</Notice></>}
+      <Field label="审批理由"><textarea className={styles.textarea} required maxLength={2000} value={reason} disabled={command.busy} onChange={(event) => setReason(event.target.value)} /></Field><button className={styles.primaryButton} type="submit" disabled={!data || command.busy || !reason.trim() || (decision === "approved" && requestExpired) || conflictNeedsRefresh(command, detail.dataUpdatedAt)}>{command.busy ? "正在提交…" : "确认审批决定"}</button></form>}
     <ErrorBox error={command.error} />
   </div></Box>;
 }
