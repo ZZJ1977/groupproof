@@ -1,5 +1,6 @@
 """C1 relational and HTTP tests; SQLite is not a PostgreSQL migration substitute."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -29,6 +30,8 @@ from app.modules.c.daily_router import router
 from app.modules.c.daily_schemas import DailyActivityFilters, DailyActivityPageDTO, DailyHomeDTO
 from app.modules.c.daily_service import get_home_summary, list_personal_activity
 from app.modules.c.discussion_models import Discussion, DiscussionReply
+from app.modules.c.inbox_ports import ActionItemPage, NotificationPage, get_inbox_port
+from app.modules.c.inbox_schemas import ActionItemRecord, InboxTarget, NotificationRecord
 from app.modules.c.models import Evidence, EvidenceDecision, TaskNote, TaskNoteVersion
 from app.modules.c.task_execution import SqlExecutionRepository, TaskExecutionService
 
@@ -128,6 +131,132 @@ def client(db, daily):
 
 def activity(db, daily, **filters):
     return list_personal_activity(db, daily.actor, DailyActivityFilters(**filters))
+
+
+class HomeInboxFixture:
+    """One-row pages with larger provider totals; no production adapter is implied."""
+
+    def __init__(self, daily):
+        self.daily = daily
+        self.unread = 3
+        self.pending = 5
+        self.calls = []
+        self.failure = {}
+        self.wrong_recipient = None
+
+    def _check(self, source, recipient_id, filters):
+        self.calls.append((source, recipient_id, filters))
+        if source in self.failure:
+            raise ApiError(self.failure[source], "TEST_PROVIDER_ERROR", "Provider failure")
+
+    def notifications(self, session, *, recipient_id, filters):
+        self._check("notifications", recipient_id, filters)
+        record = NotificationRecord(
+            id=uuid4(),
+            recipient_id=recipient_id,
+            category="project",
+            title="Notice",
+            description="",
+            created_at=WHEN,
+            read_at=None,
+            lock_version=0,
+            target=None,
+        )
+        page = NotificationPage(
+            recipient_id,
+            (record,) if self.unread else (),
+            self.unread,
+            self.unread,
+            self.unread,
+            uuid4(),
+            0,
+        )
+        return replace(page, recipient_id=self.wrong_recipient or recipient_id)
+
+    def action_items(self, session, *, recipient_id, filters):
+        self._check("action_items", recipient_id, filters)
+        record = ActionItemRecord(
+            id=uuid4(),
+            recipient_id=recipient_id,
+            category="task",
+            title="Action",
+            description="",
+            status="pending",
+            priority="medium",
+            created_at=WHEN,
+            due_at=None,
+            target=InboxTarget(
+                kind="task", id=self.daily.task.id, project_id=self.daily.project.id
+            ),
+        )
+        return ActionItemPage(recipient_id, (record,) if self.pending else (), self.pending)
+
+
+@pytest.fixture()
+def home_inbox(client, daily):
+    port = HomeInboxFixture(daily)
+    client.app.dependency_overrides[get_inbox_port] = lambda: port
+    return port
+
+
+def test_home_reuses_recipient_scoped_inbox_totals_and_refreshes(client, daily, home_inbox):
+    data = client.get("/api/v1/home/summary").json()["data"]
+    assert (data["unread_notifications"], data["pending_action_items"]) == (3, 5)
+    assert data["unavailable_sources"] == ["github", "feishu"]
+    assert all(
+        recipient == daily.actor.id and filters.page_size == 1 and filters.category == "all"
+        for _, recipient, filters in home_inbox.calls
+    )
+    assert home_inbox.calls[1][2].status == "pending"
+    home_inbox.unread = 0
+    home_inbox.pending = 0
+    response = client.get("/api/v1/home/summary")
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.json()["data"]["unread_notifications"] == 0
+    assert response.json()["data"]["pending_action_items"] == 0
+
+
+@pytest.mark.parametrize(
+    "source,field,other",
+    [
+        ("notifications", "unread_notifications", "pending_action_items"),
+        ("action_items", "pending_action_items", "unread_notifications"),
+    ],
+)
+def test_home_degrades_only_unavailable_source_without_inventing_zero(
+    client, home_inbox, source, field, other
+):
+    home_inbox.failure[source] = 503
+    response = client.get("/api/v1/home/summary")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data[field] is None and data[other] > 0
+    assert data["project_count"] == 1
+    assert data["unavailable_sources"] == [source, "github", "feishu"]
+
+
+@pytest.mark.parametrize("source", ["notifications", "action_items"])
+@pytest.mark.parametrize("status", [401, 403])
+def test_home_does_not_swallow_provider_permission_revocation(client, home_inbox, source, status):
+    home_inbox.failure[source] = status
+    response = client.get("/api/v1/home/summary")
+    assert response.status_code == status
+    assert "data" not in response.json()
+
+
+def test_home_rejects_cross_recipient_count_and_keeps_other_source(client, home_inbox):
+    home_inbox.wrong_recipient = uuid4()
+    data = client.get("/api/v1/home/summary").json()["data"]
+    assert data["unread_notifications"] is None
+    assert data["pending_action_items"] == 5
+    assert "notifications" in data["unavailable_sources"]
+
+
+def test_home_inactive_actor_does_not_query_inbox(client, daily, db, home_inbox):
+    daily.actor.status = "disabled"
+    db.flush()
+    assert client.get("/api/v1/home/summary").status_code == 403
+    assert home_inbox.calls == []
 
 
 def test_home_counts_only_current_assignments_and_canonical_status(client, daily, db):

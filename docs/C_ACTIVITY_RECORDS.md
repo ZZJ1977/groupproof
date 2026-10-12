@@ -2,8 +2,9 @@
 
 This slice owns C's task associations and Feishu triage decisions. It does not
 implement A's GitHub/Feishu authentication, connection, ingestion or synchronization.
-The current collaboration pages still use the explicitly local mock commands;
-their mock IDs must not be passed to these canonical UUID routes.
+The collaboration pages use these canonical routes when `cworkspace=real` is
+enabled. The separate mock mode remains local; its IDs must not be passed to
+canonical UUID routes. An unavailable A source adapter still returns 503.
 
 ## Source contract
 
@@ -60,6 +61,23 @@ Write bodies forbid extra fields and require a nonblank reason and current
 `expected_version`. Every write requires `Idempotency-Key`. Adoption additionally
 requires canonical `task_id` and nonempty unique `criterion_ids`. Browser input
 cannot supply an actor, source author, source body, URL, evidence ID or snapshot.
+
+## Real-page URL filters
+
+`ActivityApiPages.tsx` forwards URL `kind` to the API and, for Feishu only,
+`group_id`. It accepts legacy `group` when `group_id` is absent; new submissions
+write `group_id` and remove `group`. A canonical `group_id` is opaque, including
+the literal value `all`; legacy `group=all` and `kind=all` mean no filter.
+Submitting filters clears pagination and the selected record. Reset removes both
+group parameter names and `kind`; reloading retains the URL filters.
+
+Group/type options come only from the current authorized response page, not an
+exhaustive group directory or local seed. A URL value absent from that page stays
+selected so the server can evaluate it. Missing groups and unknown types use an
+unverified-filter label; known type codes retain their display labels. Page
+options do not establish source authorization;
+the backend/provider still validate every query and operation. GitHub requests
+omit `group_id`.
 
 ## Persistence and transaction rules
 
