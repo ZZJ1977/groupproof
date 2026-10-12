@@ -4,20 +4,23 @@ GroupProof V1 is a runnable Next.js frontend prototype for group-project collabo
 
 ## Run locally
 
-Requires Node.js 20 or newer and Python 3.11+ (backend).
+Requires Node.js 20 or newer and Docker（后端 PostgreSQL/Redis/API 由 compose 提供）。
 
 ```bash
 npm ci
 
-# 1) 隔离 PostgreSQL（开发/测试）与迁移
-docker run -d --name gp-pg-test -e POSTGRES_USER=gp -e POSTGRES_PASSWORD=gp_test_pw \
-  -e POSTGRES_DB=gp_test -p 55432:5432 postgres:16-alpine
-cd server && python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-# 统一启动（自动检查数据库/迁移并幂等执行；读取仓库根目录 .env）
-cd .. && npm run server:dev
+# 一条命令：自动拉起后端（postgres/redis/api）→ 执行迁移 → 启动前端
+npm run dev          # → http://localhost:3000（后端：http://localhost:8000）
+```
 
-# 2) 前端（另开终端；配置见 .env.example）
-npm run dev
+`npm run dev` 的前置钩子（`scripts/dev-backend.sh`）会幂等启动 docker 后端并执行
+`alembic upgrade head`；没有 Docker 时自动跳过（可自行运行本地后端）。
+需要分步或自定义时：
+
+```bash
+docker compose up -d postgres redis api   # 后端
+docker compose exec api alembic upgrade head
+npm run dev                                # 前端（或 docker compose up -d web）
 ```
 
 Open [http://localhost:3000](http://localhost:3000). Sign-in uses real Google OIDC (configure `GOOGLE_*` per [.env.example](.env.example)); without credentials the login start returns a clear service-unavailable error. The demo role selector only appears in the isolated demo mode (`NEXT_PUBLIC_APP_MODE=mock`).

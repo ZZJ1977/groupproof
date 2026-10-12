@@ -5,6 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool, text
 
+from app.auth import models as auth_models  # noqa: F401 - register unified auth tables
 from app.db.base import Base
 from app.db.models import core  # noqa: F401 - register all model tables
 from app.db.settings import get_database_timezone, get_database_url

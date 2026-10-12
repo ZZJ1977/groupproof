@@ -365,5 +365,5 @@ test("C7 user lookup permission loss hides a previously selected name and email"
   allowed = false; await page.getByLabel("操作人搜索", { exact: true }).fill("重新查询");
   await expect(page.locator("main").getByRole("alert")).toContainText("无权");
   await expect(picker.locator("option")).toHaveCount(1);
-  await expect(picker.locator("option")).not.toContainText(teacher.email);
+  await expect(picker.locator("option")).not.toContainText(teacher.email ?? "");
 });
