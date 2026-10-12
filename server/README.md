@@ -22,7 +22,7 @@ app/
     google_oidc.py     Authlib：Authorization Code + PKCE S256 + state/nonce（事务持久化）
     authz.py           业务资源授权矩阵（阶段 01 表格的服务端实现）
     business.py        业务数据来源边界（real 未接真实存储 → 503，不回退 Mock）
-    mailer.py          SMTP（real 必须）/ capture（隔离开发与测试）
+    mailer.py          SMTP / Resend HTTPS API（real 必须配置一种）/ capture（隔离开发与测试）
     bootstrap.py       受控初始化管理员（可审计，无公开注册入口）
   routers/             auth / me / admin / business（契约见 docs/development-stages/13-接口交接表.md）
 migrations/            Alembic 迁移（0001 = 用户账户与注册审核模块）
@@ -46,6 +46,10 @@ npm run server:dev    # = bash server/scripts/start-dev.sh：配置校验→数�
 readiness：`GET /readyz`（数据库连接 + 迁移版本 + 核心密钥；失败 503 并输出可定位日志）。liveness：`GET /healthz`（不代表注册可用）。
 
 前端经同源代理 `/api/v1/*`（`next.config.mjs`）访问本服务；服务端页面门禁用 `API_INTERNAL_URL` 直连。
+
+## Railway 部署
+
+服务使用 `server/Dockerfile` 单独部署，启动时运行 Alembic 迁移，健康检查使用 `/readyz`。Hobby 套餐可配置 `MAIL_MODE=resend`、`RESEND_API_KEY` 和已验证域名对应的 `MAIL_FROM`，通过 HTTPS API 发送验证码；密钥只放在 Railway `identity` 服务 Variables。身份数据库必须独立于 `services/api` 的业务数据库。Staging 和 Production 的建服、变量及 CI 配置见[部署基线](../docs/DEPLOYMENT.md)。
 
 ## 测试（必须使用隔离 PostgreSQL，不用内存 Mock 代替）
 
@@ -81,16 +85,16 @@ DATABASE_URL=... ./.venv/bin/python -m scripts.bootstrap_admin \
 
 ## 上线检查清单
 
-- `APP_MODE=real` 启动即校验：Google Client ID/Secret/Redirect URI、SMTP、HMAC 密钥、HTTPS、Google issuer；缺任一项**启动失败**。
+- `APP_MODE=real` 启动即校验：已启用提供方凭据、邮件通道（SMTP 或 Resend）、HMAC 密钥、HTTPS、Google issuer；缺任一项**启动失败**。
 - 生产禁止：演示账号、setRole 提权、固定/任意验证码、调试读码接口、邮件捕获器、Mock 数据回退。
 - 全部业务接口先 `require_active_user` 再资源授权；当前业务数据来源未迁移（见下），对应接口在 real 模式返回 `SERVICE_UNAVAILABLE`。
 
 ## 未完成 / 未联调（如实标记）
 
 1. **真实 Google OAuth 联调**：代码走完整 OIDC 协议（Authlib + PKCE + state/nonce + JWKS 验签），并已用隔离测试 OIDC 提供方验证确定性流程；尚未使用真实 Google Client 凭据联调（缺 `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` 与控制台回调登记）。
-2. **真实学校邮件投递**：SMTP 适配器已实现（发送失败返回 `AUTH_UNAVAILABLE`，不伪报成功）；尚未对可投递邮箱实测（缺 SMTP 凭据与学校发信策略确认）。
+2. **真实学校邮件投递**：SMTP 与 Resend HTTPS API 适配器已实现（发送失败返回 `AUTH_UNAVAILABLE`，不伪报成功）；尚未对可投递邮箱实测（缺发件服务凭据、已验证发件域名与学校发信策略确认）。
 3. **业务数据表迁移**：课程/项目/任务/证据等业务实体仍在前端演示适配器；`app/routers/business.py` 的授权管线（会话+注册资格+资源权限）真实实现并被测试覆盖，数据来源 `services/business.py` 在 real 模式未接真实存储时返回 503（不回退 Mock）。迁移契约见 `docs/development-stages/13-接口交接表.md`。
-4. **真实邮件投递（E21）未联调**：需 SMTP/事务邮件服务与允许的发件身份（`MAIL_MODE=smtp`、`SMTP_HOST/PORT/USER/PASSWORD`、`SMTP_TLS_MODE=starttls|implicit|none`、`MAIL_FROM`）；捕获器仅隔离环境。邮件故障只关闭依赖邮件的操作（注册/学校验证/重置返回 MAIL_UNAVAILABLE），不跳过验证、不阻断密码登录。
+4. **真实邮件投递（E21）未联调**：需 SMTP 服务（`MAIL_MODE=smtp`、`SMTP_HOST/PORT/USER/PASSWORD`、`SMTP_TLS_MODE=starttls|implicit|none`、`MAIL_FROM`）或 Resend（`MAIL_MODE=resend`、`RESEND_API_KEY`、`MAIL_FROM`）；发件域名须先在服务商验证。捕获器仅隔离环境。邮件故障只关闭依赖邮件的操作（注册/学校验证/重置返回 MAIL_UNAVAILABLE），不跳过验证、不阻断密码登录。
 5. **真实 Google 联调**未做（缺 OAuth 客户端/回调登记）；未配置时入口经 capabilities 隐藏，不影响邮箱通道。
 6. 密码账户与 Google 账户不自动合并，受控关联流程待设计。
 7. **学校规则确认**：邮箱分配细节、学号格式与学号-邮箱对应关系（`STUDENT_ID_EMAIL_RULE` 保持 `none`）、学校实名核验接入（`academic_identity_checks` 已留表，首期不阻塞学生准入）。
