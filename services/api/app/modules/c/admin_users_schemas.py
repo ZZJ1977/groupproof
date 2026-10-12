@@ -30,12 +30,14 @@ class AdminUserFilters(BaseModel):
 
 
 class AdminUserDTO(BaseModel):
+    """申报字段可空：注册流程中的账号可能尚未完成资料（完整性由注册规则判断）。"""
+
     id: UUID
-    name: str
-    username: str
-    email: str
+    name: str | None
+    username: str | None
+    email: str | None
     student_id: str | None
-    college: str
+    college: str | None
     global_role: AdminUserRole
     status: AdminUserStatus
     email_verified: bool

@@ -2,6 +2,13 @@
 
 更新日期：2026-10-12
 
+## 2026-10-12：团队统一认证测试交付
+
+- 代码来源为 `~/GroupProof-team/groupproof` 的 `compat/unified-auth-resend`（`b2d1f2c`），已整合团队最新 `develop`；PR [#14](https://github.com/ZZJ1977/groupproof/pull/14)。认证迁入 `services/api/app/auth`，用户统一为团队 UUID，迁移进入唯一团队链 0013；`server/` 保留作历史参考。
+- Web 使用运行时同源代理，CI 使用统一 API 联跑；新增迁移就绪检查 `/readyz`。本地隔离 PostgreSQL 迁移与结构检查通过，后端 843 项通过；前端 lint/typecheck/build、470 个三语词条和实际 56 页匿名门禁检查通过。
+- 本轮远端质量、完整后端、Playwright、Web Docker 检查已通过。测试环境发布、数据库备份及实际认证验收仍待执行，不能据此标记线上功能已完成。
+- 公网测试环境保持 `MAIL_PUBLIC_ENABLED=false`，不启用邮件捕获器或验收绕过。未配置 Google 凭据时按钮可见，实际登录返回暂不可用；旧账户不自动导入，业务模块继续遵循原开关及交接边界。
+
 ## 2026-10-12：C 日常入口、执行证据和管理页面接入
 
 - C 的 18 个页面现有独立真实 API 分支：04–06、14–15、20–24、30、50–56。按 `daily`、`inbox`、`cworkspace`、`coursefiles`、`cidentity`、`governance` 功能开关逐步启用；原路由和演示模式保留。页面按当前会话隔离查询，拒绝访问后隐藏旧数据，真实分支不退回 seed 数据。
