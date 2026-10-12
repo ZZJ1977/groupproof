@@ -39,6 +39,20 @@ CORE_TABLES = {
     "baseline_confirmations",
     "plan_versions",
     "plan_confirmations",
+    # 统一认证（PLAN）：认证附属表
+    "auth_sessions",
+    "auth_identities",
+    "auth_legacy_id_map",
+    "school_email_bindings",
+    "academic_identity_checks",
+    "email_challenges",
+    "teacher_applications",
+    "auth_audit_events",
+    "auth_rate_limits",
+    "oauth_transactions",
+    "password_credentials",
+    "pre_registration_requests",
+    "email_outbox",
 }
 
 
@@ -54,7 +68,7 @@ def database_session() -> Session:
 def test_core_schema_is_migrated(database_session: Session) -> None:
     assert (
         database_session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        == "0012"
+        == "0013"
     )
     assert CORE_TABLES <= set(inspect(engine).get_table_names())
 

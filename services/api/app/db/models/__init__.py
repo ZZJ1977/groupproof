@@ -61,3 +61,6 @@ __all__ = [
     "TaskRequirement",
     "User",
 ]
+
+# 认证附属表与 users 同一 Base；此处导入以注册映射器（User.email_binding/identities 解析需要）
+from app.auth import models as _auth_models  # noqa: E402, F401, I001

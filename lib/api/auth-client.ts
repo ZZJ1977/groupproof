@@ -101,9 +101,36 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
     payload = null; // 非 JSON（如代理错误页）→ 通用安全提示
   }
   if (!response.ok) {
-    throw new ApiError(response.status, (payload ?? { code: "SERVICE_UNAVAILABLE" }) as { code?: string; requestId?: string; retryAfterSeconds?: number });
+    throw toApiError(response.status, payload);
+  }
+  return unwrapData<T>(payload);
+}
+
+/** 团队统一成功封装 {data, meta} → 载荷；兼容未封装响应。 */
+export function unwrapData<T>(payload: unknown): T {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    return (payload as { data: T }).data;
   }
   return payload as T;
+}
+
+/** 团队统一错误封装 {error: {code, message, details}, meta} → ApiError（按 code 翻译）。 */
+export function toApiError(status: number, payload: unknown): ApiError {
+  if (payload && typeof payload === "object" && "error" in payload) {
+    const body = payload as {
+      error: { code?: string; details?: { fieldErrors?: ProfileFieldErrors; params?: Record<string, unknown>; retryAfterSeconds?: number } | null };
+      meta?: { request_id?: string };
+    };
+    const details = body.error.details ?? {};
+    return new ApiError(status, {
+      code: body.error.code,
+      fieldErrors: details.fieldErrors ?? {},
+      params: details.params ?? {},
+      requestId: body.meta?.request_id,
+      retryAfterSeconds: details.retryAfterSeconds,
+    });
+  }
+  return new ApiError(status, (payload ?? { code: "SERVICE_UNAVAILABLE" }) as { code?: string });
 }
 
 export interface MeDTO {

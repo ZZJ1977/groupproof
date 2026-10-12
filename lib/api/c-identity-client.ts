@@ -1,4 +1,4 @@
-import { ApiError, authClient } from "./auth-client";
+import { ApiError, authClient, toApiError, unwrapData } from "./auth-client";
 
 export interface IdentityAdminUser {
   id: string; name: string; studentId: string | null; college: string; roles: string[];
@@ -21,8 +21,8 @@ async function request<T>(path: string, body?: unknown, actorId?: string): Promi
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload) throw new ApiError(response.status, payload ?? { code: "SERVICE_UNAVAILABLE" });
-  return payload as T;
+  if (!response.ok || !payload) throw toApiError(response.status, payload);
+  return unwrapData<T>(payload);
 }
 
 export const cIdentityClient = {

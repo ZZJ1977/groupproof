@@ -868,14 +868,29 @@
         "type": "object"
       },
       "AdminUserDTO": {
+        "description": "申报字段可空：注册流程中的账号可能尚未完成资料（完整性由注册规则判断）。",
         "properties": {
           "college": {
-            "title": "College",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "College"
           },
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "email_verified": {
             "title": "Email Verified",
@@ -897,8 +912,15 @@
             "type": "string"
           },
           "name": {
-            "title": "Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "status": {
             "enum": [
@@ -921,8 +943,15 @@
             "title": "Student Id"
           },
           "username": {
-            "title": "Username",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
@@ -942,8 +971,15 @@
       "AdminUserDetailDTO": {
         "properties": {
           "college": {
-            "title": "College",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "College"
           },
           "created_at": {
             "format": "date-time",
@@ -951,8 +987,15 @@
             "type": "string"
           },
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "email_verified": {
             "title": "Email Verified",
@@ -978,8 +1021,15 @@
             "type": "integer"
           },
           "name": {
-            "title": "Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "status": {
             "enum": [
@@ -1007,8 +1057,15 @@
             "type": "string"
           },
           "username": {
-            "title": "Username",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
@@ -1521,6 +1578,53 @@
           "criteria"
         ],
         "title": "CTaskSelectorDTO",
+        "type": "object"
+      },
+      "ChallengeCreate": {
+        "properties": {
+          "purpose": {
+            "default": "school_email_verify",
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "title": "ChallengeCreate",
+        "type": "object"
+      },
+      "ChallengeVerify": {
+        "properties": {
+          "challengeId": {
+            "title": "Challengeid",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challengeId",
+          "code"
+        ],
+        "title": "ChallengeVerify",
+        "type": "object"
+      },
+      "ChangeAuthorizationVerify": {
+        "properties": {
+          "challengeId": {
+            "title": "Challengeid",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challengeId",
+          "code"
+        ],
+        "title": "ChangeAuthorizationVerify",
         "type": "object"
       },
       "CheckEvidenceSource": {
@@ -3061,6 +3165,30 @@
         "title": "DesignateFileVersion",
         "type": "object"
       },
+      "DisableIn": {
+        "properties": {
+          "expectedVersion": {
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ],
+        "title": "DisableIn",
+        "type": "object"
+      },
       "DiscussionDTO": {
         "properties": {
           "author_id": {
@@ -3355,6 +3483,61 @@
           "reply"
         ],
         "title": "DiscussionReplyResultDTO",
+        "type": "object"
+      },
+      "EmailRegistrationCompleteIn": {
+        "properties": {
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "EmailRegistrationCompleteIn",
+        "type": "object"
+      },
+      "EmailRegistrationIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "EmailRegistrationIn",
+        "type": "object"
+      },
+      "EmailRegistrationVerifyIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "EmailRegistrationVerifyIn",
         "type": "object"
       },
       "ErrorBody": {
@@ -4246,6 +4429,28 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IdentityDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedVersion": {
+            "minimum": 1.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "expectedVersion"
+        ],
+        "title": "IdentityDecision",
+        "type": "object"
+      },
       "InboxTarget": {
         "additionalProperties": false,
         "properties": {
@@ -4729,6 +4934,120 @@
         "title": "NotificationReadReceipt",
         "type": "object"
       },
+      "PasswordChange": {
+        "properties": {
+          "currentPassword": {
+            "title": "Currentpassword",
+            "type": "string"
+          },
+          "newPassword": {
+            "title": "Newpassword",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "title": "PasswordChange",
+        "type": "object"
+      },
+      "PasswordForgotIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "PasswordForgotIn",
+        "type": "object"
+      },
+      "PasswordLoginIn": {
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier",
+          "password"
+        ],
+        "title": "PasswordLoginIn",
+        "type": "object"
+      },
+      "PasswordRegisterIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password"
+        ],
+        "title": "PasswordRegisterIn",
+        "type": "object"
+      },
+      "PasswordResetIn": {
+        "properties": {
+          "newPassword": {
+            "title": "Newpassword",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ],
+        "title": "PasswordResetIn",
+        "type": "object"
+      },
+      "PreferencesPatch": {
+        "properties": {
+          "preferredLocale": {
+            "title": "Preferredlocale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preferredLocale"
+        ],
+        "title": "PreferencesPatch",
+        "type": "object"
+      },
       "PrepareSubmissionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4775,6 +5094,85 @@
           "note"
         ],
         "title": "PrepareSubmissionView",
+        "type": "object"
+      },
+      "ProfilePatch": {
+        "properties": {
+          "college": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "College"
+          },
+          "expectedVersion": {
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "requestedIdentity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedidentity"
+          },
+          "schoolEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schoolemail"
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studentid"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ],
+        "title": "ProfilePatch",
         "type": "object"
       },
       "ProgressHistoryEventDTO": {
@@ -5097,6 +5495,35 @@
         "title": "ResponseMeta",
         "type": "object"
       },
+      "ReviewIn": {
+        "properties": {
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "decision",
+          "expectedVersion"
+        ],
+        "title": "ReviewIn",
+        "type": "object"
+      },
       "SaveTaskNote": {
         "additionalProperties": false,
         "properties": {
@@ -5124,6 +5551,24 @@
           "body"
         ],
         "title": "SaveTaskNote",
+        "type": "object"
+      },
+      "SchoolEmailChange": {
+        "properties": {
+          "expectedVersion": {
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "schoolEmail": {
+            "title": "Schoolemail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schoolEmail",
+          "expectedVersion"
+        ],
+        "title": "SchoolEmailChange",
         "type": "object"
       },
       "SignedCourseFileLinkDTO": {
@@ -6190,6 +6635,59 @@
         "title": "TaskResponse",
         "type": "object"
       },
+      "TeacherApplicationIn": {
+        "properties": {
+          "expectedVersion": {
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "materials": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materials"
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ],
+        "title": "TeacherApplicationIn",
+        "type": "object"
+      },
+      "TeacherDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "pattern": "^(approve|reject)$",
+            "title": "Decision",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "minimum": 1.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "expectedVersion",
+          "decision"
+        ],
+        "title": "TeacherDecision",
+        "type": "object"
+      },
       "TransitionCourse": {
         "additionalProperties": false,
         "properties": {
@@ -6445,6 +6943,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -6586,7 +7091,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "500": {
             "content": {
@@ -6714,7 +7219,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "500": {
             "content": {
@@ -8375,6 +8880,75 @@
         ]
       }
     },
+    "/api/v1/admin/teacher-applications": {
+      "get": {
+        "operationId": "list_teacher_applications_api_v1_admin_teacher_applications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Teacher Applications",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/teacher-applications/{application_id}/review": {
+      "post": {
+        "operationId": "review_api_v1_admin_teacher_applications__application_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "collection_api_v1_admin_users_get",
@@ -8696,6 +9270,823 @@
         "tags": [
           "c",
           "c-admin-users"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/disable": {
+      "post": {
+        "operationId": "disable_user_api_v1_admin_users__user_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/auth/capabilities": {
+      "get": {
+        "operationId": "capabilities_api_v1_auth_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/registrations": {
+      "post": {
+        "operationId": "create_email_registration_api_v1_auth_email_registrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRegistrationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Email Registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/registrations/{tx_id}/complete": {
+      "post": {
+        "operationId": "complete_email_registration_api_v1_auth_email_registrations__tx_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tx_id",
+            "required": true,
+            "schema": {
+              "title": "Tx Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRegistrationCompleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Email Registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/registrations/{tx_id}/resend": {
+      "post": {
+        "operationId": "resend_email_registration_api_v1_auth_email_registrations__tx_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tx_id",
+            "required": true,
+            "schema": {
+              "title": "Tx Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRegistrationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend Email Registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/registrations/{tx_id}/verify": {
+      "post": {
+        "operationId": "verify_email_registration_api_v1_auth_email_registrations__tx_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tx_id",
+            "required": true,
+            "schema": {
+              "title": "Tx Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRegistrationVerifyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Email Registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "operationId": "google_callback_api_v1_auth_google_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Google Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/start": {
+      "get": {
+        "operationId": "google_start_api_v1_auth_google_start_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "returnTo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Returnto"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Google Start",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/forgot": {
+      "post": {
+        "operationId": "password_forgot_api_v1_auth_password_forgot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordForgotIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Password Forgot",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/login": {
+      "post": {
+        "description": "账号密码登录：用户名或登录邮箱 + 密码；失败一律返回通用错误，不泄露账户是否存在。",
+        "operationId": "password_login_api_v1_auth_password_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Password Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/register": {
+      "post": {
+        "description": "旧无验证建档路径已关闭（E07）：必须先完成登录邮箱归属验证（三步注册）才能创建账户。",
+        "operationId": "password_register_api_v1_auth_password_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordRegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Password Register",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset": {
+      "post": {
+        "operationId": "password_reset_api_v1_auth_password_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Password Reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "get_session_api_v1_auth_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Session Api V1 Auth Session Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/session/refresh": {
+      "post": {
+        "operationId": "refresh_session_api_v1_auth_session_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/c-admin/teacher-applications": {
+      "get": {
+        "operationId": "applications_api_v1_c_admin_teacher_applications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Applications",
+        "tags": [
+          "c-admin"
+        ]
+      }
+    },
+    "/api/v1/c-admin/teacher-applications/{application_id}/review": {
+      "post": {
+        "operationId": "review_api_v1_c_admin_teacher_applications__application_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review",
+        "tags": [
+          "c-admin"
+        ]
+      }
+    },
+    "/api/v1/c-admin/users": {
+      "get": {
+        "operationId": "users_api_v1_c_admin_users_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(|student|teacher|ta|admin)$",
+              "title": "Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(|enabled|disabled)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "college",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 120,
+              "title": "College",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Users",
+        "tags": [
+          "c-admin"
+        ]
+      }
+    },
+    "/api/v1/c-admin/users/{user_id}/disable": {
+      "post": {
+        "operationId": "disable_api_v1_c_admin_users__user_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable",
+        "tags": [
+          "c-admin"
         ]
       }
     },
@@ -9672,6 +11063,25 @@
         ]
       }
     },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "get_me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Me",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/me/access-requests": {
       "get": {
         "operationId": "own_requests_api_v1_me_access_requests_get",
@@ -10265,6 +11675,65 @@
         ]
       }
     },
+    "/api/v1/me/login-email/challenges": {
+      "post": {
+        "description": "历史未验证登录邮箱的受限补验（E17）：只验证当前绑定的登录邮箱，不影响学校邮箱事实。",
+        "operationId": "login_email_challenge_api_v1_me_login_email_challenges_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Login Email Challenge",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/login-email/verify": {
+      "post": {
+        "operationId": "login_email_verify_api_v1_me_login_email_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Email Verify",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/me/notifications": {
       "get": {
         "operationId": "notification_list_api_v1_me_notifications_get",
@@ -10672,6 +12141,359 @@
         "tags": [
           "c",
           "c-inbox"
+        ]
+      }
+    },
+    "/api/v1/me/password": {
+      "post": {
+        "description": "修改密码：当前密码 + CSRF；更新凭据版本，撤销旧会话/恢复凭据并重签当前会话。",
+        "operationId": "change_password_api_v1_me_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/preferences": {
+      "patch": {
+        "operationId": "patch_preferences_api_v1_me_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Preferences",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/profile": {
+      "patch": {
+        "operationId": "patch_profile_api_v1_me_profile_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Profile",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/school-email/challenges": {
+      "post": {
+        "operationId": "create_school_email_challenge_api_v1_me_school_email_challenges_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create School Email Challenge",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/school-email/change": {
+      "post": {
+        "operationId": "school_email_change_api_v1_me_school_email_change_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchoolEmailChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "School Email Change",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/school-email/change-authorization/challenges": {
+      "post": {
+        "description": "换绑前置：只向当前旧已验证学校邮箱发码；仅授权本次指定目标的换绑。",
+        "operationId": "change_authorization_challenge_api_v1_me_school_email_change_authorization_challenges_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchoolEmailChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Authorization Challenge",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/school-email/change-authorization/verify": {
+      "post": {
+        "operationId": "change_authorization_verify_api_v1_me_school_email_change_authorization_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeAuthorizationVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Authorization Verify",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/school-email/verify": {
+      "post": {
+        "operationId": "verify_school_email_api_v1_me_school_email_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify School Email",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/teacher-application": {
+      "post": {
+        "operationId": "teacher_application_api_v1_me_teacher_application_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeacherApplicationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Teacher Application",
+        "tags": [
+          "me"
         ]
       }
     },
@@ -15041,7 +16863,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -15173,7 +16995,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -15294,7 +17116,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -15415,7 +17237,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
