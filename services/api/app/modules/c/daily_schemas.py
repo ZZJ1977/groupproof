@@ -70,8 +70,8 @@ class DailyHomeDTO(BaseModel):
     task_counts: DailyTaskCountsDTO
     projects: list[DailyProjectDTO] = Field(description="At most 10; updated_at DESC, id ASC.")
     courses: list[DailyCourseDTO] = Field(description="At most 10; updated_at DESC, id ASC.")
-    unread_notifications: None = None
-    pending_action_items: None = None
+    unread_notifications: int | None = Field(default=None, ge=0, strict=True)
+    pending_action_items: int | None = Field(default=None, ge=0, strict=True)
     unavailable_sources: list[Literal["notifications", "action_items", "github", "feishu"]]
     scope: str
 
