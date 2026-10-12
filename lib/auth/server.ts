@@ -23,7 +23,12 @@ export async function getAuthSession(): Promise<AuthLookup> {
     });
     if (!response.ok) return { ok: false };
     try {
-      return { ok: true, session: (await response.json()) as SessionDTO };
+      const body = (await response.json()) as { data?: SessionDTO } | SessionDTO | null;
+      // 团队统一成功封装 {data, meta}；兼容未封装响应
+      const session =
+        body && typeof body === "object" && "data" in body ? (body as { data: SessionDTO }).data : (body as SessionDTO);
+      if (!session) return { ok: false };
+      return { ok: true, session };
     } catch {
       // 代理/传输截断等异常：不推断放行，页面显示可重试的服务不可用（不得 SSR 崩成空页）
       return { ok: false };

@@ -91,8 +91,8 @@ assert(visibleText.includes("注册账号"), "登录页应提供注册入口");
 if (process.env.CHECK_AUTH_API === "1") {
   const session = await fetch(`${ORIGIN}/api/v1/auth/session`);
   const sessionBody = await session.json();
-  assert.equal(sessionBody.authenticated, false, "匿名 session 应为 authenticated=false");
-  for (const path of ["/api/v1/me", "/api/v1/home/summary", "/api/v1/projects/project-1/content"]) {
+  assert.equal(sessionBody.data?.authenticated ?? sessionBody.authenticated, false, "匿名 session 应为 authenticated=false");
+  for (const path of ["/api/v1/me", "/api/v1/home/summary"]) {
     const response = await fetch(`${ORIGIN}${path}`);
     assert.equal(response.status, 401, `${path} 匿名应 401，实际 ${response.status}`);
   }

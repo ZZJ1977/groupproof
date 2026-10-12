@@ -22,7 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -50,11 +50,12 @@ class User(TimestampMixin, LockVersionMixin, Base):
     id: Mapped[UUID] = mapped_column(
         UUIDType, primary_key=True, server_default=sa_text("gen_random_uuid()")
     )
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    username: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    # 申报字段（未提交注册可空；完整性由 app.auth 注册规则判断，不由 NOT NULL 保证）
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
     student_id: Mapped[str | None] = mapped_column(String(80), unique=True)
-    college: Mapped[str] = mapped_column(String(160), nullable=False)
+    college: Mapped[str | None] = mapped_column(String(160), nullable=True)
     global_role: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=sa_text("'student'")
     )
@@ -63,6 +64,18 @@ class User(TimestampMixin, LockVersionMixin, Base):
     )
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     avatar_color: Mapped[str | None] = mapped_column(String(32))
+    # --- 认证资料字段（app.auth 注册/审核流程使用；未提交注册可空）---
+    username_normalized: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True)
+    requested_identity: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )  # student|teacher 申请意向
+    preferred_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    auth_version: Mapped[int] = mapped_column(
+        Integer, server_default=sa_text("1"), default=1, nullable=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -70,6 +83,52 @@ class User(TimestampMixin, LockVersionMixin, Base):
         ),
         CheckConstraint("status IN ('active', 'disabled', 'pending')", name="ck_users_status"),
     )
+
+    # --- 认证附属关系（app.auth 模块）---
+    identities = relationship(
+        "AuthIdentity", back_populates="user", cascade="all, delete-orphan", lazy="select"
+    )
+    email_binding = relationship(
+        "SchoolEmailBinding",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="select",
+    )
+
+    # --- 认证模块兼容视图（迁移期）：映射到 global_role / status / lock_version ---
+    # 保留独立 server/ 认证逻辑的字段语义，避免双写；全局角色单一存储于 global_role。
+
+    @property
+    def roles(self) -> list[str]:
+        return [self.global_role] if self.global_role else []
+
+    @roles.setter
+    def roles(self, value: list[str] | None) -> None:
+        wanted = [role for role in (value or []) if role in {"admin", "ta", "teacher", "student"}]
+        if not wanted:
+            self.global_role = "student"
+            return
+        for candidate in ("admin", "ta", "teacher", "student"):
+            if candidate in wanted:
+                self.global_role = candidate
+                return
+
+    @property
+    def account_status(self) -> str:
+        return "disabled" if self.status == "disabled" else "enabled"
+
+    @account_status.setter
+    def account_status(self, value: str) -> None:
+        self.status = "disabled" if value == "disabled" else "active"
+
+    @property
+    def version(self) -> int:
+        return self.lock_version
+
+    @version.setter
+    def version(self, value: int) -> None:
+        self.lock_version = value
 
 
 class Session(Base):
