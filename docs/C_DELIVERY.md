@@ -336,7 +336,7 @@ Validation for this batch:
   storage/version authorization found no remaining blocking issue. Runtime
   OpenAPI adds 12 paths/33 schemas while preserving every pre-existing path/schema.
 
-### Course files, governance, real API pages and inbox (2026-10-12; current snapshot)
+### Course files, governance, real API pages and inbox (2026-10-12; PR #11 snapshot)
 
 The preceding batch was merged through [PR #10](https://github.com/ZZJ1977/groupproof/pull/10)
 at `22b99ac`. Its **30/35 partial-coverage count remains a historical result**.
@@ -373,10 +373,9 @@ Nine subsequent integration/UI/test commits are also recorded:
 
 The 17 implementation/test commits above plus delivery commit `8809269` were
 pushed ahead of merged `develop` `22b99ac` in
-[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This follow-up
-adds the publication record. Live remote results are available in the
-[PR checks](https://github.com/ZZJ1977/groupproof/pull/11/checks); this record
-does not predeclare their outcome or the team's review/acceptance.
+[PR #11](https://github.com/ZZJ1977/groupproof/pull/11), subsequently merged into
+`develop` at `481f35b`. Its [remote checks](https://github.com/ZZJ1977/groupproof/pull/11/checks)
+passed. Merge and CI do not establish whole-system staging acceptance.
 
 Implemented scope and provider boundaries:
 
@@ -444,7 +443,54 @@ Course-file coverage separately includes 96 SQLite/HTTP and 7 PostgreSQL cases.
 
 The browser reruns above follow corrections to test locators using observed
 accessible combobox/alert roles; they do not weaken product permissions or
-business assertions. All code and handoff records have been pushed to `C_task`;
-review and staging acceptance remain open in PR #11. Remote CI is tracked by
+business assertions. All code and handoff records were pushed to `C_task` and
+merged through PR #11; staging acceptance remains separate. Remote CI is tracked by
 the live PR checks above. The production build and daily results above were
 rerun for this batch. No whole-system or 35-task acceptance is claimed.
+
+### Follow-up after PR #11: counters, evidence and safe Admin decisions (2026-10-12)
+
+`C_task` was first fast-forwarded to merged `develop` `481f35b`. This batch fixes
+independent C behavior found by reading the current implementations and exercising
+the API pages. It introduces no migration, third-party SDK, temporary production
+identity, B membership mutation or D verification result.
+
+| Commit | C task scope and verified change |
+| --- | --- |
+| `4dfbc67` | C1-01/02 home unread/pending totals use the existing recipient-, snapshot- and count-validated inbox services. One unavailable provider degrades only its own count; verified empty totals are zero and 401/403 denies the entire read. DTO/OpenAPI types accept nonnegative counts. |
+| `bc58dc5` | C4-01/03 group and activity-kind URL filters, legacy group compatibility, empty-result retention and removal of options on lost permission. Options represent only the current authorized page, with an explicit UI limitation. |
+| `342271f` | C2-05/06 and C3-01 source selectors share current note history and preserve drafts through source conflicts; immutable nested snapshots display original text/replies. C2/C3/C6 success resets the command key while uncertain failures retain it, allowing later intentional identical submissions. |
+| `152c317` | C7-01/02/03 details use current rows but require explicit acknowledgement of a changed version. Lost permission clears drafts; write 404 closes the deleted target and refreshes; 409/503 preserves recoverable input. |
+| `532ce17` | C7-04 course action/version stays bound to the user's confirmation. Background updates cannot transform publish into end; a new end confirmation clears the old publish reason. C7-07 pending requests expire while open and still allow reasoned rejection. |
+
+Local verification performed for the changed scope:
+
+| Check | Observed result |
+| --- | --- |
+| Daily service and inbox HTTP regressions | **64 passed** (46 daily, 18 inbox HTTP), including **10 new tests** |
+| Generated C client script | **55 assertions passed** |
+| Changed browser files | **53 passed**: daily 5, source activities/files 10, execution/evidence/discussion 13, identity Admin 9, governance 16 |
+| New browser coverage | **20 new cases** across those files |
+| Python lint/format | **137 files** formatted; Ruff lint passed |
+| Frontend checks | Full lint and typecheck passed; **56 route mappings** passed |
+| Production build | Passed compilation, types, static generation and trace collection |
+
+An initial combined browser run timed out at the initial loading screen in the
+disappeared-directory-selection case. The complete identity file was rerun and
+passed **9/9**, including that unchanged case and both new 404 cases. Assertions
+were not weakened. The subsequent governance run passed **16/16** after the
+independent review found and the implementation fixed the publish/end risk.
+
+These backend tests use relational/HTTP fixtures and the browser tests intercept
+explicit API responses. They establish these contracts and interactions, not A's
+production adapters or team acceptance. Full backend, identity, browser, script,
+build and Docker checks also run in the new PR's CI; its live checks are the
+authority for remote results. The prior **813/128** suite totals above describe
+PR #11, not an unexecuted full local run of this follow-up.
+
+Still required: A's real identity bridge and entry context, storage/source/inbox/
+audit/usage/access adapters and delivery; B's stable task codes, canonical entry
+data and invitation integration; D's verification queries and event consumers;
+Admin restore/create against an agreed identity service; clean-database staging
+acceptance. Source selectors and typed unavailable ports do not complete these
+dependencies. C task acceptance remains separate from partial code coverage.
