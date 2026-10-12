@@ -49,7 +49,7 @@ readiness：`GET /readyz`（数据库连接 + 迁移版本 + 核心密钥；失�
 
 ## Railway 部署
 
-服务使用 `server/Dockerfile` 单独部署，启动时运行 Alembic 迁移，健康检查使用 `/readyz`。Hobby 套餐可配置 `MAIL_MODE=resend`、`RESEND_API_KEY` 和已验证域名对应的 `MAIL_FROM`，通过 HTTPS API 发送验证码；密钥只放在 Railway `identity` 服务 Variables。身份数据库必须独立于 `services/api` 的业务数据库。Staging 和 Production 的建服、变量及 CI 配置见[部署基线](../docs/DEPLOYMENT.md)。
+服务使用 `server/Dockerfile` 单独部署，启动时运行 Alembic 迁移，健康检查使用 `/readyz`。Hobby 套餐可配置 `MAIL_MODE=resend`、`RESEND_API_KEY` 和已验证域名对应的 `MAIL_FROM`，通过 HTTPS API 发送验证码；密钥只放在 Railway `identity` 服务 Variables。身份数据库必须独立于 `services/api` 的业务数据库；同一 Postgres 服务可用 `DATABASE_NAME=gp_identity` 隔离。Staging 和 Production 的建服、变量及 CI 配置见[部署基线](../docs/DEPLOYMENT.md)。
 
 ## 测试（必须使用隔离 PostgreSQL，不用内存 Mock 代替）
 

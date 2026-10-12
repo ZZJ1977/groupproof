@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -33,6 +34,13 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
+def _override_database_name(url: str, database_name: str) -> str:
+    if not database_name[0].isalpha() or not database_name.replace("_", "").isalnum():
+        raise ValueError("DATABASE_NAME must start with a letter and contain only letters, numbers, and underscores")
+    parsed = urlsplit(url)
+    return urlunsplit(parsed._replace(path=f"/{database_name}"))
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_DEFAULT_ENV_FILE), env_file_encoding="utf-8", extra="ignore")
 
@@ -46,6 +54,7 @@ class Settings(BaseSettings):
 
     # --- 数据库（核心依赖）---
     database_url: str = _DEV_DATABASE_URL
+    database_name: str = ""
 
     # --- 提供方开关（待新增配置；默认密码/邮箱通道开，Google 需配置后可用）---
     auth_google_enabled: bool = True
@@ -160,6 +169,8 @@ class Settings(BaseSettings):
         if not self.database_url:
             self.database_url = _DEV_DATABASE_URL
         self.database_url = _normalize_database_url(self.database_url)
+        if self.database_name:
+            self.database_url = _override_database_name(self.database_url, self.database_name)
         if not self.email_challenge_hmac_key:
             if self.is_real:
                 raise RuntimeError("APP_MODE=real 必须配置 EMAIL_CHALLENGE_HMAC_KEY（生成：openssl rand -hex 32）")
