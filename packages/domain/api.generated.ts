@@ -2116,7 +2116,7 @@ export interface components {
             /** My Task Count */
             my_task_count: number;
             /** Pending Action Items */
-            pending_action_items?: null;
+            pending_action_items?: number | null;
             /** Project Count */
             project_count: number;
             /**
@@ -2130,7 +2130,7 @@ export interface components {
             /** Unavailable Sources */
             unavailable_sources: ("notifications" | "action_items" | "github" | "feishu")[];
             /** Unread Notifications */
-            unread_notifications?: null;
+            unread_notifications?: number | null;
         };
         /** DailyProjectDTO */
         DailyProjectDTO: {

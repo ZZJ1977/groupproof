@@ -24,6 +24,9 @@ from app.db.models import (
 )
 from app.modules.c.daily_schemas import DailyActivityFilters
 from app.modules.c.discussion_models import Discussion, DiscussionReply
+from app.modules.c.inbox_ports import InboxPort
+from app.modules.c.inbox_schemas import ActionItemFilters, NotificationFilters
+from app.modules.c.inbox_service import action_items, notifications
 from app.modules.c.models import Evidence, EvidenceDecision, TaskNote, TaskNoteVersion
 from app.modules.c.task_execution import progress_projection
 
@@ -35,7 +38,9 @@ HOME_SCOPE = (
     "tree-weighted progress projection, counting roots once; absent weights/tasks or invalid "
     "task trees return null with progress_status. "
     "Project/course previews show at most 10 ordered by updated_at descending, id ascending. "
-    "Notifications, action items and external activity integrations are unavailable here."
+    "Inbox counts use the same recipient-validated provider queries as the inbox pages. "
+    "An unavailable provider returns null for that counter, never an invented zero. "
+    "External activity integrations are unavailable here."
 )
 ACTIVITY_SCOPE = (
     "Only events performed by the current actor on objects still accessible now: canonical "
@@ -126,7 +131,41 @@ def _readable_courses(actor: User):
     )
 
 
-def get_home_summary(session: Session, user: User) -> dict:
+def _inbox_counts(session: Session, actor: User, port: InboxPort | None) -> dict:
+    result = {"unread_notifications": None, "pending_action_items": None}
+    unavailable = []
+    sources = (
+        (
+            "notifications",
+            "unread_notifications",
+            notifications,
+            NotificationFilters(page_size=1),
+            "unread_total",
+        ),
+        (
+            "action_items",
+            "pending_action_items",
+            action_items,
+            ActionItemFilters(status="pending", page_size=1),
+            "total",
+        ),
+    )
+    for source, field, query, filters, count_field in sources:
+        if port is None:
+            unavailable.append(source)
+            continue
+        try:
+            result[field] = query(session, actor, filters, port)[count_field]
+        except ApiError as error:
+            # Optional provider outages do not hide unrelated project/task facts.
+            # Authentication/permission failures must still fail the whole response.
+            if error.status_code != 503:
+                raise
+            unavailable.append(source)
+    return {**result, "unavailable_sources": [*unavailable, "github", "feishu"]}
+
+
+def get_home_summary(session: Session, user: User, *, inbox_port: InboxPort | None = None) -> dict:
     actor = _active_actor(session, user)
     projects = _readable_projects(actor)
     courses = _readable_courses(actor)
@@ -209,9 +248,7 @@ def get_home_summary(session: Session, user: User) -> dict:
             }
             for row in course_rows
         ],
-        "unread_notifications": None,
-        "pending_action_items": None,
-        "unavailable_sources": ["notifications", "action_items", "github", "feishu"],
+        **_inbox_counts(session, actor, inbox_port),
         "scope": HOME_SCOPE,
     }
 
