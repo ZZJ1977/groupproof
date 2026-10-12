@@ -1,6 +1,6 @@
 # GroupProof
 
-GroupProof V1 is a runnable Next.js frontend prototype for group-project collaboration, with a real FastAPI identity service (Google sign-in, registration review, sessions) backed by PostgreSQL. Business pages still run on local mock data behind real server-side access gating; see [frontend status](FRONTEND_STATUS.md) for exact scope and known limitations.
+GroupProof V1 uses Next.js with a unified FastAPI authentication and business service in `services/api`, backed by the team's PostgreSQL database and migration chain. Authentication supports password sessions, registration review and a Resend mail adapter; public mail remains disabled until delivery is verified. Business pages retain their existing feature switches and integration limits; see [frontend status](FRONTEND_STATUS.md).
 
 ## Run locally
 
@@ -35,7 +35,7 @@ npm run check:routes     # 56 页路由映射；CHECK_HTTP=1 时按匿名鉴权�
 npm run check:access     # 权限矩阵断言（lib/access/policy.ts）
 npm run check:i18n       # 简体/繁体/英文词条 key 与插值参数一致性
 npm run check:auth       # 需开发服务器：匿名直链/旧链接兼容/登录页文案/404/语言恢复（CHECK_AUTH_API=1 加 API 负面用例）
-npm run server:test      # 后端 pytest（隔离 PostgreSQL + 测试 OIDC + 邮件捕获；D/A/E 系列）
+cd services/api && python -m pytest -q  # 统一后端（需隔离 PostgreSQL，先执行 alembic upgrade head）
 npm run check:auth-browser  # 真实 Chrome：注册三步/登录/找回/重置、键盘与窄屏（需开发服务器+后端）
 ```
 
@@ -46,11 +46,11 @@ With the development server and backend running: `CHECK_HTTP=1 npm run check:rou
 - Real: Google OIDC login, server sessions (revocable/rotating), registration gate (profile → school email verification → teacher review), account center, admin teacher review/disable, audit, i18n (zh-Hans / zh-Hant / en), server-side page gating and protected business API authorization.
 - Mock (browser-local, behind real gating): the 56 design pages' business data (courses, projects, tasks, evidence, AI, GitHub/Feishu, file metadata, exports).
 
-See [frontend status](FRONTEND_STATUS.md) and [server README](server/README.md) for implementation details and known limitations.
+See [frontend status](FRONTEND_STATUS.md), [API README](services/api/README.md) and [unification status](docs/plans/2026-10-12-unified-auth-resend-status.md) for implementation details and known limitations. Google entry visibility does not imply configured OAuth credentials; real mail requires a verified sender and the public-mail switch.
 
 ## Existing develop backend foundation
 
-The merge preserves `services/api`, `services/worker`, `apps/`, `infra/`, the generated API client and per-feature API switches. The identity service under `server/` is a separate entry point; configure its database independently from `services/api`, and use separate ports if running both. `API_INTERNAL_URL` supplies the Web identity gate and `/api/v1` proxy; `NEXT_PUBLIC_API_BASE_URL` supplies the generated business API client. Business workspace mode still defaults to Mock until its real contract is ready.
+`services/api` owns both authentication and business APIs. `server/` is retained as historical reference and is no longer the deployed identity entry point. `API_INTERNAL_URL` points Web's identity gate and runtime `/api/v1` proxy to the unified API. Existing generated clients and business feature switches remain available; migrating authentication does not finish unrelated business integrations.
 
 Existing checks remain available:
 

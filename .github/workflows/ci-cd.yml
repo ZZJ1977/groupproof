@@ -300,7 +300,10 @@ jobs:
           railway status --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --json | node scripts/railway-service-summary.mjs
           node scripts/railway-auth-config-check.mjs
           railway api describe volumeInstanceBackupCreate
-          railway api describe volumeInstanceBackups
+          railway api search backup
+          railway api search workflow
+          railway api describe VolumeInstance
+          railway api describe ServiceInstanceUpdateInput
 
   deploy:
     name: Deploy to Railway
