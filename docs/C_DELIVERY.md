@@ -2,6 +2,13 @@
 
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
+Current snapshot (2026-10-12): PR #10 is merged. The new batch has partial
+code/contract coverage for **35/35 C task IDs, not 35 accepted tasks**. Eighteen
+backend/integration/UI/test/documentation commits were pushed through `8809269`
+in [draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This follow-up
+records the published handoff. The latest validation section supersedes
+earlier batch counts without changing their history. All acceptance rows remain open.
+
 ## Sources checked on 2026-10-11
 
 The following Feishu documents were opened directly in the authorized browser.
@@ -100,10 +107,12 @@ and partial deliverables must be recorded separately from team acceptance.
 | Provider | Contract needed by C | Behavior before delivery |
 | --- | --- | --- |
 | A3 | Verified session -> canonical UUID user; membership helpers | No production demo-header fallback |
-| B | Real task/criterion IDs, definition versions and project context | Do not translate `task-1` into invented UUIDs |
+| B | Real task/criterion IDs, definition versions and project context; invitation/join and course lifecycle coordination | No invented UUIDs; C invitation resolution does not create enrollment or finish B lifecycle integration |
 | A4-01/02/03 | Notifications, append-only audit, assigned action items | No synthetic notifications/audit presented as production |
+| A4/A7 | Transactional notification read receipts and actual timestamped usage source | Unconnected providers return 503; missing counters/costs are not zero or estimates |
 | A4-04 | Validated upload/download URLs and stored-file receipts | Explicit unavailable; no fake successful upload |
 | A5-07/A6-04 | Authorized source queries and stable original snapshots | Explicit unavailable; no direct vendor credentials in C |
+| A | Scoped access activation receipt and expiry/revocation enforcement | C approval history is not a substitute for actual A authorization |
 | D | Verification queries, authoritative completion decision | Completion fails closed without D approval |
 | D | Evidence-changed event consumer | Durable pending event; do not claim downstream invalidation delivered |
 
@@ -151,7 +160,7 @@ zero skips** (26.12 seconds); the 81 evidence/note/HTTP/concurrency cases also
 passed separately. The new regression cases cover rejected adapter URLs and
 adoption after plan unlock; withdrawing existing evidence remains permitted.
 
-### Outstanding scope
+### Outstanding scope at the first-slice checkpoint
 
 This delivery is **not completion of all C tasks**. C1 and C4/C5/C7 remain in the open
 ledger. The existing mock
@@ -326,3 +335,116 @@ Validation for this batch:
 - Independent read-only reviews of daily access/UI, C4 transactions and C5
   storage/version authorization found no remaining blocking issue. Runtime
   OpenAPI adds 12 paths/33 schemas while preserving every pre-existing path/schema.
+
+### Course files, governance, real API pages and inbox (2026-10-12; current snapshot)
+
+The preceding batch was merged through [PR #10](https://github.com/ZZJ1977/groupproof/pull/10)
+at `22b99ac`. Its **30/35 partial-coverage count remains a historical result**.
+This new batch extends partial code or typed contract coverage to **35/35 IDs**;
+it does not close any of the 35 complete acceptance rows. C7-02, for example,
+implements secure disable integration while restore/create remain unavailable.
+
+The following eight substantive backend/test commits are recorded on `C_task`:
+
+| Commit | Delivered change |
+| --- | --- |
+| `00a5f9c` | C5-04 course logical files, immutable versions and reasoned publication |
+| `e1a9581` | C5-04 isolation, PostgreSQL publication races and migration retention |
+| `13c316a` | C2-02/04 authorized canonical selectors and persistent execution history |
+| `13a0014` | C7-01/02/03 Admin wrappers over A identity services |
+| `203c449` | C7-04/07 course lifecycle and scoped access decision persistence |
+| `3a60ddf` | C7-04/07 replay/expiry/rollback and concurrent approval regression coverage |
+| `05403fc` | C7-05/06 audit metadata validation and actual AI usage aggregation |
+| `f42282d` | C1-02/03 inbox snapshots, read-receipt contracts and assigned action queries |
+
+Nine subsequent integration/UI/test commits are also recorded:
+
+| Commit | Delivered change |
+| --- | --- |
+| `11e4601` | Register canonical endpoints/migrations and generated contracts |
+| `0bf334f` | Shared scoped API queries, safe destinations and command handling |
+| `ecc3995` | Execution, evidence and discussion API pages |
+| `bd6ac11` | Activity association and immutable project-file decision pages |
+| `9baf042` | Course publication/history and signed file-link page |
+| `432255a` | Identity Admin pages with CSRF and conflict recovery |
+| `9a22f91` | Course, audit, usage and scoped-access governance pages |
+| `55bc5f0` | Snapshot-aware notification and assigned-action pages |
+| `90311d2` | Isolated API entry routing and contract browser CI configuration |
+
+The 17 implementation/test commits above plus delivery commit `8809269` were
+pushed ahead of merged `develop` `22b99ac` in
+[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This follow-up
+adds the publication record. Live remote results are available in the
+[PR checks](https://github.com/ZZJ1977/groupproof/pull/11/checks); this record
+does not predeclare their outcome or the team's review/acceptance.
+
+Implemented scope and provider boundaries:
+
+- C2/C3/C4/C5/C6 API pages now call canonical execution, evidence, source-record,
+  project/course-file and discussion APIs, using current selectors, versions,
+  reasons, stable retry keys and failure recovery. Production still requires A's
+  real session-to-UUID identity and canonical entry data. Intercepted browser
+  responses do not establish that integration, and mock string IDs are rejected.
+- C5-04 adds course-owned tables and migration `0011`, teacher-owner writes,
+  enrolled-student published-only reads/downloads and staff/TA read-only history.
+  Replacement retains the prior publication and B's frozen references. Actual
+  byte upload/progress, validated course receipts, signing, previews/downloads
+  and notifications require A. The real page explicitly leaves upload/replacement
+  unavailable. See [course files](C_COURSE_FILES.md).
+- C7 identity pages reuse existing `server/` sessions, Admin/CSRF checks, account
+  disable/session revocation and teacher review services. New wrappers add required
+  reasons, self-disable protection, current review-basis checks and versioned
+  failure recovery. Baseline A services are not counted as newly implemented C
+  identity infrastructure. Restore/create are unavailable; the identity-service
+  IDs remain separate from canonical business UUIDs.
+- C7 governance adds migration `0012`, reasoned course draft/publish/end history,
+  code claims and invitation issue/revocation. Historical B course rows are not
+  rewritten. B must consume the invitation resolver in its enrollment transaction
+  and verify course lifecycle effects on its workflows; C does not create B
+  memberships. Scoped, expiring access approval requires A's exact transactional
+  grant receipt. Default activation/visibility ports return 503, and A remains
+  responsible for enforcement and revocation on every content access.
+- C7 audit is read-only and accepts only approved scalar change metadata. Usage
+  aggregation uses complete timestamped snapshots, explicit 7/30/90-day windows
+  and separate currency totals. A audit/usage providers remain unavailable; no
+  raw protected source rows, fabricated zero usage, health scores or trends are
+  substituted. Admin governance metadata does not grant project content access.
+- C1-02/03 adds recipient-bound notification/action contracts, exact page/count
+  validation, snapshot/version read commands and transactional receipt checking.
+  Structured, scope-checked targets lead to the appropriate task, verification,
+  appeal, member-change, baseline, plan or course-rule workflow. There is no
+  arbitrary action-item completion endpoint. Default A providers return 503;
+  home notification/action counters remain `null`. See [inbox contract](C_INBOX.md).
+- D retains verification, authoritative task completion, contribution/report
+  inclusion and downstream evidence invalidation. C's pending outbox rows do not
+  prove delivery or D consumption. A/B/D integration and staging acceptance
+  cannot be completed independently by C or by reading public vendor documentation.
+
+Completed verification for this snapshot:
+
+| Check | Actual result |
+| --- | --- |
+| Full canonical backend suite | **813 passed, zero skipped** |
+| Separate identity-service suite | **128 passed** |
+| Database | Migration head **0012** and `alembic check` passed |
+| Python quality | Ruff passed, including the reported **137-file** check |
+| Frontend static checks | Full lint and typecheck passed |
+| Production build | Passed compilation, types, static generation and trace collection |
+| Command/client scripts | **710 assertions passed** |
+| Existing C browser suite | **36 passed** |
+| New API browser suite | **45/45 passed**, including corrected filtering-control locators and inbox **8/8** rerun |
+| Daily API browser suite | **4/4 passed** in the current batch |
+| Total C browser coverage | **85 passed** across existing, new API and daily cases |
+
+The canonical total includes SQLite/HTTP fixture tests as well as enabled
+PostgreSQL tests. It must not be described as 813 PostgreSQL tests. In particular,
+the 75 inbox contract cases explicitly use SQLite to test relational read/replay
+rollback; they do not validate a production A adapter or PostgreSQL locking.
+Course-file coverage separately includes 96 SQLite/HTTP and 7 PostgreSQL cases.
+
+The browser reruns above follow corrections to test locators using observed
+accessible combobox/alert roles; they do not weaken product permissions or
+business assertions. All code and handoff records have been pushed to `C_task`;
+review and staging acceptance remain open in PR #11. Remote CI is tracked by
+the live PR checks above. The production build and daily results above were
+rerun for this batch. No whole-system or 35-task acceptance is claimed.
