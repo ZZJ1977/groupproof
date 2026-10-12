@@ -71,6 +71,7 @@ test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject 
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.getByText("来源记录第 2 页", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("接口");
+  await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption({ label: "提交记录" });
   await page.getByRole("combobox", { name: "关联任务", exact: true }).selectOption(taskId);
   await page.getByLabel("开始日期", { exact: true }).fill("2026-10-01");
   await page.getByLabel("结束日期", { exact: true }).fill("2026-10-12");
@@ -78,14 +79,113 @@ test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject 
   await expect(page).toHaveURL(/date_from=2026-10-01/);
   await expect.poll(() => requests.at(-1)?.searchParams.get("until")).toBe("2026-10-12T23:59:59.999999Z");
   expect(requests.at(-1)?.searchParams.get("task_id")).toBe(taskId);
+  expect(requests.at(-1)?.searchParams.get("kind")).toBe("commit");
+  expect(requests.at(-1)?.searchParams.has("group_id")).toBe(false);
   expect(requests.at(-1)?.searchParams.get("page")).toBe("1");
   await page.reload();
   await expect(page.getByRole("textbox", { name: "搜索记录", exact: true })).toHaveValue("接口");
+  await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("commit");
   await page.getByRole("button", { name: "查看记录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "接口讨论文档", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "查看原始来源", exact: true })).toHaveCount(0);
   await page.goBack();
   await expect(page).not.toHaveURL(/record=/);
+});
+
+test("C4 Feishu group and kind filters use authorized page metadata, combine in the URL, and survive navigation", async ({ page }) => {
+  await contextRoute(page);
+  const groupA = "oc_authorized_group_a";
+  const groupB = "oc_authorized/b?key=1&scope=ours";
+  const items: Schema["ActivityDTO"][] = Array.from({ length: 12 }, (_, index) => ({
+    ...activity, source_id: `00000000-0000-0000-0000-${String(400 + index).padStart(12, "0")}`,
+    title: `群记录 ${index + 1}`, group_id: index < 10 ? groupA : groupB,
+    kind: index < 10 ? "document" : "message", summary: index < 10 ? "甲组资料" : "乙组讨论",
+  }));
+  const requests: URL[] = [];
+  await page.route(`**${base}/activities/feishu?**`, (route) => {
+    const url = new URL(route.request().url()); requests.push(url);
+    const filtered = items.filter((item) => (!url.searchParams.get("group_id") || item.group_id === url.searchParams.get("group_id"))
+      && (!url.searchParams.get("kind") || item.kind === url.searchParams.get("kind"))
+      && (!url.searchParams.get("status") || item.status === url.searchParams.get("status"))
+      && (!url.searchParams.get("q") || item.summary.includes(url.searchParams.get("q")!)));
+    const current = Number(url.searchParams.get("page") ?? 1);
+    return success(route, { items: filtered.slice((current - 1) * 10, current * 10), total: filtered.length, page: current, page_size: 10 } satisfies Schema["ActivityPageDTO"]);
+  });
+  await page.goto(`/projects/${projectId}/collaboration`);
+  const group = page.getByRole("combobox", { name: "来源群组", exact: true });
+  await expect(group.locator("option")).toHaveText(["全部群组", groupA]);
+  await page.getByRole("button", { name: "下一页", exact: true }).click();
+  await expect(group.locator("option")).toHaveText(["全部群组", groupB]);
+  await group.selectOption(groupB);
+  await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption({ label: "消息" });
+  await page.getByRole("combobox", { name: "处理状态", exact: true }).selectOption("candidate");
+  await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("乙组讨论");
+  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("group_id")).toBe(groupB);
+  expect(requests.at(-1)?.searchParams.get("kind")).toBe("message");
+  expect(requests.at(-1)?.searchParams.get("status")).toBe("candidate");
+  expect(requests.at(-1)?.searchParams.get("q")).toBe("乙组讨论");
+  expect(requests.at(-1)?.searchParams.get("page")).toBe("1");
+  expect(requests.at(-1)?.searchParams.has("scope")).toBe(false);
+  await expect(group).toHaveValue(groupB);
+  await expect(page.getByText("共 2 条 · 第 1 页", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("群记录 11", { exact: true })).toBeVisible();
+  await expect(group).toHaveValue(groupB);
+  await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("message");
+  await page.goBack();
+  await expect(page).toHaveURL(/page=2/);
+  await expect(group).toHaveValue("");
+  await page.goForward();
+  await expect(group).toHaveValue(groupB);
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.has("group_id")).toBe(false);
+  expect(requests.at(-1)?.searchParams.has("kind")).toBe(false);
+  await expect(group.locator("option")).toHaveText(["全部群组", groupA]);
+  // Each UI query is one bounded source-page request; there is no group-directory scan.
+  expect(requests.every((url) => url.searchParams.get("page_size") === "10")).toBe(true);
+});
+
+test("C4 an empty linked group remains explicit, legacy group links work, and denied access clears group metadata", async ({ page }) => {
+  await contextRoute(page);
+  const requests: URL[] = [];
+  await page.route(`**${base}/activities/feishu?**`, (route) => {
+    const url = new URL(route.request().url()); requests.push(url);
+    return success(route, { items: url.searchParams.get("group_id") ? [] : [{ ...activity, group_id: "oc_visible_only" }], total: url.searchParams.get("group_id") ? 0 : 1, page: 1, page_size: 10 });
+  });
+  await page.goto(`/projects/${projectId}/collaboration?group=oc_empty&kind=message`);
+  const group = page.getByRole("combobox", { name: "来源群组", exact: true });
+  await expect(page.getByText("没有符合条件的来源记录", { exact: true })).toBeVisible();
+  await expect(group).toHaveValue("oc_empty");
+  await expect(group.locator("option")).toHaveText(["全部群组", "当前 URL 群组筛选（待来源核对）"]);
+  expect(requests.at(-1)?.searchParams.get("group_id")).toBe("oc_empty");
+  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await expect(page).toHaveURL(/group_id=oc_empty/);
+  expect(new URL(page.url()).searchParams.has("group")).toBe(false);
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect(group.locator("option")).toHaveText(["全部群组", "oc_visible_only"]);
+  await page.route(`**${base}/c-context`, (route) => failure(route, 403));
+  await page.getByRole("button", { name: "刷新活动", exact: true }).click();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
+  await expect(group).toHaveCount(0);
+  await expect(page.locator("main").getByText("oc_visible_only", { exact: true })).toHaveCount(0);
+});
+
+test("C4 GitHub PR filter keeps its exact wire value and does not forward Feishu groups", async ({ page }) => {
+  await contextRoute(page);
+  const requests: URL[] = [];
+  await page.route(`**${base}/activities/github?**`, (route) => {
+    const url = new URL(route.request().url()); requests.push(url);
+    return success(route, { items: [{ ...activity, source_type: "github", group_id: null, kind: "pr" }], total: 1, page: 1, page_size: 10 });
+  });
+  await page.goto(`/projects/${projectId}/github?kind=pr&group_id=oc_other_surface`);
+  await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("pr");
+  await expect(page.getByRole("combobox", { name: "来源群组", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("kind")).toBe("pr");
+  expect(requests.every((url) => !url.searchParams.has("group_id"))).toBe(true);
+  expect(new URL(page.url()).searchParams.has("group_id")).toBe(false);
+  await expect(page.getByRole("combobox", { name: "记录类型", exact: true }).locator("option:checked")).toHaveText("拉取请求");
 });
 
 test("C4 Feishu adoption retains reason and the same retry key; only creates candidate evidence", async ({ page }) => {
