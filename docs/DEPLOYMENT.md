@@ -70,7 +70,8 @@ REDIS_URL=${{Redis.REDIS_URL}}
 ```text
 APP_MODE=real
 APP_ORIGIN=https://<当前环境的-web-domain>
-DATABASE_URL=<专用于身份服务的 PostgreSQL 数据库 URL>
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+DATABASE_NAME=gp_identity
 EMAIL_CHALLENGE_HMAC_KEY=<每个环境独立的随机密钥>
 AUTH_GOOGLE_ENABLED=false                 # 配好该环境的 Google OAuth 后再启用
 AUTH_PASSWORD_ENABLED=true
@@ -84,7 +85,7 @@ PORT=8000
 
 Railway Hobby 禁止 SMTP 出站；Resend 使用 HTTPS API，因此不需要开通 SMTP。先在 Resend 验证发件域名，再分别生成 Staging 和 Production API key；只将密钥存入对应 Railway `identity` 服务的 Variables。Railway 对邮件出站限制的说明见[官方文档](https://docs.railway.com/networking/outbound-networking#email-delivery)，Resend API 格式见[官方邮件 API 文档](https://resend.com/docs/api-reference/emails/send-email)。
 
-身份数据库必须是与 `services/api` 分开的数据库，即使它们运行在同一个 PostgreSQL 服务中也要使用不同的数据库名。`server/` 和 `services/api/` 有各自的迁移、`alembic_version` 及同名账户表；不要让身份服务对现有业务 API 数据库执行迁移。Staging 与 Production 也不能共用同一个身份数据库。
+身份数据库必须是与 `services/api` 分开的数据库。可复用同项目现有 PostgreSQL 服务：将 `DATABASE_URL` 设置为 `Postgres.DATABASE_URL` 服务引用、`DATABASE_NAME=gp_identity`，并在该 PostgreSQL 服务中一次性创建 `gp_identity` 数据库。Railway 服务引用会保留凭据，应用只替换 URL 中的数据库名，不必复制或暴露密码。`server/` 和 `services/api/` 有各自的迁移、`alembic_version` 及同名账户表；不要让身份服务对现有业务 API 数据库执行迁移。Staging 与 Production 也不能共用同一个身份数据库。
 
 ## CI/CD 触发方式
 
