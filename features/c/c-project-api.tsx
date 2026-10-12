@@ -7,6 +7,12 @@ export const projectApi = createCClient();
 export const apiButton = "rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50";
 export const apiInput = "rounded-md border border-slate-300 px-3 py-2 text-sm";
 export const queryPolicy = { staleTime: 0, gcTime: 0, retry: false } as const;
+// Both the history view and source picker read this same authorized response.
+export const taskNoteQuery = (userId: string, projectId: string, taskId: string) => ({
+  queryKey: ["c-task-note", userId, projectId, taskId],
+  queryFn: () => projectApi.note(projectId, taskId, true),
+  ...queryPolicy,
+});
 
 export const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 export const pageNumber = (value: string | null) => {
@@ -32,14 +38,15 @@ export function ApiFailure({ error, retry, label = "重试" }: { error: unknown;
   return <div role="alert" className="my-3 rounded-md border border-red-200 p-3"><p>{apiErrorText(error)}</p>{retry && <button className={`${apiButton} mt-2`} type="button" onClick={retry}>{label}</button>}</div>;
 }
 
-/** An unchanged payload reuses its key after an uncertain response; no local replay success. */
+/** Keep the key across uncertain failures; reset only after a confirmed write. */
 export function useCommandKey() {
   const previous = useRef<{ fingerprint: string; key: string } | null>(null);
-  return (payload: unknown) => {
+  const key = (payload: unknown) => {
     const fingerprint = JSON.stringify(payload);
     if (previous.current?.fingerprint !== fingerprint) previous.current = { fingerprint, key: crypto.randomUUID() };
     return previous.current.key;
   };
+  return Object.assign(key, { reset: () => { previous.current = null; } });
 }
 
 /** Source URLs are display links only. Never use them as storage or API endpoints. */

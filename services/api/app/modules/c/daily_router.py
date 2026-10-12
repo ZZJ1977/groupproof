@@ -6,6 +6,7 @@ from app.api.responses import ErrorResponse, SuccessResponse, success
 from app.modules.c.daily_schemas import DailyActivityFilters, DailyActivityPageDTO, DailyHomeDTO
 from app.modules.c.daily_service import get_home_summary, list_personal_activity
 from app.modules.c.evidence_router import CurrentUser, Database, private_response
+from app.modules.c.inbox_ports import InboxPort, get_inbox_port
 
 router = APIRouter(
     tags=["c-daily"],
@@ -22,8 +23,13 @@ router = APIRouter(
 
 
 @router.get("/home/summary", response_model=SuccessResponse[DailyHomeDTO])
-def home_summary(request: Request, session: Database, user: CurrentUser):
-    return success(get_home_summary(session, user), request)
+def home_summary(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    inbox_port: Annotated[InboxPort, Depends(get_inbox_port)],
+):
+    return success(get_home_summary(session, user, inbox_port=inbox_port), request)
 
 
 @router.get("/me/activity", response_model=SuccessResponse[DailyActivityPageDTO])

@@ -11,21 +11,22 @@ PR #9 contained 27 commits covering parts of 29 task IDs and was merged into
 receipt/download contract. That is the historical PR #10 result, not a current
 task-completion percentage. PR #10 is now merged (`22b99ac`).
 
-The current batch, recorded through commit `90311d2`, has partial code or
+The PR #11 batch, recorded through commit `90311d2`, has partial code or
 typed contract coverage for **35 of 35 task IDs**. **None of the 35 complete task
 acceptance rows is closed by this coverage count.** Account restore/create,
 actual uploaded bytes, production authorization, external adapters and D
 acceptance are not complete. **17 substantive implementation/test commits** and
 delivery commit `8809269` have been pushed in
-[draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This documentation
-follow-up records the publication; remote CI is tracked in the live PR checks.
-See `C_DELIVERY.md` for exact commits, completed checks and pending delivery.
+[PR #11](https://github.com/ZZJ1977/groupproof/pull/11), now merged into `develop`
+at `481f35b`. Its remote CI passed. The follow-up below fixes additional C
+behavior without claiming new complete task acceptance. See `C_DELIVERY.md`
+for exact changes, completed checks and current delivery.
 
 ## What is implemented
 
 | Area | Implemented C work | Still missing for complete acceptance |
 | --- | --- | --- |
-| C1 (4 tasks) | Canonical membership-scoped home/progress/activity reads; A inbox/action ports with recipient/count/snapshot validation and transactional read receipts; real API pages | A notification/action adapters and delivery, production UUID identity and external feeds; home inbox counts remain unavailable |
+| C1 (4 tasks) | Canonical membership-scoped home/progress/activity reads; home inbox totals reuse validated recipient queries; A inbox/action contracts and transactional read receipts; real API pages | A notification/action adapters and delivery, production UUID identity and external feeds; unavailable providers keep their own home counts null |
 | C2 (8 tasks) | Execution transitions, assignee/dependency checks, progress/rollups/history, notes, candidate capture and atomic prepare-submission; canonical selectors and real task API pages | A production session/UUID entry context and source/storage providers; D verification query, acceptance and authoritative completion |
 | C3 (5 tasks) | Persistent snapshots/decisions/effective queries, reasoned adopt/withdraw/source-change rules and real evidence API page | A source events, reliable outbox delivery, D invalidation/verification/contribution/report consumers and staging acceptance |
 | C4 (4 tasks) | Canonical association/triage, immutable decisions, source-query contracts, atomic candidate adoption and real GitHub/Feishu API pages | A authorized query/sync adapters, stable B task codes and automatic association consumer, source-change delivery and live external verification |
@@ -49,11 +50,26 @@ See `C_DELIVERY.md` for exact commits, completed checks and pending delivery.
 
 ## Work that can continue without third-party credentials
 
-The prior six independently implementable areas now have code/contracts. Browser
-locator repairs, API/daily reruns and the production build have passed. Remaining
-delivery work has been pushed to PR #11; remote CI, review and integration
-acceptance are tracked there. Local results do not substitute for remote checks
-or staging.
+The prior six independently implementable areas now have code/contracts in merged
+PR #11. Follow-up inspection found and fixed additional independent work:
+
+- C1 home totals now use validated unread/pending queries; provider failure is
+  unavailable, a verified empty result is zero, and access failure denies the read.
+- C2/C3 current note versions and evidence selectors share a query; source conflict
+  recovery retains the candidate draft. Snapshot previews read the immutable
+  nested source, including note versions and discussion replies.
+- C2/C3/C6 command keys persist for uncertain retries and reset on confirmed writes,
+  so a later intentional identical reply/candidate creates a distinct command.
+- C4 group and kind filters persist in URLs. Options use only the current authorized
+  page, with an explicit limitation; unknown selected groups survive empty results.
+- C7 pending requests expire while the form is open; reasoned rejection remains
+  available. Directory/review details use current rows, require acknowledgement of
+  changed versions, close vanished selections (including write 404) and clear
+  drafts on access loss. A pending publish can never become end after a background
+  refresh; ending requires a separate confirmation with a new reason.
+
+These changes continue on `C_task`; local tests and remote CI are recorded in
+`C_DELIVERY.md`. Neither is a substitute for connected staging acceptance.
 
 Further C work includes user restore/create flows against an agreed A identity
 service contract, and complete UI/API/error/permission acceptance after providers
@@ -66,7 +82,7 @@ invent UUID mappings or write A/B/D-owned data to make a demonstration look comp
 | --- | --- | --- |
 | A | Verified session and real role -> canonical UUID current user | Production business APIs remain closed; no demo-header bypass |
 | A/B | Canonical workspace/project/task/criterion loading and route context | Mock string IDs must not be translated into fabricated UUIDs |
-| A | A4 notification/action queries, transactional read mutations, audit source and A7 timestamped usage | Default ports return 503; no fake rows, zero counts or estimated usage; home inbox counters stay null |
+| A | A4 notification/action queries, transactional read mutations, audit source and A7 timestamped usage | Default ports return 503; no fake rows, zero counts or estimated usage; home counters use validated totals once each adapter is connected |
 | A | Validated project/course upload receipts, actual byte storage and signed preview/download URLs | No real upload/progress or storage success from metadata-only commands |
 | A | Authorized GitHub/Feishu query and stable source snapshots | C cannot prove that local source lists equal external services |
 | A | Transactional, scoped and expiring access activation/enforcement | Approval cannot become a real grant without the exact A receipt; enforcement remains A-owned |
@@ -76,7 +92,7 @@ invent UUID mappings or write A/B/D-owned data to make a demonstration look comp
 
 ## Verification and scope
 
-Current batch snapshot (2026-10-12; prior batch results below remain historical):
+PR #11 snapshot (2026-10-12; current follow-up results are in `C_DELIVERY.md`):
 
 - Full canonical backend: **813 passed, zero skipped**. PG-specific checks ran
   against the disposable database; this total also includes SQLite/HTTP fixtures
@@ -87,9 +103,9 @@ Current batch snapshot (2026-10-12; prior batch results below remain historical)
   passed**, including the locator corrections and inbox **8/8** rerun. Daily API
   cases passed **4/4** in this batch: **85 C browser cases** in total. The production
   build passed compilation, type checking, static generation and trace collection.
-- Implementation/test and documentation commits are published in draft PR #11.
+- Implementation/test and documentation commits are published in merged PR #11.
   [Remote checks](https://github.com/ZZJ1977/groupproof/pull/11/checks) provide the
-  current CI result; review and team/staging acceptance remain open.
+  passing CI result; team/staging acceptance remains separate.
 
 - The first 17 commits passed GitHub CI at `341c646`.
 - With the Admin directory addition, the canonical PostgreSQL suite passed

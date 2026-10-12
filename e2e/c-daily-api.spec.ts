@@ -30,7 +30,8 @@ test("C1-01 canonical home refreshes real counts and preserves project/course ID
   completed = 2;
   await page.getByRole("button", { name: "刷新统计", exact: true }).click();
   await expect(completedCard.locator(".gp-stat-value")).toHaveText("2");
-  await expect(page.getByText(/待办和通知服务尚未接入/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "待处理事项：暂不可用", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "未读通知：暂不可用", exact: true })).toBeVisible();
   await expect(page.getByText("+7%", { exact: true })).toHaveCount(0);
 });
 
@@ -48,6 +49,24 @@ test("C1-01 failed refresh hides old statistics and retries without seed fallbac
   await expect(page.getByText("数据库项目", { exact: true })).toHaveCount(0);
   allowed = true;
   await page.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(page.getByText("数据库项目", { exact: true })).toBeVisible();
+});
+
+test("C1-01 inbox counts refresh independently and distinguish zero from unavailable", async ({ page }) => {
+  let pending: number | null = 5;
+  let unread: number | null = 3;
+  await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: {
+    data: { ...summary, pending_action_items: pending, unread_notifications: unread,
+      unavailable_sources: ["github", "feishu", ...(pending === null ? ["action_items"] : [])] },
+    meta: { request_id: "home-inbox" },
+  } }));
+  await page.goto("/home");
+  await expect(page.getByRole("link", { name: "未读通知：3", exact: true })).toHaveAttribute("href", "/notifications");
+  await expect(page.getByRole("link", { name: "待处理事项：5", exact: true })).toHaveAttribute("href", "/action-items");
+  unread = 0; pending = null;
+  await page.getByRole("button", { name: "刷新统计", exact: true }).click();
+  await expect(page.getByRole("link", { name: "未读通知：0", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "待处理事项：暂不可用", exact: true })).toBeVisible();
   await expect(page.getByText("数据库项目", { exact: true })).toBeVisible();
 });
 

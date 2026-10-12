@@ -15,6 +15,8 @@ type Action = "associate" | "adopt" | "ignore" | "restore";
 type Command = { sourceId: string; action: Action; expected: number; taskId: string; criteria: string[]; reason: string };
 const statuses = { candidate: "待处理", adopted: "已采纳", ignored: "已忽略" } as const;
 const actionLabels = { associate: "关联任务", adopt: "采纳为候选证据", ignore: "忽略记录", restore: "恢复待处理" } as const;
+const kindLabels: Record<string, string> = { commit: "提交记录", pr: "拉取请求", ci: "持续集成", sync: "同步事件", document: "文档", message: "消息" };
+function selectedFilter(value: string | null) { return value && value !== "all" ? value : undefined; }
 function snapshotText(snapshot: Record<string, unknown>, key: string) { return typeof snapshot[key] === "string" ? snapshot[key] as string : ""; }
 
 export function ActivityApiPage({ projectId, sourceType }: { projectId: string; sourceType: ActivitySourceType }) {
@@ -25,7 +27,8 @@ export function ActivityApiPage({ projectId, sourceType }: { projectId: string; 
 function ActivityPage({ projectId, sourceType, userId }: { projectId: string; sourceType: ActivitySourceType; userId: string }) {
   const { query, updateQuery } = useUrlQuery();
   const rawStatus = query.get("status");
-  const filters: ActivityQuery = { page: pageNumber(query.get("page")), page_size: 10, q: query.get("q") || undefined, status: rawStatus && Object.hasOwn(statuses, rawStatus) ? rawStatus as keyof typeof statuses : undefined, task_id: query.get("task") || undefined, author_id: query.get("author") || undefined, since: query.get("date_from") ? `${query.get("date_from")}T00:00:00Z` : undefined, until: query.get("date_to") ? `${query.get("date_to")}T23:59:59.999999Z` : undefined };
+  const groupFilter = query.has("group_id") ? query.get("group_id") || undefined : selectedFilter(query.get("group"));
+  const filters: ActivityQuery = { page: pageNumber(query.get("page")), page_size: 10, q: query.get("q") || undefined, status: rawStatus && Object.hasOwn(statuses, rawStatus) ? rawStatus as keyof typeof statuses : undefined, task_id: query.get("task") || undefined, author_id: query.get("author") || undefined, since: query.get("date_from") ? `${query.get("date_from")}T00:00:00Z` : undefined, until: query.get("date_to") ? `${query.get("date_to")}T23:59:59.999999Z` : undefined, group_id: sourceType === "feishu" ? groupFilter : undefined, kind: selectedFilter(query.get("kind")) };
   const selectedId = query.get("record");
   const enabled = isUuid(projectId);
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
@@ -43,6 +46,9 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const denial = blocked || [context.error, list.error, detail.error, history.error].find(accessFailure);
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const rows = access && list.isSuccess && !list.isFetching ? list.data : undefined;
+  // These are observed page values, not a fabricated directory or an unbounded source scan.
+  const groups = [...new Set(rows?.items.flatMap((item) => item.group_id ? [item.group_id] : []) ?? [])];
+  const kinds = [...new Set(rows?.items.map((item) => item.kind) ?? [])];
   const record = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
   const savedHistory = access && history.isSuccess && !history.isFetching ? history.data : undefined;
   const targetTask = command && access?.tasks.find((task) => task.id === command.taskId);
@@ -101,14 +107,16 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       {context.isFetching && <p role="status">正在验证项目权限…</p>}{context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}
       {access && <>
         {!access.permissions.can_manage_activity && <p className="mb-3 text-sm">当前活动记录只读。</p>}
-        <form key={`${filters.q}:${filters.status}:${filters.task_id}:${filters.author_id}:${filters.since}:${filters.until}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "status", "task", "author", "date_from", "date_to"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, page: null, record: null }); setCommand(null); }}>
+        <form key={`${filters.q}:${filters.status}:${filters.task_id}:${filters.author_id}:${filters.since}:${filters.until}:${filters.group_id}:${filters.kind}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "status", "task", "author", "date_from", "date_to", "kind"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, group_id: sourceType === "feishu" ? String(form.get("group_id") ?? "") || null : null, group: null, page: null, record: null }); setCommand(null); }}>
           <label>搜索记录<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} /></label>
+          {sourceType === "feishu" && <label>来源群组<select className={`${apiInput} block max-w-xs`} name="group_id" defaultValue={filters.group_id ?? ""}><option value="">全部群组</option>{filters.group_id && <option value={filters.group_id}>{groups.includes(filters.group_id) ? filters.group_id : "当前 URL 群组筛选（待来源核对）"}</option>}{groups.filter((group) => group !== filters.group_id).map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
+          <label>记录类型<select className={`${apiInput} block`} name="kind" defaultValue={filters.kind ?? ""}><option value="">全部类型</option>{filters.kind && <option value={filters.kind}>{Object.hasOwn(kindLabels, filters.kind) ? kindLabels[filters.kind] : kinds.includes(filters.kind) ? filters.kind : "当前 URL 类型筛选（待来源核对）"}</option>}{kinds.filter((kind) => kind !== filters.kind).map((kind) => <option key={kind} value={kind}>{Object.hasOwn(kindLabels, kind) ? kindLabels[kind] : kind}</option>)}</select></label>
           <label>处理状态<select className={`${apiInput} block`} name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>关联任务<select className={`${apiInput} block`} name="task" defaultValue={filters.task_id ?? ""}><option value="">全部任务</option>{access.tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
           <label>记录作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{access.members.map((member) => <option key={member.id} value={member.id}>{member.title}</option>)}</select></label>
           <label>开始日期<input className={`${apiInput} block`} type="date" name="date_from" defaultValue={query.get("date_from") ?? ""} /></label><label>结束日期<input className={`${apiInput} block`} type="date" name="date_to" defaultValue={query.get("date_to") ?? ""} /></label>
-          <button className={apiButton} type="submit">查询活动</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, task: null, author: null, date_from: null, date_to: null, page: null, record: null }); setCommand(null); }}>重置</button>
-        </form><p className="mb-3 text-xs text-slate-500">日期按 UTC 自然日筛选。关联建议需要人工确认；采纳仅生成候选证据。</p>
+          <button className={apiButton} type="submit">查询活动</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, task: null, author: null, date_from: null, date_to: null, group_id: null, group: null, kind: null, page: null, record: null }); setCommand(null); }}>重置</button>
+        </form><p className="mb-3 text-xs text-slate-500">日期按 UTC 自然日筛选。{sourceType === "feishu" ? "群组和类型选项来自本页已授权来源；清除筛选或翻页可查看其他来源选项。" : "类型选项来自本页已授权来源。"}关联建议需要人工确认；采纳仅生成候选证据。</p>
         {list.isFetching && <p role="status">正在读取活动…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
         {rows && <Panel><div className="space-y-3">{rows.items.map((item) => <article key={item.source_id} className="border-b border-slate-100 pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.title}</strong><span>{statuses[item.status]}</span></div><p className="my-2 whitespace-pre-wrap text-sm">{item.summary}</p><p className="mb-2 text-xs text-slate-500">{item.author_name || "来源未提供作者名称"} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</p><button className={apiButton} onClick={() => selectRecord(item.source_id)}>查看记录</button></article>)}</div>{!rows.items.length && <EmptyState title="没有符合条件的来源记录" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), record: null }); setCommand(null); }} /></Panel>}
         {selectedId && <Panel title="记录详情与历史" action={<button className={apiButton} onClick={() => { updateQuery({ record: null }); setCommand(null); }}>关闭详情</button>}>
