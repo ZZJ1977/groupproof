@@ -9,7 +9,7 @@ import { formatDate } from "@/lib/utils";
 import { EvidenceCapturePanel } from "./EvidenceCapturePanel";
 import { DiscussionsApiPage } from "./DiscussionsApiPage";
 import { useUrlQuery } from "./use-url-query";
-import { accessFailure, apiButton, ApiFailure, apiInput, ApiPager, isUuid, pageNumber, projectApi, queryPolicy, useCommandKey, versionFailure } from "./c-project-api";
+import { accessFailure, apiButton, ApiFailure, apiInput, ApiPager, isUuid, pageNumber, projectApi, queryPolicy, taskNoteQuery, useCommandKey, versionFailure } from "./c-project-api";
 
 const states: Record<string, string> = { not_started: "未开始", in_progress: "进行中", pending_submission: "待提交", pending_verification: "待验收", completed: "已完成" };
 const tabs = { overview: "任务概览", evidence: "任务证据", verification: "任务验收", discussion: "任务讨论", history: "执行历史", criteria: "验收标准" } as const;
@@ -26,7 +26,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
   const execution = useQuery({ queryKey: ["c-execution", userId, projectId, taskId], queryFn: () => projectApi.execution(taskId), enabled, ...queryPolicy });
   const taskExists = context.isSuccess && !context.isFetching && context.data.tasks.some((task) => task.id === taskId);
-  const note = useQuery({ queryKey: ["c-note-history", userId, projectId, taskId], queryFn: () => projectApi.note(projectId, taskId, true), enabled: taskExists, ...queryPolicy });
+  const note = useQuery({ ...taskNoteQuery(userId, projectId, taskId), enabled: taskExists });
   const evidence = useQuery({ queryKey: ["c-task-evidence", userId, projectId, taskId, pageNumber(query.get("evidence_page"))], queryFn: () => projectApi.evidence(projectId, { task_id: taskId, page: pageNumber(query.get("evidence_page")), page_size: 10 }), enabled: taskExists && (submission || tab === "evidence"), ...queryPolicy });
   const history = useQuery({ queryKey: ["c-progress-history", userId, projectId, taskId, pageNumber(query.get("history_page"))], queryFn: () => projectApi.progressHistory(projectId, taskId, pageNumber(query.get("history_page")), 10), enabled: taskExists && tab === "history" && !submission, ...queryPolicy });
   const [blocked, setBlocked] = useState<unknown>(null);
@@ -70,6 +70,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
         const input = { expected_version: prepareVersion!, note: noteInput };
         await projectApi.prepareSubmission(taskId, input, key({ action, projectId, taskId, input }));
       }
+      key.reset();
       if (action === "progress") setProgress(null);
       if (action === "note" || action === "prepare") setDraft(null);
       setPrepareVersion(null); setNotice(action === "prepare" ? "提交准备已保存，任务处于待提交状态。验收检查服务尚未接入，暂不能继续验收。" : "操作已保存。"); await refresh();
