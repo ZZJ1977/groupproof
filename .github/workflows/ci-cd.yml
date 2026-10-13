@@ -219,10 +219,14 @@ jobs:
       - name: Run C canonical workspace and governance page contracts
         run: npx playwright test --config playwright.c-api.config.ts
 
+      - name: Run C shell without demo data
+        run: npx playwright test --config playwright.c-shell.config.ts
+
       - name: Check C business commands and generated client
         run: |
           npx tsx scripts/check-c-url-filters.mjs
           npx tsx scripts/check-c-evidence-source.mjs
+          npx tsx scripts/check-c-evidence-source-client.mjs
           npx tsx scripts/check-c-api-client.mjs
           npx tsx scripts/check-c-discussions.mjs
           npx tsx scripts/check-c-evidence-decisions.mjs
