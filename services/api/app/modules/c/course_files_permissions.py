@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import ApiError
 from app.db.models import Course, CourseMember, CourseStaff, User
 from app.modules.c.permissions import require_verified_email
+from app.modules.c.school_email import has_verified_school_email
 
 
 @dataclass(frozen=True)
@@ -58,13 +59,14 @@ def course_access(session: Session, user: User, course_id: UUID, *, write: bool 
     student = user.global_role == "student" and enrollment is not None
     if not (owner or staff or student):
         raise ApiError(403, "COURSE_FILE_ACCESS_DENIED", "Course file access is denied.")
-    can_write = owner and user.email_verified_at is not None and course.status != "ended"
+    verified = has_verified_school_email(session, user, lock=write)
+    can_write = owner and verified and course.status != "ended"
     if write:
         if not owner:
             raise ApiError(
                 403, "COURSE_FILE_WRITE_DENIED", "Only the course owner may change files."
             )
-        require_verified_email(user)
+        require_verified_email(verified)
         if course.status == "ended":
             raise ApiError(403, "COURSE_READ_ONLY", "The course has ended and is read-only.")
     return CourseFileAccess(course, owner, staff, student, can_write)

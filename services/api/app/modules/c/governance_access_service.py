@@ -19,6 +19,7 @@ from app.modules.c.governance_schemas import (
     DecideAccessRequest,
 )
 from app.modules.c.models import Evidence
+from app.modules.c.school_email import has_verified_school_email
 
 
 def access_data(row):
@@ -177,7 +178,11 @@ def decide_request(
             .where(User.id == row.applicant_id)
             .execution_options(populate_existing=True)
         )
-        if applicant is None or applicant.status != "active" or applicant.email_verified_at is None:
+        if (
+            applicant is None
+            or applicant.status != "active"
+            or not has_verified_school_email(session, applicant, lock=True)
+        ):
             raise ApiError(
                 409, "ACCESS_APPLICANT_INELIGIBLE", "The applicant is not eligible for access."
             )

@@ -102,3 +102,32 @@ def test_disabled_actor_denied_and_archived_project_readable(client, db, scope):
 @pytest.mark.parametrize("query", ["page=0", "page_size=0", "page_size=101"])
 def test_pagination_bounds(client, scope, query):
     assert client.get(endpoint(scope) + "?" + query).status_code == 422
+
+
+def test_focus_finds_old_progress_among_other_actors_and_survives_new_events(client, db, scope):
+    events = [add_event(db, scope) for _ in range(14)]
+    ordered = sorted(events, key=lambda item: str(item.id))
+    for row in ordered[:-1]:
+        row.actor_id = scope.users["member"].id
+    db.flush()
+    target = ordered[-1]
+    url = endpoint(scope) + f"?page=1&page_size=5&focus_event_id={target.id}"
+    data = client.get(url).json()["data"]
+    assert data["page"] == 3
+    assert str(target.id) in {item["id"] for item in data["items"]}
+    for _ in range(5):
+        row = add_event(db, scope)
+        row.created_at = datetime(2026, 10, 13, tzinfo=UTC)
+    db.flush()
+    data = client.get(url).json()["data"]
+    assert data["page"] == 4
+    assert str(target.id) in {item["id"] for item in data["items"]}
+
+
+def test_focus_progress_cannot_read_another_task_or_missing_event(client, db, scope):
+    other = add_event(db, scope, task=scope.other_task, project=scope.other_project)
+    for target in (other.id, uuid4()):
+        response = client.get(endpoint(scope) + f"?focus_event_id={target}")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "PROGRESS_EVENT_NOT_FOUND"
+    assert client.get(endpoint(scope) + "?focus_event_id=not-a-uuid").status_code == 422

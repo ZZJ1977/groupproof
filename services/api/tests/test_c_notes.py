@@ -85,7 +85,7 @@ def test_note_write_requires_project_contributor(db, scope, actor):
 
 
 def test_unverified_member_cannot_save_note(db, scope):
-    scope.users["author"].email_verified_at = None
+    scope.users["author"].email_binding.verified_at = None
     db.flush()
     with pytest.raises(ApiError) as error:
         save(db, scope)

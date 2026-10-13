@@ -365,7 +365,19 @@ def test_feed_exact_event_scope_and_minimal_fields(client, daily):
         f"/projects/{daily.project.id}/discussions?discussion={daily.discussion.id}"
     )
     evidence = next(item for item in data["items"] if item["event_type"] == "evidence_submitted")
-    assert evidence["href"] == f"/projects/{daily.project.id}/tasks/{daily.task.id}?tab=evidence"
+    assert evidence["href"] == f"/projects/{daily.project.id}/evidence?evidence={daily.evidence.id}"
+    note = next(item for item in data["items"] if item["event_type"] == "task_note_saved")
+    note_id = daily.records[1].id
+    assert (
+        note["href"] == f"/projects/{daily.project.id}/tasks/{daily.task.id}"
+        f"?tab=history&note={note_id}#note-{note_id}"
+    )
+    progress = next(item for item in data["items"] if item["event_type"] == "task_progress")
+    progress_id = daily.records[0].id
+    assert (
+        progress["href"] == f"/projects/{daily.project.id}/tasks/{daily.task.id}"
+        f"?tab=history&progress={progress_id}#progress-{progress_id}"
+    )
 
 
 def test_feed_never_relabels_other_peoples_changes_as_actor_activity(db, daily):
@@ -483,7 +495,7 @@ def test_archived_ended_context_remains_readable_and_no_email_verification_neede
 ):
     daily.project.lifecycle = lifecycle
     daily.course.status = "ended"
-    daily.actor.email_verified_at = None
+    daily.actor.email_binding.verified_at = None
     db.flush()
     assert get_home_summary(db, daily.actor)["projects"][0]["lifecycle"] == lifecycle
     assert get_home_summary(db, daily.actor)["courses"][0]["status"] == "ended"

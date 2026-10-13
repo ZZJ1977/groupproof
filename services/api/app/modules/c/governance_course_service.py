@@ -16,6 +16,7 @@ from app.modules.c.governance_models import (
     CourseLifecycleDecision,
 )
 from app.modules.c.governance_schemas import CourseFilters, CreateCourse, TransitionCourse
+from app.modules.c.school_email import has_verified_school_email
 
 
 def course_data(row: Course) -> dict:
@@ -111,7 +112,7 @@ def require_teacher(session, teacher_id):
         teacher is None
         or teacher.status != "active"
         or teacher.global_role != "teacher"
-        or teacher.email_verified_at is None
+        or not has_verified_school_email(session, teacher, lock=True)
     ):
         raise ApiError(
             422, "COURSE_OWNER_INELIGIBLE", "An active verified canonical teacher is required."

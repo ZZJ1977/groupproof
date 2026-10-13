@@ -20,6 +20,7 @@ from app.db.models import (
     ProjectMember,
     User,
 )
+from app.modules.c.school_email import has_verified_school_email
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,7 @@ def get_project_access(
     if user.status != "active":
         raise ApiError(403, "ACCOUNT_INACTIVE", "The account is not active.")
     if lock:
-        require_verified_email(user)
+        require_verified_email(has_verified_school_email(session, user, lock=True))
 
     def one(statement, *, project_lock: bool = False):
         if lock:
@@ -155,6 +156,7 @@ def execution_permissions(
     project_leader: bool,
     course_teacher: bool,
     active_course_staff: bool,
+    email_verified: bool,
 ) -> ExecutionPermissions:
     if user.status != "active":
         raise ApiError(403, "ACCOUNT_INACTIVE", "The account is not active.")
@@ -166,7 +168,7 @@ def execution_permissions(
         leader=member and project_leader,
         staff=(user.global_role == "teacher" and course_teacher)
         or (user.global_role in {"teacher", "ta"} and active_course_staff),
-        email_verified=user.email_verified_at is not None,
+        email_verified=email_verified,
     )
 
 
@@ -175,8 +177,8 @@ def require_read(permissions: ExecutionPermissions) -> None:
         raise ApiError(403, "PROJECT_ACCESS_DENIED", "Project access is denied.")
 
 
-def require_verified_email(user: User) -> None:
-    if user.email_verified_at is None:
+def require_verified_email(verified: bool) -> None:
+    if not verified:
         raise ApiError(403, "EMAIL_NOT_VERIFIED", "Verify your email before making changes.")
 
 
