@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api.errors import ApiError
+from app.auth.models import SchoolEmailBinding
 from app.db.base import Base
 from app.db.models import (
     AcceptanceCriterion,
@@ -70,6 +71,7 @@ def db():
         metadata = MetaData()
         names = {
             "users",
+            "school_email_bindings",
             "courses",
             "course_staff",
             "groups",
@@ -135,7 +137,12 @@ def scope(db):
             college="Test",
             global_role=role,
             status="active",
-            email_verified_at=datetime.now(UTC),
+            email_binding=SchoolEmailBinding(
+                school_email=f"{identity}@example.test",
+                school_email_normalized=f"{identity}@example.test",
+                verified_at=datetime.now(UTC),
+                verification_method="documented_manual_review",
+            ),
         )
         db.add(users[name])
     db.flush()
@@ -715,7 +722,7 @@ def test_verified_deletion_invalidates_without_replacing_original_snapshot(db, s
 
 
 def test_unverified_member_can_read_but_cannot_create_evidence(db, scope):
-    scope.users["author"].email_verified_at = None
+    scope.users["author"].email_binding.verified_at = None
     db.flush()
     assert list_evidence(db, scope.users["author"], scope.project.id)["total"] == 0
     with pytest.raises(ApiError) as error:

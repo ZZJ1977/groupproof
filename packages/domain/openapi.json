@@ -1464,11 +1464,25 @@
           "actor": {
             "$ref": "#/components/schemas/CContextActorDTO"
           },
+          "evidence_authors": {
+            "items": {
+              "$ref": "#/components/schemas/CSelectorDTO"
+            },
+            "title": "Evidence Authors",
+            "type": "array"
+          },
           "members": {
             "items": {
               "$ref": "#/components/schemas/CSelectorDTO"
             },
             "title": "Members",
+            "type": "array"
+          },
+          "mention_targets": {
+            "items": {
+              "$ref": "#/components/schemas/CSelectorDTO"
+            },
+            "title": "Mention Targets",
             "type": "array"
           },
           "milestones": {
@@ -1554,6 +1568,17 @@
             },
             "title": "Criteria",
             "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "id": {
             "format": "uuid",
@@ -3165,6 +3190,28 @@
         "title": "DesignateFileVersion",
         "type": "object"
       },
+      "DisableDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedVersion": {
+            "minimum": 0.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "expectedVersion"
+        ],
+        "title": "DisableDecision",
+        "type": "object"
+      },
       "DisableIn": {
         "properties": {
           "expectedVersion": {
@@ -4427,28 +4474,6 @@
           }
         },
         "title": "HTTPValidationError",
-        "type": "object"
-      },
-      "IdentityDecision": {
-        "additionalProperties": false,
-        "properties": {
-          "expectedVersion": {
-            "minimum": 1.0,
-            "title": "Expectedversion",
-            "type": "integer"
-          },
-          "reason": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "reason",
-          "expectedVersion"
-        ],
-        "title": "IdentityDecision",
         "type": "object"
       },
       "InboxTarget": {
@@ -6943,13 +6968,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -7091,7 +7109,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "500": {
             "content": {
@@ -7219,7 +7237,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "500": {
             "content": {
@@ -10058,7 +10076,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/IdentityDecision"
+                "$ref": "#/components/schemas/DisableDecision"
               }
             }
           },
@@ -14101,6 +14119,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "focus_reply_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Focus Reply Id"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Demo-User-Id",
             "required": false,
@@ -16676,6 +16711,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "focus_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Focus Event Id"
+            }
+          },
+          {
             "in": "header",
             "name": "X-Demo-User-Id",
             "required": false,
@@ -16863,7 +16915,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -16995,7 +17047,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -17116,7 +17168,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -17237,7 +17289,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -17277,6 +17329,32 @@
           }
         },
         "summary": "Healthz",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Only accept traffic after the unified database reaches this image's migration head.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Readyz Readyz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
         "tags": [
           "system"
         ]

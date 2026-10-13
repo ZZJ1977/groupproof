@@ -286,7 +286,7 @@ def test_current_actor_required_before_port_calls(db, scope, inbox, change, oper
     if change == "disabled":
         user.status = "disabled"
     elif change == "unverified":
-        user.email_verified_at = None
+        user.email_binding.verified_at = None
     else:
         stale.id = uuid4()
     db.commit()
