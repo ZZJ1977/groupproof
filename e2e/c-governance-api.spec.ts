@@ -291,12 +291,19 @@ test("C7-05 audit filters and pagination use canonical users, and detail renders
   });
   await page.route(`**/api/v1/admin/audit-logs/${logId}`, (route) => route.fulfill({ json: envelope(audit) }));
   await page.goto("/admin/logs");
-  await page.getByRole("combobox", { name: "操作人", exact: true }).selectOption(teacherId);
   await page.getByRole("combobox", { name: "操作时角色", exact: true }).selectOption("teacher");
   await page.getByRole("combobox", { name: "对象类型", exact: true }).selectOption("course");
   await page.getByLabel("操作类型", { exact: true }).fill("course.publish");
   await page.getByRole("combobox", { name: "操作结果", exact: true }).selectOption("success");
+  // Actor applies independently. Its URL update used to remount the pending filter draft.
+  await page.getByRole("combobox", { name: "操作人", exact: true }).selectOption(teacherId);
+  await expect.poll(() => requests.at(-1)?.searchParams.get("actor_id")).toBe(teacherId);
+  await expect(page.getByLabel("操作类型", { exact: true })).toHaveValue("course.publish");
+  await expect(page.getByRole("combobox", { name: "操作时角色", exact: true })).toHaveValue("teacher");
+  await expect(page.getByRole("combobox", { name: "对象类型", exact: true })).toHaveValue("course");
+  await expect(page.getByRole("combobox", { name: "操作结果", exact: true })).toHaveValue("success");
   await page.getByRole("button", { name: "查询日志", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("action")).toBe("course.publish");
   await page.getByRole("button", { name: "筛选此对象", exact: true }).click();
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await page.reload(); await expect(page).toHaveURL(/page=2/);
@@ -308,6 +315,13 @@ test("C7-05 audit filters and pagination use canonical users, and detail renders
   await page.getByRole("button", { name: "查看日志", exact: true }).click();
   await expect(page.locator("pre").filter({ hasText: "<img src=x onerror=alert(1)>" })).toBeVisible();
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect(page.getByLabel("操作类型", { exact: true })).toHaveValue("");
+  await expect(page).toHaveURL(/\/admin\/logs$/);
+  // Reset also clears an unsubmitted draft when the URL is already empty.
+  await page.getByLabel("操作类型", { exact: true }).fill("course.end");
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect(page.getByLabel("操作类型", { exact: true })).toHaveValue("");
 });
 
 test("C7-06 true sample totals preserve currencies and URL period; 503 hides the old totals", async ({ page }) => {
@@ -318,11 +332,21 @@ test("C7-06 true sample totals preserve currencies and URL period; 503 hides the
   });
   await page.goto("/admin/ai-usage");
   await expect(page.getByText("请求总数：3 · 成功：2 · 失败：1", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "最近 30 天", exact: true }).click();
   await page.getByLabel("功能", { exact: true }).fill("review");
+  await page.getByLabel("模型", { exact: true }).fill("sample-model");
+  await page.getByRole("button", { name: "最近 30 天", exact: true }).click();
+  await expect.poll(() => queries.at(-1)?.searchParams.get("days")).toBe("30");
+  await expect(page.getByLabel("功能", { exact: true })).toHaveValue("review");
+  await expect(page.getByLabel("模型", { exact: true })).toHaveValue("sample-model");
+  await page.getByRole("combobox", { name: "使用者", exact: true }).selectOption(teacherId);
+  await expect.poll(() => queries.at(-1)?.searchParams.get("user_id")).toBe(teacherId);
+  await expect(page.getByLabel("功能", { exact: true })).toHaveValue("review");
+  await expect(page.getByLabel("模型", { exact: true })).toHaveValue("sample-model");
   await page.getByRole("button", { name: "查询用量", exact: true }).click();
   await page.reload(); await expect(page.getByRole("button", { name: "最近 30 天", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(queries.at(-1)?.searchParams.get("feature")).toBe("review");
+  expect(queries.at(-1)?.searchParams.get("model")).toBe("sample-model");
+  expect(queries.at(-1)?.searchParams.get("user_id")).toBe(teacherId);
   await expect(page.getByText("费用：USD 0.030000 / CNY 0.100000", { exact: true })).toBeVisible();
   available = false; await page.getByRole("button", { name: "刷新用量", exact: true }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText("服务尚不可用");
@@ -330,6 +354,16 @@ test("C7-06 true sample totals preserve currencies and URL period; 503 hides the
   await expect(page.getByRole("heading", { name: "用量汇总", exact: true })).toHaveCount(0);
   available = true; await page.getByRole("button", { name: "重试", exact: true }).click();
   await expect(page.getByRole("heading", { name: "用量汇总", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/ai-usage$/);
+  await expect(page.getByLabel("功能", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("模型", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "最近 7 天", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("功能", { exact: true }).fill("unsubmitted-feature");
+  await page.getByLabel("模型", { exact: true }).fill("unsubmitted-model");
+  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await expect(page.getByLabel("功能", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("模型", { exact: true })).toHaveValue("");
 });
 
 for (const target of ["course", "access"] as const) {
