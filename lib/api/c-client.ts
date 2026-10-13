@@ -49,9 +49,9 @@ function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Resp
  */
 export function createCClient(client = createApiClient()) {
   return {
-    async progressHistory(projectId: string, taskId: string, page = 1, pageSize = 10) {
+    async progressHistory(projectId: string, taskId: string, page = 1, pageSize = 10, focusEventId?: string) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/tasks/{task_id}/progress-history", {
-        params: { path: { project_id: projectId, task_id: taskId }, query: { page, page_size: pageSize } },
+        params: { path: { project_id: projectId, task_id: taskId }, query: { page, page_size: pageSize, focus_event_id: focusEventId } },
       }));
     },
     async projectContext(projectId: string) {
@@ -200,9 +200,9 @@ export function createCClient(client = createApiClient()) {
         params: { path: { project_id: projectId }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },
-    async replies(projectId: string, discussionId: string, page = 1, pageSize = 50) {
+    async replies(projectId: string, discussionId: string, page = 1, pageSize = 50, focusReplyId?: string) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/discussions/{discussion_id}/replies", {
-        params: { path: { project_id: projectId, discussion_id: discussionId }, query: { page, page_size: pageSize } },
+        params: { path: { project_id: projectId, discussion_id: discussionId }, query: { page, page_size: pageSize, focus_reply_id: focusReplyId } },
       }));
     },
     async reply(projectId: string, discussionId: string, input: Schema["ReplyDiscussion"], key: string) {
