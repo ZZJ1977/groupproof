@@ -1,8 +1,8 @@
 # C7-01/02/03 identity administration
 
-C owns the account directory and review UI. This slice uses A's existing identity
-services in `server/`; it does not invent a mapping to canonical UUID users in
-`services/api`. The two migration histories remain independent.
+C owns the account directory and review UI. Since merged PR #14 this uses A's
+unified identity services in `services/api/app/auth`, with canonical UUID users
+and migration 0013. `server/` is historical reference.
 
 ## Interface and permission
 
@@ -15,6 +15,7 @@ require A's CSRF check. No client-supplied role or user override is accepted.
   account status and college filters; ten rows per page. Only directory fields
   are returned, never credentials, recovery fields or provider tokens.
 - `POST /users/{id}/disable`: nonblank reason and current `expectedVersion`;
+  account versions start at zero, whereas teacher application versions start at one;
   reject self-disable. Lock the target row, then call A's `accounts.disable_user`
   for session revocation, status/version change and audit. Already-disabled or
   conflicting requests cannot create a second mutation.
@@ -39,13 +40,14 @@ accounts, assigning roles, or reactivating sessions itself. Notification deliver
 after disable and review still requires A4-01. This partial implementation does
 not close the whole C7-02 task.
 
-The directory here is the authoritative identity directory. The independent
-canonical Admin directory remains useful for canonical project/course selectors;
-its IDs must not be interchanged with these identity IDs.
+The directory here and the read-only canonical Admin directory now use the same
+UUID users. Their response and mutation contracts remain separate. School-email
+verification reads A's current binding, not the legacy users timestamp. Enabled
+status filters map to non-disabled canonical statuses; disabled maps to disabled.
 
 ## Verification
 
-`server/tests/test_c_admin.py` uses actual isolated PostgreSQL migrations, A's
+Historical validation: `server/tests/test_c_admin.py` used isolated PostgreSQL migrations, A's
 test OIDC provider, real cookies, CSRF and account services. Six new cases passed:
 anonymous/non-Admin denial, minimal projection and literal search, reason and
 self-disable checks, immediate session revocation and duplicate rejection,
@@ -56,6 +58,9 @@ covers query persistence, reason/version/CSRF submission, permission loss, and
 conflict refresh while preserving the reason. Browser fixtures verify UI contracts
 and are not production identity integration acceptance.
 
-Windows local test configuration uses the isolated loopback database only:
-`PGHOSTADDR=127.0.0.1`, `PGCONNECT_TIMEOUT=5`, `GROUPPROOF_ENV_FILE=NUL`.
-Run with the identity service's pinned dependencies, not the canonical API venv.
+Current regression: `services/api/tests/test_c_auth_verification_integration.py`
+uses SQLite, A's actual email-binding and session functions, Cookie/CSRF HTTP
+requests and canonical C services. It covers status filters, version-zero disable,
+session revocation, teacher-version rejection, current email proof and no legacy
+fallback. Run with the canonical API's pinned dependencies. Full PostgreSQL and
+frontend results belong in `C_DELIVERY.md`.
