@@ -11,8 +11,10 @@ const context: Schema["CProjectContextDTO"] = {
   project: { id: pid, name: "授权执行项目", lifecycle: "active", setup_status: "frozen" },
   actor: { id: aid, is_member: true, is_leader: false, is_teacher: false },
   permissions: { can_manage_activity: true, can_manage_files: true, can_discuss: true, can_capture_evidence: true },
-  tasks: [{ id: tid, title: "真实接口任务", status: "in_progress", can_associate: true, can_capture_evidence: true, criteria: [{ id: cid, text: "请求符合契约", version: 1 }] }],
+  tasks: [{ id: tid, title: "真实接口任务", description: "按真实任务描述实现请求校验，并保留原始结果。", status: "in_progress", can_associate: true, can_capture_evidence: true, criteria: [{ id: cid, text: "请求符合契约", version: 1 }] }],
   members: [{ id: aid, title: "成员甲" }], requirements: [{ id: id(411), title: "接口需求" }], modules: [{ id: id(412), title: "接口模块" }], milestones: [{ id: id(413), title: "首个里程碑" }],
+  mention_targets: [{ id: aid, title: "成员甲" }, { id: id(490), title: "所属教师" }, { id: id(491), title: "课程助教" }],
+  evidence_authors: [{ id: aid, title: "成员甲" }],
 };
 const execution: Schema["TaskExecutionView"] = {
   task_id: tid, project_id: pid, status: "in_progress", progress: 30, version: 2, started_at: stamp, completed_at: null,
@@ -48,6 +50,7 @@ test("C2 start/progress use server permissions and CAS; 100 percent retains in-p
   await page.route(`**${base}/tasks/${tid}/progress-history?**`, (route) => success(route, { items: [{ id: id(417), actor_name: "成员甲", from_status: "in_progress", to_status: "in_progress", progress_before: 0, progress_after: 100, reason: "真实进度历史", created_at: stamp }], page: 1, page_size: 10, total: 1 } satisfies Schema["ProgressHistoryPageDTO"]));
   await page.route(`**${base}/discussions?**`, (route) => { expect(new URL(route.request().url()).searchParams.get("task_id")).toBe(tid); return success(route, { items: [], page: 1, page_size: 10, total: 0 }); });
   await page.goto(`/projects/${pid}/tasks/${tid}`);
+  await expect(page.getByText("按真实任务描述实现请求校验，并保留原始结果。", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "开始任务", exact: true }).click();
   await page.getByRole("button", { name: "更新进度", exact: true }).click();
   await page.getByRole("spinbutton", { name: "任务进度", exact: true }).fill("100");
@@ -390,4 +393,71 @@ test("C3 confirmed identical candidate captures use distinct command keys", asyn
   }
   expect(captures.size).toBe(2);
   expect([...captures.values()][0]).toEqual([...captures.values()][1]);
+});
+
+test("C1 task activity links open the exact note version and ask the server for the current progress page", async ({ page }) => {
+  await setup(page);
+  const earlier = { ...note.versions[0], id: id(480), version_no: 1, title: "历史说明", body: "动态定位的历史说明原文" };
+  const latest = { ...note.versions[0], id: id(481), version_no: 2, title: "最新说明", body: "另一版说明" };
+  await page.route(`**${base}/tasks/${tid}/note?**`, (route) => success(route, { ...note, lock_version: 2, current_version_no: 2, versions: [latest, earlier] }));
+  const target = { id: id(482), actor_name: "成员甲", from_status: "in_progress", to_status: "in_progress", progress_before: 20, progress_after: 30, reason: "动态定位的历史进度原因", created_at: stamp } satisfies Schema["ProgressHistoryEventDTO"];
+  const queries: URLSearchParams[] = [];
+  await page.route(`**${base}/tasks/${tid}/progress-history?**`, (route) => {
+    const query = new URL(route.request().url()).searchParams; queries.push(query);
+    if (query.get("focus_event_id") === target.id) return success(route, { items: [target], page: 3, page_size: 10, total: 25 });
+    return success(route, { items: [], page: Number(query.get("page") ?? 1), page_size: 10, total: 25 });
+  });
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=history&note=${earlier.id}#note-${earlier.id}`);
+  const noteTarget = page.locator(`#note-${earlier.id}`);
+  await expect(noteTarget).toHaveAttribute("open", "");
+  await expect(noteTarget).toBeFocused();
+  await expect(noteTarget.getByText(earlier.body, { exact: true })).toBeVisible();
+  await expect(page.locator(`#note-${latest.id}`)).not.toHaveAttribute("open", "");
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=history&progress=${target.id}#progress-${target.id}`);
+  await expect(page.getByText("共 25 条 · 第 3 页", { exact: true })).toBeVisible();
+  await expect(page.locator(`#progress-${target.id}`)).toBeFocused();
+  await expect(page.getByText(target.reason, { exact: true })).toBeVisible();
+  expect(queries.some((query) => query.get("focus_event_id") === target.id)).toBe(true);
+  await page.getByRole("button", { name: "上一页", exact: true }).click();
+  await expect(page.getByText("共 25 条 · 第 2 页", { exact: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]progress=/);
+  expect(queries.at(-1)?.get("focus_event_id")).toBeNull();
+});
+
+test("C6 mentions authorized teacher and TA and locates a newly saved reply beyond the first page", async ({ page }) => {
+  await setup(page);
+  const replies: Schema["DiscussionReplyDTO"][] = Array.from({ length: 10 }, (_, index) => ({ id: id(500 + index), discussion_id: did, author_id: aid, body: `已有回复 ${index + 1}`, mention_user_ids: [], created_at: stamp, updated_at: stamp }));
+  const item = () => ({ ...discussion, reply_count: replies.length });
+  const focusQueries: string[] = [];
+  await page.route(`**${base}/discussions?**`, (route) => success(route, { items: [item()], page: 1, page_size: 10, total: 1 }));
+  await page.route(`**${base}/discussions/${did}`, (route) => success(route, item()));
+  await page.route(`**${base}/discussions/${did}/replies?**`, (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const focus = query.get("focus_reply_id");
+    if (focus) focusQueries.push(focus);
+    const number = focus === id(510) ? 2 : Number(query.get("page") ?? 1);
+    return success(route, { items: replies.slice((number - 1) * 10, number * 10), page: number, page_size: 10, total: replies.length, discussion_lock_version: 1 });
+  });
+  await page.route(`**${base}/discussions/${did}/replies`, (route) => {
+    const body = route.request().postDataJSON();
+    expect(body).toEqual({ expected_version: 1, body: "第十一条保存后立即定位", mention_user_ids: [id(490), id(491)] });
+    const reply = { id: id(510), discussion_id: did, author_id: aid, body: body.body, mention_user_ids: body.mention_user_ids, created_at: stamp, updated_at: stamp };
+    replies.push(reply); return success(route, { discussion: item(), reply });
+  });
+  await page.goto(`/projects/${pid}/discussions?discussion=${did}`);
+  await expect(page.getByText("已有回复 10", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "回复讨论", exact: true }).click();
+  await page.getByRole("checkbox", { name: "所属教师", exact: true }).check();
+  await page.getByRole("checkbox", { name: "课程助教", exact: true }).check();
+  await page.getByRole("textbox", { name: "回复正文", exact: true }).fill("第十一条保存后立即定位");
+  await page.getByRole("button", { name: "保存回复", exact: true }).click();
+  await expect(page.getByText("共 11 条 · 第 2 页", { exact: true })).toBeVisible();
+  await expect(page.locator(`#reply-${id(510)}`)).toBeFocused();
+  await expect(page.getByText("第十一条保存后立即定位", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`reply=${id(510)}`));
+  expect(focusQueries).toContain(id(510));
+  const replyPanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "讨论内容与回复", exact: true }) });
+  await replyPanel.getByRole("button", { name: "上一页", exact: true }).click();
+  await expect(page.getByText("已有回复 10", { exact: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]reply=/);
 });

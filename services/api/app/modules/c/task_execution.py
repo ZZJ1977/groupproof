@@ -46,6 +46,7 @@ from app.modules.c.permissions import (
     require_verified_email,
     task_in_frozen_plan,
 )
+from app.modules.c.school_email import has_verified_school_email
 
 BEIJING = ZoneInfo("Asia/Shanghai")
 TASK_STATUSES = frozenset(
@@ -129,6 +130,7 @@ class SqlExecutionRepository:
             project_leader=access.leader,
             course_teacher=access.teacher,
             active_course_staff=access.staff,
+            email_verified=has_verified_school_email(self.session, user, lock=lock),
         )
         require_read(permissions)
         tasks_query = select(Task).where(Task.project_id == project.id).order_by(Task.id)
@@ -352,7 +354,7 @@ class TaskExecutionService:
                 )
             scope = self.repository.load(task_id, user, lock=True)
             require_read(scope.permissions)
-            require_verified_email(user)
+            require_verified_email(scope.permissions.email_verified)
             require_execution_write(scope.project, scope.course)
             require_task_plan(scope.latest_plan, scope.task.id)
             if not scope.permissions.can_start:
@@ -392,7 +394,7 @@ class TaskExecutionService:
                 )
             scope = self.repository.load(task_id, user, lock=True)
             require_read(scope.permissions)
-            require_verified_email(user)
+            require_verified_email(scope.permissions.email_verified)
             require_execution_write(scope.project, scope.course)
             require_task_plan(scope.latest_plan, scope.task.id)
             if not scope.permissions.can_update_progress:
@@ -438,7 +440,7 @@ class TaskExecutionService:
                 # The start path rechecks the stricter assignee/dependency contract.
                 return self.start(task_id, user, expected_version)
             require_read(scope.permissions)
-            require_verified_email(user)
+            require_verified_email(scope.permissions.email_verified)
             require_execution_write(scope.project, scope.course)
             require_task_plan(scope.latest_plan, scope.task.id)
             if not (scope.permissions.can_update_progress or scope.permissions.staff):
@@ -529,7 +531,7 @@ class TaskSubmissionService:
         try:
             scope = self.repository.load(task_id, user, lock=True)
             require_read(scope.permissions)
-            require_verified_email(user)
+            require_verified_email(scope.permissions.email_verified)
             require_execution_write(scope.project, scope.course)
             require_task_plan(scope.latest_plan, task_id)
             if not scope.permissions.can_start:

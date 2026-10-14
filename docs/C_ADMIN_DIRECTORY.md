@@ -38,15 +38,14 @@ the signed-in user, hides old rows during loading/errors, and provides retry.
 It never combines real responses with `MockData.users` or sends a demo identity
 header. The local browser tests intercept these responses with explicit fixtures.
 
-Production enablement still requires A's canonical identity transport and genuine
-role propagation through the existing workspace/router gate. The present app's
-real login and canonical business identity have separate schemas. Enabling the
-feature flag alone does not bridge them. Do not grant access by changing a mock
-role to make a failed real request succeed.
+Unified Cookie authentication now provides canonical UUID identity. The read-only
+directory computes verification from the current `SchoolEmailBinding`, never
+from a stale users timestamp. Backend authorization remains mandatory; changing
+a demo role cannot make a denied real request succeed.
 
-C7-02 account mutations and C7-03 teacher reviews remain separate: the existing
-identity service has some real operations, but this directory cannot safely invoke
-them with canonical UUIDs until the identity contract is reconciled.
+C7-02 account mutations and C7-03 teacher reviews use the separate
+`/api/v1/c-admin` contracts with CSRF, current versions and A's account services.
+Their IDs are now the same canonical UUIDs; their DTO shapes are not interchangeable.
 
 ## Validation
 

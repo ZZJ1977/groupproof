@@ -5,7 +5,7 @@
 ## 已实现的边界
 
 - 所有读取先检查当前项目成员或所属课程教师/助教关系。管理员全局角色不提供项目内容访问权限；离组的历史组长没有特权。
-- 所有写入要求真实身份的 `email_verified_at` 非空；未验证邮箱可以按原有权限读取，但不能开始任务、更新进度或进行内部状态变更。共享项目写权限入口也检查此条件，供证据和说明服务复用。
+- 所有写入读取 A 当前 `SchoolEmailBinding`：验证时间非空、邮箱合法且与规范化邮箱一致。旧 `users.email_verified_at` 不作为后备验证事实；撤销/清空当前绑定会拒绝写入，待确认的新邮箱按 A 规则保留旧有效绑定。共享项目写权限入口也检查此条件，供证据和说明服务复用。
 - 写入要求项目 active、课程 active、项目基线 frozen，且**最新** `PlanVersion` 为 frozen。任务必须存在于该版本 `snapshot_json.tasks` 中。当前 canonical seed 的快照使用任务 UUID 字符串数组，也接受带 `id` 的任务对象。
 - 最新计划缺失、草稿、仅 confirmed 或 archived 均拒绝执行。旧版 frozen 不会掩盖新版草稿。成员确认对应哪个版本、任务内容是否与该冻结版本一致，仍由 B 的发布/冻结流程负责；C 不自行生成成员确认或重新冻结计划。
 - 只有当前 responsible 负责人可以开始任务；组长不能代替其他负责人开始。开始前所有阻塞依赖必须 completed，缺失或跨项目依赖不会被当作已完成。
@@ -65,7 +65,7 @@
 
 常见错误：401 未认证；403 跨项目/非负责人/只读课程或项目；404 任务不存在；409 版本冲突、依赖未完成、计划未冻结、任务未确认或非法状态；422 字段或原因校验失败。错误使用现有 `error.code / message / details` 与 request_id 契约。
 
-身份继续复用 `app.api.auth.get_current_user`。当前 canonical A 认证只支持显式 development/test 环境的 demo 身份；生产环境保持 401，即使提交 demo header 也无法绕过。此批没有新增身份头、角色选择器或生产认证替代方案。
+身份复用 `app.api.auth.get_current_user`，已支持 A 在 `services/api/app/auth` 交付的真实 Cookie 会话与 canonical UUID。demo header 仍只限显式开发/测试环境；正式环境没有演示身份绕过。
 
 ## 内部状态函数与交接要求
 

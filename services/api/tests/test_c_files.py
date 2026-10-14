@@ -62,6 +62,7 @@ def db():
 
         names = {
             "users",
+            "school_email_bindings",
             "courses",
             "course_staff",
             "groups",
@@ -295,7 +296,7 @@ def test_write_state_is_rechecked_before_replay(db, scope, storage, state):
     receipt = storage.receipt()
     create(db, scope, storage, receipt=receipt, key="saved")
     if state == "unverified":
-        scope.users["author"].email_verified_at = None
+        scope.users["author"].email_binding.verified_at = None
     elif state == "disabled":
         scope.users["author"].status = "disabled"
     elif state == "archived":

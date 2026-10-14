@@ -200,7 +200,7 @@ def test_course_admin_only_for_reads_and_writes(db, scope, actor):
 
 @pytest.mark.parametrize(
     "attribute,value",
-    [("status", "disabled"), ("global_role", "student"), ("email_verified_at", None)],
+    [("status", "disabled"), ("global_role", "student"), ("verified_at", None)],
 )
 def test_current_actor_revocation_beats_stale_admin_object(db, scope, attribute, value):
     stale = User(
@@ -209,7 +209,10 @@ def test_current_actor_revocation_beats_stale_admin_object(db, scope, attribute,
         global_role="admin",
         email_verified_at=datetime.now(UTC),
     )
-    setattr(scope.users["admin"], attribute, value)
+    target = (
+        scope.users["admin"].email_binding if attribute == "verified_at" else scope.users["admin"]
+    )
+    setattr(target, attribute, value)
     db.flush()
     with pytest.raises(ApiError), db.begin_nested():
         courses.create_course(db, stale, course_command(scope), "stale-admin")

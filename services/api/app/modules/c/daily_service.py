@@ -403,7 +403,16 @@ def list_personal_activity(session: Session, user: User, filters: DailyActivityF
         if row.object_type == "discussion":
             href = f"{base}/discussions?discussion={row.object_id}"
         elif row.object_type == "evidence":
-            href = f"{base}/tasks/{row.task_id}?tab=evidence"
+            href = f"{base}/evidence?evidence={row.object_id}"
+        elif row.event_type == "task_note_saved":
+            href = (
+                f"{base}/tasks/{row.object_id}?tab=history&note={row.event_id}#note-{row.event_id}"
+            )
+        elif row.event_type == "task_progress":
+            href = (
+                f"{base}/tasks/{row.object_id}?tab=history&progress={row.event_id}"
+                f"#progress-{row.event_id}"
+            )
         else:
             href = f"{base}/tasks/{row.object_id}"
         items.append(

@@ -114,9 +114,18 @@ def replies(
     user: CurrentUser,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
+    focus_reply_id: UUID | None = None,
 ):
     return success(
-        list_replies(session, user, project_id, discussion_id, page=page, page_size=page_size),
+        list_replies(
+            session,
+            user,
+            project_id,
+            discussion_id,
+            page=page,
+            page_size=page_size,
+            focus_reply_id=focus_reply_id,
+        ),
         request,
     )
 
