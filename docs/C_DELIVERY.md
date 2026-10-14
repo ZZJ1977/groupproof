@@ -2,12 +2,12 @@
 
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
-Current snapshot (2026-10-12): PR #10 is merged. The new batch has partial
-code/contract coverage for **35/35 C task IDs, not 35 accepted tasks**. Eighteen
-backend/integration/UI/test/documentation commits were pushed through `8809269`
-in [draft PR #11](https://github.com/ZZJ1977/groupproof/pull/11). This follow-up
-records the published handoff. The latest validation section supersedes
-earlier batch counts without changing their history. All acceptance rows remain open.
+Current snapshot (2026-10-14): PRs #9–#12 are merged. Team PR #14 unified
+authentication into the canonical API. This follow-up starts at `4143991` and
+addresses the [C functional audit](reviews/2026-10-14-c-function-audit.md).
+There is partial code/contract coverage for **35/35 C task IDs, not 35 accepted
+tasks**. Historical commit/test counts below describe their original batches.
+All complete team acceptance rows remain open until staging verification.
 
 ## Sources checked on 2026-10-11
 
@@ -48,16 +48,16 @@ Baseline frontend typecheck/lint and API Ruff passed. API pytest: 21 passed,
 3 PostgreSQL tests skipped without a database URL. This is a baseline result,
 not acceptance evidence for new C functionality.
 
-`services/api` is the canonical SQLAlchemy/Alembic business API. `server` is an
-independent identity service with an incompatible user/session schema; see
-`.env.example`. Do not mix their migration histories or invent a mapping between
-mock string IDs and UUID business IDs. The canonical current-user dependency is
-still a gated development/test identity adapter; production stays closed until
-A delivers real identity integration.
+`services/api` now owns both canonical business data and authentication through
+`app/auth` and migration 0013. `server/` is historical reference, not C's runtime
+identity provider. C uses actual session UUIDs and the current verified
+`SchoolEmailBinding`; legacy `users.email_verified_at` is not a fallback proof.
+No mock-to-UUID mapping or production demo-header bypass is introduced.
 
-The project owner confirmed on 2026-10-11 that the required A/D interfaces have
-not yet been delivered elsewhere. Their absence is a real integration dependency,
-not a missing public vendor documentation link.
+The project owner's 2026-10-11 dependency report is historical: A has since
+delivered unified identity. External source/storage/inbox/audit/usage/access
+providers and D's acceptance consumers remain integration dependencies, not
+missing public vendor documentation links.
 
 ## Task acceptance ledger
 
@@ -106,7 +106,7 @@ and partial deliverables must be recorded separately from team acceptance.
 
 | Provider | Contract needed by C | Behavior before delivery |
 | --- | --- | --- |
-| A3 | Verified session -> canonical UUID user; membership helpers | No production demo-header fallback |
+| A3 | Unified session and current school-email proof are implemented; staging validation remains | No production demo-header fallback; verification revocation denies writes |
 | B | Real task/criterion IDs, definition versions and project context; invitation/join and course lifecycle coordination | No invented UUIDs; C invitation resolution does not create enrollment or finish B lifecycle integration |
 | A4-01/02/03 | Notifications, append-only audit, assigned action items | No synthetic notifications/audit presented as production |
 | A4/A7 | Transactional notification read receipts and actual timestamped usage source | Unconnected providers return 503; missing counters/costs are not zero or estimates |
@@ -494,3 +494,51 @@ data and invitation integration; D's verification queries and event consumers;
 Admin restore/create against an agreed identity service; clean-database staging
 acceptance. Source selectors and typed unavailable ports do not complete these
 dependencies. C task acceptance remains separate from partial code coverage.
+
+### Unified-auth integration and functional audit follow-up (2026-10-14)
+
+Base: merged `develop` `4143991` (including PRs #12 and #14). This entry supersedes
+the earlier identity-bridge dependency. The original findings and remaining
+provider gaps are preserved in [the audit](reviews/2026-10-14-c-function-audit.md).
+
+| Commit | Delivered change |
+| --- | --- |
+| `64d8877` | C2/C3 command headers survive the actual Next proxy; browser API defaults and example/Compose settings use the same origin. HTTP regression preserves receipt retries, conflicts, authentication headers and multiple cookies. |
+| `22a3760` | C1/C2/C3/C6/C7 use current school-email proof, correct directory SQL and version-zero disable; task descriptions, historical evidence authors and current mention recipients are projected separately. Authorized history focus uses one SQL snapshot, with PostgreSQL UUID-ordering and access-revocation coverage. |
+| `ecb726d` | C1-04/C2-02/C6-02 task history and new replies locate the actual record; links survive pagination, refresh and concurrent ordering changes. |
+| `350ad22` | C3-04/C4-01 explicit source checking uses original source ID, current version, reason and stable retry key. External 503 retains input. Activities link to the exact evidence or clearly scoped search; page reads never invalidate evidence implicitly. |
+| `e655d39` | C1-01/02 real shell has no seed fallback; real/mixed-feature routes retain UUID navigation, actual session display name and notification totals. Denied writes clear the badge. Global search remains disabled where no authorized provider exists. |
+| `b8ecf04` | C7-05/06 independent actor/date-window navigation no longer erases unsubmitted filter fields; both submitted and unsubmitted reset flows are covered. |
+
+Local verification:
+
+- Migration **0013** and `alembic check` passed on the task's isolated PostgreSQL.
+- Full unified API run: **865 passed, 1 failed**. The failure was a new test's
+  incorrect whole-table event count: another task's seed history already existed.
+  The repaired test scopes events to its project/task, explicitly seeds unrelated
+  history, and verifies unchanged event IDs after duplicate start and revocation.
+  Final affected-suite rerun: **33 passed**, including 17 unified-auth cases,
+  two new PostgreSQL focus cases, and discussion/progress HTTP regressions.
+  This is not described as an unexecuted all-green full local run; the PR runs
+  the complete final backend suite.
+- C browser coverage comprises **121 distinct cases**: mock 36, daily 5,
+  canonical API 76, fully real shell 4. Initial API run was 75/76; the real
+  audit-filter draft bug was repaired and the full governance/inbox files passed
+  **24/24**. The analogous usage draft was fixed in that rerun. After mixed-mode
+  navigation assertions were added, 9/10 project cases passed; the cold-start
+  first case stopped on the loading placeholder, then passed unchanged on its
+  isolated rerun. No assertions were weakened or sleeps added.
+- C command/client scripts: **733 assertions**. Frontend lint, typecheck and
+  all **56 route mappings** passed. Python Ruff lint and formatting passed for
+  **174 files**. Production build and final remote CI status are checked on the PR.
+
+The proxy tests use a real HTTP hop to an isolated transport fixture; they do not
+claim live external providers. Backend auth tests use A's actual binding/session
+functions and C's SQL/HTTP flow, not a demo identity override. The task's own
+PostgreSQL tests cover locks, transactions and UUID/window ordering separately.
+
+Remaining C acceptance work still depends on A storage/source/inbox/audit/usage/
+access providers and durable delivery, B stable task codes and frozen references,
+D verification/invalidation consumers, account restore/create contracts, and
+clean-database staging acceptance. Current source-check UI is useful with an
+available provider; it is not automatic external-source event delivery.

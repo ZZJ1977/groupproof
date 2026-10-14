@@ -9,6 +9,7 @@ from app.api.errors import ApiError
 from app.db.models import User
 from app.modules.c.governance_models import GovernanceIdempotency, GovernanceOutbox
 from app.modules.c.integration_events import content_hash
+from app.modules.c.school_email import has_verified_school_email
 
 
 def utc(value: datetime) -> datetime:
@@ -26,7 +27,7 @@ def current_actor(session: Session, user: User, *, admin=False, write=False) -> 
         raise ApiError(403, "ACCOUNT_INACTIVE", "The account is not active.")
     if admin and actor.global_role != "admin":
         raise ApiError(403, "ADMIN_REQUIRED", "An administrator account is required.")
-    if write and actor.email_verified_at is None:
+    if write and not has_verified_school_email(session, actor, lock=True):
         raise ApiError(403, "EMAIL_NOT_VERIFIED", "Verify the account email before changes.")
     return actor
 

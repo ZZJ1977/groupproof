@@ -67,6 +67,10 @@ test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject 
     return success(route, { items: [{ ...item, title: `来源记录第 ${current} 页` }], total: 11, page: current, page_size: 10 });
   });
   await page.goto(`/projects/${projectId}/github`);
+  // A single real feature can coexist with a mock workspace without seed navigation.
+  await expect(page.locator("aside nav").getByRole("link", { name: "GitHub" })).toHaveAttribute("href", `/projects/${projectId}/github`);
+  await expect(page.locator('a[href*="project-1"],a[href*="course-1"]')).toHaveCount(0);
+  await expect(page.locator('input[placeholder="请使用页面内筛选"]')).toBeDisabled();
   await expect(page.getByText("来源记录第 1 页", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.getByText("来源记录第 2 页", { exact: true })).toBeVisible();

@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
+from app.auth.models import SchoolEmailBinding
 from app.db.models import User
 from app.modules.c.admin_users_schemas import (
     AdminUserDetailDTO,
@@ -13,6 +14,7 @@ from app.modules.c.admin_users_schemas import (
     AdminUserFilters,
     AdminUserPageDTO,
 )
+from app.modules.c.school_email import school_email_binding_verified
 
 
 def require_directory_admin(user: User) -> None:
@@ -33,8 +35,14 @@ def directory_columns():
         User.college,
         User.global_role,
         User.status,
-        User.email_verified_at.is_not(None).label("email_verified"),
+        SchoolEmailBinding,
     )
+
+
+def directory_data(row):
+    data = dict(row)
+    data["email_verified"] = school_email_binding_verified(data.pop("SchoolEmailBinding"))
+    return data
 
 
 def list_admin_users(session: Session, user: User, filters: AdminUserFilters) -> AdminUserPageDTO:
@@ -66,13 +74,15 @@ def list_admin_users(session: Session, user: User, filters: AdminUserFilters) ->
     total = session.scalar(select(func.count()).select_from(User).where(*conditions)) or 0
     rows = session.execute(
         select(*directory_columns())
+        .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
         .where(*conditions)
         .order_by(User.created_at.desc(), User.id.asc())
         .offset((filters.page - 1) * 10)
         .limit(10)
+        .execution_options(populate_existing=True)
     ).mappings()
     return AdminUserPageDTO(
-        items=[AdminUserDTO.model_validate(row) for row in rows],
+        items=[AdminUserDTO.model_validate(directory_data(row)) for row in rows],
         page=filters.page,
         total=total,
     )
@@ -82,13 +92,14 @@ def get_admin_user(session: Session, user: User, user_id: UUID) -> AdminUserDeta
     require_directory_admin(user)
     row = (
         session.execute(
-            select(*directory_columns(), User.created_at, User.updated_at, User.lock_version).where(
-                User.id == user_id
-            )
+            select(*directory_columns(), User.created_at, User.updated_at, User.lock_version)
+            .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
+            .where(User.id == user_id)
+            .execution_options(populate_existing=True)
         )
         .mappings()
         .one_or_none()
     )
     if row is None:
         raise ApiError(404, "USER_NOT_FOUND", "The user was not found.")
-    return AdminUserDetailDTO.model_validate(row)
+    return AdminUserDetailDTO.model_validate(directory_data(row))

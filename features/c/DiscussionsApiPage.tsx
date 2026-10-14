@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { useWorkspace } from "@/lib/workspace";
@@ -15,7 +15,7 @@ const links = [{ key: "task_id", field: "tasks", label: "关联任务" }, { key:
 type Context = components["schemas"]["CProjectContextDTO"];
 
 function MentionPicker({ context, value, change, disabled }: { context: Context; value: string[]; change: (value: string[]) => void; disabled: boolean }) {
-  return <fieldset className="my-3"><legend>提及项目成员（可选）</legend><div className="flex flex-wrap gap-4">{context.members.map((member) => <label key={member.id} className="flex items-center gap-1"><input type="checkbox" checked={value.includes(member.id)} disabled={disabled} onChange={(event) => change(event.target.checked ? [...value, member.id] : value.filter((id) => id !== member.id))} />{member.title}</label>)}</div><p className="mt-2 text-xs text-slate-500">提及会随内容保存；通知投递尚待通知服务接入。</p></fieldset>;
+  return <fieldset className="my-3"><legend>提及可访问本项目的人员（可选）</legend><div className="flex flex-wrap gap-4">{(context.mention_targets ?? []).map((member) => <label key={member.id} className="flex items-center gap-1"><input type="checkbox" checked={value.includes(member.id)} disabled={disabled} onChange={(event) => change(event.target.checked ? [...value, member.id] : value.filter((id) => id !== member.id))} />{member.title}</label>)}</div><p className="mt-2 text-xs text-slate-500">包含当前成员及所属教师、助教；提及会随内容保存，通知投递尚待通知服务接入。</p></fieldset>;
 }
 export function DiscussionsApiPage({ projectId, taskId, visible = true }: { projectId: string; taskId?: string; visible?: boolean }) {
   const { userId } = useWorkspace();
@@ -24,13 +24,14 @@ export function DiscussionsApiPage({ projectId, taskId, visible = true }: { proj
 function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectId: string; userId: string; fixedTaskId?: string; visible: boolean }) {
   const { query, updateQuery } = useUrlQuery();
   const selectedId = query.get("discussion");
+  const replyFocus = isUuid(query.get("reply") ?? "") ? query.get("reply") : null;
   const filters = { page: pageNumber(query.get("page")), page_size: 10, q: query.get("q") || undefined, is_important: query.get("important") === "true" ? true : undefined, task_id: fixedTaskId ?? (query.get("task") || undefined), requirement_id: query.get("requirement") || undefined, module_id: query.get("module") || undefined, milestone_id: query.get("milestone") || undefined };
   const enabled = isUuid(projectId);
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
   const list = useQuery({ queryKey: ["c-discussions", userId, projectId, filters], queryFn: () => projectApi.discussions(projectId, filters), enabled, ...queryPolicy });
   const selectedEnabled = enabled && Boolean(selectedId && isUuid(selectedId)) && context.isSuccess && !context.isFetching;
   const detail = useQuery({ queryKey: ["c-discussion-detail", userId, projectId, selectedId], queryFn: () => projectApi.discussion(projectId, selectedId!), enabled: selectedEnabled, ...queryPolicy });
-  const replies = useQuery({ queryKey: ["c-discussion-replies", userId, projectId, selectedId, pageNumber(query.get("reply_page"))], queryFn: () => projectApi.replies(projectId, selectedId!, pageNumber(query.get("reply_page")), 10), enabled: selectedEnabled, ...queryPolicy });
+  const replies = useQuery({ queryKey: ["c-discussion-replies", userId, projectId, selectedId, pageNumber(query.get("reply_page")), replyFocus], queryFn: () => projectApi.replies(projectId, selectedId!, pageNumber(query.get("reply_page")), 10, replyFocus ?? undefined), enabled: selectedEnabled, ...queryPolicy });
   const [blocked, setBlocked] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
@@ -48,7 +49,13 @@ function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectI
   const replyRows = access && replies.isSuccess && !replies.isFetching && (!fixedTaskId || item) ? replies.data : undefined;
   const writable = Boolean(access?.permissions.can_discuss);
   const canMark = Boolean(writable && item && (access?.actor.id === item.author_id || access?.actor.is_leader || access?.actor.is_teacher));
-  const author = (id: string) => access?.members.find((member) => member.id === id)?.title ?? "项目讨论参与者";
+  const author = (id: string) => access?.mention_targets?.find((member) => member.id === id)?.title ?? access?.members.find((member) => member.id === id)?.title ?? "项目讨论参与者";
+  const focusTarget = visible && replyFocus && replyRows?.items.some((entry) => entry.id === replyFocus) ? `reply-${replyFocus}` : null;
+  useEffect(() => {
+    if (!focusTarget) return;
+    const element = document.getElementById(focusTarget);
+    element?.scrollIntoView({ block: "center" }); element?.focus({ preventScroll: true });
+  }, [focusTarget]);
   function deny(next: unknown) { setBlocked(next); setDraft(null); setReply(null); setImportant(null); setCancel(null); }
   async function refresh() {
     const results = await Promise.all([context.refetch(), list.refetch(), ...(selectedId ? [detail.refetch(), replies.refetch()] : [])]);
@@ -64,11 +71,12 @@ function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectI
     try {
       if (action === "create" && draft) {
         const input = { expected_version: 0, title: draft.title.trim(), body: draft.body.trim(), mention_user_ids: draft.mentions, task_id: draft.task_id || null, requirement_id: draft.requirement_id || null, module_id: draft.module_id || null, milestone_id: draft.milestone_id || null };
-        const saved = await projectApi.createDiscussion(projectId, input, key({ projectId, action, input })); setDraft(null); updateQuery({ discussion: saved.id, reply_page: null });
+        const saved = await projectApi.createDiscussion(projectId, input, key({ projectId, action, input })); setDraft(null); updateQuery({ discussion: saved.id, reply_page: null, reply: null });
       }
       if (action === "reply" && reply) {
         const input = { expected_version: reply.expected, body: reply.body.trim(), mention_user_ids: reply.mentions };
-        await projectApi.reply(projectId, reply.id, input, key({ projectId, id: reply.id, action, input })); setReply(null);
+        const saved = await projectApi.reply(projectId, reply.id, input, key({ projectId, id: reply.id, action, input }));
+        setReply(null); updateQuery({ reply: saved.reply.id, reply_page: null });
       }
       if (action === "important" && important) {
         const input = { expected_version: important.expected, is_important: important.value, reason: important.reason.trim() };
@@ -94,20 +102,20 @@ function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectI
       {context.isFetching && <p role="status">正在验证项目权限…</p>}{context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}
       {access && <>
         {!writable && <p className="mb-3">当前项目讨论只读。</p>}
-        <form key={JSON.stringify(filters)} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "task", "requirement", "module", "milestone"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, important: form.get("important") ? "true" : null, page: null, discussion: null, reply_page: null }); }}>
+        <form key={JSON.stringify(filters)} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "task", "requirement", "module", "milestone"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, important: form.get("important") ? "true" : null, page: null, discussion: null, reply_page: null, reply: null }); }}>
           <label>搜索讨论<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} /></label>
           {links.map((link) => <label key={link.key}>{link.label}<select className={`${apiInput} block`} name={link.key.replace("_id", "")} disabled={Boolean(fixedTaskId && link.key === "task_id")} defaultValue={filters[link.key] ?? ""}><option value="">全部</option>{access[link.field].map((entry) => <option key={entry.id} value={entry.id}>{entry.title}</option>)}</select></label>)}
-          <label><input name="important" type="checkbox" defaultChecked={filters.is_important} /> 仅重要讨论</label><button className={apiButton}>查询讨论</button><button className={apiButton} type="button" onClick={() => updateQuery({ q: null, task: null, requirement: null, module: null, milestone: null, important: null, page: null, discussion: null, reply_page: null })}>重置</button>
+          <label><input name="important" type="checkbox" defaultChecked={filters.is_important} /> 仅重要讨论</label><button className={apiButton}>查询讨论</button><button className={apiButton} type="button" onClick={() => updateQuery({ q: null, task: null, requirement: null, module: null, milestone: null, important: null, page: null, discussion: null, reply_page: null, reply: null })}>重置</button>
         </form>
         {writable && !draft && <button className={`${apiButton} mb-4`} disabled={busy} onClick={() => { setDraft({ ...emptyDraft(), task_id: fixedTaskId ?? "" }); setError(null); }}>新建讨论</button>}
         {draft && writable && <Panel title="新建讨论"><label>讨论标题<input className={`${apiInput} block w-full`} maxLength={240} disabled={busy} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label htmlFor="discussion-body">讨论正文</label><textarea id="discussion-body" className={`${apiInput} block min-h-32 w-full`} maxLength={30000} disabled={busy} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} /><div className="my-3 flex flex-wrap gap-3">{links.map((link) => <label key={link.key}>新讨论{link.label}<select className={`${apiInput} block`} value={draft[link.key]} disabled={busy || Boolean(fixedTaskId && link.key === "task_id")} onChange={(event) => setDraft({ ...draft, [link.key]: event.target.value })}><option value="">不关联</option>{access[link.field].map((entry) => <option key={entry.id} value={entry.id}>{entry.title}</option>)}</select></label>)}</div><MentionPicker context={access} value={draft.mentions} change={(mentions) => setDraft({ ...draft, mentions })} disabled={busy} /><button className={apiButton} disabled={busy} onClick={() => void submit("create")}>发布讨论</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => setCancel("create")}>取消新讨论</button></Panel>}
         {list.isFetching && <p role="status">正在读取讨论…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
-        {rows && <Panel>{rows.items.map((entry) => <article key={entry.id} className="mb-3 border-b border-slate-100 pb-3"><strong>{entry.title}</strong><p className="my-2 text-sm">{entry.is_important ? "重要讨论 · " : ""}{author(entry.author_id)} · {entry.reply_count} 条回复 · {formatDate(entry.last_activity_at)}</p><button className={apiButton} disabled={busy} onClick={() => { updateQuery({ discussion: entry.id, reply_page: null }); setImportant(null); setError(null); }}>查看讨论</button></article>)}{!rows.items.length && <EmptyState title="没有符合条件的讨论" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => updateQuery({ page: String(page), discussion: null, reply_page: null })} /></Panel>}
-        {selectedId && <Panel title="讨论内容与回复" action={<button className={apiButton} disabled={busy} onClick={() => updateQuery({ discussion: null, reply_page: null })}>关闭详情</button>}>
+        {rows && <Panel>{rows.items.map((entry) => <article key={entry.id} className="mb-3 border-b border-slate-100 pb-3"><strong>{entry.title}</strong><p className="my-2 text-sm">{entry.is_important ? "重要讨论 · " : ""}{author(entry.author_id)} · {entry.reply_count} 条回复 · {formatDate(entry.last_activity_at)}</p><button className={apiButton} disabled={busy} onClick={() => { updateQuery({ discussion: entry.id, reply_page: null, reply: null }); setImportant(null); setError(null); }}>查看讨论</button></article>)}{!rows.items.length && <EmptyState title="没有符合条件的讨论" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => updateQuery({ page: String(page), discussion: null, reply_page: null, reply: null })} /></Panel>}
+        {selectedId && <Panel title="讨论内容与回复" action={<button className={apiButton} disabled={busy} onClick={() => updateQuery({ discussion: null, reply_page: null, reply: null })}>关闭详情</button>}>
           {detail.isFetching && <p role="status">正在读取讨论内容…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
           {item && <><h2 className="font-semibold">{item.title}</h2><p className="my-3 whitespace-pre-wrap">{item.body}</p>{links.map((link) => item[link.key] && <p key={link.key}>{link.label}：{access[link.field].find((entry) => entry.id === item[link.key])?.title ?? "历史关联对象"}</p>)}<p className="my-2 text-sm">提及：{item.mention_user_ids.map(author).join("、") || "无"}</p>{item.is_important && <p className="my-3 text-sm">此讨论可选择为候选证据来源。新增回复或取消重要标记会使已有证据来源发生变化，原快照保留。</p>}
             <div className="my-3 flex gap-2">{writable && item.status === "open" && !reply && <button className={apiButton} disabled={busy} onClick={() => { setReply({ id: item.id, body: "", mentions: [], expected: item.lock_version }); setError(null); }}>回复讨论</button>}{canMark && item.status === "open" && <button className={apiButton} disabled={busy} onClick={() => { setImportant({ id: item.id, value: !item.is_important, reason: "", expected: item.lock_version }); setError(null); }}>{item.is_important ? "取消重要标记" : "标记为重要"}</button>}</div></>}
-          {replies.isFetching && <p role="status">正在读取回复…</p>}{replies.isError && <ApiFailure error={replies.error} retry={() => void replies.refetch()} />}{replyRows && <>{replyRows.items.map((entry) => <article key={entry.id} className="my-3 border-l-2 border-slate-200 pl-3"><p className="text-sm">{author(entry.author_id)} · {formatDate(entry.created_at)}</p><p className="my-2 whitespace-pre-wrap">{entry.body}</p>{entry.mention_user_ids.length > 0 && <p className="text-sm">提及：{entry.mention_user_ids.map(author).join("、")}</p>}</article>)}{!replyRows.items.length && <p>暂无回复。</p>}<ApiPager page={replyRows.page} pageSize={replyRows.page_size} total={replyRows.total} change={(page) => updateQuery({ reply_page: String(page) })} /></>}
+          {replies.isFetching && <p role="status">正在读取回复…</p>}{replies.isError && <ApiFailure error={replies.error} retry={() => void replies.refetch()} />}{replyRows && <>{replyRows.items.map((entry) => <article id={`reply-${entry.id}`} tabIndex={-1} key={entry.id} className={`my-3 border-l-2 pl-3 ${replyFocus === entry.id ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}><p className="text-sm">{author(entry.author_id)} · {formatDate(entry.created_at)}</p><p className="my-2 whitespace-pre-wrap">{entry.body}</p>{entry.mention_user_ids.length > 0 && <p className="text-sm">提及：{entry.mention_user_ids.map(author).join("、")}</p>}</article>)}{!replyRows.items.length && <p>暂无回复。</p>}<ApiPager page={replyRows.page} pageSize={replyRows.page_size} total={replyRows.total} change={(page) => updateQuery({ reply_page: String(page), reply: null })} /></>}
         </Panel>}
         {reply && reply.id === selectedId && writable && item?.status === "open" && <Panel title="回复讨论"><label htmlFor="discussion-reply">回复正文</label><textarea id="discussion-reply" className={`${apiInput} block min-h-32 w-full`} disabled={busy} maxLength={30000} value={reply.body} onChange={(event) => setReply({ ...reply, body: event.target.value })} /><MentionPicker context={access} value={reply.mentions} change={(mentions) => setReply({ ...reply, mentions })} disabled={busy} /><button className={apiButton} disabled={busy} onClick={() => void submit("reply")}>保存回复</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => setCancel("reply")}>取消回复</button></Panel>}
         {important && important.id === selectedId && canMark && <Panel title={important.value ? "确认标记重要" : "确认取消重要"}><p className="mb-3 text-sm">{important.value ? "标记后可从证据页选择此讨论作为候选来源。" : "取消后不能再作为新的候选来源；旧证据快照不会删除。"}</p><label htmlFor="important-reason">重要标记原因</label><textarea id="important-reason" className={`${apiInput} block w-full`} disabled={busy} maxLength={4000} value={important.reason} onChange={(event) => setImportant({ ...important, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void submit("important")}>确认重要标记变更</button><button className={apiButton} disabled={busy} onClick={() => setImportant(null)}>取消</button></div></Panel>}

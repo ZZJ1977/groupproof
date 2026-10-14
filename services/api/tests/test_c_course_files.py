@@ -64,6 +64,7 @@ def db():
 
         names = {
             "users",
+            "school_email_bindings",
             "courses",
             "course_staff",
             "groups",
@@ -358,7 +359,7 @@ def test_authority_is_rechecked_before_idempotent_replay(db, scope, storage, sta
     elif state == "disabled":
         scope.users["teacher"].status = "disabled"
     elif state == "unverified":
-        scope.users["teacher"].email_verified_at = None
+        scope.users["teacher"].email_binding.verified_at = None
     else:
         scope.course.owner_id = scope.users["other_teacher"].id
     db.commit()

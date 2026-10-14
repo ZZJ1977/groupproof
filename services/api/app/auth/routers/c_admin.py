@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
+from app.modules.c.school_email import has_verified_school_email, school_email_binding_verified
+
 from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
 from ..errors import AppError
@@ -31,6 +33,12 @@ class TeacherDecision(IdentityDecision):
     decision: str = Field(pattern="^(approve|reject)$")
 
 
+class DisableDecision(IdentityDecision):
+    # Canonical accounts start at lock_version=0. Teacher application versions
+    # keep their independent positive-version contract above.
+    expectedVersion: int = Field(ge=0, strict=True)
+
+
 def directory_row(user, binding, actor):
     return {
         "id": user.id,
@@ -41,9 +49,15 @@ def directory_row(user, binding, actor):
         "status": user.account_status,
         "version": user.version,
         "schoolEmail": binding.school_email if binding else None,
-        "schoolEmailVerified": bool(binding and binding.verified_at),
+        "schoolEmailVerified": school_email_binding_verified(binding),
         "canDisable": user.id != actor.id and user.account_status != "disabled",
     }
+
+
+def check_admin_write(request: Request, context: AuthContext, db: DbSession) -> None:
+    check_csrf(request, context)
+    if not has_verified_school_email(db, context.user, lock=True):
+        raise AppError("REGISTRATION_REQUIRED", 403, params={"accountState": "email_required"})
 
 
 @router.get("/users")
@@ -73,7 +87,10 @@ def users(
         # 统一身份后角色存于 users.global_role（单一全局角色），不做子串搜索
         query = query.where(User.global_role == role)
     if status:
-        query = query.where(User.account_status == status)
+        # account_status is an instance property; comparing it in SQL yields false.
+        query = query.where(
+            User.status == "disabled" if status == "disabled" else User.status != "disabled"
+        )
     if college.strip():
         query = query.where(User.college == college.strip())
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
@@ -93,12 +110,12 @@ def users(
 @router.post("/users/{user_id}/disable")
 def disable(
     user_id: str,
-    body: IdentityDecision,
+    body: DisableDecision,
     request: Request,
     context: AuthContext = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
-    check_csrf(request, context)
+    check_admin_write(request, context, db)
     try:
         target_id = UUID(user_id)
     except ValueError:
@@ -149,9 +166,7 @@ def applications(
             "applicationVersion": row.application_version,
             "status": row.status,
             "createdAt": row.created_at.isoformat(),
-            "emailVerified": bool(
-                binding and binding.verified_at and binding.school_email_normalized
-            ),
+            "emailVerified": school_email_binding_verified(binding),
             "emailDomain": (binding.school_email or "").rsplit("@", 1)[-1] if binding else "",
         }
         for row, user, binding in db.execute(
@@ -171,7 +186,7 @@ def review(
     context: AuthContext = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
-    check_csrf(request, context)
+    check_admin_write(request, context, db)
     row = db.scalar(
         select(TeacherApplication)
         .where(TeacherApplication.id == application_id)
@@ -196,9 +211,7 @@ def review(
     )
     if user.account_status == "disabled":
         raise AppError("INVALID_STATE", 409)
-    if body.decision == "approve" and not (
-        binding and binding.verified_at and binding.school_email_normalized
-    ):
+    if body.decision == "approve" and not school_email_binding_verified(binding):
         raise AppError("VALIDATION_ERROR", 422, field_errors={"email": "email_not_verified"})
     accounts.review_teacher_application(
         db,

@@ -13,6 +13,16 @@ export interface ObjectContext {
   courseName?: string;
 }
 
+/** Route IDs select links, never confer access; each destination authorizes its own data. */
+export function resolveCanonicalRouteContext(pathname: string): ObjectContext {
+  const parts = pathname.split("/").filter(Boolean);
+  const uuid = (value: string | undefined) => value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value : undefined;
+  if (parts[0] === "projects") return { projectId: uuid(parts[1]) };
+  if (parts[0] === "teacher" && parts[1] === "courses") return { courseId: uuid(parts[2]) };
+  if (parts[0] === "courses") return { courseId: uuid(parts[1]) };
+  return {};
+}
+
 export function resolveObjectContext(data: MockData, pathname: string): ObjectContext {
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "projects" && parts[1]) {

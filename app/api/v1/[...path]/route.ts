@@ -17,6 +17,7 @@ const FORWARDED_REQUEST_HEADERS = [
   "cookie",
   "origin",
   "x-csrf-token",
+  "idempotency-key",
   "content-type",
   "accept",
   "accept-language",

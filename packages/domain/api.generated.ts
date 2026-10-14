@@ -1528,6 +1528,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readyz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readyz
+         * @description Only accept traffic after the unified database reaches this image's migration head.
+         */
+        get: operations["readyz_readyz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2492,8 +2512,12 @@ export interface components {
         /** CProjectContextDTO */
         CProjectContextDTO: {
             actor: components["schemas"]["CContextActorDTO"];
+            /** Evidence Authors */
+            evidence_authors?: components["schemas"]["CSelectorDTO"][];
             /** Members */
             members: components["schemas"]["CSelectorDTO"][];
+            /** Mention Targets */
+            mention_targets?: components["schemas"]["CSelectorDTO"][];
             /** Milestones */
             milestones: components["schemas"]["CSelectorDTO"][];
             /** Modules */
@@ -2620,6 +2644,8 @@ export interface components {
             can_capture_evidence: boolean;
             /** Criteria */
             criteria: components["schemas"]["CCriterionSelectorDTO"][];
+            /** Description */
+            description?: string | null;
             /**
              * Id
              * Format: uuid
@@ -2839,6 +2865,13 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /** DisableDecision */
+        DisableDecision: {
+            /** Expectedversion */
+            expectedVersion: number;
+            /** Reason */
+            reason: string;
         };
         /** DisableIn */
         DisableIn: {
@@ -3414,13 +3447,6 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** IdentityDecision */
-        IdentityDecision: {
-            /** Expectedversion */
-            expectedVersion: number;
-            /** Reason */
-            reason: string;
         };
         /** InboxTarget */
         InboxTarget: {
@@ -4341,10 +4367,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -4428,7 +4450,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -4519,7 +4541,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6194,7 +6216,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["IdentityDecision"];
+                "application/json": components["schemas"]["DisableDecision"];
             };
         };
         responses: {
@@ -8469,6 +8491,7 @@ export interface operations {
     replies_api_v1_projects__project_id__discussions__discussion_id__replies_get: {
         parameters: {
             query?: {
+                focus_reply_id?: string | null;
                 page?: number;
                 page_size?: number;
             };
@@ -9885,6 +9908,7 @@ export interface operations {
     progress_history_api_v1_projects__project_id__tasks__task_id__progress_history_get: {
         parameters: {
             query?: {
+                focus_event_id?: string | null;
                 page?: number;
                 page_size?: number;
             };
@@ -10022,7 +10046,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10105,7 +10129,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10187,7 +10211,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10269,7 +10293,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10290,6 +10314,28 @@ export interface operations {
         };
     };
     healthz_healthz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    readyz_readyz_get: {
         parameters: {
             query?: never;
             header?: never;

@@ -19,6 +19,12 @@ const decisions = { submitted: "提交候选", adopted: "采纳正式", withdraw
 function snapshotRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
+function originalSourceId(item: Evidence): string | null {
+  const originals = item.source_snapshots.filter((snapshot) => snapshot.version_no === 1 && snapshot.id === item.original_snapshot_id);
+  const value = originals.length === 1 ? originals[0].content.source_id : null;
+  return typeof value === "string" && isUuid(value) ? value : null;
+}
+const checkableSources = new Set<Evidence["source_type"]>(["discussion", "file", "screenshot", "github", "feishu"]);
 function SourceSnapshotContent({ snapshot, sourceType }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"] }) {
   // Canonical snapshots wrap the immutable source payload; never dump IDs or provider metadata.
   const source = snapshotRecord(snapshot.content.source);
@@ -49,7 +55,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const [blocked, setBlocked] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
-  const [command, setCommand] = useState<{ id: string; action: "adopt" | "withdraw"; expected: number; reason: string } | null>(null);
+  const [command, setCommand] = useState<{ id: string; action: "adopt" | "withdraw" | "checkSource"; expected: number; reason: string; sourceId?: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -58,6 +64,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const rows = access && list.isSuccess && !list.isFetching ? list.data : undefined;
   const item = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
+  const authors = access?.evidence_authors ?? [];
   const canDecide = (entry: Evidence) => Boolean(access?.permissions.can_capture_evidence && (access.actor.id === entry.author_id || access.actor.is_leader || access.actor.is_teacher));
   const taskTitle = (id: string) => access?.tasks.find((task) => task.id === id)?.title ?? "关联任务";
   function deny(next: unknown) { setBlocked(next); setCommand(null); setCreating(false); }
@@ -68,13 +75,22 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   }
   async function save() {
     if (!command || !item || command.id !== item.id || !canDecide(item) || busyRef.current) return;
-    if (!command.reason.trim()) { setNotice("请填写本次证据决定的原因。"); return; }
+    if (!command.reason.trim()) { setNotice(command.action === "checkSource" ? "请填写本次来源检查的原因。" : "请填写本次证据决定的原因。"); return; }
+    if (command.action === "checkSource" && (!command.sourceId || command.sourceId !== originalSourceId(item) || !checkableSources.has(item.source_type))) { setNotice("无法核对原始来源，请刷新证据详情。"); return; }
+    if (command.expected !== item.lock_version) { setNotice("证据版本已变化，请刷新并核对证据后再次确认。"); return; }
     busyRef.current = true; setBusy(true); setError(null); setNotice("");
     const input = { expected_version: command.expected, reason: command.reason.trim() };
     try {
-      await projectApi[command.action](projectId, item.id, input, key({ projectId, evidenceId: item.id, action: command.action, input }));
+      if (command.action === "checkSource") {
+        const sourceInput = { ...input, source_id: command.sourceId! };
+        const result = await projectApi.checkSource(projectId, item.id, sourceInput, key({ projectId, evidenceId: item.id, action: command.action, input: sourceInput }));
+        setNotice(result.source_changed ? "来源检查完成：该证据标记为来源已变化，不计入有效证据；原快照仍保留。" : "来源检查完成：与已保存的来源快照一致。");
+      } else {
+        await projectApi[command.action](projectId, item.id, input, key({ projectId, evidenceId: item.id, action: command.action, input }));
+        setNotice(command.action === "adopt" ? "证据已采纳为正式；验收结论需由验收服务决定。" : "证据已撤回，历史和快照仍保留。");
+      }
       key.reset();
-      setCommand(null); setNotice(command.action === "adopt" ? "证据已采纳为正式；验收结论需由验收服务决定。" : "证据已撤回，历史和快照仍保留。"); await refresh();
+      setCommand(null); await refresh();
     } catch (next) { setError(next); if (accessFailure(next)) deny(next); }
     finally { busyRef.current = false; setBusy(false); }
   }
@@ -83,7 +99,10 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
     const [latest, permission] = await Promise.all([detail.refetch(), context.refetch()]);
     const next = latest.error || permission.error;
     if (next) { setError(next); if (accessFailure(next)) deny(next); return; }
-    if (latest.data) { setCommand({ ...command, expected: latest.data.lock_version }); setError(null); setNotice("已刷新状态，请核对证据和原因后再次确认。"); }
+    if (latest.data) {
+      if (command.action === "checkSource" && originalSourceId(latest.data) !== command.sourceId) { setCommand(null); setError(null); setNotice("原始来源标识无法核对，请重新打开详情检查。"); return; }
+      setCommand({ ...command, expected: latest.data.lock_version }); setError(null); setNotice("已刷新状态，请核对证据和原因后再次确认。");
+    }
   }
   if (!enabled) return <EmptyState title="项目地址无效" />;
   return <>
@@ -96,7 +115,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
           <label>证据状态<select className={`${apiInput} block`} name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>{Object.entries(states).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>证据来源<select className={`${apiInput} block`} name="source" defaultValue={filters.source_type ?? ""}><option value="">全部来源</option>{Object.entries(sources).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>证据所属任务<select className={`${apiInput} block`} name="task" defaultValue={filters.task_id ?? ""}><option value="">全部任务</option>{access.tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
-          <label>证据作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{access.members.map((member) => <option key={member.id} value={member.id}>{member.title}</option>)}</select></label>
+          <label>证据作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{filters.author_id && !authors.some((author) => author.id === filters.author_id) && <option value={filters.author_id}>当前 URL 作者筛选（待核对）</option>}{authors.map((author) => <option key={author.id} value={author.id}>{author.title}</option>)}</select></label>
           <label>验收标准<select className={`${apiInput} block`} name="criterion" defaultValue={filters.criterion_id ?? ""}><option value="">全部标准</option>{access.tasks.flatMap((task) => task.criteria.map((criterion) => <option key={criterion.id} value={criterion.id}>{task.title} · {criterion.text}</option>))}</select></label>
           <button className={apiButton}>查询证据</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, source: null, task: null, author: null, criterion: null, page: null, evidence: null }); setCommand(null); }}>重置</button>
         </form>
@@ -107,12 +126,13 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
           {detail.isFetching && <p role="status">正在读取证据历史…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
           {item && <><h2 className="font-semibold">{item.title}</h2><p className="my-3 whitespace-pre-wrap">{item.description}</p>{safeHttps(item.source_url, item.source_type === "github") && <a className="gp-link" href={safeHttps(item.source_url, item.source_type === "github")!} target="_blank" rel="noopener noreferrer">查看证据来源</a>}
             {item.source_changed && <p className="my-3 text-amber-800">来源已变化，原快照保留；该证据当前不计入有效证据。</p>}
+            {canDecide(item) && checkableSources.has(item.source_type) && <div className="my-3">{originalSourceId(item) ? <button className={apiButton} disabled={busy} onClick={() => { key.reset(); setCommand({ id: item.id, action: "checkSource", expected: item.lock_version, reason: "", sourceId: originalSourceId(item)! }); setError(null); setNotice(""); }}>检查证据来源</button> : <p className="text-sm">原始来源标识不完整，暂不能检查来源；请刷新详情后重试。</p>}</div>}
             <h3 className="mb-2 mt-4 font-semibold">对应标准</h3>{item.criterion_ids.map((id) => <p key={id}>{access.tasks.flatMap((task) => task.criteria).find((criterion) => criterion.id === id)?.text ?? "历史关联标准"}</p>)}
             {canDecide(item) && <div className="my-3 flex gap-2">{["candidate", "pending_confirmation"].includes(item.status) && !item.source_changed && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "adopt", expected: item.lock_version, reason: "" }); setError(null); }}>采纳为正式证据</button>}{["candidate", "pending_confirmation", "formal"].includes(item.status) && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "withdraw", expected: item.lock_version, reason: "" }); setError(null); }}>撤回证据</button>}</div>}
             <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} /></details>)}
             <h3 className="mt-4 font-semibold">决定历史</h3>{item.decisions.map((decision) => <p key={decision.id} className="my-2 text-sm">{decisions[decision.decision]} · {decision.reason} · {formatDate(decision.created_at)}</p>)}</>}
         </Panel>}
-        {command && command.id === selectedId && item && canDecide(item) && <Panel title={command.action === "adopt" ? "确认采纳" : "确认撤回"}><p className="mb-3 text-sm">{command.action === "adopt" ? "采纳不会自动形成验收结论。" : "撤回会使证据不再计入有效证据，历史仍保留。"}</p><label htmlFor="evidence-reason">证据决定原因</label><textarea id="evidence-reason" className={`${apiInput} block w-full`} value={command.reason} maxLength={4000} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void save()}>确认决定</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{versionFailure(error) && <button className={apiButton} onClick={() => void reviewLatest()}>刷新并核对证据</button>}</div></Panel>}
+        {command && command.id === selectedId && item && canDecide(item) && <Panel title={command.action === "checkSource" ? "确认检查来源" : command.action === "adopt" ? "确认采纳" : "确认撤回"}><p className="mb-3 text-sm">{command.action === "checkSource" ? "检查将对比原始来源与保存的快照；确认变化后会保留历史并标记该证据不再有效。外部来源服务未接通时无法完成检查。" : command.action === "adopt" ? "采纳不会自动形成验收结论。" : "撤回会使证据不再计入有效证据，历史仍保留。"}</p><label htmlFor="evidence-reason">{command.action === "checkSource" ? "来源检查原因" : "证据决定原因"}</label><textarea id="evidence-reason" className={`${apiInput} block w-full`} value={command.reason} maxLength={4000} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy || command.expected !== item.lock_version || versionFailure(error)} onClick={() => void save()}>{command.action === "checkSource" ? "确认检查来源" : "确认决定"}</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{(versionFailure(error) || command.expected !== item.lock_version) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对证据</button>}</div></Panel>}
         {error && <ApiFailure error={error} />}{notice && <p role="status" className="my-3">{notice}</p>}
       </>}
       {creating && context.data && <EvidenceCapturePanel context={context.data} userId={userId} visible={Boolean(access?.permissions.can_capture_evidence)} onSaved={() => void refresh()} onDenied={deny} />}
