@@ -2,6 +2,14 @@
 
 ## Current correction — 2026-10-14
 
+2026-10-15 follow-up: PR #16 is merged (`22c0d1a`). C7-05 now adds a separate
+authentication-log view over A's actual `AuthAuditEvent`, while the whole-system
+audit adapter remains unavailable. C7-03 also reads approved/rejected applications
+from A's existing history, separately displaying the saved review basis and the
+current account facts. No new A service or duplicate persistence is required for
+these reads. This narrows the remaining audit dependency; it does not supply
+storage, external activities, inbox delivery, AI usage or access grants.
+
 PR #12 and unified-auth PR #14 are merged. Authentication and canonical UUID
 identity are no longer missing providers. C now reads A's current school-email
 binding, fixes enabled/disabled directory filtering and permits account version
