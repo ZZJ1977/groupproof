@@ -228,6 +228,7 @@ jobs:
           npx tsx scripts/check-c-evidence-source.mjs
           npx tsx scripts/check-c-evidence-source-client.mjs
           npx tsx scripts/check-c-api-client.mjs
+          npx tsx scripts/check-c-auth-audit-client.mjs
           npx tsx scripts/check-c-discussions.mjs
           npx tsx scripts/check-c-evidence-decisions.mjs
           npx tsx scripts/check-c-notifications.mjs

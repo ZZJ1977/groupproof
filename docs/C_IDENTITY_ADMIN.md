@@ -19,8 +19,10 @@ require A's CSRF check. No client-supplied role or user override is accepted.
   reject self-disable. Lock the target row, then call A's `accounts.disable_user`
   for session revocation, status/version change and audit. Already-disabled or
   conflicting requests cannot create a second mutation.
-- `GET /teacher-applications`: pending applications with minimum review context,
-  current email verification state and application version.
+- `GET /teacher-applications`: status-filtered applications (`pending`, `approved`,
+  `rejected`, or `all`; default `pending`), with ten-row SQL pagination. The saved
+  application basis/version and decision time/reason are distinct from the current
+  profile and school-email verification state. Only pending rows allow a decision.
 - `POST /teacher-applications/{id}/review`: reason, decision and current version;
   lock the application, user and email binding. Approval requires a currently
   verified email. Delegate final identity-basis validation and role assignment to
@@ -33,6 +35,11 @@ the current record before another decision. Writes do not optimistically change
 the directory or review list.
 
 ## Explicit remaining dependencies
+
+The C7-03 follow-up reuses A's existing `TeacherApplication` history for the
+approved/rejected views. It does not create a second review store or rewrite A's
+decisions. URL status/page filters and read-only history keep processed decisions
+inspectable after the pending list refreshes. See `C_DELIVERY.md` for validation.
 
 Account restoration and account creation are unavailable because A does not yet
 provide matching identity lifecycle functions. C does not bypass A by inserting
