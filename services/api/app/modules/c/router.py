@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.modules.c.activity_router import router as activity_router
 from app.modules.c.admin_users_router import router as admin_users_router
+from app.modules.c.auth_audit_router import router as auth_audit_router
 from app.modules.c.context_router import router as context_router
 from app.modules.c.course_files_router import router as course_files_router
 from app.modules.c.daily_router import router as daily_router
@@ -29,6 +30,7 @@ router.include_router(evidence_router, prefix="/api/v1")
 router.include_router(note_router, prefix="/api/v1")
 router.include_router(discussion_router, prefix="/api/v1")
 router.include_router(admin_users_router, prefix="/api/v1")
+router.include_router(auth_audit_router, prefix="/api/v1")
 router.include_router(daily_router, prefix="/api/v1")
 router.include_router(activity_router, prefix="/api/v1")
 router.include_router(files_router, prefix="/api/v1")
