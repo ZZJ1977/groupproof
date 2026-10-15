@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,11 @@ from app.db.models import (
     Task,
     User,
 )
+from app.modules.c.discussion_service import permitted_notification_users
 from app.modules.c.evidence_router import CurrentUser, Database, private_response
+from app.modules.c.models import Evidence
 from app.modules.c.permissions import get_project_access, task_in_frozen_plan
+from app.modules.c.school_email import has_verified_school_email
 
 
 class CSelectorDTO(BaseModel):
@@ -34,6 +37,7 @@ class CCriterionSelectorDTO(BaseModel):
 
 
 class CTaskSelectorDTO(CSelectorDTO):
+    description: str | None = None
     status: str
     can_associate: bool
     can_capture_evidence: bool
@@ -67,6 +71,8 @@ class CProjectContextDTO(BaseModel):
     permissions: CContextPermissionsDTO
     tasks: list[CTaskSelectorDTO]
     members: list[CSelectorDTO]
+    mention_targets: list[CSelectorDTO] = Field(default_factory=list)
+    evidence_authors: list[CSelectorDTO] = Field(default_factory=list)
     requirements: list[CSelectorDTO]
     modules: list[CSelectorDTO]
     milestones: list[CSelectorDTO]
@@ -80,7 +86,7 @@ def project_context(session: Session, actor: User, project_id: UUID) -> dict:
         raise ApiError(401, "UNAUTHENTICATED", "Authentication is required.")
     access = get_project_access(session, actor, project_id)
     active = (
-        actor.email_verified_at is not None
+        has_verified_school_email(session, actor)
         and access.project.lifecycle == "active"
         and (access.course is None or access.course.status == "active")
     )
@@ -118,6 +124,17 @@ def project_context(session: Session, actor: User, project_id: UUID) -> dict:
         )
         .order_by(User.name, User.id)
     )
+    # Mention targets have current read access. Historical evidence authors are
+    # a separate read-only attribution set, never a grant of membership or access.
+    _, reader_ids = permitted_notification_users(session, access)
+    mention_targets = bounded(
+        select(User).where(User.id.in_(reader_ids)).order_by(User.name, User.id)
+    )
+    evidence_authors = bounded(
+        select(User)
+        .where(User.id.in_(select(Evidence.author_id).where(Evidence.project_id == project_id)))
+        .order_by(User.name, User.id)
+    )
     result = {
         "project": {
             "id": access.project.id,
@@ -141,6 +158,7 @@ def project_context(session: Session, actor: User, project_id: UUID) -> dict:
             {
                 "id": task.id,
                 "title": task.title,
+                "description": task.description,
                 "status": task.status,
                 "can_associate": execution and task_in_frozen_plan(access.latest_plan, task.id),
                 "can_capture_evidence": execution
@@ -151,6 +169,10 @@ def project_context(session: Session, actor: User, project_id: UUID) -> dict:
             for task in tasks
         ],
         "members": [{"id": member.id, "title": member.name} for member in members],
+        "mention_targets": [{"id": member.id, "title": member.name} for member in mention_targets],
+        "evidence_authors": [
+            {"id": author.id, "title": author.name} for author in evidence_authors
+        ],
     }
     for name, model in [
         ("requirements", Requirement),

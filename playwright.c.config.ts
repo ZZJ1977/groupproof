@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "c-*.spec.ts",
-  testIgnore: ["c-daily-api.spec.ts", "c-project-api.spec.ts", "c-course-files-api.spec.ts", "c-execution-api.spec.ts", "c-governance-api.spec.ts", "c-identity-api.spec.ts", "c-inbox-api.spec.ts"],
+  testIgnore: ["c-*-api.spec.ts"],
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,

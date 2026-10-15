@@ -15,10 +15,12 @@ from fastapi.testclient import TestClient
 
 from app.api.auth import get_current_user
 from app.api.errors import ApiError, install_exception_handlers
+from app.auth.models import SchoolEmailBinding
 from app.db.models import Course, FunctionalModule, PlanVersion, Project, Task, User
 from app.db.session import get_session
 from app.modules.c.execution_router import get_execution_service, router
 from app.modules.c.permissions import execution_permissions
+from app.modules.c.school_email import school_email_binding_verified
 from app.modules.c.task_execution import (
     ExecutionScope,
     TaskExecutionService,
@@ -27,7 +29,16 @@ from app.modules.c.task_execution import (
 
 
 def actor(role="student"):
-    return User(id=uuid4(), status="active", global_role=role, email_verified_at=datetime.now(UTC))
+    return User(
+        id=uuid4(),
+        status="active",
+        global_role=role,
+        email_binding=SchoolEmailBinding(
+            school_email="execution@example.test",
+            school_email_normalized="execution@example.test",
+            verified_at=datetime.now(UTC),
+        ),
+    )
 
 
 def task(project_id, module_id, **changes):
@@ -90,6 +101,7 @@ class MemoryRepository:
             project_leader=user.id in self.leader_ids,
             course_teacher=user.id == self.course.owner_id,
             active_course_staff=user.id in self.staff_ids,
+            email_verified=school_email_binding_verified(user.email_binding),
         )
         if lock and self.snapshot is None:
             self.snapshot = deepcopy((self.scope, self.events))
@@ -618,7 +630,7 @@ def test_disabled_actor_is_rejected_before_project_access(setup):
 @pytest.mark.parametrize("operation", ["start", "progress", "complete"])
 def test_unverified_email_can_read_but_cannot_write(setup, operation):
     user, repo, service = setup
-    user.email_verified_at = None
+    user.email_binding.verified_at = None
     context = service.read(repo.scope.task.id, user)
     assert not context.can_start and not context.can_update_progress
     if operation == "progress":

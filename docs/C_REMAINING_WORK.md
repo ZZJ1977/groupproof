@@ -1,5 +1,21 @@
 # C implementation status and remaining work
 
+## Current correction — 2026-10-14
+
+PR #12 and unified-auth PR #14 are merged. Authentication and canonical UUID
+identity are no longer missing providers. C now reads A's current school-email
+binding, fixes enabled/disabled directory filtering and permits account version
+zero in disable commands. Historical batch counts below are retained as history.
+
+The current follow-up also forwards command idempotency through the same-origin
+proxy, removes the real shell's demo fallback, uses route UUID navigation and
+actual unread counts, displays task descriptions, separates historical evidence
+authors from mention recipients, locates exact replies/history from receipts and
+activity links, and exposes reasoned source checking. Global search remains
+unavailable without an authorized search provider; external source checks still
+require A's source port. The [audit](reviews/2026-10-14-c-function-audit.md)
+records the original reproductions and the delivery record records validation.
+
 This is a code audit, not team acceptance. The assignment enumerates 35 C tasks.
 Passing tests or touching a task ID does not mean that task has passed the Feishu
 Definition of Done. The 17-commit first delivery implemented parts of 21 task IDs;
@@ -26,27 +42,25 @@ for exact changes, completed checks and current delivery.
 
 | Area | Implemented C work | Still missing for complete acceptance |
 | --- | --- | --- |
-| C1 (4 tasks) | Canonical membership-scoped home/progress/activity reads; home inbox totals reuse validated recipient queries; A inbox/action contracts and transactional read receipts; real API pages | A notification/action adapters and delivery, production UUID identity and external feeds; unavailable providers keep their own home counts null |
-| C2 (8 tasks) | Execution transitions, assignee/dependency checks, progress/rollups/history, notes, candidate capture and atomic prepare-submission; canonical selectors and real task API pages | A production session/UUID entry context and source/storage providers; D verification query, acceptance and authoritative completion |
+| C1 (4 tasks) | Canonical membership-scoped home/progress/activity reads; home inbox totals reuse validated recipient queries; A inbox/action contracts and transactional read receipts; real API pages | A notification/action adapters and delivery, external feeds and authorized global search; unavailable providers keep their own home counts null |
+| C2 (8 tasks) | Execution transitions, assignee/dependency checks, progress/rollups/history, notes, candidate capture and atomic prepare-submission; canonical selectors and real task API pages | A source/storage providers; D verification query, acceptance and authoritative completion |
 | C3 (5 tasks) | Persistent snapshots/decisions/effective queries, reasoned adopt/withdraw/source-change rules and real evidence API page | A source events, reliable outbox delivery, D invalidation/verification/contribution/report consumers and staging acceptance |
 | C4 (4 tasks) | Canonical association/triage, immutable decisions, source-query contracts, atomic candidate adoption and real GitHub/Feishu API pages | A authorized query/sync adapters, stable B task codes and automatic association consumer, source-change delivery and live external verification |
 | C5 (4 tasks) | Project/course logical files, immutable versions, receipts, official designation/publication, authorized link contracts, retained history and real API pages | A actual byte upload/progress, validated project/course receipts, signing and preview/download adapters; notification delivery and B frozen-reference acceptance |
-| C6 (3 tasks) | Canonical discussions, concurrent replies, mentions, important snapshots and linked-evidence source changes; real discussion API page | Production UUID identity, A notification delivery, D event consumption and multi-member staging acceptance |
-| C7 (7 tasks) | Admin directory; C wrappers reuse A disable/session revocation and teacher review; course lifecycle/invites, expiring approval records, audit/actual-usage contracts and real pages | User restore/create, A canonical identity/audit/usage/access-enforcement providers, B invitation/join and lifecycle coordination, team acceptance |
+| C6 (3 tasks) | Canonical discussions, concurrent replies, mentions, important snapshots and linked-evidence source changes; real discussion API page | A notification delivery, D event consumption and multi-member staging acceptance |
+| C7 (7 tasks) | Admin directory; C wrappers reuse A disable/session revocation and teacher review; course lifecycle/invites, expiring approval records, audit/actual-usage contracts and real pages | User restore/create, A audit/usage/access-enforcement providers, B invitation/join and lifecycle coordination, team acceptance |
 
 ## Existing team code that must be reused
 
-- `server/` already implements teacher application persistence/review and account
-  disable with session revocation. Those services remain A's baseline. New C
-  routes/pages delegate to them with Admin/CSRF checks, nonblank reasons,
-  self-disable prevention, current review basis and version conflicts. They do
-  not translate identity-service string IDs into canonical business UUIDs.
-  Restore/create users and the production identity bridge remain unfinished.
+- `services/api/app/auth` implements teacher application persistence/review and
+  account disable/session revocation. C routes delegate with Admin/CSRF checks,
+  nonblank reasons, self-disable prevention, current review basis and version
+  conflicts. Restore/create users remain unfinished.
 - `lib/commands/files.ts` already validates local file metadata, manages version
   history and preserves baseline source references. It does not upload bytes.
-- `services/api` has canonical UUID User/Course/project models. Its development
-  identity header is explicitly unavailable in production. The `server/` user
-  IDs, roles and session schema cannot be imported as canonical IDs.
+- `services/api` has canonical UUID User/Course/project models and real cookie
+  sessions. Its development identity header remains unavailable in production.
+  `server/` and earlier identity test counts are retained as historical reference.
 
 ## Work that can continue without third-party credentials
 
@@ -80,7 +94,7 @@ invent UUID mappings or write A/B/D-owned data to make a demonstration look comp
 
 | Owner | Concrete delivery needed | Effect while absent |
 | --- | --- | --- |
-| A | Verified session and real role -> canonical UUID current user | Production business APIs remain closed; no demo-header bypass |
+| A/team | Validate the delivered unified session and role integration in staging | No demo-header bypass; isolated integration tests are not staging acceptance |
 | A/B | Canonical workspace/project/task/criterion loading and route context | Mock string IDs must not be translated into fabricated UUIDs |
 | A | A4 notification/action queries, transactional read mutations, audit source and A7 timestamped usage | Default ports return 503; no fake rows, zero counts or estimated usage; home counters use validated totals once each adapter is connected |
 | A | Validated project/course upload receipts, actual byte storage and signed preview/download URLs | No real upload/progress or storage success from metadata-only commands |

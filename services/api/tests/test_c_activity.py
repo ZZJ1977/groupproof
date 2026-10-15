@@ -235,7 +235,7 @@ def test_adoption_respects_execution_guards(db, scope, sources, field, value, co
         "baseline": (scope.project, "setup_status"),
         "plan": (scope.plan, "status"),
         "task": (scope.task, "status"),
-        "email": (scope.users["author"], "email_verified_at"),
+        "email": (scope.users["author"].email_binding, "verified_at"),
         "account": (scope.users["author"], "status"),
     }[field]
     setattr(obj, attr, value)

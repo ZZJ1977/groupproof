@@ -11,6 +11,7 @@ from app.modules.c.inbox_schemas import (
     NotificationReadReceipt,
     NotificationRecord,
 )
+from app.modules.c.school_email import has_verified_school_email
 
 
 def actor(session, user, *, write=False):
@@ -18,7 +19,7 @@ def actor(session, user, *, write=False):
     current = session.scalar(query.with_for_update() if write else query)
     if current is None:
         raise ApiError(401, "UNAUTHENTICATED", "A current account is required.")
-    if current.status != "active" or current.email_verified_at is None:
+    if current.status != "active" or not has_verified_school_email(session, current, lock=write):
         raise ApiError(403, "INBOX_ACCOUNT_INELIGIBLE", "An active verified account is required.")
     return current
 

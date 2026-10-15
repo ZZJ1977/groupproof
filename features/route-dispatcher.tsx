@@ -25,6 +25,8 @@ const IdentityAdminApiPage = dynamic(() => import("@/features/c/IdentityAdminApi
 const GovernanceApiPage = dynamic(() => import("@/features/c/GovernanceApiPages").then((module) => module.GovernanceApiPage));
 const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.NotificationsApiPage));
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
+const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.HomeApiPage));
+const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
 
 function AccessDenied({ message }: { message?: string }) {
   const t = useTranslations("errors");
@@ -46,6 +48,8 @@ export function RouteDispatcher() {
   // These pages use the authenticated API's authorization, not demo role state.
   // Mount by the actual route ID; never translate seed IDs into canonical IDs.
   let realContent;
+  if (screen === 4 && apiMode("daily") === "real") realContent = <HomeApiPage />;
+  if (screen === 30 && apiMode("daily") === "real") realContent = <PersonalActivityApiPage />;
   if (screen === 5 && apiMode("inbox") === "real") realContent = <NotificationsApiPage />;
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
   if (apiMode("cworkspace") === "real") {

@@ -197,7 +197,7 @@ def test_prepare_rechecks_current_permissions_and_plan_even_for_retry(setup, res
     session, data, _ = setup
     prepare(setup)
     if restriction == "unverified":
-        data.users["author"].email_verified_at = None
+        data.users["author"].email_binding.verified_at = None
     elif restriction == "left":
         from app.db.models import ProjectMember
 

@@ -4,7 +4,7 @@
 
 本轮在 `services/api/app/modules/c/governance_*.py` 实现 C7-04、C7-07 的 canonical 命令与持久化，并为 C7-05、C7-06 提供 A 服务的只读 typed ports。前端 `GovernanceApiPages` 在 `governance=real` 时只使用真实 API；课程、日志、AI 用量、访问审批分别对应 C53–C56。没有服务器数据时不合并本地种子，也不把 503 当作零数据或写入成功。
 
-所有管理接口重新查询当前 canonical User，要求 active Admin；写入另要求已验证邮箱，并锁定当前操作人行。申请人接口使用当前身份，没有自由 applicant 参数。浏览器展示不代替服务端授权。`server/` 的 A 登录身份与 canonical UUID 的生产映射仍须完成，不能把 browser fixtures 当作真实登录联调验收。
+所有管理接口重新查询当前 canonical User，要求 active Admin；写入另要求 A 当前学校邮箱绑定有效，并锁定当前操作人行。申请人接口使用当前身份，没有自由 applicant 参数。浏览器展示不代替服务端授权。PR #14 已交付 `services/api/app/auth` 的统一 Cookie/UUID 身份；浏览器 fixtures 仍不等于真实环境联调验收。
 
 ## 12 个接口
 

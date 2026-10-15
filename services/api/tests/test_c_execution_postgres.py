@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
+from app.auth.models import SchoolEmailBinding
 from app.db.base import Base
 from app.db.models import PlanVersion, ProgressEvent, ProjectMember, Task, TaskAssignee, User
 from app.db.seed import seed_core
@@ -53,6 +54,16 @@ def postgres(monkeypatch):
         Base.metadata.create_all(engine)
         with Session(engine) as session:
             ids = seed_core(session, environment="test")
+            # Legacy core seed is B-owned. Supply explicit A proof only in this
+            # isolated C fixture; production never falls back to its old timestamp.
+            for user in session.scalars(select(User)):
+                user.email_binding = SchoolEmailBinding(
+                    school_email=user.email,
+                    school_email_normalized=user.email.lower(),
+                    verified_at=datetime.now(ZoneInfo("UTC")),
+                    verification_method="documented_manual_review",
+                )
+            session.commit()
         yield engine, {key: UUID(value) for key, value in ids.items() if key.endswith("_id")}
     finally:
         if engine is not None:
