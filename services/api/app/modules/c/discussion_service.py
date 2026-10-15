@@ -545,12 +545,44 @@ def list_replies(
     *,
     page: int = 1,
     page_size: int = 50,
+    focus_reply_id: UUID | None = None,
 ) -> dict:
     get_project_access(session, user, project_id)
     row = discussion_in_project(session, project_id, discussion_id)
     if page < 1 or not 1 <= page_size <= 100:
         raise ApiError(422, "INVALID_PAGINATION", "Invalid page or page_size.")
     query = select(DiscussionReply).where(DiscussionReply.discussion_id == row.id)
+    if focus_reply_id is not None:
+        # Resolve position and page rows in one database snapshot. A concurrent
+        # append can sort before this reply (transaction timestamp / UUID tie).
+        ranked = (
+            select(
+                DiscussionReply.id.label("id"),
+                func.row_number()
+                .over(order_by=(DiscussionReply.created_at, DiscussionReply.id))
+                .label("position"),
+                func.count().over().label("total"),
+            )
+            .where(DiscussionReply.discussion_id == row.id)
+            .cte("ranked_replies")
+        )
+        position = select(ranked.c.position).where(ranked.c.id == focus_reply_id).scalar_subquery()
+        start = ((position - 1) // page_size) * page_size
+        focused_rows = session.execute(
+            select(DiscussionReply, ranked.c.position, ranked.c.total)
+            .join(ranked, ranked.c.id == DiscussionReply.id)
+            .where(ranked.c.position > start, ranked.c.position <= start + page_size)
+            .order_by(ranked.c.position)
+        ).all()
+        if not focused_rows:
+            raise ApiError(404, "DISCUSSION_REPLY_NOT_FOUND", "Reply not found in this discussion.")
+        return {
+            "items": [reply_data(session, reply) for reply, _, _ in focused_rows],
+            "page": (focused_rows[0].position - 1) // page_size + 1,
+            "page_size": page_size,
+            "total": focused_rows[0].total,
+            "discussion_lock_version": row.lock_version,
+        }
     total = session.scalar(select(func.count()).select_from(query.subquery()))
     replies = session.scalars(
         query.order_by(DiscussionReply.created_at, DiscussionReply.id)

@@ -13,6 +13,7 @@ import test_c_discussions as discussion_tests
 from fastapi.testclient import TestClient
 
 from app.api.auth import get_current_user
+from app.auth.models import SchoolEmailBinding
 from app.db.models import User
 from app.db.session import get_session
 from app.main import app
@@ -56,7 +57,11 @@ def directory(db):
             college="Engineering" if i % 2 else "Science",
             global_role=("student", "teacher", "ta", "student")[i % 4],
             status="disabled" if i % 5 == 0 else "pending" if i % 5 == 1 else "active",
-            email_verified_at=created if i % 2 else None,
+            email_binding=SchoolEmailBinding(
+                school_email=f"directory-{i:02}-{run}@example.test",
+                school_email_normalized=f"directory-{i:02}-{run}@example.test",
+                verified_at=created if i % 2 else None,
+            ),
             created_at=created,
             updated_at=created,
         )

@@ -19,9 +19,12 @@ identifiers into database UUIDs and never fall back to local sample data.
 
 Set the chosen entries in `NEXT_PUBLIC_API_FEATURES`; flags are independent.
 With mocks globally disabled, the default for every feature is real. Enable the
-canonical features in a running environment only after A wires its authenticated
-session transport. `services/api` and `server` still use incompatible identity
-schemas. This change does not repair that A-owned infrastructure boundary.
+canonical features against `services/api`, which now includes A's unified cookie
+session transport. The browser defaults to same-origin `/api/v1`, and Next
+forwards `Idempotency-Key` with cookies and CSRF headers. `server/` is historical.
+With `workspace=real`, the shell contains no seed objects, uses valid route UUIDs
+for navigation and actual inbox totals for its badge. It disables global search
+until an authorized search provider exists; feature pages query their own data.
 
 ## Page and interaction structure
 
@@ -71,6 +74,18 @@ for selectors. It reads B-owned entities and makes no planning mutation. It fail
 explicitly if its 1,000-row bound is exceeded. The progress-history endpoint reads
 actual C progress events and applies the same project/task access checks.
 
+Task selectors include the saved description. `evidence_authors` includes only
+authors of evidence already in this authorized project; `mention_targets` contains
+current readers, including eligible teachers/TAs. Neither grants membership.
+Reply `focus_reply_id` and progress `focus_event_id` locate an authorized record's
+current page using stable server ordering. Personal activity links point directly
+to the corresponding evidence, note version or progress event.
+
+Evidence source checks require the original snapshot's source ID, current version,
+reason and idempotency key. A successful change preserves snapshots and excludes
+the evidence from effective queries. An unavailable provider retains the form;
+opening an activity page never writes or implicitly invalidates evidence.
+
 See [course files](C_COURSE_FILES.md), [identity Admin](C_IDENTITY_ADMIN.md),
 [governance](C_GOVERNANCE.md), and the [acceptance ledger](C_DELIVERY.md) for the
 contracts and remaining A/B/D dependencies. C outbox records are pending work,
@@ -80,8 +95,9 @@ not proof of notification delivery or D invalidation.
 
 `playwright.c-api.config.ts` tests these API page branches using explicit HTTP
 fixtures. Run it serially with `playwright.c.config.ts` and
-`playwright.c-daily.config.ts`; their loopback ports are shared. Canonical backend
-tests use real local PostgreSQL separately, including concurrency and migrations.
-Identity tests use the identity service's own database, real cookies and CSRF.
+`playwright.c-daily.config.ts` and `playwright.c-shell.config.ts`; their loopback
+ports are shared. Proxy tests make actual HTTP requests through Next to an isolated
+transport fixture. Canonical backend tests cover PostgreSQL concurrency/migrations
+and separate SQLite HTTP integration with real unified cookies and CSRF.
 None of these substitutes for the team's clean-database staging acceptance with
 mocks off and real external integrations.

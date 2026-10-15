@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { CApiError } from "@/lib/api/c-client";
 import { inboxApi, inboxTargetHref, type ActionItemQuery, type NotificationQuery } from "@/lib/api/c-inbox-client";
@@ -32,6 +32,7 @@ export function NotificationsApiPage() {
 }
 
 function Notifications({ userId }: { userId: string }) {
+  const cache = useQueryClient();
   const { query, updateQuery } = useUrlQuery();
   const rawState = query.get("state") ?? "all", rawCategory = query.get("category") ?? "all";
   const filters: NotificationQuery = { state: Object.hasOwn(states, rawState) ? rawState as keyof typeof states : "all",
@@ -43,12 +44,17 @@ function Notifications({ userId }: { userId: string }) {
   const lock = useRef(false), commandKey = useCommandKey();
   const denied = blocked || (accessFailure(list.error) ? list.error : null);
   const data = !denied && list.isSuccess && !list.isFetching ? list.data : undefined;
+  function block(failure: unknown) {
+    setBlocked(failure); setAll(null);
+    cache.setQueryData(["c-inbox-blocked", userId], true);
+  }
 
   async function refresh() {
     setAll(null); setNotice("");
+    void cache.invalidateQueries({ queryKey: ["c-inbox-unread", userId] });
     const response = await list.refetch();
-    if (response.isSuccess) { setError(null); setBlocked(null); }
-    else if (accessFailure(response.error)) { setBlocked(response.error); setAll(null); }
+    if (response.isSuccess) { setError(null); setBlocked(null); cache.setQueryData(["c-inbox-blocked", userId], false); }
+    else if (accessFailure(response.error)) block(response.error);
   }
   async function mark(item?: Schema["NotificationDTO"]) {
     if (!data || lock.current || versionFailure(error) || (!item && !all)) return;
@@ -58,10 +64,11 @@ function Notifications({ userId }: { userId: string }) {
     try {
       if (item) await inboxApi.markRead(item.id, body as Schema["MarkNotificationRead"], key);
       else await inboxApi.markAllRead(body, key);
+      void cache.invalidateQueries({ queryKey: ["c-inbox-unread", userId] });
       setAll(null); setNotice(item ? "该通知已标记为已读。" : "此快照中的全部通知已标记为已读。");
       const response = await list.refetch();
-      if (accessFailure(response.error)) setBlocked(response.error);
-    } catch (failure) { setError(failure); if (accessFailure(failure)) { setBlocked(failure); setAll(null); } }
+      if (accessFailure(response.error)) block(response.error);
+    } catch (failure) { setError(failure); if (accessFailure(failure)) block(failure); }
     finally { lock.current = false; setBusy(false); }
   }
   return <>

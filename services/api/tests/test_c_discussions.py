@@ -328,7 +328,7 @@ def test_discussion_is_available_during_planning_before_baseline_freeze(db, scop
 @pytest.mark.parametrize("kind", ["unverified", "archived", "course_ended", "ta"])
 def test_read_only_or_unverified_actors_cannot_write(db, scope, kind):
     if kind == "unverified":
-        scope.users["author"].email_verified_at = None
+        scope.users["author"].email_binding.verified_at = None
     elif kind == "archived":
         scope.project.lifecycle = "archived"
     elif kind == "course_ended":
