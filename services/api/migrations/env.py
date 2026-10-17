@@ -17,6 +17,7 @@ from app.modules.c import (
     governance_models,  # noqa: F401 - register C governance tables
 )
 from app.modules.c import models as c_models  # noqa: F401 - register C model tables
+from app.modules.d import models as d_models  # noqa: F401 - register D model tables
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_database_url())
