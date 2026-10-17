@@ -53,6 +53,15 @@ CORE_TABLES = {
     "password_credentials",
     "pre_registration_requests",
     "email_outbox",
+    "integrity_checks",
+    "verification_runs",
+    "criterion_results",
+    "contribution_calculations",
+    "contribution_snapshots",
+    "contribution_items",
+    "contribution_item_tasks",
+    "reports",
+    "report_snapshots",
 }
 
 
@@ -68,7 +77,7 @@ def database_session() -> Session:
 def test_core_schema_is_migrated(database_session: Session) -> None:
     assert (
         database_session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        == "0013"
+        == "0014"
     )
     assert CORE_TABLES <= set(inspect(engine).get_table_names())
 
