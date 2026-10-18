@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
 import pytest
 
@@ -140,6 +141,49 @@ def test_public_mail_requires_explicit_enable() -> None:
     )
     assert opened.mail_publicly_available is True
     assert opened.email_signup_available is True
+
+
+def test_google_redirect_uri_matches_app_origin() -> None:
+    settings = Settings(
+        app_mode="dev",
+        app_origin="http://localhost:3000",
+        google_client_id="test-id",
+        google_client_secret="test-secret",
+        google_redirect_uri="http://localhost:3000/api/v1/auth/google/callback",
+    )
+    assert settings.google_configured is True
+
+
+def test_real_mode_rejects_api_origin_google_redirect() -> None:
+    with pytest.raises(RuntimeError, match="GOOGLE_REDIRECT_URI"):
+        Settings(
+            app_mode="real",
+            database_url="postgresql+psycopg://u:p@db.example:5432/x",
+            app_origin="https://app.example",
+            email_challenge_hmac_key="test-key",
+            auth_google_enabled=True,
+            google_client_id="test-id",
+            google_client_secret="test-secret",
+            google_redirect_uri="https://api.example/api/v1/auth/google/callback",
+            mail_mode="resend",
+            resend_api_key="test-key",
+            mail_from="no-reply@test.example",
+            auth_email_signup_enabled=False,
+            auth_password_reset_enabled=False,
+        )
+
+
+def test_dev_mode_only_warns_on_google_redirect_mismatch(caplog) -> None:
+    with caplog.at_level(logging.WARNING):
+        settings = Settings(
+            app_mode="dev",
+            app_origin="http://localhost:3000",
+            google_client_id="test-id",
+            google_client_secret="test-secret",
+            google_redirect_uri="http://localhost:8000/api/v1/auth/google/callback",
+        )
+    assert settings.google_configured is True
+    assert any("GOOGLE_REDIRECT_URI" in message for message in caplog.messages)
 
 
 def test_real_mode_rejects_capture_mailer() -> None:
