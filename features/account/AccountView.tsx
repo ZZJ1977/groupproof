@@ -16,7 +16,7 @@ type FieldErrors = Record<string, string>;
 
 function fieldError(errors: FieldErrors, field: string, t: (key: string) => string) {
   const code = errors[field];
-  return code ? t(code) : null;
+  return code ? t(`errors.${code}`) : null;
 }
 
 /** 个人中心：受限注册模式与已激活模式共用同一套资料/邮箱组件，按服务端状态呈现 */
