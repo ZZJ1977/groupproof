@@ -286,7 +286,13 @@
         "RATE_LIMITED": "操作過於頻繁，請稍後再試",
         "EMAIL_CONFLICT": "該學校信箱已被其他帳戶驗證，如需合併請聯絡管理員",
         "REAUTH_REQUIRED": "需要近期重新認證後才能更換信箱",
-        "AUTH_UNAVAILABLE": "郵件服務暫不可用，請稍後重試"
+        "AUTH_UNAVAILABLE": "郵件服務暫不可用，請稍後重試",
+        "MAIL_UNAVAILABLE": "郵件服務暫不可用，請稍後重試。",
+        "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。",
+        "INVALID_STATE": "此帳戶無需該操作",
+        "REGISTRATION_REQUIRED": "請先完善個人資料再驗證學校信箱。",
+        "NETWORK_ERROR": "暫時無法連線服務，請稍後重試。",
+        "VERSION_CONFLICT": "資料已被其他操作更新，請重新整理後重試。"
       }
     },
     "status": {
@@ -364,7 +370,8 @@
         "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。",
         "REAUTH_REQUIRED": "該操作需要近期重新登入，請登出後重新登入再試。",
         "IDENTITY_ALREADY_LINKED": "本帳戶已關聯 Google，無需重複關聯。",
-        "LAST_SIGN_IN_METHOD": "請先設定密碼並驗證登入信箱，再解除 Google 關聯。"
+        "LAST_SIGN_IN_METHOD": "請先設定密碼並驗證登入信箱，再解除 Google 關聯。",
+        "NETWORK_ERROR": "暫時無法連線服務，請稍後重試。"
       }
     },
     "progress": {

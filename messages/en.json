@@ -286,7 +286,13 @@
         "RATE_LIMITED": "Too many attempts. Please wait and retry.",
         "EMAIL_CONFLICT": "This school email is already verified by another account. Contact an administrator to resolve it.",
         "REAUTH_REQUIRED": "A recent sign-in is required before changing the email",
-        "AUTH_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later."
+        "AUTH_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
+        "MAIL_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
+        "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later.",
+        "INVALID_STATE": "This action is not needed for this account",
+        "REGISTRATION_REQUIRED": "Complete your profile before verifying the school email.",
+        "NETWORK_ERROR": "Cannot reach the service right now. Please retry later.",
+        "VERSION_CONFLICT": "The record was updated elsewhere. Refresh and try again."
       }
     },
     "status": {
@@ -364,7 +370,8 @@
         "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later.",
         "REAUTH_REQUIRED": "This action requires a recent sign-in. Please sign out and sign in again.",
         "IDENTITY_ALREADY_LINKED": "A Google account is already linked to this account.",
-        "LAST_SIGN_IN_METHOD": "Set a password and verify your login email before unlinking Google."
+        "LAST_SIGN_IN_METHOD": "Set a password and verify your login email before unlinking Google.",
+        "NETWORK_ERROR": "Cannot reach the service right now. Please retry later."
       }
     },
     "progress": {
