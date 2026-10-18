@@ -177,19 +177,23 @@ Responsive / A11y / UX Review ────────────┘
 - 后端测试需本地 PostgreSQL（`docker compose up -d postgres redis`）并设置 `DATABASE_URL`、`C_TEST_DATABASE_URL`、`C_EXECUTION_TEST_DATABASE_URL`，否则部分用例跳过。
 - capture 模式的验证码写 `email_outbox` 表（不是 `.mail-capture/` 目录）。
 
-**进行中：第 4 节本地联调**（截图存 `docs/design/screenshots/google-login-*.png`）：
+**第 4 节本地联调（四项全部通过 ✅，负责人浏览器实操 + 库/日志核验；按负责人决定未留截图）**：
 
-1. 新 Google 账号→学生入台：登录✅ 资料保存✅ 学校邮箱验证码进行中；
-2. 教师流程：待开始（账号与管理员 sub 待定）；
-3. 密码账号关联 Google：待开始；
-4. Google 取消/回调重放：待开始。
+1. 新 Google 账号→学生入台 ✅（含学号 1240025428 保存、学校邮箱验证、进入工作台）；
+2. 教师流程 ✅（教师资料 + @must.edu.mo 测试邮箱、教师申请、服务端 bootstrap_admin + 审核接口 approve）；
+3. 密码账号关联 Google ✅（scratchuser01 关联后 Google 登录进入同一账号）；
+4. Google 取消/回调重放 ✅（分别提示“已取消登录”/“登录失败”，不再返回 JSON）。
+
+联调辅助约定：每个场景开始前删除绑定负责人 Google 账号的本地测试用户（报 ID 后删，连同附属记录），同一 Google 账号可复测。
+
+**已完成收尾**：阶段报告 `docs/development-stages/stage-reports/2026-10-18-google-login.md`（含验证结果、约定、遗留项）。
 
 **待办**：
 
-- 第 5 节：提交已按阶段拆分（配置检查/回调失败/冲突检测/关联功能/测试），第 4 节完成后开 PR → `develop`，CI 绿后负责人审查。
+- 第 5 节：提交已按阶段拆分（配置检查/回调失败/冲突检测/关联功能/测试），PR → `develop` 由 compare 链接交付（本机无 gh CLI），CI 绿后负责人审查。
 - 第 6 节 Staging（须负责人同意后操作 Railway）：API 服务设 `GOOGLE_*`（与本地同一对凭据）、核对 `APP_ORIGIN`、重部署并验收；已知限制 `MAIL_PUBLIC_ENABLED=false` 会卡学校邮箱验证，如实记录。
 - 第 7 节生产（本次不执行，仅记录）：Web 自定义域名与 Authorized domains、同意屏幕发布、生产客户端与回调、`APP_MODE=real` 配置检查、`bootstrap_admin --google-sub` 建管理员。
-- 阶段报告：完成后写入 `docs/development-stages/stage-reports/`（含检查结果、截图、未完成项）。
+- 阶段报告：✅ 已写入 `docs/development-stages/stage-reports/2026-10-18-google-login.md`（含检查结果、联调四项、未完成项）。
 
 ## GroupProof 当前工程约定
 
