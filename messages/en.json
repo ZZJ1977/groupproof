@@ -344,6 +344,16 @@
       "sendCode": "Send code",
       "code": "Code",
       "verify": "Verify",
+      "googleTitle": "Google account",
+      "googleLinked": "Linked",
+      "googleBoundEmail": "Linked Google email: {email}",
+      "googleUnboundNote": "No Google account linked yet. Link it to sign in to this account with Google.",
+      "googleLink": "Link Google",
+      "googleUnlink": "Unlink",
+      "googleUnlinkDisabled": "To avoid being locked out, set a password and verify your login email before unlinking.",
+      "googleLinkSuccess": "Google account linked.",
+      "googleLinkFailed": "Linking failed. Please try again.",
+      "googleLinkElsewhere": "This Google account is already linked to another GroupProof account.",
       "errors": {
         "MAIL_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
         "RATE_LIMITED": "Too many attempts. Please try again later.",
@@ -351,7 +361,10 @@
         "CODE_EXPIRED": "Code expired. Please resend.",
         "CHALLENGE_INVALID": "This verification request is no longer valid. Please resend.",
         "INVALID_STATE": "This action is not needed for this account",
-        "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later."
+        "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later.",
+        "REAUTH_REQUIRED": "This action requires a recent sign-in. Please sign out and sign in again.",
+        "IDENTITY_ALREADY_LINKED": "A Google account is already linked to this account.",
+        "LAST_SIGN_IN_METHOD": "Set a password and verify your login email before unlinking Google."
       }
     },
     "progress": {

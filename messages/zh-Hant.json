@@ -344,6 +344,16 @@
       "sendCode": "發送驗證碼",
       "code": "驗證碼",
       "verify": "驗證",
+      "googleTitle": "Google 帳號",
+      "googleLinked": "已綁定",
+      "googleBoundEmail": "已綁定 Google 信箱：{email}",
+      "googleUnboundNote": "尚未關聯 Google 帳號。關聯後可用 Google 登入進入本帳戶。",
+      "googleLink": "關聯 Google",
+      "googleUnlink": "解除關聯",
+      "googleUnlinkDisabled": "為防止無法登入，解除關聯前需要先設定密碼並驗證登入信箱。",
+      "googleLinkSuccess": "Google 帳號關聯成功。",
+      "googleLinkFailed": "關聯失敗，請重試。",
+      "googleLinkElsewhere": "該 Google 帳號已關聯其他 GroupProof 帳戶，無法關聯到本帳戶。",
       "errors": {
         "MAIL_UNAVAILABLE": "郵件服務暫不可用，請稍後重試。",
         "RATE_LIMITED": "操作過於頻繁，請稍後再試。",
@@ -351,7 +361,10 @@
         "CODE_EXPIRED": "驗證碼已過期，請重新發送",
         "CHALLENGE_INVALID": "驗證請求已失效，請重新發送",
         "INVALID_STATE": "此帳戶無需該操作",
-        "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。"
+        "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。",
+        "REAUTH_REQUIRED": "該操作需要近期重新登入，請登出後重新登入再試。",
+        "IDENTITY_ALREADY_LINKED": "本帳戶已關聯 Google，無需重複關聯。",
+        "LAST_SIGN_IN_METHOD": "請先設定密碼並驗證登入信箱，再解除 Google 關聯。"
       }
     },
     "progress": {
