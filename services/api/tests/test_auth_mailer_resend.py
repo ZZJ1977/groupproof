@@ -196,6 +196,16 @@ def test_env_file_defaults_to_repo_root() -> None:
     assert (config._REPO_ROOT / ".env.example").is_file()
 
 
+def test_repo_root_handles_shallow_container_path() -> None:
+    """回归：镜像内路径 /app/app/auth/config.py 上方不足 4 层，不得抛 IndexError。"""
+    from pathlib import Path
+
+    from app.auth import config
+
+    assert config._repo_root(Path("/app/app/auth/config.py")) == Path("/")
+    assert config._repo_root(Path("/r/services/api/app/auth/config.py")) == Path("/r")
+
+
 def test_default_student_id_rules_accept_ten_digit_numeric(monkeypatch) -> None:
     """回归：默认学号规则（^\\S{4,20}$ / none）下，纯数字 10 位学号必须通过校验。"""
     monkeypatch.delenv("STUDENT_ID_PATTERN", raising=False)
