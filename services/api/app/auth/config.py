@@ -22,7 +22,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 AppMode = Literal["real", "dev", "mock"]
 
 # 仓库根目录 .env（稳定路径；可用 GROUPPROOF_ENV_FILE 覆盖）
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+# 本文件位于 services/api/app/auth/，仓库根目录需上溯 4 层（误算 3 层会指向 services/ 读空配置）
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_ENV_FILE = Path(
     __import__("os").environ.get("GROUPPROOF_ENV_FILE") or (_REPO_ROOT / ".env")
 )
