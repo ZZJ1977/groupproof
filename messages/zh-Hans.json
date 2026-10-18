@@ -100,7 +100,8 @@
     "error": {
       "cancelled": "已取消登录，可重试。",
       "failed": "登录失败，请重试。",
-      "unavailable": "服务暂不可用，请稍后重试。"
+      "unavailable": "服务暂不可用，请稍后重试。",
+      "accountExists": "该邮箱已有 GroupProof 账号，请先用密码登录，再到账户安全中关联 Google。"
     },
     "passwordLogin": {
       "title": "已注册账户登录",

@@ -17,11 +17,12 @@ from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
 from ..errors import AppError
 from ..guard import AuthContext, check_csrf, read_session, require_session
-from ..models import AuthIdentity, PasswordCredential, User, utcnow
+from ..models import AuthIdentity, PasswordCredential, SchoolEmailBinding, User, utcnow
 from ..security import (
     hash_password,
     needs_rehash,
     new_token,
+    normalize_email,
     normalize_login_identifier,
     safe_return_to,
     verify_password,
@@ -176,6 +177,20 @@ def google_callback(
     ).scalar_one_or_none()
     user: User | None = identity_row.user if identity_row else None
     if user is None:
+        # 已验证邮箱冲突：不自动建号，提示先用密码登录再在账户安全中关联（防邮箱被占时接管账号）
+        if identity.email_verified and identity.email:
+            try:
+                email_normalized = normalize_email(identity.email)
+            except ValueError:
+                email_normalized = ""
+            if email_normalized and _verified_account_conflict(db, email_normalized):
+                return _google_failure(
+                    db,
+                    settings,
+                    "account_exists",
+                    reason="verified_email_conflict",
+                    event="auth.google.account_exists",
+                )
         user = User(
             id=uuid4(),
             name=(identity.name or None) and identity.name.strip()[:80],
@@ -563,13 +578,16 @@ def _error_redirect(reason: str) -> RedirectResponse:
 
 
 def _google_failure(
-    db: DbSession, settings: Settings, error_param: str, *, reason: str
+    db: DbSession,
+    settings: Settings,
+    error_param: str,
+    *,
+    reason: str,
+    event: str = "auth.google.failed",
 ) -> RedirectResponse:
     """Google 登录失败统一出口：审计原因（不含 token）、清除 state Cookie、跳回登录页。"""
     try:
-        audit.record(
-            db, "auth.google.failed", result="failure", changed_fields=[f"reason:{reason}"]
-        )
+        audit.record(db, event, result="failure", changed_fields=[f"reason:{reason}"])
         db.commit()
     except Exception:  # noqa: BLE001 - 数据库不可用时也要把浏览器送回登录页
         db.rollback()
@@ -582,6 +600,25 @@ def _google_failure(
         samesite="lax",
     )
     return response
+
+
+def _verified_account_conflict(db: DbSession, email_normalized: str) -> bool:
+    """已验证登录邮箱或已验证学校邮箱占用检测；未验证邮箱不算冲突。"""
+    login_hit = db.execute(
+        select(PasswordCredential.user_id).where(
+            PasswordCredential.login_email_normalized == email_normalized,
+            PasswordCredential.login_email_verified_at.is_not(None),
+        )
+    ).scalar_one_or_none()
+    if login_hit is not None:
+        return True
+    school_hit = db.execute(
+        select(SchoolEmailBinding.user_id).where(
+            SchoolEmailBinding.school_email_normalized == email_normalized,
+            SchoolEmailBinding.verified_at.is_not(None),
+        )
+    ).scalar_one_or_none()
+    return school_hit is not None
 
 
 @router.get("/session")
