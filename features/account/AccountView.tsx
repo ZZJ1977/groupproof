@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AlertCircle, Info, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
 import { Feedback, PageHeader, Panel, SaveState, StatusBadge } from "@/components/common";
@@ -344,10 +344,96 @@ function SecurityPanel({ session, me, refetch }: { session: SessionDTO; me: MeDT
             </div>
           )}
         </Panel>
+        <GooglePanel session={session} me={me} refetch={refetch} />
         <PasswordPanel session={session} me={me} />
         <p className="text-[11px] text-[#8d9aad]">{tc("appName")}</p>
       </div>
     </div>
+  );
+}
+
+/* ---------------- Google 身份关联 / 解除 ---------------- */
+
+function GooglePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; refetch: () => unknown }) {
+  const t = useTranslations("account.security");
+  const search = useSearchParams();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const linked = Boolean(me.user.googleEmailBound);
+  const canUnlink = Boolean(me.user.passwordLoginEnabled);
+  const linkedNow = search.get("linked") === "google";
+  const linkError = search.get("error");
+
+  const link = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.linkGoogle(session.csrfToken ?? "");
+      window.location.href = result.authorizeUrl;
+    } catch (err) {
+      setError(err instanceof ApiError ? t(`errors.${err.code}`) : t("errors.SERVICE_UNAVAILABLE"));
+      setPending(false);
+    }
+  };
+
+  const unlink = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      await authClient.unlinkGoogle(session.csrfToken ?? "");
+      void refetch();
+    } catch (err) {
+      setError(err instanceof ApiError ? t(`errors.${err.code}`) : t("errors.SERVICE_UNAVAILABLE"));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Panel title={t("googleTitle")}>
+      {linked ? (
+        <div>
+          <p className="flex items-center gap-2 text-[12px] text-[#52627b]">
+            <StatusBadge status="verified" label={t("googleLinked")} />
+            {me.user.googleEmail ? t("googleBoundEmail", { email: me.user.googleEmail }) : t("googleLinked")}
+          </p>
+          {canUnlink ? (
+            <Button variant="outline" className="mt-3" onClick={() => void unlink()} loading={pending}>
+              {t("googleUnlink")}
+            </Button>
+          ) : (
+            <p className="mt-3 text-[12px] leading-6 text-[#8d9aad]">{t("googleUnlinkDisabled")}</p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <p className="text-[12px] leading-6 text-[#6f7f95]">{t("googleUnboundNote")}</p>
+          <Button className="mt-3" onClick={() => void link()} loading={pending}>
+            {t("googleLink")}
+          </Button>
+        </div>
+      )}
+      {linkedNow && (
+        <p className="mt-2 text-[12px] text-[#2f9e63]" role="status">
+          {t("googleLinkSuccess")}
+        </p>
+      )}
+      {linkError === "identity_linked_elsewhere" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkElsewhere")}
+        </p>
+      )}
+      {linkError === "failed" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkFailed")}
+        </p>
+      )}
+      {error && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {error}
+        </p>
+      )}
+    </Panel>
   );
 }
 

@@ -247,6 +247,13 @@ class OAuthTransaction(Base):
     nonce: Mapped[str] = mapped_column(String(128), nullable=False)
     code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
     return_to: Mapped[str | None] = mapped_column(String(512))
+    # 事务用途：login=登录；link=已登录用户在账户安全中关联 Google（此时 user_id 必填）
+    purpose: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'login'"), default="login"
+    )
+    user_id: Mapped[Any | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )

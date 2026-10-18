@@ -17,7 +17,14 @@ from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
 from ..errors import AppError
 from ..guard import AuthContext, check_csrf, read_session, require_session
-from ..models import AuthIdentity, PasswordCredential, SchoolEmailBinding, User, utcnow
+from ..models import (
+    AuthIdentity,
+    OAuthTransaction,
+    PasswordCredential,
+    SchoolEmailBinding,
+    User,
+    utcnow,
+)
 from ..security import (
     hash_password,
     needs_rehash,
@@ -165,6 +172,10 @@ def google_callback(
         return _google_failure(db, settings, "unavailable", reason="service_unavailable")
     except Exception:  # noqa: BLE001 - 服务故障不回退 Mock，统一提示稍后重试
         return _google_failure(db, settings, "unavailable", reason="service_unavailable")
+
+    # 关联事务：只建绑定行，不建用户、不轮换会话
+    if transaction.purpose == "link":
+        return _complete_google_link(db, settings, request, transaction, identity)
 
     # provider/issuer/sub 查绑定；找不到则事务创建待注册 User + AuthIdentity
     # （唯一约束保证并发只建一个）
@@ -584,6 +595,7 @@ def _google_failure(
     *,
     reason: str,
     event: str = "auth.google.failed",
+    redirect_to: str | None = None,
 ) -> RedirectResponse:
     """Google 登录失败统一出口：审计原因（不含 token）、清除 state Cookie、跳回登录页。"""
     try:
@@ -591,7 +603,9 @@ def _google_failure(
         db.commit()
     except Exception:  # noqa: BLE001 - 数据库不可用时也要把浏览器送回登录页
         db.rollback()
-    response = _error_redirect(error_param)
+    response = (
+        _error_redirect(error_param) if redirect_to is None else RedirectResponse(redirect_to, 302)
+    )
     response.delete_cookie(
         settings.oauth_cookie_name,
         path="/",
@@ -619,6 +633,63 @@ def _verified_account_conflict(db: DbSession, email_normalized: str) -> bool:
         )
     ).scalar_one_or_none()
     return school_hit is not None
+
+
+def _complete_google_link(
+    db: DbSession,
+    settings: Settings,
+    request: Request,
+    transaction: OAuthTransaction,
+    identity: google_oidc.GoogleIdentity,
+) -> RedirectResponse:
+    """purpose=link 的回调：绑定到发起事务的用户，不建用户、不轮换会话。"""
+    context = read_session(request, db)
+    if context is None or transaction.user_id is None or context.user.id != transaction.user_id:
+        return _google_failure(
+            db,
+            settings,
+            "failed",
+            reason="link_session_mismatch",
+            redirect_to="/account/security?error=failed",
+        )
+    identity_row = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == "google",
+            AuthIdentity.issuer == identity.issuer,
+            AuthIdentity.subject == identity.subject,
+        )
+    ).scalar_one_or_none()
+    if identity_row is not None and identity_row.user_id != context.user.id:
+        # 该 Google 身份已绑定其他账号：不合并、不泄露对方资料
+        return _google_failure(
+            db,
+            settings,
+            "identity_linked_elsewhere",
+            reason="identity_linked_elsewhere",
+            redirect_to="/account/security?error=identity_linked_elsewhere",
+        )
+    if identity_row is None:
+        db.add(
+            AuthIdentity(
+                id=new_token()[:32],
+                provider="google",
+                issuer=identity.issuer,
+                subject=identity.subject,
+                user_id=context.user.id,
+                google_email=identity.email,
+                last_authenticated_at=utcnow(),
+            )
+        )
+    audit.record(
+        db, "auth.google.linked", actor_id=context.user.id, changed_fields=["auth_identities"]
+    )
+    db.commit()
+    response = RedirectResponse("/account/security?linked=google", status_code=302)
+    response.delete_cookie(
+        settings.oauth_cookie_name, path="/", secure=settings.is_real, httponly=True, samesite="lax"
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @router.get("/session")

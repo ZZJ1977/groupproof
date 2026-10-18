@@ -797,6 +797,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/identities/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Google Identity
+         * @description 解除 Google 关联：必须另有已验证登录邮箱的密码凭据，防止把自己锁在门外。
+         */
+        delete: operations["unlink_google_identity_api_v1_me_identities_google_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/identities/google/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Google Identity
+         * @description 发起关联 Google：要求近期认证；返回授权地址，由前端整页跳转。
+         */
+        post: operations["link_google_identity_api_v1_me_identities_google_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/login-email/challenges": {
         parameters: {
             query?: never;
@@ -5851,6 +5891,7 @@ export interface operations {
         parameters: {
             query?: {
                 code?: string | null;
+                error?: string | null;
                 state?: string | null;
             };
             header?: never;
@@ -7103,6 +7144,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unlink_google_identity_api_v1_me_identities_google_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    link_google_identity_api_v1_me_identities_google_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
