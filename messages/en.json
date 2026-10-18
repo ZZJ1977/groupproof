@@ -100,7 +100,8 @@
     "error": {
       "cancelled": "Sign-in cancelled. You can try again.",
       "failed": "Sign-in failed. Please try again.",
-      "unavailable": "Service temporarily unavailable. Please try again later."
+      "unavailable": "Service temporarily unavailable. Please try again later.",
+      "accountExists": "A GroupProof account already exists for this email. Sign in with your password first, then link Google from account security."
     },
     "passwordLogin": {
       "title": "Sign in with your account",
