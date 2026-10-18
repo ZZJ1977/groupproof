@@ -188,6 +188,14 @@ def test_dev_mode_only_warns_on_google_redirect_mismatch(caplog) -> None:
     assert any("GOOGLE_REDIRECT_URI" in message for message in caplog.messages)
 
 
+def test_env_file_defaults_to_repo_root() -> None:
+    """回归：默认 .env 必须解析到仓库根目录（曾误指向 services/ 使 pydantic 读空配置）。"""
+    from app.auth import config
+
+    assert (config._REPO_ROOT / "services" / "api" / "app").is_dir()
+    assert (config._REPO_ROOT / ".env.example").is_file()
+
+
 def test_default_student_id_rules_accept_ten_digit_numeric(monkeypatch) -> None:
     """回归：默认学号规则（^\\S{4,20}$ / none）下，纯数字 10 位学号必须通过校验。"""
     monkeypatch.delenv("STUDENT_ID_PATTERN", raising=False)
