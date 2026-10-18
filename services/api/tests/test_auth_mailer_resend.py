@@ -10,8 +10,10 @@ import logging
 
 import pytest
 
+from app.auth import security
 from app.auth.config import Settings
 from app.auth.services import mailer
+from app.auth.services.registration import profile_field_errors
 
 
 class FakeResponse:
@@ -184,6 +186,27 @@ def test_dev_mode_only_warns_on_google_redirect_mismatch(caplog) -> None:
         )
     assert settings.google_configured is True
     assert any("GOOGLE_REDIRECT_URI" in message for message in caplog.messages)
+
+
+def test_default_student_id_rules_accept_ten_digit_numeric(monkeypatch) -> None:
+    """回归：默认学号规则（^\\S{4,20}$ / none）下，纯数字 10 位学号必须通过校验。"""
+    monkeypatch.delenv("STUDENT_ID_PATTERN", raising=False)
+    monkeypatch.delenv("STUDENT_ID_EMAIL_RULE", raising=False)
+    settings = Settings(app_mode="dev")
+    assert settings.student_id_pattern == r"^\S{4,20}$"
+    assert settings.student_id_email_rule == "none"
+    monkeypatch.setattr(security, "get_settings", lambda: settings)
+    assert security.student_id_valid("1240025428", "1240025428@student.must.edu.mo") is True
+    assert (
+        profile_field_errors(
+            name="测试同学",
+            username="tester01",
+            student_id="1240025428",
+            requested_identity="student",
+            school_email="1240025428@student.must.edu.mo",
+        )
+        == {}
+    )
 
 
 def test_real_mode_rejects_capture_mailer() -> None:
