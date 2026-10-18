@@ -202,11 +202,19 @@ def google_callback(
                     reason="verified_email_conflict",
                     event="auth.google.account_exists",
                 )
+        # users.email 仅为业务展示/检索镜像（全局唯一约束），身份事实保存在 auth_identities；
+        # 镜像被其他账号占用（含未验证邮箱）时放弃镜像，照常建号，不合并账户
+        mirror_email = identity.email
+        if mirror_email:
+            taken = db.execute(
+                select(User.id).where(User.email == mirror_email)
+            ).scalar_one_or_none()
+            if taken is not None:
+                mirror_email = None
         user = User(
             id=uuid4(),
             name=(identity.name or None) and identity.name.strip()[:80],
-            # users.email 仅为业务展示/检索镜像；Google 身份事实保存在 auth_identities
-            email=identity.email,
+            email=mirror_email,
             account_status="enabled",
         )
         identity_row = AuthIdentity(
