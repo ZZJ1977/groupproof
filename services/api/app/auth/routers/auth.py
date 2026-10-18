@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
-from ..config import get_settings
+from ..config import Settings, get_settings
 from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
 from ..errors import AppError
@@ -108,9 +108,9 @@ def google_start(
 ) -> RedirectResponse:
     settings = get_settings()
     # 入口可见（google_available）与实际可用（google_configured）分开：
-    # 未配置凭据时点按钮返回明确的服务暂不可用，不发起外部请求
+    # 未配置凭据时点按钮不发起外部请求，整页跳转场景下统一回登录页提示服务暂不可用
     if not settings.google_available or not settings.google_configured:
-        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google_oauth"})
+        return _google_failure(db, settings, "unavailable", reason="not_configured")
     state, transaction = google_oidc.create_transaction(db, safe_return_to(returnTo))
     db.commit()
     url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
@@ -133,31 +133,37 @@ def google_callback(
     request: Request,
     code: str | None = None,
     state: str | None = None,
+    error: str | None = None,
     db: DbSession = Depends(get_db),
 ) -> RedirectResponse:
     settings = get_settings()
+    # Google 侧回调错误：用户拒绝授权按“取消”处理，其余按登录失败处理
+    if error == "access_denied":
+        return _google_failure(db, settings, "cancelled", reason="access_denied")
+    if error:
+        return _google_failure(db, settings, "failed", reason="provider_error")
     browser_state = request.cookies.get(settings.oauth_cookie_name)
     if not state or not browser_state or not hmac.compare_digest(state, browser_state):
-        raise AppError("UNAUTHENTICATED", 401, params={"reason": "oauth_browser_binding"})
-    transaction = google_oidc.consume_transaction(db, state)
+        return _google_failure(db, settings, "failed", reason="oauth_browser_binding")
+    try:
+        transaction = google_oidc.consume_transaction(db, state)
+    except AppError:
+        return _google_failure(db, settings, "failed", reason="state_invalid")
+    except Exception:  # noqa: BLE001 - 数据库不可用统一回登录页提示稍后重试
+        return _google_failure(db, settings, "unavailable", reason="database_unavailable")
     if not code:
-        audit.record(db, "auth.google.cancelled", result="failure")
-        db.commit()
-        response = _error_redirect("cancelled")
-        response.delete_cookie(
-            settings.oauth_cookie_name,
-            path="/",
-            secure=settings.is_real,
-            httponly=True,
-            samesite="lax",
-        )
-        return response
+        return _google_failure(db, settings, "cancelled", reason="code_missing")
     try:
         identity = google_oidc.exchange_and_verify(transaction, code)
-    except AppError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - 服务故障不回退 Mock，返回可重试的服务不可用
-        raise AppError("SERVICE_UNAVAILABLE", 503, params={"service": "google_oauth"}) from exc
+    except AppError as exc:
+        # 401 类（state/nonce/签名/audience）→ 登录失败；503 类（Google/数据库）→ 稍后重试
+        if exc.status == 401:
+            return _google_failure(
+                db, settings, "failed", reason=str(exc.params.get("reason") or "verify_failed")
+            )
+        return _google_failure(db, settings, "unavailable", reason="service_unavailable")
+    except Exception:  # noqa: BLE001 - 服务故障不回退 Mock，统一提示稍后重试
+        return _google_failure(db, settings, "unavailable", reason="service_unavailable")
 
     # provider/issuer/sub 查绑定；找不到则事务创建待注册 User + AuthIdentity
     # （唯一约束保证并发只建一个）
@@ -553,6 +559,28 @@ def password_reset(
 def _error_redirect(reason: str) -> RedirectResponse:
     response = RedirectResponse(f"/login?error={reason}", status_code=302)
     response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+def _google_failure(
+    db: DbSession, settings: Settings, error_param: str, *, reason: str
+) -> RedirectResponse:
+    """Google 登录失败统一出口：审计原因（不含 token）、清除 state Cookie、跳回登录页。"""
+    try:
+        audit.record(
+            db, "auth.google.failed", result="failure", changed_fields=[f"reason:{reason}"]
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001 - 数据库不可用时也要把浏览器送回登录页
+        db.rollback()
+    response = _error_redirect(error_param)
+    response.delete_cookie(
+        settings.oauth_cookie_name,
+        path="/",
+        secure=settings.is_real,
+        httponly=True,
+        samesite="lax",
+    )
     return response
 
 
