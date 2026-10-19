@@ -1,7 +1,7 @@
 """Add link purpose and target user to OAuth transactions.
 
-Revision ID: 0014
-Revises: 0013
+Revision ID: 0015
+Revises: 0014
 
 - oauth_transactions.purpose：事务用途 login|link，非空，默认 'login'。
 - oauth_transactions.user_id：purpose=link 时的目标用户，可空，随用户级联删除。
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0014"
-down_revision = "0013"
+revision = "0015"
+down_revision = "0014"
 branch_labels = None
 depends_on = None
 
