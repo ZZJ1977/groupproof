@@ -153,6 +153,48 @@ Responsive / A11y / UX Review ────────────┘
 - 正式版本与草稿分开，确认绑定版本，课程变更按真实差异处理。当前仍是 Mock 前端与接口设计，真实服务接入状态必须明确。
 - 阶段文档是实施规格，不是已经实现的功能。按用户指定范围推进，阶段验收后记录实际变更、检查结果、限制和下一阶段接口。
 
+## 任务进度：Google 登录打通（2026-10-18，分支 feat/google-login）
+
+执行依据：`~/GroupProof/docs/plans/2026-10-18-google-login-agent-guide.md`（只读）。基线 GitHub `develop`（22c0d1a）；认证后端在 `services/api/app/auth/`，`server/` 仅参考不改。
+
+**已完成（提交均在 feat/google-login；每次完成后跑 ruff format/check、pytest、npm lint/typecheck/build，当前 892 passed / 0 skipped 全绿）**：
+
+- 第 2 节本地配置：`.env.example` 回调默认值改同源 `:3000`；本地 `.env` 存 Google 凭据（已确认 gitignore）；真实 Google 登录冒烟通过。
+- 3.1 回调地址启动检查（`25da628`）：`google_configured` 时校验 `GOOGLE_REDIRECT_URI == APP_ORIGIN + /api/v1/auth/google/callback`；real 模式失败、dev 告警。
+- 3.2 回调失败统一回登录页（`0acf31d`）：`error=access_denied`→cancelled；state/验签 401 类→failed；503 类→unavailable；失败路径统一审计 `auth.google.failed` 并清 state Cookie；`google_start` 未配置也 302。
+- 3.3 邮箱冲突不自动建号（`c5cfcec`）：已验证登录/学校邮箱冲突→`/login?error=account_exists`（审计 `auth.google.account_exists`）；未验证邮箱不算冲突。
+- 3.4 账户安全关联/解除（`876ee4b`）：迁移 0014（`oauth_transactions.purpose/user_id`，PG 上验证 upgrade/check/downgrade）；`POST /api/v1/me/identities/google/link`（近期认证，否则 `REAUTH_REQUIRED`）；`DELETE /api/v1/me/identities/google`（无密码或登录邮箱未验证→`LAST_SIGN_IN_METHOD`）；回调 purpose=link 只建绑定不换会话；`GET /api/v1/me` 增 `googleEmail`；前端 AccountView 关联面板、三语文案、openapi 重新导出。
+- 3.5 测试（`7a0c09f`）：`tests/oidc_stub.py` + `tests/test_auth_google.py` 18 用例覆盖指南九组场景；顺带修复 `users.email` 唯一约束导致的建号 503（`8b5051a`，邮箱镜像尽力而为）。
+
+**联调期间定位并修复的坑（均已提交 + 回归测试）**：
+
+- `73aafc8`/`d494b60`：学号误拒根因是启动时用 `source .env`——bash 会吃掉反斜杠（`^\S{4,20}$` 变 `^S{4,20}$`），且环境变量优先于 .env；前端 `fieldError` 原查 `account.profile.<code>` 改查 `errors.<code>`，并补齐三语错误文案。
+- `fb97791`：`config.py` 的 `_REPO_ROOT` 少上溯一层指向 `services/`，pydantic 读不到根 `.env`（Google 登录“服务暂不可用”的根因）。
+
+**运行约定**：
+
+- 本地启动 API 一律用 `scripts/dev-backend.sh` 或直接 `uvicorn app.main:app`（pydantic 自读仓库根 `.env`）；**禁止 `source .env`**（反斜杠值会被 bash 破坏）。
+- 后端测试需本地 PostgreSQL（`docker compose up -d postgres redis`）并设置 `DATABASE_URL`、`C_TEST_DATABASE_URL`、`C_EXECUTION_TEST_DATABASE_URL`，否则部分用例跳过。
+- capture 模式的验证码写 `email_outbox` 表（不是 `.mail-capture/` 目录）。
+
+**第 4 节本地联调（四项全部通过 ✅，负责人浏览器实操 + 库/日志核验；按负责人决定未留截图）**：
+
+1. 新 Google 账号→学生入台 ✅（含学号 1240025428 保存、学校邮箱验证、进入工作台）；
+2. 教师流程 ✅（教师资料 + @must.edu.mo 测试邮箱、教师申请、服务端 bootstrap_admin + 审核接口 approve）；
+3. 密码账号关联 Google ✅（scratchuser01 关联后 Google 登录进入同一账号）；
+4. Google 取消/回调重放 ✅（分别提示“已取消登录”/“登录失败”，不再返回 JSON）。
+
+联调辅助约定：每个场景开始前删除绑定负责人 Google 账号的本地测试用户（报 ID 后删，连同附属记录），同一 Google 账号可复测。
+
+**已完成收尾**：阶段报告 `docs/development-stages/stage-reports/2026-10-18-google-login.md`（含验证结果、约定、遗留项）。
+
+**待办**：
+
+- 第 5 节：提交已按阶段拆分（配置检查/回调失败/冲突检测/关联功能/测试），PR → `develop` 由 compare 链接交付（本机无 gh CLI），CI 绿后负责人审查。
+- 第 6 节 Staging（须负责人同意后操作 Railway）：API 服务设 `GOOGLE_*`（与本地同一对凭据）、核对 `APP_ORIGIN`、重部署并验收；已知限制 `MAIL_PUBLIC_ENABLED=false` 会卡学校邮箱验证，如实记录。
+- 第 7 节生产（本次不执行，仅记录）：Web 自定义域名与 Authorized domains、同意屏幕发布、生产客户端与回调、`APP_MODE=real` 配置检查、`bootstrap_admin --google-sub` 建管理员。
+- 阶段报告：✅ 已写入 `docs/development-stages/stage-reports/2026-10-18-google-login.md`（含检查结果、联调四项、未完成项）。
+
 ## GroupProof 当前工程约定
 
 - 当前工程为 Next.js App Router、React、TypeScript、Tailwind CSS 前端；使用本地 shadcn/ui 风格组件。当前交付范围和限制见 `README.md`、`FRONTEND_IMPLEMENTATION_PLAN.md`、`FRONTEND_STATUS.md`。

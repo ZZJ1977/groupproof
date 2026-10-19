@@ -9584,6 +9584,22 @@
               ],
               "title": "State"
             }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
           }
         ],
         "responses": {
@@ -11690,6 +11706,46 @@
         "tags": [
           "c",
           "c-daily"
+        ]
+      }
+    },
+    "/api/v1/me/identities/google": {
+      "delete": {
+        "description": "解除 Google 关联：必须另有已验证登录邮箱的密码凭据，防止把自己锁在门外。",
+        "operationId": "unlink_google_identity_api_v1_me_identities_google_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Unlink Google Identity",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/identities/google/link": {
+      "post": {
+        "description": "发起关联 Google：要求近期认证；返回授权地址，由前端整页跳转。",
+        "operationId": "link_google_identity_api_v1_me_identities_google_link_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Link Google Identity",
+        "tags": [
+          "me"
         ]
       }
     },
