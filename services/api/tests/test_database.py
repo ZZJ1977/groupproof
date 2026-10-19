@@ -53,6 +53,15 @@ CORE_TABLES = {
     "password_credentials",
     "pre_registration_requests",
     "email_outbox",
+    "integrity_checks",
+    "verification_runs",
+    "criterion_results",
+    "contribution_calculations",
+    "contribution_snapshots",
+    "contribution_items",
+    "contribution_item_tasks",
+    "reports",
+    "report_snapshots",
 }
 
 
