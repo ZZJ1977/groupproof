@@ -100,7 +100,8 @@
     "error": {
       "cancelled": "已取消登录，可重试。",
       "failed": "登录失败，请重试。",
-      "unavailable": "服务暂不可用，请稍后重试。"
+      "unavailable": "服务暂不可用，请稍后重试。",
+      "accountExists": "该邮箱已有 GroupProof 账号，请先用密码登录，再到账户安全中关联 Google。"
     },
     "passwordLogin": {
       "title": "已注册账户登录",
@@ -285,7 +286,13 @@
         "RATE_LIMITED": "操作过于频繁，请稍后再试",
         "EMAIL_CONFLICT": "该学校邮箱已被其他账户验证，如需合并请联系管理员",
         "REAUTH_REQUIRED": "需要近期重新认证后才能更换邮箱",
-        "AUTH_UNAVAILABLE": "邮件服务暂不可用，请稍后重试"
+        "AUTH_UNAVAILABLE": "邮件服务暂不可用，请稍后重试",
+        "MAIL_UNAVAILABLE": "邮件服务暂不可用，请稍后重试。",
+        "SERVICE_UNAVAILABLE": "服务暂不可用，请稍后重试。",
+        "INVALID_STATE": "此账户无需该操作",
+        "REGISTRATION_REQUIRED": "请先完善个人资料再验证学校邮箱。",
+        "NETWORK_ERROR": "暂时无法连接服务，请稍后重试。",
+        "VERSION_CONFLICT": "资料已被其他操作更新，请刷新后重试。"
       }
     },
     "status": {
@@ -343,6 +350,16 @@
       "sendCode": "发送验证码",
       "code": "验证码",
       "verify": "验证",
+      "googleTitle": "Google 账号",
+      "googleLinked": "已绑定",
+      "googleBoundEmail": "已绑定 Google 邮箱：{email}",
+      "googleUnboundNote": "尚未关联 Google 账号。关联后可用 Google 登录进入本账号。",
+      "googleLink": "关联 Google",
+      "googleUnlink": "解除关联",
+      "googleUnlinkDisabled": "为防止无法登录，解除关联前需要先设置密码并验证登录邮箱。",
+      "googleLinkSuccess": "Google 账号关联成功。",
+      "googleLinkFailed": "关联失败，请重试。",
+      "googleLinkElsewhere": "该 Google 账号已关联其他 GroupProof 账号，无法关联到本账号。",
       "errors": {
         "MAIL_UNAVAILABLE": "邮件服务暂不可用，请稍后重试。",
         "RATE_LIMITED": "操作过于频繁，请稍后再试。",
@@ -350,7 +367,11 @@
         "CODE_EXPIRED": "验证码已过期，请重新发送",
         "CHALLENGE_INVALID": "验证请求已失效，请重新发送",
         "INVALID_STATE": "此账户无需该操作",
-        "SERVICE_UNAVAILABLE": "服务暂不可用，请稍后重试。"
+        "SERVICE_UNAVAILABLE": "服务暂不可用，请稍后重试。",
+        "REAUTH_REQUIRED": "该操作需要近期重新登录，请退出后重新登录再试。",
+        "IDENTITY_ALREADY_LINKED": "本账号已关联 Google，无需重复关联。",
+        "LAST_SIGN_IN_METHOD": "请先设置密码并验证登录邮箱，再解除 Google 关联。",
+        "NETWORK_ERROR": "暂时无法连接服务，请稍后重试。"
       }
     },
     "progress": {

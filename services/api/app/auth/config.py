@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -20,8 +21,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppMode = Literal["real", "dev", "mock"]
 
+
 # 仓库根目录 .env（稳定路径；可用 GROUPPROOF_ENV_FILE 覆盖）
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+# 本文件位于 services/api/app/auth/，仓库根目录需上溯 4 层（误算 3 层会指向 services/ 读空配置）。
+# 容器镜像里本文件是 /app/app/auth/config.py，上面不足 4 层，取到文件系统根为止，
+# 此时没有 .env，配置完全来自环境变量。
+def _repo_root(config_file: Path) -> Path:
+    parents = config_file.parents
+    return parents[min(4, len(parents) - 1)]
+
+
+_REPO_ROOT = _repo_root(Path(__file__).resolve())
 _DEFAULT_ENV_FILE = Path(
     __import__("os").environ.get("GROUPPROOF_ENV_FILE") or (_REPO_ROOT / ".env")
 )
@@ -188,6 +198,19 @@ class Settings(BaseSettings):
                     "APP_MODE=real 必须配置 EMAIL_CHALLENGE_HMAC_KEY（生成：openssl rand -hex 32）"
                 )
             self.email_challenge_hmac_key = "dev-only-insecure-key"
+
+        # 回调地址必须是 Web 站点同源地址（浏览器从 Web 进出，/api/v1/* 由同源代理转发）
+        if self.google_configured:
+            expected_redirect_uri = self.app_origin.rstrip("/") + "/api/v1/auth/google/callback"
+            if self.google_redirect_uri != expected_redirect_uri:
+                message = (
+                    "GOOGLE_REDIRECT_URI 必须是 Web 站点同源地址，应填 "
+                    f"{expected_redirect_uri}；"
+                    "不能填 API 服务域名或 :8000 端口（回调会落到 API 上导致 404）"
+                )
+                if self.is_real:
+                    raise RuntimeError(message)
+                logging.warning(message)
 
         if self.is_real:
             # 核心依赖：数据库、HTTPS、核心密钥；缺失直接启动失败
