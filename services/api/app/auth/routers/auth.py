@@ -120,8 +120,12 @@ def google_start(
     if not settings.google_available or not settings.google_configured:
         return _google_failure(db, settings, "unavailable", reason="not_configured")
     state, transaction = google_oidc.create_transaction(db, safe_return_to(returnTo))
+    try:
+        url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
+    except Exception:  # noqa: BLE001 - discovery/provider failures return to login as unavailable
+        db.rollback()
+        return _google_failure(db, settings, "unavailable", reason="provider_unavailable")
     db.commit()
-    url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
     response = RedirectResponse(url, status_code=302)
     response.set_cookie(
         settings.oauth_cookie_name,
