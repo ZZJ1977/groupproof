@@ -6,6 +6,7 @@ type Schema = components["schemas"];
 export type CourseQuery = paths["/api/v1/admin/courses"]["get"]["parameters"]["query"];
 export type AccessQuery = paths["/api/v1/admin/access-requests"]["get"]["parameters"]["query"];
 export type AuditQuery = paths["/api/v1/admin/audit-logs"]["get"]["parameters"]["query"];
+export type AuthAuditQuery = paths["/api/v1/admin/auth-audit-logs"]["get"]["parameters"]["query"];
 export type UsageQuery = paths["/api/v1/admin/ai-usage"]["get"]["parameters"]["query"];
 
 function record(value: unknown): Record<string, unknown> {
@@ -52,6 +53,12 @@ export function createGovernanceClient(client = createApiClient()) {
     },
     async auditLog(id: string) {
       return unwrap(await client.GET("/api/v1/admin/audit-logs/{record_id}", { params: { path: { record_id: id } } }));
+    },
+    async authAuditLogs(query: AuthAuditQuery = {}) {
+      return unwrap(await client.GET("/api/v1/admin/auth-audit-logs", { params: { query } }));
+    },
+    async authAuditLog(id: string) {
+      return unwrap(await client.GET("/api/v1/admin/auth-audit-logs/{record_id}", { params: { path: { record_id: id } } }));
     },
     async usage(query: UsageQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/ai-usage", { params: { query } }));

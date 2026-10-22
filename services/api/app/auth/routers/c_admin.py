@@ -1,11 +1,13 @@
 """C7 治理 UI 的身份目录/停用/审核接口（基于统一认证服务，无 UUID 转译）。"""
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
+from sqlalchemy.orm import aliased
 
 from app.modules.c.school_email import has_verified_school_email, school_email_binding_verified
 
@@ -147,15 +149,19 @@ def disable(
 def applications(
     request: Request,
     page: int = Query(default=1, ge=1, le=1_000_000),
+    status: Literal["pending", "approved", "rejected", "all"] = "pending",
     context: AuthContext = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
+    reviewer = aliased(User)
     query = (
-        select(TeacherApplication, User, SchoolEmailBinding)
+        select(TeacherApplication, User, SchoolEmailBinding, reviewer.name)
         .join(User, User.id == TeacherApplication.user_id)
         .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
-        .where(TeacherApplication.status == "pending")
+        .outerjoin(reviewer, reviewer.id == TeacherApplication.reviewer_id)
     )
+    if status != "all":
+        query = query.where(TeacherApplication.status == status)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     items = [
         {
@@ -168,14 +174,33 @@ def applications(
             "createdAt": row.created_at.isoformat(),
             "emailVerified": school_email_binding_verified(binding),
             "emailDomain": (binding.school_email or "").rsplit("@", 1)[-1] if binding else "",
+            # Only the saved review-basis allowlist is projected. Current user
+            # data must never be substituted for missing historical fields.
+            "submittedName": snapshot_text(row, "name"),
+            "submittedIdentity": snapshot_text(row, "requestedIdentity"),
+            "submittedEmailDomain": snapshot_email_domain(row),
+            "reviewedAt": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "reviewerName": reviewer_name,
+            "reviewReason": row.reason,
         }
-        for row, user, binding in db.execute(
+        for row, user, binding, reviewer_name in db.execute(
             query.order_by(TeacherApplication.created_at, TeacherApplication.id)
             .offset((page - 1) * 10)
             .limit(10)
+            .execution_options(populate_existing=True)
         )
     ]
     return response({"items": items, "total": total, "page": page, "pageSize": 10})
+
+
+def snapshot_text(row: TeacherApplication, key: str) -> str | None:
+    value = row.snapshot.get(key) if isinstance(row.snapshot, dict) else None
+    return value if isinstance(value, str) else None
+
+
+def snapshot_email_domain(row: TeacherApplication) -> str | None:
+    email = snapshot_text(row, "schoolEmailNormalized")
+    return email.rsplit("@", 1)[-1] if email and "@" in email else None
 
 
 @router.post("/teacher-applications/{application_id}/review")
