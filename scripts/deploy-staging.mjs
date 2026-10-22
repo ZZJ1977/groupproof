@@ -25,7 +25,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const nodes = (connection) => (connection?.edges ?? []).map((edge) => edge.node);
 function railway(args, json = false) {
   const result = spawnSync("railway", args, { encoding: "utf8", stdio: json ? ["ignore", "pipe", "pipe"] : "inherit" });
-  if (result.status !== 0) throw new Error(`Railway ${args[0]} failed`);
+  if (result.status !== 0) {
+    // The CLI's stderr names the cause (expired token, missing project access); it never echoes the token itself.
+    const reason = (result.stderr ?? "").trim() || result.error?.message || `exit ${result.status}`;
+    throw new Error(`Railway ${args[0]} failed: ${reason}`);
+  }
   return json ? JSON.parse(result.stdout) : null;
 }
 async function graphql(query, variables = {}) {
