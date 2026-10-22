@@ -176,6 +176,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/auth-audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth Audit Collection */
+        get: operations["auth_audit_collection_api_v1_admin_auth_audit_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auth-audit-logs/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth Audit Detail */
+        get: operations["auth_audit_detail_api_v1_admin_auth_audit_logs__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/courses": {
         parameters: {
             query?: never;
@@ -2136,6 +2170,66 @@ export interface components {
              */
             target_type: "user" | "course" | "project" | "task" | "evidence" | "system";
         };
+        /** AuthAuditLogDTO */
+        AuthAuditLogDTO: {
+            /** Action */
+            action: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.cancelled" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | "unrecognized";
+            /** Actor Id */
+            actor_id: string | "system" | null;
+            /** Changed Fields */
+            changed_fields: string[];
+            /** Id */
+            id: string;
+            /** Metadata Redacted */
+            metadata_redacted: boolean;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "success" | "failure" | "unknown";
+            /**
+             * Scope
+             * @default authentication
+             * @constant
+             */
+            scope: "authentication";
+            /**
+             * Source
+             * @default auth_audit_events
+             * @constant
+             */
+            source: "auth_audit_events";
+            /** Target User Id */
+            target_user_id: string | null;
+        };
+        /** AuthAuditPageDTO */
+        AuthAuditPageDTO: {
+            /** Items */
+            items: components["schemas"]["AuthAuditLogDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /**
+             * Scope
+             * @default authentication
+             * @constant
+             */
+            scope: "authentication";
+            /**
+             * Source
+             * @default auth_audit_events
+             * @constant
+             */
+            source: "auth_audit_events";
+            /** Total */
+            total: number;
+        };
         /** CContextActorDTO */
         CContextActorDTO: {
             /**
@@ -3996,6 +4090,16 @@ export interface components {
             data: components["schemas"]["AuditRecord"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[AuthAuditLogDTO] */
+        SuccessResponse_AuthAuditLogDTO_: {
+            data: components["schemas"]["AuthAuditLogDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AuthAuditPageDTO] */
+        SuccessResponse_AuthAuditPageDTO_: {
+            data: components["schemas"]["AuthAuditPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[CourseDetailDTO] */
         SuccessResponse_CourseDetailDTO_: {
             data: components["schemas"]["CourseDetailDTO"];
@@ -5187,6 +5291,169 @@ export interface operations {
             };
         };
     };
+    auth_audit_collection_api_v1_admin_auth_audit_logs_get: {
+        parameters: {
+            query?: {
+                action?: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.cancelled" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | null;
+                actor_id?: string | "system" | null;
+                page?: number;
+                page_size?: number;
+                result?: ("success" | "failure") | null;
+                since?: string | null;
+                target_user_id?: string | null;
+                until?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AuthAuditPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    auth_audit_detail_api_v1_admin_auth_audit_logs__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AuthAuditLogDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     course_list_api_v1_admin_courses_get: {
         parameters: {
             query?: {
@@ -6149,6 +6416,7 @@ export interface operations {
         parameters: {
             query?: {
                 page?: number;
+                status?: "pending" | "approved" | "rejected" | "all";
             };
             header?: never;
             path?: never;
