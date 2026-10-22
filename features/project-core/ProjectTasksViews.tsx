@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronDown, ChevronRight, Info, Plus, Search, Send } from "lucide-react";
 import type { Task } from "@/types/domain";
+import { readTaskDetailTab, safeEvidenceSourceUrl } from "@/features/c/url-filters";
+import { useUrlQuery } from "@/features/c/use-url-query";
 import type { ProjectCore } from "./core-model";
 import { displayDate, latestVerification, makeId, personName, priorityLabel, projectPath, recordTaskProgress, sourceLabel, taskCode, taskPath, taskStatuses, taskTitle } from "./core-model";
 import { Empty, Header, Panel, Progress, Status, Tabs, TaskLink } from "./CoreUI";
@@ -13,7 +15,7 @@ type TaskView = "tree" | "board" | "list";
 
 function TaskAction({ core, task }: { core: ProjectCore; task: Task }) {
   if (!core.canEdit || core.project.setupStatus !== "frozen" || !core.project.planConfirmed) return null;
-  if (core.role !== "leader" && !task.responsibleIds.includes(core.data.currentUserId)) return null;
+  if (!core.canLead && !task.responsibleIds.includes(core.data.currentUserId)) return null;
   if (task.status === "not_started") return <button className={s.buttonSoft} type="button" onClick={() => core.update("tasks", task.id, { status: "in_progress", updatedAt: new Date().toISOString() })}>开始任务</button>;
   if (task.status === "in_progress") return <button className={s.buttonSoft} type="button" onClick={() => core.update("tasks", task.id, { status: "pending_submission", updatedAt: new Date().toISOString() })}>准备提交</button>;
   if (task.status === "pending_submission") return <Link className={s.buttonSoft} href={`${taskPath(core.project.id, task.id)}/submit`}>提交证据</Link>;
@@ -62,7 +64,9 @@ export function ProjectTasks({ core, view }: { core: ProjectCore; view: TaskView
 }
 
 export function ProjectTaskDetail({ core, task }: { core: ProjectCore; task: Task }) {
-  const [tab, setTab] = useState("overview");
+  const { query: urlQuery, updateQuery } = useUrlQuery();
+  const tab = readTaskDetailTab(urlQuery);
+  const setTab = (value: string) => updateQuery({ tab: value });
   const [progress, setProgress] = useState(task.progress);
   const [progressReason, setProgressReason] = useState("");
   const [reply, setReply] = useState("");
@@ -79,7 +83,7 @@ export function ProjectTaskDetail({ core, task }: { core: ProjectCore; task: Tas
   const saveProgress = () => {
     if (!progressReason.trim()) return setFeedback("人工修正进度需要填写原因。");
     if (progress < 0 || progress > 100) return setFeedback("进度需在 0–100% 之间。");
-    if (!core.canEdit || (core.role !== "leader" && !task.responsibleIds.includes(core.data.currentUserId))) return setFeedback("只有任务负责人或组长可以修正进度。");
+    if (!core.canEdit || (!core.canLead && !task.responsibleIds.includes(core.data.currentUserId))) return setFeedback("只有任务负责人或组长可以修正进度。");
     if (task.status === "completed") return setFeedback("已完成任务需要先重新开启后才能修改进度。");
     recordTaskProgress(core, task, progress);
     core.add("logs", { id: makeId("log"), actorId: core.data.currentUserId, action: "人工修正任务进度", target: task.id, result: "success", ip: "Mock", createdAt: new Date().toISOString(), detail: `${task.progress}% → ${progress}%；原因：${progressReason.trim()}` });
@@ -103,7 +107,11 @@ export function ProjectTaskDetail({ core, task }: { core: ProjectCore; task: Tas
         <Panel>
           <Tabs value={tab} onChange={setTab} items={[{ value: "overview", label: "概览" }, { value: "evidence", label: `证据 ${taskEvidence.length}` }, { value: "verification", label: "验收" }, { value: "discussion", label: "讨论" }, { value: "history", label: "历史" }]} />
           {tab === "overview" && <><h3 className={s.panelTitle}>任务说明</h3><p className={s.small}>{task.description}</p><div className={s.divider} /><div className={s.space}><h3 className={s.panelTitle}>验收标准</h3><Link className={s.link} href={`${taskPath(core.project.id, task.id)}/verification`}>查看验收 <ArrowRight size={13} /></Link></div>{taskCriteria.length ? taskCriteria.map((criterion, index) => <div className={s.criteriaRow} key={criterion.id}><span className={s.criteriaCode}>AC-{index + 1}</span><div style={{ flex: 1 }}>{criterion.text}</div><Status value={criterion.result ?? "pending_confirmation"} /></div>) : <Empty>暂无验收标准</Empty>}<div className={s.divider} /><div className={s.space}><h3 className={s.panelTitle}>关联开发记录</h3><Link className={s.link} href={`${projectPath(core.project.id)}/github`}>查看更多 <ArrowRight size={13} /></Link></div>{core.data.github.filter((item) => item.taskId === task.id).map((item) => <div className={s.listRow} key={item.id}><div><strong>{item.title}</strong><div className={s.muted}>{displayDate(item.timestamp)} · {item.type.toUpperCase()}</div></div><span className={s.badge}>{item.status}</span></div>)}</>}
-          {tab === "evidence" && <><div className={s.space}><span className={s.muted}>证据关联到本任务及验收标准。</span><Link className={s.buttonSoft} href={`${taskPath(core.project.id, task.id)}/submit`}><Plus size={14} />添加证据</Link></div>{taskEvidence.length ? <div className={s.list}>{taskEvidence.map((item) => <div className={s.listRow} key={item.id}><div><strong>{item.title}</strong><div className={s.muted}>{sourceLabel(item.source)} · {personName(core, item.authorId)} · {displayDate(item.createdAt)}</div></div><Status value={item.status} /></div>)}</div> : <Empty>尚未关联证据</Empty>}</>}
+          {tab === "evidence" && <><div className={s.space}><span className={s.muted}>证据关联到本任务及验收标准。</span><div className={s.actions}><Link className={s.link} href={`${projectPath(core.project.id)}/evidence?task=${encodeURIComponent(task.id)}`}>在证据中心筛选</Link><Link className={s.buttonSoft} href={`${taskPath(core.project.id, task.id)}/submit`}><Plus size={14} />添加证据</Link></div></div>{taskEvidence.length ? <div className={s.list}>{taskEvidence.map((item) => {
+            const sourceUrl = safeEvidenceSourceUrl(item.sourceUrl);
+            return <div className={s.listRow} key={item.id}><div><strong>{item.title}</strong><div className={s.muted}>{sourceLabel(item.source)} · {personName(core, item.authorId)} · {displayDate(item.createdAt)}</div>{sourceUrl ? <a className={s.link} href={sourceUrl} target="_blank" rel="noopener noreferrer">打开原始来源 ↗</a> : item.sourceUrl ? <span className={s.cellSub}>来源链接无效</span> : null}</div><Status value={item.status} /></div>;
+          })}</div> : <Empty>尚未关联证据</Empty>}</>}
+
           {tab === "verification" && <>{verification ? <><div className={s.space}><div><strong>最新逐项验收结果</strong><div className={s.muted}>{displayDate(verification.createdAt)} · 置信度 {Math.round(verification.confidence * 100)}%</div></div><Status value={verification.result} /></div><div className={s.divider} />{verification.criterionResults.map((result, index) => <div className={s.criteriaRow} key={result.criterionId}><span className={s.criteriaCode}>AC-{index + 1}</span><div style={{ flex: 1 }}><strong>{taskCriteria.find((item) => item.id === result.criterionId)?.text}</strong><div className={s.muted}>{result.reason}</div></div><Status value={result.result} /></div>)}</> : <Empty>任务提交后可运行逐项验收</Empty>}<Link className={s.buttonSoft} href={`${taskPath(core.project.id, task.id)}/verification`} style={{ marginTop: 14 }}>打开 AI 验收 <ArrowRight size={13} /></Link></>}
           {tab === "discussion" && <>{discussions.length ? discussions.map((item) => <div key={item.id}><strong>{item.title}</strong><p className={s.small}>{item.body}</p>{item.replies.map((entry) => <div className={s.listRow} key={entry.id}><div><strong>{personName(core, entry.authorId)}</strong><div className={s.small}>{entry.text}</div></div><span className={s.muted}>{displayDate(entry.at)}</span></div>)}</div>) : <Empty>还没有任务讨论</Empty>}{core.canEdit && <div className={s.mt}><label className={s.fieldLabel}>回复讨论</label><textarea className={s.textarea} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="记录讨论结论或需要确认的问题" /><button className={s.button} type="button" onClick={sendReply} disabled={!reply.trim()}><Send size={14} />发送回复</button></div>}</>}
           {tab === "history" && (history.length ? history.map((item) => <div className={s.listRow} key={item.id}><div><strong>{item.action}</strong><div className={s.muted}>{item.detail}</div></div><span className={s.muted}>{displayDate(item.createdAt)}</span></div>) : <Empty>此任务暂无审计记录</Empty>)}
@@ -111,7 +119,7 @@ export function ProjectTaskDetail({ core, task }: { core: ProjectCore; task: Tas
       </div>
       <div className={s.detailAside}>
         <Panel title="任务信息"><div className={s.detailPair}><span>任务编号</span><span>{taskCode(task)}</span></div><div className={s.detailPair}><span>负责人</span><span>{task.responsibleIds.map((id) => personName(core, id)).join("、") || "未分配"}</span></div><div className={s.detailPair}><span>优先级</span><span>{priorityLabel(task.priority)}</span></div><div className={s.detailPair}><span>权重</span><span>{task.weight}%</span></div><div className={s.detailPair}><span>状态</span><span><Status value={task.status} /></span></div><div className={s.detailPair}><span>所属模块</span><span>{core.modules.find((item) => item.id === task.moduleId)?.name ?? "—"}</span></div><div className={s.detailPair}><span>关联需求</span><span>{linkedRequirements.map((item) => item.title).join("、") || "—"}</span></div><div className={s.detailPair}><span>里程碑</span><span>{linkedMilestones.map((item) => item.title).join("、") || "—"}</span></div><div className={s.detailPair}><span>依赖任务</span><span>{task.dependencyIds.map((id) => taskCode(core.tasks.find((item) => item.id === id) ?? task)).join("、") || "无"}</span></div></Panel>
-        <Panel title="任务进度"><div className={s.space}><strong className={s.blue}>{task.progress}%</strong><span className={s.muted}>人工修正需说明原因</span></div><Progress value={task.progress} />{core.canEdit && (core.role === "leader" || task.responsibleIds.includes(core.data.currentUserId)) && <div className={s.mt}><label className={s.fieldLabel}>进度 %</label><input className={s.field} type="number" min="0" max="100" value={progress} onChange={(event) => setProgress(Number(event.target.value))} /><label className={s.fieldLabel} style={{ marginTop: 9 }}>修正原因</label><input className={s.field} value={progressReason} onChange={(event) => setProgressReason(event.target.value)} placeholder="说明完成情况与估算差异" /><button className={s.buttonGhost} style={{ marginTop: 9 }} type="button" onClick={saveProgress}>保存进度</button></div>}</Panel>
+        <Panel title="任务进度"><div className={s.space}><strong className={s.blue}>{task.progress}%</strong><span className={s.muted}>人工修正需说明原因</span></div><Progress value={task.progress} />{core.canEdit && (core.canLead || task.responsibleIds.includes(core.data.currentUserId)) && <div className={s.mt}><label className={s.fieldLabel}>进度 %</label><input className={s.field} type="number" min="0" max="100" value={progress} onChange={(event) => setProgress(Number(event.target.value))} /><label className={s.fieldLabel} style={{ marginTop: 9 }}>修正原因</label><input className={s.field} value={progressReason} onChange={(event) => setProgressReason(event.target.value)} placeholder="说明完成情况与估算差异" /><button className={s.buttonGhost} style={{ marginTop: 9 }} type="button" onClick={saveProgress}>保存进度</button></div>}</Panel>
       </div>
     </div>
   </div>;

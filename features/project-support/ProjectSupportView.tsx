@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
@@ -29,20 +30,34 @@ import {
   Upload,
   Users,
 } from "lucide-react";
-import { Avatar, EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
-import { useWorkspace } from "@/lib/workspace";
-import type { Contribution, Discussion, Evidence, FeishuRecord, FileRecord, GithubActivity, Project, Report, Task, User } from "@/types/domain";
+import { Avatar, EmptyState, Feedback, PageHeader, Panel, ProgressBar, SaveState, Stat, StatusBadge } from "@/components/common";
+import { can } from "@/lib/access/policy";
+import { getProjectSummary } from "@/lib/overview";
+import { useCommands } from "@/lib/commands/use-commands";
+import { getFileDownload, getFilePreview, getFileVersions } from "@/lib/commands/files";
+import { scopedWorkspaceKey, useWorkspace } from "@/lib/workspace";
+import { createCommandRunner, type Command } from "@/lib/commands/core";
+import { workspaceService } from "@/lib/api/workspace-service";
+import { apiMode } from "@/lib/api/config";
+import { canMarkDiscussionImportant, canWriteDiscussion, createDiscussion, discussionAsEvidence, discussionMentionTargets, markDiscussionImportant, replyDiscussion } from "@/features/c/discussions";
+import { useUrlQuery } from "@/features/c/use-url-query";
+import { GithubRecordPanels, FeishuRecordPanel } from "@/features/c/ActivityRecordPanels";
+import { feishuActivityFilters } from "@/features/c/activity-records";
+import { fileCategories, fileCategoryLabels, fileFilterPatch, filePageSizes, queryProjectFiles, readFileFilters, type FileFilters } from "@/features/c/file-filters";
+import { canWriteProjectFiles, designateProjectFile, type FileWithCDecisions } from "@/features/c/file-decisions";
+import { ProjectAccessDenied, ProjectPublicSummary } from "@/features/project-core/ProjectPublicSummary";
+import type { Contribution, Evidence, FileRecord, GithubActivity, Project, Report, Task, User } from "@/types/domain";
 
 type Workspace = ReturnType<typeof useWorkspace>;
 type Screen = 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29;
 type ViewProps = { screen: Screen | number; projectId: string; memberId?: string };
 type ProjectContext = Workspace & { project: Project; memberId?: string };
 
-const primary = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50";
-const outline = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+const primary = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-[var(--gp-action)] bg-[var(--gp-action)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--gp-action-hover)] transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+const outline = "inline-flex min-h-9 items-center justify-center gap-2 rounded border border-[var(--gp-border)] bg-white px-4 py-2 text-sm font-medium text-[var(--gp-ink-soft)] hover:bg-[var(--gp-canvas)] transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 const field = "w-full rounded border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const label = "mb-1.5 block text-xs font-semibold text-slate-600";
-const linkClass = "font-medium text-blue-600 hover:underline";
+const linkClass = "font-medium text-[var(--gp-action)] hover:underline";
 const muted = "text-sm text-slate-500";
 
 function id(prefix: string) { return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`; }
@@ -53,7 +68,7 @@ function memberName(data: Workspace["data"], memberId: string) { return find(dat
 function taskName(data: Workspace["data"], taskId?: string) { return taskId ? find(data.tasks, taskId)?.title ?? taskId : "—"; }
 
 function Header({ project, title, description, actions, icon: Icon }: { project: Project; title: string; description?: string; actions?: ReactNode; icon?: typeof Github }) {
-  return <div className="mb-6"><nav className="mb-3 flex gap-2 text-xs text-slate-400"><Link href="/home" className="hover:text-blue-600">项目</Link><span>/</span><Link href={projectUrl(project.id)} className="hover:text-blue-600">{project.name}</Link><span>/</span><span>{title}</span></nav><PageHeader title={title} description={description} actions={actions} icon={Icon} /></div>;
+  return <div className="mb-6"><nav className="mb-3 flex gap-2 text-xs text-slate-400"><Link href="/home" className="hover:text-[var(--gp-action)]">项目</Link><span>/</span><Link href={projectUrl(project.id)} className="hover:text-[var(--gp-action)]">{project.name}</Link><span>/</span><span>{title}</span></nav><PageHeader title={title} description={description} actions={actions} icon={Icon} /></div>;
 }
 function Notice({ children, tone = "blue" }: { children: ReactNode; tone?: "blue" | "amber" | "green" | "red" }) {
   const styles = { blue: "border-blue-200 bg-blue-50 text-slate-600", amber: "border-amber-200 bg-amber-50 text-amber-800", green: "border-emerald-200 bg-emerald-50 text-emerald-800", red: "border-red-200 bg-red-50 text-red-700" };
@@ -61,12 +76,18 @@ function Notice({ children, tone = "blue" }: { children: ReactNode; tone?: "blue
 }
 function KV({ title, value }: { title: string; value: ReactNode }) { return <div className="grid gap-2 border-b border-slate-100 py-2 text-sm last:border-b-0 sm:grid-cols-[130px_1fr]"><span className="text-slate-400">{title}</span><span className="text-slate-700">{value}</span></div>; }
 function Empty({ title }: { title: string }) { return <EmptyState title={title} />; }
-function TabStrip({ items, value, change }: { items: string[]; value: string; change: (next: string) => void }) { return <div role="tablist" className="mb-4 flex flex-wrap gap-5 border-b border-slate-200">{items.map((item) => <button key={item} role="tab" aria-selected={item === value} className={`border-b-2 pb-2 text-sm ${item === value ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500"}`} onClick={() => change(item)}>{item}</button>)}</div>; }
+function TabStrip({ items, value, change }: { items: string[]; value: string; change: (next: string) => void }) { return <div role="tablist" className="mb-4 flex flex-wrap gap-5 border-b border-slate-200">{items.map((item) => <button key={item} role="tab" aria-selected={item === value} className={`border-b-2 pb-2 text-sm ${item === value ? "border-blue-600 font-semibold text-[var(--gp-action)]" : "border-transparent text-slate-500"}`} onClick={() => change(item)}>{item}</button>)}</div>; }
 
 export function ProjectSupportView({ screen, projectId, memberId }: ViewProps) {
   const workspace = useWorkspace();
   const project = find(workspace.data.projects, projectId);
   if (!project) return <Empty title="项目不存在" />;
+  const actorId = workspace.data.currentUserId;
+  const target = { kind: "project" as const, id: project.id };
+  if (!can(workspace.data, actorId, "project.content.read", target)) {
+    if (can(workspace.data, actorId, "project.summary.read", target)) return <ProjectPublicSummary summary={getProjectSummary(workspace.data, actorId, project.id)} />;
+    return <ProjectAccessDenied message="项目内容仅对成员及所属课程教学人员开放。" />;
+  }
   const context = { ...workspace, project, memberId };
   switch (screen) {
     case 21: return <GithubPage {...context} />;
@@ -84,20 +105,12 @@ export function ProjectSupportView({ screen, projectId, memberId }: ViewProps) {
 
 function GithubPage({ data, add, update, project }: ProjectContext) {
   const records = data.github.filter((item) => item.projectId === project.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  const [kind, setKind] = useState("全部类型");
-  const [days, setDays] = useState("全部时间");
-  const [expanded, setExpanded] = useState(false);
   const [repoInput, setRepoInput] = useState("");
   const [changing, setChanging] = useState(false);
   const [notice, setNotice] = useState("");
   const lastConnection = records.find((item) => item.type === "sync");
   const repository = lastConnection?.repository || records[0]?.repository || "尚未绑定";
   const disconnected = project.githubEnabled === false || lastConnection?.status === "已解除绑定";
-  const filtered = records.filter((item) => {
-    const within = days === "全部时间" || Date.now() - new Date(item.timestamp).getTime() <= Number(days) * 86400000;
-    return (kind === "全部类型" || item.type === kind) && within;
-  });
-  const shown = expanded ? filtered : filtered.slice(0, 6);
   const sync = () => {
     if (disconnected || repository === "尚未绑定") { setNotice("请先绑定 GitHub 仓库。"); return; }
     const activity: GithubActivity = { id: id("gh"), projectId: project.id, repository, type: "sync", title: "手动同步仓库活动", authorId: data.currentUserId, status: "已同步", timestamp: new Date().toISOString(), url: repository.startsWith("http") ? repository : `https://github.com/${repository}` };
@@ -115,105 +128,250 @@ function GithubPage({ data, add, update, project }: ProjectContext) {
       {changing && <div className="mb-4 flex flex-wrap gap-2"><input className={`${field} max-w-md`} aria-label="GitHub 仓库" placeholder="owner/repository" value={repoInput} onChange={(event) => setRepoInput(event.target.value)} /><button className={primary} onClick={changeRepo}>保存绑定</button><button className={outline} onClick={() => setChanging(false)}>取消</button></div>}
       <div className="flex items-center gap-3 text-base font-semibold"><Github size={22} />{repository}<StatusBadge tone={disconnected ? "gray" : "blue"} label={disconnected ? "未连接" : "已连接"} /></div><div className="mt-4 grid gap-4 text-sm sm:grid-cols-4"><div><div className="text-slate-400">默认分支</div><div className="mt-1">main</div></div><div><div className="text-slate-400">上次同步时间</div><div className="mt-1">{date(records[0]?.timestamp ?? "")}</div></div><div><div className="text-slate-400">同步状态</div><StatusBadge status={disconnected ? "disabled" : "current"} label={disconnected ? "未连接" : "已同步"} /></div><div><div className="text-slate-400">仓库链接</div>{!disconnected && <a className={linkClass} target="_blank" rel="noreferrer" href={repository.startsWith("http") ? repository : `https://github.com/${repository}`}>在 GitHub 中打开 <ExternalLink size={13} className="inline" /></a>}</div></div>
       </Panel>
-      <Panel title="最近开发活动" action={<div className="flex flex-wrap items-center gap-2"><select className={`${field} w-auto`} aria-label="活动类型" value={kind} onChange={(event) => setKind(event.target.value)}><option>全部类型</option><option value="commit">Commit</option><option value="pr">PR</option><option value="ci">CI</option><option value="sync">同步</option></select><select className={`${field} w-auto`} aria-label="活动时间" value={days} onChange={(event) => setDays(event.target.value)}><option>全部时间</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option></select><button className={linkClass} onClick={() => setExpanded((value) => !value)}>{expanded ? "收起" : "查看全部"}</button></div>} noPadding>
-        <div className="overflow-x-auto"><table className="gp-table min-w-[700px]"><thead><tr><th>时间</th><th>类型</th><th>标题</th><th>作者</th><th>关联任务</th><th>状态</th></tr></thead><tbody>{shown.map((item) => <tr key={item.id}><td>{date(item.timestamp)}</td><td className="uppercase">{item.type}</td><td><a className={linkClass} href={item.url || "#"} target="_blank" rel="noreferrer">{item.title}</a></td><td>{memberName(data, item.authorId)}</td><td>{item.taskId ? <Link className={linkClass} href={projectUrl(project.id, `/tasks/${item.taskId}`)}>{taskName(data, item.taskId)}</Link> : "—"}</td><td><StatusBadge tone={item.status.includes("失败") ? "red" : "green"} label={item.status} /></td></tr>)}</tbody></table>{!shown.length && <Empty title="没有符合条件的活动" />}</div>
-      </Panel>
-      <Panel title="任务关联映射" action={<Link className={linkClass} href={projectUrl(project.id, "/tasks?view=list")}>查看全部</Link>} noPadding><div className="overflow-x-auto"><table className="gp-table min-w-[650px]"><thead><tr><th>任务</th><th>关联的 GitHub 记录</th><th>类型</th><th>作者</th><th>状态</th></tr></thead><tbody>{records.filter((item) => item.taskId).slice(0, 6).map((item) => <tr key={item.id}><td><Link className={linkClass} href={projectUrl(project.id, `/tasks/${item.taskId}`)}>{taskName(data, item.taskId)}</Link></td><td>{item.title}</td><td className="uppercase">{item.type}</td><td>{memberName(data, item.authorId)}</td><td><StatusBadge tone="green" label="已关联" /></td></tr>)}</tbody></table></div></Panel>
+      <GithubRecordPanels projectId={project.id} />
     </div><div className="space-y-4"><Panel title="同步状态"><KV title="上次同步时间" value={date(records[0]?.timestamp ?? "")} /><KV title="同步状态" value={<StatusBadge tone={disconnected ? "gray" : "green"} label={disconnected ? "未连接" : "已同步"} />} /><KV title="同步内容" value="Commit、PR、Issue、CI" /><KV title="最近同步范围" value="最近 30 天的活动" /><button className={`${primary} mt-4 w-full`} onClick={sync} disabled={disconnected}><RefreshCw size={15} />立即同步</button></Panel><Panel title="Webhook 状态" action={<Link href={projectUrl(project.id, "/settings")} className={linkClass}>配置</Link>}><KV title="连接状态" value={disconnected ? "未启用" : "已启用"} /><KV title="最近触发时间" value={date(records[0]?.timestamp ?? "")} /><KV title="触发事件" value="Push、Pull Request、Issue" /></Panel><Panel title="定时兜底同步"><KV title="状态" value="已开启" /><KV title="同步周期" value="每 6 小时" /><KV title="同步范围" value="最近 30 天的活动" /></Panel></div></div>
   </div>;
 }
 
-function FeishuPage({ data, add, update, project }: ProjectContext) {
+function FeishuPage({ data, add, project }: ProjectContext) {
   const records = data.feishu.filter((item) => item.projectId === project.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const groups = [...new Set(records.map((item) => item.groupName))];
-  const [groupName, setGroupName] = useState("全部群组");
-  const [filter, setFilter] = useState("全部记录");
+  const { query: recordQuery, updateQuery: updateRecordQuery } = useUrlQuery();
+  const recordFilters = feishuActivityFilters(recordQuery);
+  const groupName = recordFilters.group === "all" ? "全部群组" : recordFilters.group;
+  const filter = recordFilters.status === "all" ? "全部记录" : recordFilters.status;
+  const setGroupName = (value: string) => updateRecordQuery({ group: value === "全部群组" ? null : value, page: null });
+  const setFilter = (value: string) => updateRecordQuery({ status: value === "全部记录" ? null : value, page: null });
   const [notice, setNotice] = useState("");
-  const visible = records.filter((item) => (groupName === "全部群组" || item.groupName === groupName) && (filter === "全部记录" || item.status === filter));
-  const adopt = (record: FeishuRecord) => {
-    if (record.status === "adopted") return;
-    update("feishu", record.id, { status: "adopted" });
-    if (record.taskId && !data.evidence.some((item) => item.source === "feishu" && item.sourceUrl === `feishu:${record.id}`)) {
-      const evidence: Evidence = { id: id("evidence"), projectId: project.id, taskId: record.taskId, criterionIds: [], authorId: record.authorId, title: `飞书协作记录：${record.summary.slice(0, 30)}`, description: record.summary, source: "feishu", sourceUrl: `feishu:${record.id}`, status: "candidate", createdAt: record.timestamp, version: 1 };
-      add("evidence", evidence);
-    }
-    setNotice("记录已采纳，并在相关任务中建立证据候选。");
-  };
   const sync = () => { add("feishu", { id: id("feishu"), projectId: project.id, groupName: groupName === "全部群组" ? groups[0] || "项目群组" : groupName, type: "discussion", summary: "本次同步已完成，待确认是否采纳为项目协作记录。", authorId: data.currentUserId, timestamp: new Date().toISOString(), status: "candidate" }); setNotice("同步完成，新增一条待确认记录。"); };
   return <div><Header project={project} title="飞书协作记录" description="保留项目群聊与相关私聊中的关键协作证据。" icon={MessageCircle} />{notice && <div className="mb-4"><Notice>{notice}</Notice></div>}
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="space-y-4"><Panel><div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"><div><label className={label}>项目群组</label><select className={field} value={groupName} onChange={(event) => setGroupName(event.target.value)}><option>全部群组</option>{groups.map((group) => <option key={group}>{group}</option>)}</select></div><div><label className={label}>关联性筛选</label><select className={field} value={filter} onChange={(event) => setFilter(event.target.value)}><option>全部记录</option><option value="candidate">待确认</option><option value="adopted">已采纳</option><option value="ignored">已忽略</option></select></div><div className="flex items-end"><StatusBadge tone={project.feishuEnabled === false ? "gray" : "green"} label={project.feishuEnabled === false ? "未连接" : "已同步"} /></div><div className="flex items-end"><button className={outline} onClick={sync} disabled={project.feishuEnabled === false}><RefreshCw size={15} />立即同步</button></div></div></Panel>
-      <Panel title={`协作记录（${visible.length}）`} noPadding><div className="overflow-x-auto"><table className="gp-table min-w-[720px]"><thead><tr><th>消息来源</th><th>发送人</th><th>时间</th><th>提取类型</th><th>摘要内容</th><th>采纳状态</th><th>操作</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}><td>{item.groupName}</td><td>{memberName(data, item.authorId)}</td><td>{date(item.timestamp)}</td><td><StatusBadge label={item.type === "task" ? "任务候选" : item.type === "decision" ? "决策候选" : "讨论记录"} tone={item.type === "discussion" ? "gray" : "blue"} /></td><td className="max-w-[280px] truncate" title={item.summary}>{item.summary}</td><td><StatusBadge label={item.status === "candidate" ? "待确认" : item.status === "adopted" ? "已采纳" : "已忽略"} tone={item.status === "candidate" ? "amber" : item.status === "adopted" ? "green" : "gray"} /></td><td><div className="flex gap-2">{item.status === "candidate" && <><button className={linkClass} onClick={() => adopt(item)}>采纳</button><button className="text-xs text-slate-500 hover:underline" onClick={() => update("feishu", item.id, { status: "ignored" })}>忽略</button></>}{item.taskId && <Link className={linkClass} href={projectUrl(project.id, `/tasks/${item.taskId}`)}>任务</Link>}</div></td></tr>)}</tbody></table>{!visible.length && <Empty title="暂无相关协作记录" />}</div></Panel>
-    </div><div className="space-y-4"><Panel title="记录说明"><InfoLine title="自动识别关键协作内容" text="基于上下文识别任务、决策、贡献和讨论等关键内容，生成可追溯记录。" /><InfoLine title="关联项目任务与模块" text="记录将与项目任务、模块和里程碑关联，便于后续引用和验收。" /><InfoLine title="人工确认与采纳" text="系统提供候选记录，由成员确认后采纳为正式证据候选。" /></Panel><Panel title="隐私边界"><InfoLine title="仅同步授权范围内内容" text="只同步已加入白名单的项目群聊及相关成员的私聊内容。" /><InfoLine title="敏感信息自动脱敏" text="对个人敏感信息进行脱敏处理。" /><InfoLine title="访问权限控制" text="按照项目成员权限控制记录可见范围。" /></Panel><Panel title="同步统计"><div className="grid grid-cols-3 gap-2 text-center"><div><strong className="text-xl text-blue-600">{records.length}</strong><p className="text-xs text-slate-500">已同步</p></div><div><strong className="text-xl text-emerald-600">{records.filter((item) => item.status === "adopted").length}</strong><p className="text-xs text-slate-500">已采纳</p></div><div><strong className="text-xl text-amber-600">{records.filter((item) => item.status === "candidate").length}</strong><p className="text-xs text-slate-500">待确认</p></div></div></Panel></div></div>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"><div className="space-y-4"><Panel><div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"><div><label className={label}>项目群组</label><select className={field} aria-label="项目群组" value={groupName} onChange={(event) => setGroupName(event.target.value)}><option>全部群组</option>{groupName !== "全部群组" && !groups.includes(groupName) && <option value={groupName}>不可用的群组</option>}{groups.map((group) => <option key={group}>{group}</option>)}</select></div><div><label className={label}>关联性筛选</label><select className={field} aria-label="关联性筛选" value={filter} onChange={(event) => setFilter(event.target.value)}><option>全部记录</option><option value="candidate">待确认</option><option value="adopted">已采纳</option><option value="ignored">已忽略</option></select></div><div className="flex items-end"><StatusBadge tone={project.feishuEnabled === false ? "gray" : "green"} label={project.feishuEnabled === false ? "未连接" : "已同步"} /></div><div className="flex items-end"><button className={outline} onClick={sync} disabled={project.feishuEnabled === false}><RefreshCw size={15} />立即同步</button></div></div></Panel>
+      <FeishuRecordPanel projectId={project.id} />
+    </div><div className="space-y-4"><Panel title="记录说明"><InfoLine title="自动识别关键协作内容" text="基于上下文识别任务、决策、贡献和讨论等关键内容，生成可追溯记录。" /><InfoLine title="关联项目任务与模块" text="记录将与项目任务、模块和里程碑关联，便于后续引用和验收。" /><InfoLine title="人工确认与采纳" text="系统提供候选记录，由成员确认后采纳为正式证据候选。" /></Panel><Panel title="隐私边界"><InfoLine title="仅同步授权范围内内容" text="只同步已加入白名单的项目群聊及相关成员的私聊内容。" /><InfoLine title="敏感信息自动脱敏" text="对个人敏感信息进行脱敏处理。" /><InfoLine title="访问权限控制" text="按照项目成员权限控制记录可见范围。" /></Panel><Panel title="同步统计"><div className="grid grid-cols-3 gap-2 text-center"><div><strong className="text-xl text-[var(--gp-action)]">{records.length}</strong><p className="text-xs text-slate-500">已同步</p></div><div><strong className="text-xl text-emerald-600">{records.filter((item) => item.status === "adopted").length}</strong><p className="text-xs text-slate-500">已采纳</p></div><div><strong className="text-xl text-amber-600">{records.filter((item) => item.status === "candidate").length}</strong><p className="text-xs text-slate-500">待确认</p></div></div></Panel></div></div>
   </div>;
 }
 
 function InfoLine({ title, text }: { title: string; text: string }) { return <div className="border-b border-slate-100 py-3 last:border-b-0"><h3 className="text-sm font-semibold text-slate-700">{title}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{text}</p></div>; }
 
-function FilesPage({ data, add, update, project }: ProjectContext) {
+function FilesPage({ data, project, userId }: ProjectContext) {
+  const queryClient = useQueryClient();
+  const workspaceKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
+  const runner = useMemo(() => createCommandRunner({
+    repository: {
+      read: async () => queryClient.getQueryData<Workspace["data"]>(workspaceKey) ?? await workspaceService.getWorkspace(),
+      save: workspaceService.saveWorkspace,
+    },
+    currentActorId: () => queryClient.getQueryData<Workspace["data"]>(workspaceKey)?.currentUserId ?? "",
+    onSaved: (next) => queryClient.setQueryData(workspaceKey, next),
+  }), [queryClient, workspaceKey]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [category, setCategory] = useState("全部资料");
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("全部类型");
-  const [sort, setSort] = useState("最近上传");
+  const canWrite = apiMode("workspace") === "mock" && canWriteProjectFiles(data, data.currentUserId, project.id);
+  const commands = useCommands();
+  const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
+  const { query: urlQuery, updateQuery } = useUrlQuery();
+  const filters = readFileFilters(urlQuery);
+  const setFilter = (key: keyof FileFilters, value: string) => updateQuery(fileFilterPatch(key, value));
   const [selected, setSelected] = useState("");
   const [notice, setNotice] = useState("");
-  const files = data.files.filter((item) => item.projectId === project.id);
-  const latest = category === "已归档" ? files.filter((item) => item.status === "superseded") : files.filter((item) => item.status !== "superseded");
+  const [designation, setDesignation] = useState<{ fileId: string; expectedProjectVersion: number; idempotencyKey: string } | null>(null);
+  const [designationReason, setDesignationReason] = useState("");
+  const [savingDesignation, setSavingDesignation] = useState(false);
+  const busyDesignation = useRef(false);
+  const result = queryProjectFiles(data, data.currentUserId, project.id, filters);
+  const { files, items: visible } = result;
+  const fileTypes = [...new Set(files.map((item) => item.type.trim().toUpperCase()))].sort();
   const selectedFile = find(files, selected);
-  const visible = latest.filter((item) => {
-    const matchesCategory = category === "全部资料" || (category === "正式文档" && item.status === "current" && !/png|jpg|jpeg|gif/i.test(item.type)) || (category === "图片截图" && /png|jpg|jpeg|gif|image/i.test(item.type)) || (category === "导出文件" && item.source === "报告导出") || (category === "已归档" && item.status === "superseded");
-    return matchesCategory && (kind === "全部类型" || item.type.toUpperCase() === kind) && `${item.name} ${item.source} ${memberName(data, item.uploaderId)}`.toLowerCase().includes(query.toLowerCase());
-  }).sort((a, b) => sort === "最近上传" ? b.updatedAt.localeCompare(a.updatedAt) : a.name.localeCompare(b.name));
-  const upload = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []);
-    selectedFiles.forEach((file) => {
-      const prior = files.filter((item) => item.name === file.name).sort((a, b) => b.version - a.version)[0];
-      if (prior) update("files", prior.id, { status: "superseded" });
-      const record: FileRecord = { id: id("file"), projectId: project.id, name: file.name, type: file.name.split(".").pop()?.toUpperCase() || "FILE", source: "手动上传", uploaderId: data.currentUserId, version: (prior?.version ?? 0) + 1, status: "draft", updatedAt: new Date().toISOString(), size: `${Math.max(1, Math.round(file.size / 1024))} KB` };
-      add("files", record); setSelected(record.id);
-    });
-    if (selectedFiles.length) setNotice(`已上传 ${selectedFiles.length} 个文件，版本历史已保留。`);
-    event.target.value = "";
+  const selectFile = (fileId: string) => {
+    if (busyDesignation.current || selected === fileId) return;
+    if (designationReason.trim() && !window.confirm("放弃尚未保存的正式版本原因？")) return;
+    setSelected(fileId); setDesignation(null); setDesignationReason("");
   };
-  return <div><Header project={project} title="文件资料" description="集中管理 Proposal、PDF、Word、README 与其他项目资料。" icon={FolderOpen} />{notice && <div className="mb-4"><Notice tone="green">{notice}</Notice></div>}
-    <div className="grid gap-4 xl:grid-cols-[160px_minmax(0,1fr)_280px]"><nav aria-label="文件类别" className="rounded-md border border-slate-200 bg-white p-2">{["全部资料", "正式文档", "图片截图", "导出文件", "已归档"].map((item) => <button key={item} className={`mb-1 w-full rounded px-3 py-2.5 text-left text-sm ${category === item ? "bg-blue-50 font-semibold text-blue-600" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => setCategory(item)}>{item}</button>)}</nav><Panel noPadding><div className="flex flex-wrap gap-2 border-b border-slate-100 p-4"><input ref={fileInput} className="hidden" type="file" multiple onChange={upload} /><button className={primary} onClick={() => fileInput.current?.click()}><Upload size={15} />上传文件</button><div className="relative min-w-[180px] flex-1"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} pl-9`} placeholder="搜索文件名、来源或上传者" value={query} onChange={(event) => setQuery(event.target.value)} /></div><select className={`${field} w-auto`} aria-label="文件类型" value={kind} onChange={(event) => setKind(event.target.value)}><option>全部类型</option>{[...new Set(files.map((item) => item.type.toUpperCase()))].map((type) => <option key={type}>{type}</option>)}</select><select className={`${field} w-auto`} aria-label="排序" value={sort} onChange={(event) => setSort(event.target.value)}><option>最近上传</option><option>文件名</option></select></div>
-      <div className="overflow-x-auto"><table className="gp-table min-w-[700px]"><thead><tr><th>文件名</th><th>类型</th><th>来源</th><th>上传者</th><th>更新时间</th><th>关联项目 / 任务</th><th>状态</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id} className="cursor-pointer" onClick={() => setSelected(item.id)}><td><span className={linkClass}>{item.name}</span><div className="text-xs text-slate-400">{item.size} · v{item.version}</div></td><td>{item.type}</td><td>{item.source}</td><td>{memberName(data, item.uploaderId)}</td><td>{date(item.updatedAt)}</td><td>{project.name}</td><td><StatusBadge label={item.status === "current" ? "正式" : item.status === "draft" ? "草稿" : "已归档"} tone={item.status === "current" ? "green" : item.status === "draft" ? "blue" : "gray"} /></td></tr>)}</tbody></table>{!visible.length && <Empty title="没有符合条件的文件" />}</div></Panel>
-      <div className="space-y-4"><Panel title={selectedFile ? "版本管理" : "资料使用说明"}>{selectedFile ? <><h3 className="break-all font-semibold">{selectedFile.name}</h3><p className="mt-1 text-xs text-slate-500">当前版本 v{selectedFile.version}</p><div className="mt-4 space-y-2">{files.filter((item) => item.name === selectedFile.name).sort((a, b) => b.version - a.version).map((item) => <div key={item.id} className="border-b border-slate-100 py-2 text-sm"><span className="font-medium">v{item.version}</span> · {date(item.updatedAt)}<p className="text-xs text-slate-500">{memberName(data, item.uploaderId)} · {item.status === "superseded" ? "历史版本" : "当前版本"}</p></div>)}</div><div className="mt-4 flex gap-2"><button className={outline} onClick={() => fileInput.current?.click()}>上传新版本</button>{selectedFile.status === "draft" && <button className={outline} onClick={() => update("files", selectedFile.id, { status: "current" })}>设为正式</button>}</div></> : <><InfoLine title="版本管理" text="上传同名文件时保留历史版本，方便追溯变更。" /><InfoLine title="支持的文件格式" text="PDF、Word、PPT、Excel、PNG、JPG、ZIP、Markdown 等。" /><InfoLine title="可追溯性" text="记录来源、上传者与更新时间，可关联任务和验收证据。" /></>}</Panel></div></div>
+  const confirmDesignation = async () => {
+    if (!designation || !designationReason.trim() || !canWrite || busyDesignation.current) return;
+    busyDesignation.current = true; setSavingDesignation(true);
+    try {
+      const outcome = await runner(designateProjectFile, { projectId: project.id, ...designation, reason: designationReason });
+      if (!outcome.ok) { setNotice(outcome.error.message); return; }
+      setDesignation(null); setDesignationReason("");
+      setNotice("已设为本地正式版本，旧版本、冻结基线引用和原因已保留；真实文件存储与成员通知尚未接入。");
+    } catch {
+      setNotice("保存失败，原因已保留，请重试。");
+    } finally {
+      busyDesignation.current = false; setSavingDesignation(false);
+    }
+  };
+  const upload = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (busyDesignation.current || designation) { setNotice("请先完成或取消当前文件版本确认。"); event.target.value = ""; return; }
+    if (!canWrite) { setNotice("只有项目成员可以上传或替换项目资料。"); event.target.value = ""; return; }
+    const selectedFiles = Array.from(event.target.files ?? []);
+    const target = replaceTarget ? find(files, replaceTarget) : undefined;
+    event.target.value = "";
+    setReplaceTarget(null);
+    busyDesignation.current = true;
+    let expectedVersion = project.version;
+    const results: string[] = [];
+    try {
+      for (const file of selectedFiles) {
+        const input = {
+          projectId: project.id,
+          name: target ? target.name : file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+          expectedVersion,
+          ...(target ? { replacesFileId: target.id } : {}),
+        };
+        const outcome = target ? await commands.replaceProjectFile(input) : await commands.uploadProjectFile(input);
+        if (!outcome.ok) { results.push(`${file.name}：失败（${outcome.error.message}）`); continue; }
+        expectedVersion = expectedVersion + 1;
+        setSelected(outcome.result.id);
+        results.push(`${file.name}：成功 v${outcome.result.version}（模拟上传，仅保存元数据）`);
+      }
+    } catch {
+      results.push("文件记录保存失败，请重试。");
+    } finally {
+      busyDesignation.current = false;
+    }
+    if (results.length) setNotice(results.join("；"));
+  };
+  return <div><Header project={project} title="文件资料" description="集中管理 Proposal、PDF、Word、README 与其他项目资料。" icon={FolderOpen} /><div className="mb-4"><Notice tone="blue">模拟文件环境：上传、预览与下载均为演示操作，仅保存元数据，不存储真实文件字节。</Notice></div>{notice && <div className="mb-4"><Notice tone="green">{notice}</Notice></div>}
+    <div className="grid gap-4 xl:grid-cols-[160px_minmax(0,1fr)_280px]"><nav aria-label="文件类别" className="rounded-md border border-slate-200 bg-white p-2">{fileCategories.map((item) => <button key={item} type="button" aria-pressed={filters.category === item} className={`mb-1 w-full rounded px-3 py-2.5 text-left text-sm ${filters.category === item ? "bg-blue-50 font-semibold text-[var(--gp-action)]" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => setFilter("category", item)}>{fileCategoryLabels[item]}</button>)}</nav><Panel noPadding><div className="flex flex-wrap gap-2 border-b border-slate-100 p-4"><input ref={fileInput} className="hidden" type="file" multiple onChange={upload} />{canWrite && <button className={primary} onClick={() => fileInput.current?.click()}><Upload size={15} />上传文件</button>}{!canWrite && <span className="self-center text-xs text-slate-500">只有项目成员可以上传或替换资料。</span>}<div className="relative min-w-[180px] flex-1"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} pl-9`} placeholder="搜索文件名、来源或上传者" aria-label="搜索文件" value={filters.q} onChange={(event) => setFilter("q", event.target.value)} /></div><select className={`${field} w-auto`} aria-label="文件类型" value={filters.type} onChange={(event) => setFilter("type", event.target.value)}><option value="all">全部类型</option>{filters.type !== "all" && !fileTypes.includes(filters.type) && <option value={filters.type}>不可用的类型：{filters.type}</option>}{fileTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select><select className={`${field} w-auto`} aria-label="排序" value={filters.sort} onChange={(event) => setFilter("sort", event.target.value)}><option value="recent">最近上传</option><option value="name">文件名</option></select><button type="button" className={outline} onClick={() => updateQuery({ category: null, q: null, type: null, sort: null, page: null })}>清除筛选</button></div>
+      <div className="overflow-x-auto"><table className="gp-table min-w-[700px]" aria-label="项目文件列表"><thead><tr><th>文件名</th><th>类型</th><th>来源</th><th>上传者</th><th>更新时间</th><th>关联项目 / 任务</th><th>状态</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}><td><button type="button" className={linkClass} disabled={savingDesignation} onClick={() => selectFile(item.id)}>{item.name}</button><div className="text-xs text-slate-400">{item.size} · v{item.version}</div></td><td>{item.type}</td><td>{item.source}</td><td>{memberName(data, item.uploaderId)}</td><td>{date(item.updatedAt)}</td><td>{project.name}</td><td><StatusBadge label={item.status === "current" ? "正式" : item.status === "draft" ? "草稿" : "已归档"} tone={item.status === "current" ? "green" : item.status === "draft" ? "blue" : "gray"} /></td></tr>)}</tbody></table>{!visible.length && <Empty title="没有符合条件的文件" />}</div>
+      <nav aria-label="文件分页" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4">
+        <span className="text-sm text-slate-500" role="status">第 {result.page} / {result.pageCount} 页 · 共 {result.total} 个文件</span>
+        <div className="flex items-center gap-2"><select className={`${field} w-auto`} aria-label="每页文件数" value={filters.pageSize} onChange={(event) => setFilter("pageSize", event.target.value)}>{filePageSizes.map((size) => <option key={size} value={size}>{size} / 页</option>)}</select><button type="button" className={outline} disabled={result.page <= 1} onClick={() => setFilter("page", String(result.page - 1))}>上一页</button><button type="button" className={outline} disabled={result.page >= result.pageCount} onClick={() => setFilter("page", String(result.page + 1))}>下一页</button></div>
+      </nav></Panel>
+      <div className="space-y-4"><Panel title={selectedFile ? "版本管理" : "资料使用说明"}>{selectedFile ? <><h3 className="break-all font-semibold">{selectedFile.name}</h3><p className="mt-1 text-xs text-slate-500">所选版本 v{selectedFile.version}</p><div className="mt-4 space-y-2">{getFileVersions(data, data.currentUserId, selectedFile.id).map((item) => <div key={item.id} className="border-b border-slate-100 py-2 text-sm"><span className="font-medium">v{item.version}</span> · {date(item.updatedAt)}<p className="text-xs text-slate-500">{memberName(data, item.uploaderId)} · {item.size}{item.mimeType ? ` · ${item.mimeType}` : ""} · {item.status === "superseded" ? "历史版本" : item.status === "draft" ? "草稿版本" : "当前正式版本"}</p>{(item as FileWithCDecisions).cDesignationHistory?.map((decision) => <p key={decision.idempotencyKey} className="mt-1 text-xs text-slate-500">设为正式 · {memberName(data, decision.actorId)} · {date(decision.decidedAt)}：{decision.reason}</p>)}</div>)}</div><div className="mt-4 flex gap-2">{canWrite && <button className={outline} disabled={savingDesignation || Boolean(designation)} onClick={() => { setReplaceTarget(selectedFile.id); fileInput.current?.click(); }}>上传新版本</button>}{canWrite && selectedFile.status === "draft" && <button className={outline} disabled={savingDesignation || Boolean(designation)} onClick={() => { setDesignation({ fileId: selectedFile.id, expectedProjectVersion: project.version, idempotencyKey: id("file-designation") }); setDesignationReason(""); setNotice(""); }}>设为正式</button>}{!canWrite && <p className="text-xs text-slate-500">当前身份、课程或项目状态不允许上传、替换或设置正式版本。</p>}</div><div className="mt-3 flex gap-2"><button className={outline} onClick={() => setNotice(getFilePreview(data, data.currentUserId, selectedFile.id).message)}>预览（模拟）</button><button className={outline} onClick={() => setNotice(getFileDownload(data, data.currentUserId, selectedFile.id).message)}>下载（模拟）</button></div></> : <><InfoLine title="版本管理" text="上传同名文件时保留历史版本，方便追溯变更。" /><InfoLine title="支持的文件格式" text="PDF、Word、PPT、Excel、PNG、JPG、ZIP、Markdown 等。" /><InfoLine title="可追溯性" text="记录来源、上传者与更新时间，可关联任务和验收证据。" /></>}</Panel>
+      {designation && selectedFile && designation.fileId === selectedFile.id && <Panel title="确认正式文件版本">
+        <p className="mb-3 text-sm text-slate-600">{selectedFile.name} v{selectedFile.version} 将成为本地正式版本；保留同名旧版本及冻结基线引用，不会发送真实成员通知。</p>
+        <label className={label} htmlFor="c-file-designation-reason">设为正式原因 *</label>
+        <textarea id="c-file-designation-reason" className={field} value={designationReason} disabled={savingDesignation} maxLength={2000} onChange={(event) => setDesignationReason(event.target.value)} placeholder="说明为何选择此版本作为当前正式资料" />
+        {project.version !== designation.expectedProjectVersion && <button type="button" className={`${outline} mt-2`} disabled={savingDesignation} onClick={() => setDesignation({ ...designation, expectedProjectVersion: project.version, idempotencyKey: id("file-designation") })}>已核对最新项目资料，保留原因</button>}
+        <div className="mt-3 flex gap-2"><button type="button" className={outline} disabled={savingDesignation} onClick={() => { if (!designationReason.trim() || window.confirm("放弃尚未保存的正式版本原因？")) { setDesignation(null); setDesignationReason(""); } }}>取消</button><button type="button" className={primary} disabled={savingDesignation || !designationReason.trim() || !canWrite || selectedFile.status !== "draft" || project.version !== designation.expectedProjectVersion} onClick={confirmDesignation}>{savingDesignation ? "保存中…" : "确认设为正式"}</button></div>
+      </Panel>}</div></div>
   </div>;
 }
 
-function DiscussionsPage({ data, add, update, project }: ProjectContext) {
+function DiscussionsPage({ data, project, userId }: ProjectContext) {
+  const queryClient = useQueryClient();
+  const workspaceKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
+  const runner = useMemo(() => createCommandRunner({
+    repository: {
+      read: async () => queryClient.getQueryData<Workspace["data"]>(workspaceKey) ?? await workspaceService.getWorkspace(),
+      save: workspaceService.saveWorkspace,
+    },
+    currentActorId: () => queryClient.getQueryData<Workspace["data"]>(workspaceKey)?.currentUserId ?? "",
+    onSaved: (next) => queryClient.setQueryData(workspaceKey, next),
+  }), [queryClient, workspaceKey]);
+  const { query: urlQuery, updateQuery } = useUrlQuery();
   const threads = data.discussions.filter((item) => item.projectId === project.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const [selectedId, setSelectedId] = useState(threads[0]?.id || "");
+  const current = find(threads, urlQuery.get("discussion") ?? "") ?? threads[0];
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("最近活动");
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [taskId, setTaskId] = useState("");
-  const [reply, setReply] = useState("");
-  const [important, setImportant] = useState(false);
+  const [draft, setDraft] = useState({ title: "", body: "", taskId: "", requirementId: "", moduleId: "", milestoneId: "" });
+  const createId = useRef("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, { text: string; mentionedUserIds: string[] }>>({});
+  const replyIds = useRef<Record<string, string>>({});
+  const evidenceIds = useRef<Record<string, string>>({});
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, { taskId: string; criterionIds: string[] }>>({});
+  const [importantReasons, setImportantReasons] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
   const [notice, setNotice] = useState("");
-  const current = find(threads, selectedId) ?? threads[0];
+  const localWorkspace = apiMode("workspace") === "mock";
+  const canWrite = localWorkspace && canWriteDiscussion(data, data.currentUserId, project.id);
+  const canMark = Boolean(current && localWorkspace && canMarkDiscussionImportant(data, data.currentUserId, current));
+  const importantReason = current ? importantReasons[current.id] ?? "" : "";
+  const replyDraft = current ? replyDrafts[current.id] ?? { text: "", mentionedUserIds: [] } : { text: "", mentionedUserIds: [] };
+  const mentionTargets = discussionMentionTargets(data, project.id);
   const visible = threads.filter((item) => `${item.title} ${item.body} ${memberName(data, item.authorId)}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "最近活动" ? b.updatedAt.localeCompare(a.updatedAt) : a.title.localeCompare(b.title));
-  const create = () => {
-    if (!title.trim() || !body.trim()) { setNotice("请填写讨论标题和内容。"); return; }
-    const newThread: Discussion = { id: id("discussion"), projectId: project.id, title: title.trim(), body: body.trim(), authorId: data.currentUserId, taskId: taskId || undefined, replies: [], updatedAt: new Date().toISOString() };
-    add("discussions", newThread); setSelectedId(newThread.id); setTitle(""); setBody(""); setTaskId(""); setCreating(false); setNotice("讨论已创建。");
+  const eligibleTasks = data.tasks.filter((item) => item.projectId === project.id && (item.status === "in_progress" || item.status === "pending_submission"));
+  const evidenceDraft = current ? evidenceDrafts[current.id] ?? { taskId: eligibleTasks.some((item) => item.id === current.taskId) ? current.taskId! : "", criterionIds: [] } : { taskId: "", criterionIds: [] };
+  const evidenceCriteria = data.criteria.filter((item) => item.taskId === evidenceDraft.taskId);
+
+  async function perform<I, O>(command: Command<I, O>, input: I) {
+    if (!canWrite || busy.current) return null;
+    busy.current = true; setSaving(true);
+    try {
+      const outcome = await runner(command, input);
+      if (!outcome.ok) setNotice(outcome.error.message);
+      return outcome;
+    } catch {
+      setNotice("保存失败，输入已保留，请重试。");
+      return null;
+    } finally {
+      busy.current = false; setSaving(false);
+    }
+  }
+  const openCreate = () => {
+    if (creating) return;
+    createId.current = id("discussion"); setCreating(true);
   };
-  const send = () => {
-    if (!current || !reply.trim()) return;
-    update("discussions", current.id, { replies: [...current.replies, { id: id("reply"), authorId: data.currentUserId, text: reply.trim(), at: new Date().toISOString() }], updatedAt: new Date().toISOString() }); setReply("");
+  const cancelCreate = () => {
+    if (Object.values(draft).some(Boolean) && !window.confirm("放弃尚未发布的讨论修改？")) return;
+    setDraft({ title: "", body: "", taskId: "", requirementId: "", moduleId: "", milestoneId: "" });
+    createId.current = ""; setCreating(false);
   };
-  const linkedTask = current?.taskId ? find(data.tasks, current.taskId) : undefined;
-  const linkedModule = linkedTask ? find(data.modules, linkedTask.moduleId) : undefined;
-  const linkedRequirement = linkedTask ? data.requirements.find((item) => linkedTask.requirementIds.includes(item.id)) : undefined;
-  const linkedMilestone = linkedTask ? data.milestones.find((item) => item.projectId === project.id && item.taskIds.includes(linkedTask.id)) : undefined;
-  return <div><Header project={project} title="讨论区" description="按主题沉淀项目讨论，并关联到任务、需求与里程碑。" icon={MessageCircle} actions={<div className="flex flex-wrap gap-2"><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} min-w-48 pl-9`} placeholder="搜索讨论标题或内容" value={query} onChange={(event) => setQuery(event.target.value)} /></div><button className={primary} onClick={() => setCreating(true)}><Plus size={15} />新建讨论</button></div>} />{notice && <div className="mb-4"><Notice>{notice}</Notice></div>}
-    {creating && <Panel title="新建讨论" className="mb-4"><div className="grid gap-3 md:grid-cols-2"><div><label className={label}>讨论标题</label><input className={field} value={title} onChange={(event) => setTitle(event.target.value)} /></div><div><label className={label}>关联任务</label><select className={field} value={taskId} onChange={(event) => setTaskId(event.target.value)}><option value="">暂不关联</option>{data.tasks.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div></div><label className={`${label} mt-3`}>讨论内容</label><textarea className={`${field} min-h-24`} value={body} onChange={(event) => setBody(event.target.value)} /><div className="mt-3 flex justify-end gap-2"><button className={outline} onClick={() => setCreating(false)}>取消</button><button className={primary} onClick={create}>发布讨论</button></div></Panel>}
-    <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_270px]"><Panel title={`讨论主题（${visible.length}）`} action={<select className={`${field} w-auto`} value={sort} onChange={(event) => setSort(event.target.value)} aria-label="讨论排序"><option>最近活动</option><option>标题</option></select>} noPadding><div className="divide-y divide-slate-100">{visible.map((item) => <button key={item.id} className={`w-full p-4 text-left hover:bg-slate-50 ${current?.id === item.id ? "border-l-2 border-blue-600 bg-blue-50" : ""}`} onClick={() => setSelectedId(item.id)}><div className="font-semibold text-slate-800">{item.title}</div><p className="mt-1 line-clamp-2 text-xs text-slate-500">{item.body}</p><p className="mt-2 text-xs text-slate-400">{memberName(data, item.authorId)} · {date(item.updatedAt)} · {item.replies.length} 条回复</p></button>)}{!visible.length && <Empty title="没有匹配的讨论" />}</div></Panel>
-      <Panel title={current?.title || "选择讨论"} action={current && <button className={outline} onClick={() => setImportant((value) => !value)}>{important ? "已标记重要" : "标记重要"}</button>}>{current ? <><p className="text-xs text-slate-400">由 {memberName(data, current.authorId)} 创建于 {date(current.updatedAt)} · {current.replies.length} 条回复</p><p className="my-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{current.body}</p>{linkedTask && <Link className={linkClass} href={projectUrl(project.id, `/tasks/${linkedTask.id}`)}>{linkedTask.title} <ChevronRight size={13} className="inline" /></Link>}<div className="mt-5 divide-y divide-slate-100 border-t border-slate-100">{current.replies.map((item) => <div key={item.id} className="flex gap-3 py-4"><Avatar name={memberName(data, item.authorId)} /><div><div className="text-xs text-slate-500">{memberName(data, item.authorId)} · {date(item.at)}</div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{item.text}</p></div></div>)}</div><div className="mt-4 flex gap-2"><input className={field} value={reply} onChange={(event) => setReply(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") send(); }} placeholder="发表回复" aria-label="发表回复" /><button className={primary} onClick={send} disabled={!reply.trim()}>发送</button></div></> : <Empty title="选择左侧讨论主题" />}</Panel>
-      <div className="space-y-4"><Panel title="关联信息"><KV title="关联需求" value={linkedRequirement ? <Link className={linkClass} href={projectUrl(project.id, "/requirements")}>{linkedRequirement.title}</Link> : "暂无"} /><KV title="关联任务" value={linkedTask ? <Link className={linkClass} href={projectUrl(project.id, `/tasks/${linkedTask.id}`)}>{linkedTask.title}</Link> : "暂无"} /><KV title="关联模块" value={linkedModule?.name ?? "暂无"} /><KV title="关联里程碑" value={linkedMilestone ? <Link className={linkClass} href={projectUrl(project.id, `/milestones/${linkedMilestone.id}`)}>{linkedMilestone.title}</Link> : "暂无"} /></Panel><Panel title="参与者"><div className="space-y-2">{current ? [...new Set([current.authorId, ...current.replies.map((item) => item.authorId)])].map((memberId) => <div key={memberId} className="flex items-center gap-2 text-sm"><Avatar name={memberName(data, memberId)} />{memberName(data, memberId)}</div>) : <p className={muted}>暂无</p>}</div></Panel><Panel title="讨论设置"><label className="flex items-center justify-between text-sm">标记为重要<input type="checkbox" checked={important} onChange={(event) => setImportant(event.target.checked)} /></label></Panel></div></div>
+  const create = async () => {
+    if (!draft.title.trim() || !draft.body.trim()) { setNotice("请填写讨论标题和内容。"); return; }
+    const result = await perform(createDiscussion, { projectId: project.id, id: createId.current, title: draft.title, body: draft.body, taskId: draft.taskId || undefined, requirementId: draft.requirementId || undefined, moduleId: draft.moduleId || undefined, milestoneId: draft.milestoneId || undefined });
+    if (result?.ok) {
+      updateQuery({ discussion: result.result.id });
+      setDraft({ title: "", body: "", taskId: "", requirementId: "", moduleId: "", milestoneId: "" });
+      setCreating(false); createId.current = ""; setNotice("讨论已保存到本地演示数据；未发送真实成员通知。");
+    }
+  };
+  const send = async () => {
+    if (!current || !replyDraft.text.trim()) return;
+    const threadId = current.id;
+    const inputKey = `${threadId}:${replyDraft.text}:${[...replyDraft.mentionedUserIds].sort().join(",")}`;
+    const replyId = replyIds.current[inputKey] ?? (replyIds.current[inputKey] = id("reply"));
+    const result = await perform(replyDiscussion, { projectId: project.id, discussionId: threadId, replyId, text: replyDraft.text, mentionedUserIds: replyDraft.mentionedUserIds });
+    if (result?.ok) {
+      setReplyDrafts((old) => ({ ...old, [threadId]: { text: "", mentionedUserIds: [] } }));
+      delete replyIds.current[inputKey];
+      setNotice("回复已保存到当前讨论的本地记录；提及信息已保留，真实通知尚未接入。");
+    }
+  };
+  const markImportant = async (important: boolean) => {
+    if (!current) return;
+    const result = await perform(markDiscussionImportant, { projectId: project.id, discussionId: current.id, important, reason: importantReason });
+    if (result?.ok) { setImportantReasons((old) => ({ ...old, [current.id]: "" })); setNotice(important ? "已将此讨论标记为重要，刷新后仍保留。" : "已取消此讨论的重要标记；已有证据快照保留。"); }
+  };
+  const saveEvidence = async () => {
+    if (!current) return;
+    const captureKey = `${current.id}:${current.version ?? 0}:${evidenceDraft.taskId}:${[...evidenceDraft.criterionIds].sort().join(",")}`;
+    const evidenceId = evidenceIds.current[captureKey] ?? (evidenceIds.current[captureKey] = id("evidence"));
+    const result = await perform(discussionAsEvidence, { projectId: project.id, discussionId: current.id, evidenceId, taskId: evidenceDraft.taskId, criterionIds: evidenceDraft.criterionIds });
+    if (result?.ok) setNotice("讨论快照已保存为本地候选证据，尚未成为正式证据；真实来源服务与通知未接入。");
+  };
+  const linkedTask = current?.taskId ? data.tasks.find((item) => item.id === current.taskId && item.projectId === project.id) : undefined;
+  const linkedModule = data.modules.find((item) => item.id === (current?.moduleId ?? linkedTask?.moduleId) && item.projectId === project.id);
+  const linkedRequirement = data.requirements.find((item) => item.projectId === project.id && (current?.requirementId ? item.id === current.requirementId : linkedTask?.requirementIds.includes(item.id)));
+  const linkedMilestone = data.milestones.find((item) => item.projectId === project.id && (current?.milestoneId ? item.id === current.milestoneId : Boolean(linkedTask && item.taskIds.includes(linkedTask.id))));
+
+  return <div><Header project={project} title="讨论区" description="按主题沉淀项目讨论，并关联到任务、需求、模块与里程碑。" icon={MessageCircle} actions={<div className="flex flex-wrap gap-2"><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} min-w-48 pl-9`} placeholder="搜索讨论标题或内容" aria-label="搜索讨论" value={query} onChange={(event) => setQuery(event.target.value)} /></div><button className={primary} onClick={openCreate} disabled={!canWrite || saving || creating}><Plus size={15} />新建讨论</button></div>} />
+    <div className="mb-4"><Notice>{localWorkspace ? "讨论保存在当前账号的浏览器演示数据中；真实多人同步、成员通知与来源服务尚未接入。" : "真实讨论服务尚未接入，当前页面只读。"}</Notice></div>
+    {notice && <div className="mb-4"><Notice>{notice}</Notice></div>}
+    {creating && <Panel title="新建讨论" className="mb-4"><div className="grid gap-3 md:grid-cols-2">
+      <label><span className={label}>讨论标题</span><input className={field} value={draft.title} maxLength={240} onChange={(event) => setDraft((old) => ({ ...old, title: event.target.value }))} disabled={saving} /></label>
+      <label><span className={label}>关联任务</span><select className={field} value={draft.taskId} onChange={(event) => setDraft((old) => ({ ...old, taskId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.tasks.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+      <label><span className={label}>关联需求</span><select className={field} value={draft.requirementId} onChange={(event) => setDraft((old) => ({ ...old, requirementId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.requirements.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+      <label><span className={label}>关联模块</span><select className={field} value={draft.moduleId} onChange={(event) => setDraft((old) => ({ ...old, moduleId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.modules.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label><span className={label}>关联里程碑</span><select className={field} value={draft.milestoneId} onChange={(event) => setDraft((old) => ({ ...old, milestoneId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.milestones.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+    </div><label className="mt-3 block"><span className={label}>讨论内容</span><textarea className={`${field} min-h-24`} value={draft.body} maxLength={30000} onChange={(event) => setDraft((old) => ({ ...old, body: event.target.value }))} disabled={saving} /></label><div className="mt-3 flex justify-end gap-2"><button className={outline} onClick={cancelCreate} disabled={saving}>取消</button><button className={primary} onClick={() => void create()} disabled={saving || !draft.title.trim() || !draft.body.trim()}>{saving ? "保存中…" : "发布讨论"}</button></div></Panel>}
+    <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_270px]">
+      <Panel title={`讨论主题（${visible.length}）`} action={<select className={`${field} w-auto`} value={sort} onChange={(event) => setSort(event.target.value)} aria-label="讨论排序"><option>最近活动</option><option>标题</option></select>} noPadding><div className="divide-y divide-slate-100">{visible.map((item) => <button key={item.id} className={`w-full p-4 text-left hover:bg-slate-50 ${current?.id === item.id ? "border-l-2 border-blue-600 bg-blue-50" : ""}`} aria-label={`打开讨论：${item.title}`} aria-pressed={current?.id === item.id} onClick={() => updateQuery({ discussion: item.id })}><div className="font-semibold text-slate-800">{item.title}{item.important && <span className="ml-2 text-xs text-amber-700">重要</span>}</div><p className="mt-1 line-clamp-2 text-xs text-slate-500">{item.body}</p><p className="mt-2 text-xs text-slate-400">{memberName(data, item.authorId)} · {date(item.updatedAt)} · {item.replies.length} 条回复</p></button>)}{!visible.length && <Empty title="没有匹配的讨论" />}</div></Panel>
+      <Panel title={current?.title || "选择讨论"} action={current && <button className={outline} onClick={() => void markImportant(!current.important)} disabled={!canMark || saving || !importantReason.trim()} title="请先在讨论设置填写标记或取消原因">{current.important ? "取消重要标记" : "标记重要"}</button>}>{current ? <><p className="text-xs text-slate-400">由 {memberName(data, current.authorId)} 创建 · {current.createdAt ? `创建于 ${date(current.createdAt)}` : "历史创建时间未记录"} · 最近活动 {date(current.updatedAt)} · {current.replies.length} 条回复</p><p className="my-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{current.body}</p>{linkedTask && <Link className={linkClass} href={projectUrl(project.id, `/tasks/${linkedTask.id}`)}>{linkedTask.title} <ChevronRight size={13} className="inline" /></Link>}<div className="mt-5 divide-y divide-slate-100 border-t border-slate-100" aria-label="当前讨论回复">{current.replies.map((item) => <div key={item.id} className="flex gap-3 py-4"><Avatar name={memberName(data, item.authorId)} /><div><div className="text-xs text-slate-500">{memberName(data, item.authorId)} · {date(item.at)}</div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{item.text}</p>{Boolean(item.mentionedUserIds?.length) && <p className="text-xs text-slate-500">提及：{item.mentionedUserIds?.map((userId) => memberName(data, userId)).join("、")}</p>}</div></div>)}</div>
+        <div className="mt-4 flex gap-2"><input className={field} value={replyDraft.text} maxLength={10000} onChange={(event) => setReplyDrafts((old) => ({ ...old, [current.id]: { ...replyDraft, text: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} placeholder="发表回复" aria-label="发表回复" disabled={!canWrite || saving} /><button className={primary} onClick={() => void send()} disabled={!canWrite || saving || !replyDraft.text.trim()}>发送</button></div>
+        <div className="mt-2"><select className={field} value="" aria-label="提及成员" disabled={!canWrite || saving} onChange={(event) => { const mentioned = mentionTargets.find((item) => item.id === event.target.value); if (mentioned) setReplyDrafts((old) => ({ ...old, [current.id]: { text: `${replyDraft.text}${replyDraft.text ? " " : ""}@${mentioned.name} `, mentionedUserIds: [...new Set([...replyDraft.mentionedUserIds, mentioned.id])] } })); }}><option value="">选择要提及的项目成员</option>{mentionTargets.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select>{replyDraft.mentionedUserIds.map((userId) => <button key={userId} className="mr-2 mt-2 text-xs text-slate-500" disabled={saving} onClick={() => setReplyDrafts((old) => ({ ...old, [current.id]: { ...replyDraft, mentionedUserIds: replyDraft.mentionedUserIds.filter((value) => value !== userId) } }))}>取消提及 {memberName(data, userId)} ×</button>)}</div>
+      </> : <Empty title="选择左侧讨论主题" />}</Panel>
+      <div className="space-y-4"><Panel title="关联信息"><KV title="关联需求" value={linkedRequirement ? <Link className={linkClass} href={projectUrl(project.id, "/requirements")}>{linkedRequirement.title}</Link> : "暂无"} /><KV title="关联任务" value={linkedTask ? <Link className={linkClass} href={projectUrl(project.id, `/tasks/${linkedTask.id}`)}>{linkedTask.title}</Link> : "暂无"} /><KV title="关联模块" value={linkedModule?.name ?? "暂无"} /><KV title="关联里程碑" value={linkedMilestone ? <Link className={linkClass} href={projectUrl(project.id, `/milestones/${linkedMilestone.id}`)}>{linkedMilestone.title}</Link> : "暂无"} /></Panel>
+        <Panel title="参与者"><div className="space-y-2">{current ? [...new Set([current.authorId, ...current.replies.map((item) => item.authorId)])].map((memberId) => <div key={memberId} className="flex items-center gap-2 text-sm"><Avatar name={memberName(data, memberId)} />{memberName(data, memberId)}</div>) : <p className={muted}>暂无</p>}</div></Panel>
+        <Panel title="讨论设置"><label className="mb-3 block"><span className={label}>重要标记原因</span><textarea className={`${field} min-h-20`} value={importantReason} maxLength={2000} disabled={!current || !canMark || saving} onChange={(event) => { if (current) setImportantReasons((old) => ({ ...old, [current.id]: event.target.value })); }} placeholder="说明标记或取消的重要依据" /></label><p className="mb-3 text-xs text-slate-500">仅作者、组长及所属教师可操作，请填写原因。{current?.importantReason && ` 上次原因：${current.importantReason}`}</p><label className="flex items-center justify-between text-sm">标记为重要<input type="checkbox" checked={Boolean(current?.important)} disabled={!current || !canMark || saving || !importantReason.trim()} onChange={(event) => void markImportant(event.target.checked)} /></label></Panel>
+        {current?.important && <Panel title="作为证据来源"><p className="mb-3 text-xs text-slate-500">保存当前讨论的本地快照作为候选。真实来源服务未接入；后续回复不会改写已保存快照。</p><label><span className={label}>证据关联任务</span><select className={field} value={evidenceDraft.taskId} disabled={!canWrite || saving} onChange={(event) => setEvidenceDrafts((old) => ({ ...old, [current.id]: { taskId: event.target.value, criterionIds: [] } }))}><option value="">选择可补充证据的任务</option>{eligibleTasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label><div className="my-3 space-y-2">{evidenceCriteria.map((criterion, index) => <label key={criterion.id} className="flex gap-2 text-xs"><input type="checkbox" checked={evidenceDraft.criterionIds.includes(criterion.id)} disabled={!canWrite || saving} onChange={(event) => setEvidenceDrafts((old) => ({ ...old, [current.id]: { ...evidenceDraft, criterionIds: event.target.checked ? [...evidenceDraft.criterionIds, criterion.id] : evidenceDraft.criterionIds.filter((value) => value !== criterion.id) } }))} /><span>AC-{index + 1} · {criterion.text}</span></label>)}</div><button className={outline} disabled={!canWrite || saving || !evidenceDraft.taskId || !evidenceDraft.criterionIds.length} onClick={() => void saveEvidence()}>保存候选证据（演示）</button><Link className={`${linkClass} mt-3 block text-xs`} href={projectUrl(project.id, "/evidence?source=discussion")}>查看讨论来源证据</Link></Panel>}
+      </div>
+    </div>
   </div>;
 }
 
@@ -338,15 +496,36 @@ function ProjectSettings({ data, update, project }: ProjectContext) {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [notice, setNotice] = useState("");
   const course = project.courseId ? find(data.courses, project.courseId) : undefined;
-  const isLeader = project.groupId ? find(data.groups, project.groupId)?.leaderId === data.currentUserId : project.memberIds[0] === data.currentUserId;
-  const save = () => { if (name.trim().length < 2) { setNotice("项目名称至少需要 2 个字符。"); return; } update("projects", project.id, { name: name.trim(), type, language, visibility }); setNotice("项目设置已保存。"); };
-  const archive = () => { if (project.lifecycle !== "finalized") { setNotice("请先完成项目定稿，再进行归档。"); setConfirmArchive(false); return; } update("projects", project.id, { lifecycle: "archived" }); setConfirmArchive(false); setNotice("项目已归档，历史记录保留为只读。"); };
-  return <div><Header project={project} title="项目设置" description="管理成员、集成、生命周期与项目级控制项。" icon={Settings} />{notice && <div className="mb-4"><Notice tone={notice.includes("请先") ? "amber" : "green"}>{notice}</Notice></div>}
-    <div className="grid gap-4 xl:grid-cols-[170px_minmax(0,1fr)]"><nav aria-label="项目设置导航" className="h-fit rounded-md border border-slate-200 bg-white p-2">{["通用设置", "成员管理", "集成设置", "生命周期", "危险操作"].map((item) => <button key={item} className={`mb-1 block w-full rounded px-3 py-2.5 text-left text-sm ${section === item ? "bg-blue-50 font-semibold text-blue-600" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => { setSection(item); document.getElementById(`settings-${item}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{item}</button>)}</nav>
-      <div className="space-y-4"><Panel title="通用设置" className="scroll-mt-6" ><div id="settings-通用设置" className="grid gap-4 md:grid-cols-2"><div><label className={label}>项目名称 *</label><input className={field} value={name} onChange={(event) => setName(event.target.value)} /></div><div><label className={label}>项目类型</label><select className={field} value={type} onChange={(event) => setType(event.target.value)}><option>课程项目</option><option>独立项目</option><option>课程报告</option></select></div><div><label className={label}>默认语言</label><select className={field} value={language} onChange={(event) => setLanguage(event.target.value as "zh" | "en")}><option value="zh">简体中文</option><option value="en">English</option></select></div><div><label className={label}>课程关联</label><div className={`${field} bg-slate-50`}>{course?.name ?? "独立项目"}</div></div></div><fieldset className="mt-4"><legend className={label}>项目可见范围</legend><label className="mr-6 inline-flex items-center gap-2 text-sm"><input type="radio" checked={visibility === "members"} onChange={() => setVisibility("members")} />仅项目成员可见</label><label className="inline-flex items-center gap-2 text-sm"><input type="radio" checked={visibility === "course"} onChange={() => setVisibility("course")} />课程成员可见</label></fieldset><button className={`${primary} mt-4`} onClick={save} disabled={!isLeader}>保存设置</button></Panel>
+  const target = { kind: "project" as const, id: project.id };
+  const canSettings = can(data, data.currentUserId, "project.settings.update", target);
+  const canArchive = can(data, data.currentUserId, "project.archive", target);
+  const commands = useCommands();
+  const archiving = commands.pending === "project.archive";
+  const save = async () => {
+    if (!can(data, data.currentUserId, "project.settings.update", target)) { setNotice("只有该项目组长可以修改项目设置。"); return; }
+    if (name.trim().length < 2) { setNotice("项目名称至少需要 2 个字符。"); return; }
+    const outcome = await commands.updateProjectSettings({ projectId: project.id, name: name.trim(), language: language ?? "zh", visibility: visibility ?? "members", expectedVersion: project.version });
+    if (!outcome.ok) { setNotice(outcome.error.code === "VERSION_CONFLICT" ? "项目已被其他操作更新，请重新核对后再试。" : outcome.error.message); return; }
+    setNotice("项目设置已保存；成员、课程归属与生效版本由受控流程管理。");
+  };
+  const archive = async () => {
+    setConfirmArchive(false);
+    const outcome = await commands.archiveProject({ projectId: project.id, expectedVersion: project.version });
+    if (!outcome.ok) {
+      const message = outcome.error.code === "VERSION_CONFLICT" ? "项目已被其他操作更新，请重新核对后再试。"
+        : outcome.error.code === "STORAGE_ERROR" ? "保存失败，请重试；当前状态未变更。"
+          : outcome.error.message;
+      setNotice(message);
+      return;
+    }
+    setNotice("项目已归档，历史记录保留为只读。");
+  };
+  return <div><Header project={project} title="项目设置" description="管理成员、集成、生命周期与项目级控制项。" icon={Settings} />{notice && <div className="mb-4"><Feedback tone={notice.includes("失败") || notice.includes("冲突") || notice.includes("更新") ? "error" : notice.includes("请先") ? "warning" : "success"}>{notice}</Feedback></div>}
+    <div className="grid gap-4 xl:grid-cols-[170px_minmax(0,1fr)]"><nav aria-label="项目设置导航" className="h-fit rounded-md border border-slate-200 bg-white p-2">{["通用设置", "成员管理", "集成设置", "生命周期", "危险操作"].map((item) => <button key={item} className={`mb-1 block w-full rounded px-3 py-2.5 text-left text-sm ${section === item ? "bg-blue-50 font-semibold text-[var(--gp-action)]" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => { setSection(item); document.getElementById(`settings-${item}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{item}</button>)}</nav>
+      <div className="space-y-4"><Panel title="通用设置" className="scroll-mt-6" ><div id="settings-通用设置" className="grid gap-4 md:grid-cols-2"><div><label className={label}>项目名称 *</label><input className={field} value={name} onChange={(event) => setName(event.target.value)} /></div><div><label className={label}>项目类型</label><select className={field} value={type} disabled><option>课程项目</option><option>独立项目</option><option>课程报告</option></select><p className="mt-1 text-xs text-slate-400">类型来自课程规则约束，通过规则变更流程调整。</p></div><div><label className={label}>默认语言</label><select className={field} value={language} onChange={(event) => setLanguage(event.target.value as "zh" | "en")}><option value="zh">简体中文</option><option value="en">English</option></select></div><div><label className={label}>课程关联</label><div className={`${field} bg-slate-50`}>{course?.name ?? "独立项目"}</div></div></div><fieldset className="mt-4"><legend className={label}>项目可见范围</legend><label className="mr-6 inline-flex items-center gap-2 text-sm"><input type="radio" checked={visibility === "members"} onChange={() => setVisibility("members")} />仅项目成员可见</label><label className="inline-flex items-center gap-2 text-sm"><input type="radio" checked={visibility === "course"} onChange={() => setVisibility("course")} />课程成员可见</label></fieldset><div className="mt-4 flex items-center gap-3"><button className={primary} onClick={() => void save()} disabled={!canSettings || archiving}>保存设置</button><SaveState state={archiving ? "saving" : "clean"} /></div>{!canSettings && <p className="mt-2 text-xs text-slate-500">只有该项目组长可以修改项目设置。</p>}</Panel>
       <Panel title="成员管理" className="scroll-mt-6"><div id="settings-成员管理" className="flex flex-wrap items-center justify-between gap-2"><p className={muted}>当前成员 {project.memberIds.length} 人。成员变更通过小组管理流程记录。</p>{project.courseId && project.groupId ? <Link className={outline} href={`/courses/${project.courseId}/groups/${project.groupId}`}>管理成员 <ArrowRight size={14} /></Link> : <Link className={outline} href={projectUrl(project.id)}>查看项目 <ArrowRight size={14} /></Link>}</div></Panel>
-      <Panel title="集成设置" className="scroll-mt-6"><div id="settings-集成设置" className="space-y-3">{[{ name: "GitHub 集成", key: "githubEnabled" as const, description: "同步代码仓库、提交记录与合并请求。", href: projectUrl(project.id, "/github") }, { name: "飞书集成", key: "feishuEnabled" as const, description: "同步群聊通知、文档与日程，方便团队沟通。", href: projectUrl(project.id, "/collaboration") }].map((item) => <div key={item.key} className="flex flex-wrap items-center justify-between gap-3 rounded bg-slate-50 p-4"><div><h3 className="font-semibold">{item.name}</h3><p className="text-xs text-slate-500">{item.description}</p></div><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-sm text-emerald-600"><input type="checkbox" checked={project[item.key] !== false} onChange={(event) => update("projects", project.id, { [item.key]: event.target.checked })} disabled={!isLeader} />{project[item.key] !== false ? "已连接" : "未连接"}</label><Link className={outline} href={item.href}>配置</Link></div></div>)}</div></Panel>
+      <Panel title="集成设置" className="scroll-mt-6"><div id="settings-集成设置" className="space-y-3">{[{ name: "GitHub 集成", key: "githubEnabled" as const, description: "同步代码仓库、提交记录与合并请求。", href: projectUrl(project.id, "/github") }, { name: "飞书集成", key: "feishuEnabled" as const, description: "同步群聊通知、文档与日程，方便团队沟通。", href: projectUrl(project.id, "/collaboration") }].map((item) => <div key={item.key} className="flex flex-wrap items-center justify-between gap-3 rounded bg-slate-50 p-4"><div><h3 className="font-semibold">{item.name}</h3><p className="text-xs text-slate-500">{item.description}</p></div><div className="flex items-center gap-3"><span className="flex items-center gap-2 text-sm text-emerald-600">{project[item.key] !== false ? "已连接" : "未连接"}（集成开关由受控命令管理）</span><Link className={outline} href={item.href}>配置</Link></div></div>)}</div></Panel>
       <Panel title="生命周期" className="scroll-mt-6"><div id="settings-生命周期" className="grid gap-4 text-center sm:grid-cols-4">{["草稿", "进行中", "已定稿", "已归档"].map((item, index) => <div key={item}><span className={`mx-auto mb-2 flex size-8 items-center justify-center rounded-full ${["draft", "active", "finalized", "archived"].indexOf(project.lifecycle) === index ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"}`}>{index + 1}</span><p className="text-sm font-medium">{item}</p></div>)}</div></Panel>
-      <Panel title="危险操作" className="scroll-mt-6"><div id="settings-危险操作" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3 rounded bg-red-50 p-4"><div><h3 className="font-semibold text-slate-800">归档项目</h3><p className="text-xs text-slate-500">将项目设为只读状态，不再接受新的内容提交。</p></div><button className="rounded border border-red-400 px-4 py-2 text-sm text-red-600" onClick={() => setConfirmArchive(true)} disabled={!isLeader || project.lifecycle === "archived"}>归档项目</button></div><div className="flex flex-wrap items-center justify-between gap-3 rounded bg-amber-50 p-4"><div><h3 className="font-semibold text-slate-800">重新开启项目</h3><p className="text-xs text-slate-500">从已归档的正式版本创建新的修订版本。</p></div>{project.courseId ? <Link className="rounded border border-amber-400 px-4 py-2 text-sm text-amber-700" href={`/courses/${project.courseId}/projects/reopen`}>重新开启项目</Link> : <button className={outline} onClick={() => setNotice("独立项目的重新开启将在项目定稿后开放。")} >查看规则</button>}</div>{confirmArchive && <Notice tone="amber"><p>归档后项目将只读。确认继续？</p><div className="mt-3 flex gap-2"><button className={primary} onClick={archive}>确认归档</button><button className={outline} onClick={() => setConfirmArchive(false)}>取消</button></div></Notice>}</div></Panel></div></div>
+      <Panel title="危险操作" className="scroll-mt-6"><div id="settings-危险操作" className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3 rounded bg-red-50 p-4"><div><h3 className="font-semibold text-slate-800">归档项目</h3><p className="text-xs text-slate-500">将项目设为只读状态，不再接受新的内容提交。</p></div><button className="rounded border border-red-400 px-4 py-2 text-sm text-red-600" onClick={() => setConfirmArchive(true)} disabled={!canArchive || project.lifecycle === "archived" || archiving}>归档项目</button></div><div className="flex flex-wrap items-center justify-between gap-3 rounded bg-amber-50 p-4"><div><h3 className="font-semibold text-slate-800">重新开启项目</h3><p className="text-xs text-slate-500">从已归档的正式版本创建新的修订版本。</p></div>{project.courseId ? <Link className="rounded border border-amber-400 px-4 py-2 text-sm text-amber-700" href={`/courses/${project.courseId}/projects/reopen`}>重新开启项目</Link> : <button className={outline} onClick={() => setNotice("独立项目的重新开启将在项目定稿后开放。")} >查看规则</button>}</div>{confirmArchive && <Notice tone="amber"><p>归档后项目将只读。确认继续？</p><div className="mt-3 flex gap-2"><button className={primary} onClick={archive} disabled={archiving}>{archiving ? "处理中..." : "确认归档"}</button><button className={outline} onClick={() => setConfirmArchive(false)}>取消</button></div></Notice>}</div></Panel></div></div>
   </div>;
 }

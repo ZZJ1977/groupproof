@@ -5,9 +5,19 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool, text
 
+from app.auth import models as auth_models  # noqa: F401 - register unified auth tables
 from app.db.base import Base
 from app.db.models import core  # noqa: F401 - register all model tables
 from app.db.settings import get_database_timezone, get_database_url
+from app.modules.c import (
+    activity_models,  # noqa: F401 - register C activity tables
+    course_files_models,  # noqa: F401 - register C course file tables
+    discussion_models,  # noqa: F401 - register C discussion tables
+    files_models,  # noqa: F401 - register C file/version tables
+    governance_models,  # noqa: F401 - register C governance tables
+)
+from app.modules.c import models as c_models  # noqa: F401 - register C model tables
+from app.modules.d import models as d_models  # noqa: F401 - register D model tables
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_database_url())
