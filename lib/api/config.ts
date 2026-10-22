@@ -1,5 +1,11 @@
 export const apiFeatures = [
   "workspace",
+  "daily",
+  "inbox",
+  "cworkspace",
+  "coursefiles",
+  "cidentity",
+  "governance",
   "auth",
   "courses",
   "groups",
@@ -53,6 +59,8 @@ export function isRealApiEnabled(feature: ApiFeature): boolean {
 }
 
 export const apiConfig = {
-  baseUrl: (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(/\/$/, ""),
+  // Browser cookies and command headers travel through the same-origin proxy.
+  // An explicit override is reserved for separately hosted development APIs.
+  baseUrl: (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, ""),
   features: featureOverrides,
 };
