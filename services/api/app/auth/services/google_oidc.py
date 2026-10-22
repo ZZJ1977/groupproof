@@ -24,7 +24,7 @@ from ..security import new_token, safe_return_to, token_digest
 
 SCOPES = "openid email profile"
 
-_discovery_cache: dict = {}
+_discovery_cache: dict[str, dict[str, Any]] = {}
 
 
 class GoogleIdentity:
@@ -38,13 +38,21 @@ class GoogleIdentity:
         self.name = name
 
 
-def _discovery() -> dict:
+def _discovery() -> dict[str, Any]:
     settings = get_settings()
-    if not _discovery_cache:
-        response = httpx.get(settings.google_discovery_url, timeout=10)
-        response.raise_for_status()
-        _discovery_cache.update(response.json())
-    return _discovery_cache
+    url = settings.google_discovery_url
+    if url not in _discovery_cache:
+        try:
+            response = httpx.get(url, timeout=10)
+            response.raise_for_status()
+            document = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
+        required = ("issuer", "authorization_endpoint", "token_endpoint", "jwks_uri")
+        if not isinstance(document, dict) or any(not document.get(key) for key in required):
+            raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"})
+        _discovery_cache[url] = document
+    return _discovery_cache[url]
 
 
 def reset_discovery_cache() -> None:
@@ -118,13 +126,23 @@ def exchange_and_verify(transaction: OAuthTransaction, code: str) -> GoogleIdent
         redirect_uri=settings.google_redirect_uri,
     )
     try:
+        discovery = _discovery()
         session.fetch_token(
-            _discovery()["token_endpoint"],
+            discovery["token_endpoint"],
             code=code,
             grant_type="authorization_code",
             code_verifier=transaction.code_verifier,
         )
+    except AppError:
+        raise
     except Exception as exc:  # noqa: BLE001
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if (
+            isinstance(exc, httpx.HTTPError)
+            or status_code == 429
+            or (isinstance(status_code, int) and status_code >= 500)
+        ):
+            raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "token_exchange_failed"}) from exc
     id_token = session.token.get("id_token")
     if not id_token:
@@ -138,7 +156,11 @@ def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
     try:
         jwks_response = httpx.get(discovery["jwks_uri"], timeout=10)
         jwks_response.raise_for_status()
-        jwks = JsonWebKey.import_key_set(jwks_response.json())
+        jwks_document = jwks_response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
+    try:
+        jwks = JsonWebKey.import_key_set(jwks_document)
         claims = jwt.decode(id_token, jwks)
         claims.validate()  # exp/iat/aud（Authlib 校验）
     except Exception as exc:  # noqa: BLE001
@@ -146,14 +168,10 @@ def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
     if claims["iss"] != settings.google_expected_issuer or claims["iss"] != discovery.get("issuer"):
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "issuer_mismatch"})
     audience = claims.get("aud")
-    if isinstance(audience, list):
-        aud_ok = settings.google_client_id in audience
-    else:
-        aud_ok = audience == settings.google_client_id
-    if not aud_ok:
+    if not _valid_audience(audience, settings.google_client_id):
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "audience_mismatch"})
-    azp = claims.get("azp")
-    if isinstance(audience, list) and azp and azp != settings.google_client_id:
+    authorized_party = claims.get("azp")
+    if not _valid_authorized_party(audience, authorized_party, settings.google_client_id):
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "azp_mismatch"})
     if claims.get("nonce") != expected_nonce:
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "nonce_mismatch"})
@@ -167,3 +185,15 @@ def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
         email_verified=bool(claims.get("email_verified")),
         name=claims.get("name"),
     )
+
+
+def _valid_audience(audience: Any, client_id: str) -> bool:
+    if isinstance(audience, list):
+        return client_id in audience
+    return audience == client_id
+
+
+def _valid_authorized_party(audience: Any, authorized_party: Any, client_id: str) -> bool:
+    if authorized_party is not None and authorized_party != client_id:
+        return False
+    return not (isinstance(audience, list) and len(audience) > 1) or authorized_party == client_id

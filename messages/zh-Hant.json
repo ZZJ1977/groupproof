@@ -361,6 +361,7 @@
       "googleLinkFailed": "關聯失敗，請重試。",
       "googleLinkElsewhere": "該 Google 帳號已關聯其他 GroupProof 帳戶，無法關聯到本帳戶。",
       "errors": {
+        "AUTH_UNAVAILABLE": "Google 登入服務暫不可用，請稍後重試。",
         "MAIL_UNAVAILABLE": "郵件服務暫不可用，請稍後重試。",
         "RATE_LIMITED": "操作過於頻繁，請稍後再試。",
         "INVALID_CODE": "驗證碼不正確",

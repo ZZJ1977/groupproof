@@ -64,21 +64,30 @@ for (const serviceId of [apiId, webId]) {
   const deployments = railway(["deployment", "list", "--project", projectId, "--environment", environment, "--service", serviceId, "--limit", "1", "--json"], true);
   assert(Array.isArray(deployments), "Unexpected deployment-list contract");
 }
-const schema = await graphql('query{workflow:__type(name:"WorkflowResult"){fields{name}} states:__type(name:"WorkflowStatus"){enumValues{name}} backup:__type(name:"VolumeInstanceBackup"){fields{name}} variables:__type(name:"VariableCollectionUpsertInput"){inputFields{name}}}');
+const schema = await graphql('query{workflow:__type(name:"WorkflowResult"){fields{name}} workflowId:__type(name:"WorkflowId"){fields{name}} states:__type(name:"WorkflowStatus"){enumValues{name}} backup:__type(name:"VolumeInstanceBackup"){fields{name}} variables:__type(name:"VariableCollectionUpsertInput"){inputFields{name}} serviceConfig:__type(name:"ServiceInstanceUpdateInput"){inputFields{name}}}');
 assert(schema.workflow.fields.some((field) => field.name === "status"));
+assert(schema.workflowId.fields.some((field) => field.name === "workflowId"));
 assert(schema.backup.fields.some((field) => field.name === "id"));
 assert(schema.variables.inputFields.some((field) => field.name === "skipDeploys"));
+for (const field of ["rootDirectory", "railwayConfigFile", "dockerfilePath", "healthcheckPath", "healthcheckTimeout", "preDeployCommand", "preDeployTimeoutSeconds", "startCommand"]) {
+  assert(schema.serviceConfig.inputFields.some((entry) => entry.name === field), `Railway service configuration field ${field} is unavailable`);
+}
 const apiVars = await variablesFor(apiId);
 const identityVars = await variablesFor(identityId);
 assert(apiVars.DATABASE_URL, "Unified API database is not configured");
+const googleClientId = apiVars.GOOGLE_CLIENT_ID || identityVars.GOOGLE_CLIENT_ID;
+const googleClientSecret = apiVars.GOOGLE_CLIENT_SECRET || identityVars.GOOGLE_CLIENT_SECRET;
+const googleRedirectUri = apiVars.GOOGLE_REDIRECT_URI || identityVars.GOOGLE_REDIRECT_URI;
+assert(googleClientId && googleClientSecret, "Staging Google OAuth client ID and secret must be configured");
+assert.equal(googleRedirectUri, `${origin}/api/v1/auth/google/callback`, "Staging Google OAuth redirect URI must match the Web callback");
 const before = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
-console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "groupproof-staging", postgresVolume: volume.id, existingBackups: before.volumeInstanceBackupList.length, resendConfigured: Boolean(apiVars.RESEND_API_KEY || identityVars.RESEND_API_KEY), workflowStates: schema.states.enumValues.map((value) => value.name) }));
+console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "groupproof-staging", postgresVolume: volume.id, existingBackups: before.volumeInstanceBackupList.length, resendConfigured: Boolean(apiVars.RESEND_API_KEY || identityVars.RESEND_API_KEY), googleConfigured: true, workflowStates: schema.states.enumValues.map((value) => value.name) }));
 if (checkOnly) process.exit(0);
 
 // Snapshot stays in Railway. No account rows or database dumps are exported to CI.
 const name = `before-unified-auth-${process.env.GITHUB_SHA?.slice(0, 12)}`;
-const backup = await graphql("mutation($id:String!,$name:String){volumeInstanceBackupCreate(volumeInstanceId:$id,name:$name)}", { id: volume.id, name });
-const workflowId = backup.volumeInstanceBackupCreate;
+const backup = await graphql("mutation($id:String!,$name:String){volumeInstanceBackupCreate(volumeInstanceId:$id,name:$name){workflowId}}", { id: volume.id, name });
+const workflowId = backup.volumeInstanceBackupCreate.workflowId;
 assert(workflowId, "Backup was not accepted");
 let backedUp = false;
 for (let attempt = 0; attempt < 60; attempt++) {
@@ -109,8 +118,9 @@ Object.assign(authVariables, {
   EMAIL_CHALLENGE_HMAC_KEY: apiVars.EMAIL_CHALLENGE_HMAC_KEY || identityVars.EMAIL_CHALLENGE_HMAC_KEY || randomBytes(32).toString("hex"),
 });
 await setVariables(apiId, authVariables);
+// DOCKERFILE is selected in services/api/railway.toml; it is not a value in Railway's GraphQL Builder enum.
 await graphql("mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}", {
-  s: apiId, e: environmentId, input: { rootDirectory: "services/api", railwayConfigFile: "/services/api/railway.toml", builder: "DOCKERFILE", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT" },
+  s: apiId, e: environmentId, input: { rootDirectory: "services/api", railwayConfigFile: "/services/api/railway.toml", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT" },
 });
 async function deploy(serviceId, label) {
   const args = ["--project", projectId, "--environment", environment, "--service", serviceId];
@@ -135,14 +145,22 @@ assert.equal((await session.json()).data.authenticated, false);
 const capabilities = await fetch(`${origin}/api/v1/auth/capabilities`);
 assert.equal(capabilities.status, 200);
 const settings = (await capabilities.json()).data;
+assert.equal(settings.google.enabled, true);
+assert.equal(settings.google.available, true);
 assert.equal(settings.password.available, true);
 assert.equal(settings.emailSignup.available, false);
 assert.equal(settings.passwordReset.available, false);
 assert.equal(settings.acceptanceTest.enabled, false);
+const googleStart = await fetch(`${origin}/api/v1/auth/google/start`, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
+assert.equal(googleStart.status, 302, "Google authorization could not be started");
+const authorization = new URL(googleStart.headers.get("location"));
+assert.equal(authorization.hostname, "accounts.google.com", "Google authorization endpoint is unexpected");
+assert.equal(authorization.searchParams.get("redirect_uri"), `${origin}/api/v1/auth/google/callback`);
+assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
 assert.equal((await fetch(`${origin}/api/v1/me`)).status, 401);
 const home = await fetch(`${origin}/home`, { redirect: "manual" });
 assert([302, 303, 307, 308].includes(home.status));
 assert.equal(new URL(home.headers.get("location"), origin).pathname, "/login");
 assert.equal((await fetch(`${origin}/login`)).status, 200);
 console.log(`Verified staging: ${origin}`);
-if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Staging deployed and anonymous authentication checks passed: [Open test site](${origin}).\n\nDatabase backup workflow: ${workflowId}. Public mail remains disabled.\n`);
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Staging deployed and anonymous authentication checks passed: [Open test site](${origin}). Google OAuth start returned a valid authorization URL.\n\nDatabase backup workflow: ${workflowId}. Public mail remains disabled.\n`);

@@ -30,6 +30,7 @@ from oidc_stub import StubProvider  # noqa: E402
 from app.api.auth import get_current_user  # noqa: E402
 from app.api.errors import install_exception_handlers  # noqa: E402
 from app.auth.config import get_settings  # noqa: E402
+from app.auth.errors import AppError  # noqa: E402
 from app.auth.models import AuthIdentity, User, utcnow  # noqa: E402
 from app.auth.security import new_token, token_digest  # noqa: E402
 from app.auth.services import google_oidc  # noqa: E402
@@ -105,6 +106,18 @@ def _start_login(client: TestClient) -> str:
     query = parse_qs(urlparse(response.headers["location"]).query)
     assert query["redirect_uri"][0] == APP_ORIGIN + CALLBACK
     return query["state"][0]
+
+
+def test_google_start_provider_unavailable_redirects_to_retry(client: TestClient, monkeypatch):
+    def unavailable(*_args, **_kwargs):
+        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"})
+
+    monkeypatch.setattr(google_oidc, "build_authorize_url", unavailable)
+
+    response = client.get("/api/v1/auth/google/start", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/login?error=unavailable"
 
 
 def _mint_code(
@@ -412,6 +425,23 @@ def test_link_google_identity_from_account_security(client: TestClient, oidc_pro
         == 1
     )
     assert _audit_count("auth.google.linked") == audit_before + 1
+
+
+def test_link_google_identity_requires_enabled_provider(
+    client: TestClient, oidc_provider, monkeypatch
+):
+    _login_email, username = _register_account(client)
+    csrf = _password_login(client, username)
+    _configure(monkeypatch, oidc_provider, AUTH_GOOGLE_ENABLED="false")
+
+    response = client.post(
+        "/api/v1/me/identities/google/link",
+        json={},
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "AUTH_UNAVAILABLE"
 
 
 def test_link_requires_recent_auth(client: TestClient, oidc_provider):
