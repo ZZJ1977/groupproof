@@ -2,11 +2,24 @@ import assert from "node:assert/strict";
 import { seedData } from "../mocks/seed.ts";
 import { projectNavItems, resolveObjectContext, taskViewLinks, teacherNavItems } from "../lib/ux/navigation.ts";
 import { completedModuleCount, teacherProjectStats } from "../lib/ux/stats.ts";
+import { teacherOverviewAcceptance, teacherOverviewActivities, teacherOverviewModuleProgress, teacherOverviewProgress, teacherOverviewRisk } from "../lib/ux/teacher-overview.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {
   assert.deepEqual(actual, expected, `${desc}：实际 ${JSON.stringify(actual)}，预期 ${JSON.stringify(expected)}`);
   passed += 1;
+}
+
+// ── D6-01 教师总览：真实任务、验收、风险和活动口径 ────────────────
+{
+  const project = seedData.projects.find((item) => item.id === "project-1");
+  check("教师总览读取任务加权进度", teacherOverviewProgress(seedData, project), 76);
+  check("模块任务进度不使用静态快照", teacherOverviewModuleProgress(seedData, "project-1", "module-1"), 98);
+  check("AI 通过未人工确认不计入验收通过", teacherOverviewAcceptance(seedData, project), { passed: 3, total: 12 });
+  check("真实高风险里程碑进入总览", teacherOverviewRisk(seedData, project, new Date("2026-10-05T09:00:00Z")).level, "high");
+  const activities = teacherOverviewActivities(seedData, project);
+  ok("任务目标日志进入最近活动", activities.some((item) => item.id === "log-log-2"));
+  check("最近活动按时间倒序", activities[0].at, "2026-10-05T08:45:00Z");
 }
 function ok(desc, value) {
   assert.ok(value, desc);
