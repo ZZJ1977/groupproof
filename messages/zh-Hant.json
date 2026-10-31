@@ -100,7 +100,8 @@
     "error": {
       "cancelled": "已取消登入，可重試。",
       "failed": "登入失敗，請重試。",
-      "unavailable": "服務暫不可用，請稍後重試。"
+      "unavailable": "服務暫不可用，請稍後重試。",
+      "accountExists": "該信箱已有 GroupProof 帳號，請先用密碼登入，再到帳戶安全中關聯 Google。"
     },
     "passwordLogin": {
       "title": "已註冊帳戶登入",
@@ -285,7 +286,13 @@
         "RATE_LIMITED": "操作過於頻繁，請稍後再試",
         "EMAIL_CONFLICT": "該學校信箱已被其他帳戶驗證，如需合併請聯絡管理員",
         "REAUTH_REQUIRED": "需要近期重新認證後才能更換信箱",
-        "AUTH_UNAVAILABLE": "郵件服務暫不可用，請稍後重試"
+        "AUTH_UNAVAILABLE": "郵件服務暫不可用，請稍後重試",
+        "MAIL_UNAVAILABLE": "郵件服務暫不可用，請稍後重試。",
+        "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。",
+        "INVALID_STATE": "此帳戶無需該操作",
+        "REGISTRATION_REQUIRED": "請先完善個人資料再驗證學校信箱。",
+        "NETWORK_ERROR": "暫時無法連線服務，請稍後重試。",
+        "VERSION_CONFLICT": "資料已被其他操作更新，請重新整理後重試。"
       }
     },
     "status": {
@@ -343,14 +350,29 @@
       "sendCode": "發送驗證碼",
       "code": "驗證碼",
       "verify": "驗證",
+      "googleTitle": "Google 帳號",
+      "googleLinked": "已綁定",
+      "googleBoundEmail": "已綁定 Google 信箱：{email}",
+      "googleUnboundNote": "尚未關聯 Google 帳號。關聯後可用 Google 登入進入本帳戶。",
+      "googleLink": "關聯 Google",
+      "googleUnlink": "解除關聯",
+      "googleUnlinkDisabled": "為防止無法登入，解除關聯前需要先設定密碼並驗證登入信箱。",
+      "googleLinkSuccess": "Google 帳號關聯成功。",
+      "googleLinkFailed": "關聯失敗，請重試。",
+      "googleLinkElsewhere": "該 Google 帳號已關聯其他 GroupProof 帳戶，無法關聯到本帳戶。",
       "errors": {
+        "AUTH_UNAVAILABLE": "Google 登入服務暫不可用，請稍後重試。",
         "MAIL_UNAVAILABLE": "郵件服務暫不可用，請稍後重試。",
         "RATE_LIMITED": "操作過於頻繁，請稍後再試。",
         "INVALID_CODE": "驗證碼不正確",
         "CODE_EXPIRED": "驗證碼已過期，請重新發送",
         "CHALLENGE_INVALID": "驗證請求已失效，請重新發送",
         "INVALID_STATE": "此帳戶無需該操作",
-        "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。"
+        "SERVICE_UNAVAILABLE": "服務暫不可用，請稍後重試。",
+        "REAUTH_REQUIRED": "該操作需要近期重新登入，請登出後重新登入再試。",
+        "IDENTITY_ALREADY_LINKED": "本帳戶已關聯 Google，無需重複關聯。",
+        "LAST_SIGN_IN_METHOD": "請先設定密碼並驗證登入信箱，再解除 Google 關聯。",
+        "NETWORK_ERROR": "暫時無法連線服務，請稍後重試。"
       }
     },
     "progress": {
