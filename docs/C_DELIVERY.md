@@ -2,9 +2,12 @@
 
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
-Current snapshot (2026-10-14): PRs #9–#12 are merged. Team PR #14 unified
-authentication into the canonical API. This follow-up starts at `4143991` and
-addresses the [C functional audit](reviews/2026-10-14-c-function-audit.md).
+Current snapshot (2026-10-15): PRs #9–#12 and #16 are merged. Team PR #14 unified
+authentication into the canonical API. This follow-up starts at `22c0d1a` and
+reuses A's existing persisted authentication events and teacher applications for
+C7-05/C7-03. The preceding [C functional audit](reviews/2026-10-14-c-function-audit.md)
+was delivered in PR #16; its final CI passed 869 backend tests, 121 C browser cases,
+733 C script assertions, frontend quality/build and Docker smoke checks.
 There is partial code/contract coverage for **35/35 C task IDs, not 35 accepted
 tasks**. Historical commit/test counts below describe their original batches.
 All complete team acceptance rows remain open until staging verification.
@@ -542,3 +545,55 @@ access providers and durable delivery, B stable task codes and frozen references
 D verification/invalidation consumers, account restore/create contracts, and
 clean-database staging acceptance. Current source-check UI is useful with an
 available provider; it is not automatic external-source event delivery.
+
+### Reuse A's persisted authentication records (2026-10-15)
+
+Base: merged `develop` `22c0d1a` (PR #16). The available A code already persists
+teacher applications and authentication audit events. This batch reads those
+records through C-owned projections instead of waiting for a new provider or
+introducing a second identity database. No schema migration or deployment is
+included.
+
+- **C7-03:** teacher-review queries support pending/approved/rejected/all,
+  fixed ten-row pagination and read-only history. Submitted name, identity and
+  email domain are distinguished from the current account; reviewer name is
+  explicitly current. Missing historical facts remain empty. History does not
+  offer another decision, and lost permission removes protected details.
+- **C7-05:** two read-only API routes expose A's `AuthAuditEvent` using the real
+  current Admin/session checks. Filters cover action, result, actor, target user
+  and timezone-aware dates. One SQL statement produces the filtered count and
+  stable page. The response only exposes allowlisted metadata; it does not
+  invent historical roles, reasons or before/after values.
+- **C7-05 UI:** `/admin/logs?source=auth` has URL filters, pagination and event
+  detail. Authentication and all-site business audit remain explicit separate
+  sources. Revoked access clears list, directory and detail data; unavailable
+  reads do not keep displaying stale results. Generated client types, browser
+  contracts and a new client-check script are included in CI.
+
+Local verification for this batch:
+
+| Check | Observed result |
+| --- | --- |
+| PostgreSQL API/auth regressions | **61 passed**, zero skipped: audit 34, teacher history 10, existing unified-auth integration 17 |
+| Changed browser files | **35 distinct cases passed** across the initial run and unchanged audit-suite rerun; **10 new cases** |
+| New authentication-audit client script | **19 assertions passed** |
+| Existing generated C client script | **55 assertions passed** |
+| Python lint/format | Ruff passed; **179 files** passed the format check |
+| Frontend and routes | Full lint, typecheck and **56 route mappings** passed |
+| Production build | Compilation, type checking, static generation and trace collection passed |
+
+The first combined browser run passed 34/35. The remaining case timed out at
+its first `page.goto` during local cold compilation, before business assertions.
+The complete new audit suite then passed **8/8** with unchanged assertions and
+timeouts. Both the failure log/trace and rerun log are retained locally under
+`test-results`; this is not represented as a single all-green first run.
+
+The backend tests use A's actual session, account-disable, teacher-review and
+audit persistence paths with the isolated PostgreSQL database. Browser tests
+intercept API responses to verify UI behavior; they do not establish deployed
+integration. Final full-suite results belong to this batch's PR checks.
+
+Authentication audit is a working subset of C7-05, not full all-site business
+audit. A's storage, GitHub/Feishu, inbox, AI usage, access-grant and durable event
+delivery providers remain separate dependencies, along with B's canonical task
+references, D's verification consumers and clean-database staging acceptance.

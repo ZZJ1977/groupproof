@@ -35,8 +35,12 @@ async function graphql(query, variables = {}) {
     body: JSON.stringify({ query, variables }),
     signal: AbortSignal.timeout(30_000),
   });
-  const result = await response.json();
-  if (!response.ok || result.errors) throw new Error("Railway API operation failed; no deployment will proceed");
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.errors) {
+    // Railway error messages name the failing operation/permission; tokens and variable values never appear in them.
+    const reasons = (result.errors ?? []).map((error) => error.message).filter(Boolean).join("; ");
+    throw new Error(`Railway API operation failed (HTTP ${response.status}${reasons ? `: ${reasons}` : ""}); no deployment will proceed`);
+  }
   return result.data;
 }
 async function variablesFor(serviceId) {
