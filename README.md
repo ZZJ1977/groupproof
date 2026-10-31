@@ -1,111 +1,64 @@
 # GroupProof
 
-面向课程小组项目的协作与治理平台，围绕任务、证据、验收和贡献组织项目过程。
+GroupProof V1 uses Next.js with a unified FastAPI authentication and business service in `services/api`, backed by the team's PostgreSQL database and migration chain. Authentication supports password sessions, registration review and a Resend mail adapter; public mail remains disabled until delivery is verified. Business pages retain their existing feature switches and integration limits; see [frontend status](FRONTEND_STATUS.md).
 
-当前仓库是 **V1 Next.js 前端原型**。页面、导航、表单和主要交互已经完成；数据暂时由浏览器 Mock 服务和 localStorage 提供。
+## Run locally
 
-## 当前状态
+Requires Node.js 20 or newer and Docker（后端 PostgreSQL/Redis/API 由 compose 提供）。
 
-| 项目 | 状态 |
-| --- | --- |
-| Web 前端 | 已完成 56 个设计页和对应路由 |
-| 演示角色 | Student、Leader、Teacher、TA、Admin |
-| Docker | 已配置 Node 20 standalone 多阶段构建；Compose 可启动 Web、API、worker、PostgreSQL/pgvector 和 Redis |
-| CI/CD | GitHub Actions 已配置前端质量、Python 后端格式/pytest、路由、构建和 Docker 检查 |
-| 测试环境 | Railway develop 分支，已部署 |
-| 生产环境 | Railway main 分支，已部署前端原型 |
-| 后端和数据服务 | 按技术方案逐步接入 |
-
-## 快速开始
-
-需要 Node.js >=20 <25 和 npm：
-
-~~~bash
-git clone git@github.com:ZZJ1977/groupproof.git
-cd groupproof
+```bash
 npm ci
-cp .env.example .env.local
-npm run dev
-~~~
 
-打开 http://localhost:3000。当前开发模式使用 Mock 数据，不需要启动后端、数据库或 Redis。
+# 一条命令：自动拉起后端（postgres/redis/api）→ 执行迁移 → 启动前端
+npm run dev          # → http://localhost:3000（后端：http://localhost:8000）
+```
 
-提交代码前执行：
+`npm run dev` 的前置钩子（`scripts/dev-backend.sh`）会幂等启动 docker 后端并执行
+`alembic upgrade head`；没有 Docker 时自动跳过（可自行运行本地后端）。
+需要分步或自定义时：
 
-~~~bash
+```bash
+docker compose up -d postgres redis api   # 后端
+docker compose exec api alembic upgrade head
+npm run dev                                # 前端（或 docker compose up -d web）
+```
+
+Open [http://localhost:3000](http://localhost:3000). Sign-in uses real Google OIDC (configure `GOOGLE_*` per [.env.example](.env.example)); without credentials the login start returns a clear service-unavailable error. The demo role selector only appears in the isolated demo mode (`NEXT_PUBLIC_APP_MODE=mock`).
+
+## Checks
+
+```bash
 npm run lint
 npm run typecheck
-npm run check:routes
 npm run build
-~~~
+npm run check:routes     # 56 页路由映射；CHECK_HTTP=1 时按匿名鉴权语义核对（redirect: manual）
+npm run check:access     # 权限矩阵断言（lib/access/policy.ts）
+npm run check:i18n       # 简体/繁体/英文词条 key 与插值参数一致性
+npm run check:auth       # 需开发服务器：匿名直链/旧链接兼容/登录页文案/404/语言恢复（CHECK_AUTH_API=1 加 API 负面用例）
+cd services/api && python -m pytest -q  # 统一后端（需隔离 PostgreSQL，先执行 alembic upgrade head）
+npm run check:auth-browser  # 真实 Chrome：注册三步/登录/找回/重置、键盘与窄屏（需开发服务器+后端）
+```
 
-完整的本地开发、Docker 和组员协作命令见 [开发与发布流程](./docs/DEVELOPMENT.md)。
+With the development server and backend running: `CHECK_HTTP=1 npm run check:routes` and `CHECK_AUTH_API=1 npm run check:auth`.
 
-A1 全套本地环境：
+## Current scope
 
-~~~bash
-cp .env.example .env
-docker compose up --build
-~~~
+- Real: Google OIDC login, server sessions (revocable/rotating), registration gate (profile → school email verification → teacher review), account center, admin teacher review/disable, audit, i18n (zh-Hans / zh-Hant / en), server-side page gating and protected business API authorization.
+- Mock (browser-local, behind real gating): the 56 design pages' business data (courses, projects, tasks, evidence, AI, GitHub/Feishu, file metadata, exports).
 
-## 技术选型摘要
+See [frontend status](FRONTEND_STATUS.md), [API README](services/api/README.md) and [unification status](docs/plans/2026-10-12-unified-auth-resend-status.md) for implementation details and known limitations. Google entry visibility does not imply configured OAuth credentials; real mail requires a verified sender and the public-mail switch.
 
-- 产品：Web-only
-- 前端：Next.js、Tailwind CSS、shadcn/ui
-- 后端：FastAPI/Python，采用 Modular Monolith
-- 数据：PostgreSQL、pgvector
-- 文件：Supabase Storage
-- 异步：Redis、Celery
-- 实时：SSE
-- AI：第三方 LLM API + Provider Adapter
-- 集成：GitHub App、飞书 Open API
-- 认证：Google Login + MUST 邮箱验证
-- 权限：Contextual RBAC
-- 部署：Railway
-- 监控：Sentry
-- 测试：pytest、Playwright
+## Existing develop backend foundation
 
-完整技术表、系统分层、开发阶段和当前限制见 [技术方案与开发计划](./docs/TECHNICAL_PLAN.md)。
+`services/api` owns both authentication and business APIs. `server/` is retained as historical reference and is no longer the deployed identity entry point. `API_INTERNAL_URL` points Web's identity gate and runtime `/api/v1` proxy to the unified API. Existing generated clients and business feature switches remain available; migrating authentication does not finish unrelated business integrations.
 
-## 测试与生产
+Existing checks remain available:
 
-| 环境 | 分支 | 地址 |
-| --- | --- | --- |
-| Staging | develop | [groupproof-staging](https://groupproof-staging-production.up.railway.app) |
-| Production | main | [groupproof-production](https://groupproof-production-production.up.railway.app) |
+```bash
+npm run api:generate
+npm run test:api-config
+npm run test:api-client
+npm run test:e2e
+```
 
-发布顺序固定为：
-
-~~~text
-功能分支本地测试 → 推送 develop → CI/CD 和 Staging 验收 → 推送 main → Production
-~~~
-
-Railway 服务拓扑、环境变量、服务命名和环境隔离见 [部署基线](./docs/DEPLOYMENT.md)。
-
-## 文档分层
-
-| 文档 | 内容 |
-| --- | --- |
-| 本 README | 项目入口、当前状态和最短启动路径 |
-| [开发与发布流程](./docs/DEVELOPMENT.md) | 本地开发、环境变量、质量检查、Docker、组员协作、测试到生产 |
-| [技术方案与开发计划](./docs/TECHNICAL_PLAN.md) | 最终技术选型、系统分层、阶段计划、目录和限制 |
-| [部署基线](./docs/DEPLOYMENT.md) | Railway Staging/Production、服务拓扑和部署约定 |
-| [前端交付状态](./FRONTEND_STATUS.md) | 已完成页面、Mock 边界和待接入能力 |
-| [页面实施计划](./FRONTEND_IMPLEMENTATION_PLAN.md) | 56 个页面与路由映射 |
-
-## Docker 快速启动
-
-~~~bash
-docker build -t groupproof-web:local .
-docker run --rm --env-file .env.local -p 3000:3000 groupproof-web:local
-~~~
-
-健康检查：
-
-~~~bash
-curl --fail http://localhost:3000/healthz
-~~~
-
-## 当前范围
-
-登录、邮箱验证、OAuth、权限、AI、GitHub、飞书、文件上传、报告导出、数据库和管理后台仍是后续接入项。当前生产环境运行的是前端原型，正式开放真实用户前需要完成后端和数据服务接入。
+Existing development, deployment and architecture documents remain at [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/TECHNICAL_PLAN.md](docs/TECHNICAL_PLAN.md).

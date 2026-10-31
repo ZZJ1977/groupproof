@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Activity, AlertTriangle, BookOpen, CheckCircle2, Clock3, Database, FileLock2, Plus, Shield, ShieldCheck, UserCheck, Users } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
+import { apiMode } from "@/lib/api/config";
+import { AdminUserDirectory } from "@/features/c/AdminUserDirectory";
 import type { Role, User } from "@/types/domain";
-import { auditRecord, Badge, Box, Empty, formatDate, formatDateTime, Header, Metric, newId, Notice, Progress, roleLabel, SearchField, statusTone, Table } from "./primitives";
+import { auditRecord, Badge, Box, Empty, formatDate, formatDateTime, Header, Metric, newId, Notice, roleLabel, SearchField, statusTone, Table } from "./primitives";
 import styles from "./governance.module.css";
 
 function useAdminData() {
@@ -12,6 +14,10 @@ function useAdminData() {
 }
 
 export function AdminUsers() {
+  return apiMode("admin") === "real" ? <AdminUserDirectory /> : <MockAdminUsers />;
+}
+
+function MockAdminUsers() {
   const { data, role, update, add } = useAdminData();
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -164,29 +170,15 @@ export function AdminLogs() {
 }
 
 export function AdminAiUsage() {
-  const { data } = useAdminData();
   const [period, setPeriod] = useState<7 | 30 | 90>(7);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
-  const usage = selectedWorkflow ? data.aiUsage.filter((item) => item.workflow === selectedWorkflow) : data.aiUsage;
-  const periodRatio = period / 90;
-  const calls = Math.round(usage.reduce((sum, item) => sum + item.calls, 0) * periodRatio);
-  const failures = Math.round(usage.reduce((sum, item) => sum + item.failures, 0) * periodRatio);
-  const avgLatency = calls ? Math.round(usage.reduce((sum, item) => sum + item.avgLatencyMs * item.calls, 0) / calls) : 0;
-  const successRate = calls ? Math.round(((calls - failures) / calls) * 1000) / 10 : 0;
-  const maxCalls = Math.max(1, ...data.aiUsage.map((item) => item.calls));
-  const trend = Array.from({ length: 7 }, (_, index) => Math.round(calls * [0.12, 0.16, 0.15, 0.11, 0.14, 0.13, 0.19][index]));
-  const maxTrend = Math.max(1, ...trend);
+  // Undated demo aggregates cannot support rolling windows or live model health.
   return <div className={styles.page}>
-    <Header title="AI 使用情况" description="查看平台 AI 调用量、失败情况与基础性能表现。" action={<div className={styles.actions}>{([7, 30, 90] as const).map((days) => <button key={days} type="button" className={period === days ? styles.primaryButton : styles.button} onClick={() => setPeriod(days)}>近 {days} 天</button>)}</div>} />
-    <div className={styles.metrics}><Metric label="调用量" value={calls} icon={Database} /><Metric label="成功率" value={`${successRate}%`} icon={ShieldCheck} tone="green" /><Metric label="失败次数" value={failures} icon={AlertTriangle} tone="red" /><Metric label="平均延迟" value={`${(avgLatency / 1000).toFixed(1)} s`} icon={Clock3} /></div>
-    <div className={styles.twoColumns}><div className={styles.sideStack}>
-      <Box title="按流程" action={selectedWorkflow ? <button type="button" className={styles.textButton} onClick={() => setSelectedWorkflow(null)}>查看全部</button> : null}><div className={styles.panelBody}>{data.aiUsage.map((item) => <button key={item.id} type="button" className={styles.row} style={{ width: "100%", borderLeft: 0, borderRight: 0, borderTop: 0, background: selectedWorkflow === item.workflow ? "#f1f6ff" : "transparent", textAlign: "left", cursor: "pointer" }} onClick={() => setSelectedWorkflow(selectedWorkflow === item.workflow ? null : item.workflow)}><span className={styles.rowMain}>{item.workflow}</span><strong>{Math.round(item.calls * periodRatio)}</strong><div style={{ width: "48%" }}><Progress value={item.calls / maxCalls * 100} label={false} /></div><span className={styles.muted}>{Math.round(item.calls / data.aiUsage.reduce((sum, row) => sum + row.calls, 0) * 100)}%</span></button>)}</div></Box>
-      <Box title="调用趋势" action={<span className={styles.muted}>当前视图：近 {period} 天</span>}><div className={styles.panelBody}><div className={styles.chart}>{trend.map((value, index) => <div className={styles.chartBar} key={index} style={{ height: `${Math.max(8, value / maxTrend * 100)}%` }} title={`${value} 次`}><span>{index + 1}</span></div>)}</div><div className={styles.rowMeta} style={{ marginTop: 25 }}>按当前流程汇总的示例趋势。选择流程可查看其用量构成。</div></div></Box>
-    </div><div className={styles.sideStack}>
-      <Box title="模型服务状态"><div className={styles.panelBody}><Badge tone="green">运行正常</Badge><p className={styles.muted}>最近汇总成功率 {successRate}%。</p>{Array.from(new Set(data.aiUsage.map((item) => item.model))).map((model) => <div className={styles.row} key={model}><span className={styles.rowMain}>{model}</span><Badge tone="green">可用</Badge></div>)}</div></Box>
-      <Box title="成本与缓存"><div className={styles.panelBody}><div className={styles.row}><span className={styles.rowMain}>模拟成本合计</span><strong>${(usage.reduce((sum, item) => sum + item.cost, 0) * periodRatio).toFixed(2)}</strong></div><p className={styles.rowMeta}>相同输入版本复用已有结果，旧分析标记为过期。费用只用于内部观测，不对用户计费。</p></div></Box>
-    </div></div>
-    <Box title="最近失败记录"><Table><thead><tr><th>流程</th><th>模型</th><th>调用次数</th><th>失败次数</th><th>失败率</th><th>平均延迟</th></tr></thead><tbody>{data.aiUsage.filter((item) => item.failures > 0).map((item) => <tr key={item.id}><td>{item.workflow}</td><td>{item.model}</td><td>{item.calls}</td><td><Badge tone="red">{item.failures}</Badge></td><td>{Math.round(item.failures / Math.max(1, item.calls) * 100)}%</td><td>{(item.avgLatencyMs / 1000).toFixed(1)} s</td></tr>)}</tbody></Table></Box>
+    <Header title="AI 使用情况" description="按真实调用记录查看用量、失败情况与性能。" action={<div className={styles.actions}>{([7, 30, 90] as const).map((days) => <button key={days} type="button" aria-pressed={period === days} className={period === days ? styles.primaryButton : styles.button} onClick={() => setPeriod(days)}>近 {days} 天</button>)}</div>} />
+    <Notice>AI 用量记录尚未接入。现有演示汇总没有调用时间，无法计算近 {period} 天的用量、趋势或费用；缺失数据不会显示为零。</Notice>
+    <div className={styles.metrics}><Metric label="调用量" value="—" icon={Database} /><Metric label="成功率" value="—" icon={ShieldCheck} /><Metric label="失败次数" value="—" icon={AlertTriangle} /><Metric label="平均延迟" value="—" icon={Clock3} /></div>
+    <Box title="调用趋势"><Empty>暂无带时间戳的调用记录。</Empty></Box>
+    <Box title="模型服务状态"><div className={styles.panelBody}><Badge>未知</Badge><p className={styles.muted}>尚未收到模型服务的实际状态。</p></div></Box>
+    <Box title="成本"><div className={styles.panelBody}><span className={styles.muted}>暂无真实费用记录。</span></div></Box>
   </div>;
 }
 
