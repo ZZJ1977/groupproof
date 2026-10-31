@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 import httpx
 from authlib.integrations.httpx_client import OAuth2Client
@@ -50,7 +51,14 @@ def reset_discovery_cache() -> None:
     _discovery_cache.clear()
 
 
-def create_transaction(db: DbSession, return_to: str | None) -> tuple[str, OAuthTransaction]:
+def create_transaction(
+    db: DbSession,
+    return_to: str | None,
+    *,
+    purpose: str = "login",
+    user_id: Any | None = None,
+) -> tuple[str, OAuthTransaction]:
+    """创建 OAuth 事务；purpose=link 时必须带上发起关联的用户（回调只建绑定，不建用户）。"""
     settings = get_settings()
     nonce = new_token()
     state = new_token()
@@ -59,6 +67,8 @@ def create_transaction(db: DbSession, return_to: str | None) -> tuple[str, OAuth
         nonce=nonce,
         code_verifier=new_token(),
         return_to=safe_return_to(return_to),
+        purpose=purpose,
+        user_id=user_id,
         expires_at=utcnow() + timedelta(seconds=settings.oauth_transaction_ttl),
     )
     db.add(record)

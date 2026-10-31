@@ -9,17 +9,19 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
+from ..config import get_settings
 from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
 from ..errors import AppError
 from ..guard import AuthContext, check_csrf, require_session
-from ..models import AcademicIdentityCheck, TeacherApplication, utcnow
-from ..security import check_email_format, email_domain_allowed
+from ..models import AcademicIdentityCheck, AuthIdentity, TeacherApplication, utcnow
+from ..security import check_email_format, email_domain_allowed, within_recent_auth
 from ..services import (
     acceptance,
     accounts,
     audit,  # noqa: F401  (change_password 审计)
     email_challenges,
+    google_oidc,
 )
 from ..services import sessions as sessions_service
 from ..services.registration import can_enter_workspace, derive_facts, student_id_rule_note
@@ -90,6 +92,7 @@ def _me_payload(context: AuthContext, db: DbSession) -> dict:
         ).scalars()
     )
     latest = max(apps, key=lambda a: a.created_at) if apps else None
+    google_identity = next((i for i in user.identities if i.provider == "google"), None)
     return {
         "user": {
             "id": user.id,
@@ -101,7 +104,8 @@ def _me_payload(context: AuthContext, db: DbSession) -> dict:
             "roles": list(user.roles or []),  # 只读：实际角色由服务端授予
             "preferredLocale": user.preferred_locale or "zh-Hans",
             "version": user.version,
-            "googleEmailBound": bool(user.identities),
+            "googleEmailBound": google_identity is not None,
+            "googleEmail": _mask_email(google_identity.google_email if google_identity else None),
             "passwordLoginEnabled": has_password,
         },
         "schoolEmail": {
@@ -549,6 +553,74 @@ def patch_preferences(
         {"preferredLocale": context.user.preferred_locale},
         headers={"Cache-Control": "private, no-store"},
     )
+
+
+@router.post("/me/identities/google/link")
+def link_google_identity(
+    request: Request,
+    context: AuthContext = Depends(require_session),
+    db: DbSession = Depends(get_db),
+) -> JSONResponse:
+    """发起关联 Google：要求近期认证；返回授权地址，由前端整页跳转。"""
+    check_csrf(request, context)
+    if context.facts["accountState"] == "disabled":
+        raise AppError("ACCOUNT_DISABLED", 403)
+    if not within_recent_auth(context.user.last_login_at, utcnow()):
+        raise AppError("REAUTH_REQUIRED", 403)
+    existing = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.user_id == context.user.id, AuthIdentity.provider == "google"
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise AppError("IDENTITY_ALREADY_LINKED", 409)
+    state, transaction = google_oidc.create_transaction(
+        db, None, purpose="link", user_id=context.user.id
+    )
+    db.commit()
+    url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
+    settings = get_settings()
+    response = JSONResponse({"authorizeUrl": url}, headers={"Cache-Control": "private, no-store"})
+    response.set_cookie(
+        settings.oauth_cookie_name,
+        state,
+        max_age=settings.oauth_transaction_ttl,
+        httponly=True,
+        secure=settings.is_real,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.delete("/me/identities/google")
+def unlink_google_identity(
+    request: Request,
+    context: AuthContext = Depends(require_session),
+    db: DbSession = Depends(get_db),
+) -> JSONResponse:
+    """解除 Google 关联：必须另有已验证登录邮箱的密码凭据，防止把自己锁在门外。"""
+    check_csrf(request, context)
+    if context.facts["accountState"] == "disabled":
+        raise AppError("ACCOUNT_DISABLED", 403)
+    identity_row = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.user_id == context.user.id, AuthIdentity.provider == "google"
+        )
+    ).scalar_one_or_none()
+    if identity_row is None:
+        raise AppError("INVALID_STATE", 409, params={"reason": "identity_not_linked"})
+    from ..models import PasswordCredential
+
+    credential = db.get(PasswordCredential, context.user.id)
+    if credential is None or credential.login_email_verified_at is None:
+        raise AppError("LAST_SIGN_IN_METHOD", 403)
+    db.delete(identity_row)
+    audit.record(
+        db, "auth.google.unlinked", actor_id=context.user.id, changed_fields=["auth_identities"]
+    )
+    db.commit()
+    return JSONResponse({"googleEmailBound": False}, headers={"Cache-Control": "private, no-store"})
 
 
 # --- 内部工具 ---

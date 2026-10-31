@@ -133,7 +133,7 @@ function LoginCard() {
       )}
       {error && (
         <p className="mt-4 rounded-[7px] bg-[#fdecec] p-3 text-[12px] text-[#c3313f]" role="alert">
-          {error === "cancelled" ? t("error.cancelled") : error === "failed" ? t("error.failed") : t("error.unavailable")}
+          {error === "cancelled" ? t("error.cancelled") : error === "failed" ? t("error.failed") : error === "account_exists" ? t("error.accountExists") : t("error.unavailable")}
         </p>
       )}
 
