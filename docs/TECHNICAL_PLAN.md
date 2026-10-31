@@ -81,24 +81,24 @@ API 层          FastAPI REST API、SSE、认证中间件
 - 完成数据库迁移、备份、监控、日志、告警和回滚流程。
 - 真实 API、认证和管理后台验收通过后，关闭生产环境 Mock。
 
-## 未来目录
+## A1 目录边界
 
 ~~~text
-apps/web/                    当前用户端
-apps/admin/                  管理后台
-services/api/                FastAPI API
-services/worker/             Celery 任务消费者
+apps/web/                    当前用户端的迁移入口
+apps/admin/                  管理后台迁移入口
+services/api/                FastAPI API 和按成员划分的模块
+services/worker/             后台任务消费者和按成员划分的任务
 packages/domain/             前后端共享契约与类型
 infra/                       Compose、数据库迁移和运维脚本
 ~~~
 
-当前仓库仍使用根目录 Next.js 结构。后端开始开发后再逐步迁移，保留根目录 Dockerfile 以避免影响现有部署。
+当前根目录的 `app/`、`components/`、`features/`、`lib/`、`mocks/` 和 `types/` 仍是可部署的 Next.js Web 应用。A1 建立了 `services/api`、`services/worker`、`packages/domain` 和 `infra` 的边界；后端功能按 A/B/C/D 的模块目录开发。前端逐步迁移到 `apps/web` 时，保留根目录 Dockerfile 以避免影响现有部署。
 
 ## 当前限制
 
 - 登录、邮箱验证码、OAuth 和权限目前是前端演示逻辑。
 - 数据只保存在当前浏览器的 localStorage 中，不是共享数据。
 - AI、GitHub、飞书、文件上传、报告导出和审批目前使用 Mock 实现。
-- 真实 API、PostgreSQL、pgvector、Supabase Storage、Redis、Celery、SSE、Sentry 和生产管理后台尚未接入。
-- pytest 和 Playwright 是目标测试栈，当前 CI 仍以前端 lint、类型、路由、构建和 Docker 检查为主。
-
+- A2 已接入 FastAPI 示例 API、PostgreSQL/pgvector 的 Alembic 迁移、统一响应与错误合同、OpenAPI 生成客户端、按功能切换 Mock/Real，以及 Redis + Celery + SSE 的示例任务链路。
+- A2 已提供可重复的开发/测试 seed、pytest 后端示例和 Playwright 页面示例；真实认证、业务模块、Supabase Storage、Sentry 和生产管理后台仍按后续任务接入。
+- Railway 的 Staging 和 Production 已分别创建 Web、API、worker、PostgreSQL 和 Redis 服务；API/worker 的数据库与 Redis 连接使用各自项目内的变量引用，时区统一为 `Asia/Shanghai`。Staging 已完成迁移和 seed；A2 新代码通过功能分支合入 `develop` 后再部署，Production 等代码合并到 `main` 后执行迁移和正式切流。

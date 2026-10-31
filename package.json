@@ -3,13 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20 <25"
+  },
   "scripts": {
+    "predev": "bash scripts/dev-backend.sh",
     "dev": "NEXT_DIST_DIR=.next-dev next dev",
     "build": "next build",
     "start": "next start",
+    "start:standalone": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check:routes": "tsx scripts/check-routes.mjs",
+    "test:e2e": "playwright test",
+    "api:generate": "node scripts/generate-api-client.mjs",
+    "test:api-config": "tsx scripts/api-config-smoke.ts",
+    "test:api-client": "tsx scripts/api-client-smoke.ts",
     "check:access": "tsx scripts/check-access.mjs",
     "check:versioning": "tsx scripts/check-versioning.mjs",
     "check:commands": "tsx scripts/check-commands.mjs",
@@ -32,7 +41,6 @@
     "server:readiness": "curl -fsS http://localhost:8000/readyz",
     "check:auth-browser": "node scripts/check-auth-browser.mjs",
     "check:registration-progress": "node scripts/check-registration-progress.mjs",
-    "start:standalone": "node .next/standalone/server.js",
     "check:account-review": "node scripts/check-account-review.mjs"
   },
   "dependencies": {
@@ -49,6 +57,7 @@
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "next-intl": "^4.14.9",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.0",
@@ -57,18 +66,17 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.1.0",
-    "typescript": "^5.7.0",
-    "tsx": "^4.23.15"
+    "openapi-typescript": "^7.13.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0"
   },
   "overrides": {
     "postcss": "^8.5.29"
-  },
-  "engines": {
-    "node": ">=20 <25"
   }
 }
