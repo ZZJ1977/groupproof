@@ -7,8 +7,11 @@ export interface IdentityAdminUser {
 }
 export interface IdentityTeacherApplication {
   id: string; userId: string; name: string; college: string; applicationVersion: number;
-  status: "pending"; createdAt: string; emailVerified: boolean; emailDomain: string;
+  status: "pending" | "approved" | "rejected"; createdAt: string; emailVerified: boolean; emailDomain: string;
+  submittedName: string | null; submittedIdentity: string | null; submittedEmailDomain: string | null;
+  reviewedAt: string | null; reviewerName: string | null; reviewReason: string | null;
 }
+export type TeacherApplicationStatus = IdentityTeacherApplication["status"] | "all";
 export interface IdentityAdminPage<T> { items: T[]; total: number; page: number; pageSize: number }
 
 /** Identity IDs stay in the identity service. No canonical UUID guessing. */
@@ -28,7 +31,7 @@ async function request<T>(path: string, body?: unknown, actorId?: string): Promi
 export const cIdentityClient = {
   users: (query: URLSearchParams) => request<IdentityAdminPage<IdentityAdminUser>>(`/users?${query}`),
   disable: (user: IdentityAdminUser, reason: string, actorId: string) => request(`/users/${encodeURIComponent(user.id)}/disable`, { expectedVersion: user.version, reason }, actorId),
-  applications: (page: number) => request<IdentityAdminPage<IdentityTeacherApplication>>(`/teacher-applications?page=${page}`),
+  applications: (page: number, status: TeacherApplicationStatus = "pending") => request<IdentityAdminPage<IdentityTeacherApplication>>(`/teacher-applications?${new URLSearchParams({ page: String(page), status })}`),
   review: (row: IdentityTeacherApplication, decision: "approve" | "reject", reason: string, actorId: string) => request(`/teacher-applications/${encodeURIComponent(row.id)}/review`, {
     expectedVersion: row.applicationVersion, decision, reason,
   }, actorId),
