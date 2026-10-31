@@ -320,6 +320,7 @@ jobs:
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+      RAILWAY_IDENTITY_SERVICE_ID: ${{ vars.RAILWAY_IDENTITY_SERVICE_ID }}
       RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT || 'production' }}
     steps:
       - name: Check out repository
@@ -332,9 +333,13 @@ jobs:
           test -n "${RAILWAY_API_TOKEN:-}" || { echo "::error::Set the RAILWAY_TOKEN repository secret before enabling Railway deploys."; exit 1; }
           test -n "${RAILWAY_PROJECT_ID:-}" || { echo "::error::Set the RAILWAY_PROJECT_ID environment variable before enabling Railway deploys."; exit 1; }
           test -n "${RAILWAY_SERVICE_ID:-}" || { echo "::error::Set the RAILWAY_SERVICE_ID repository variable before enabling Railway deploys."; exit 1; }
+          test -n "${RAILWAY_IDENTITY_SERVICE_ID:-}" || { echo "::error::Set the RAILWAY_IDENTITY_SERVICE_ID environment variable before enabling Railway deploys."; exit 1; }
 
       - name: Install Railway CLI
         run: npm install --global @railway/cli@5.63.3
 
-      - name: Deploy source with Dockerfile to Railway
+      - name: Deploy identity service
+        run: railway up ./server --path-as-root --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_IDENTITY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
+
+      - name: Deploy Web source with Dockerfile to Railway
         run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"

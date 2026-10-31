@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +24,21 @@ _DEFAULT_ENV_FILE = Path(__import__("os").environ.get("GROUPPROOF_ENV_FILE") or 
 
 # 本地隔离开发默认值（仅 dev/mock；real 模式必须显式配置）
 _DEV_DATABASE_URL = "postgresql+psycopg://gp:gp_test_pw@localhost:55432/gp_dev"
+
+
+def _normalize_database_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    return url
+
+
+def _override_database_name(url: str, database_name: str) -> str:
+    if not database_name[0].isalpha() or not database_name.replace("_", "").isalnum():
+        raise ValueError("DATABASE_NAME must start with a letter and contain only letters, numbers, and underscores")
+    parsed = urlsplit(url)
+    return urlunsplit(parsed._replace(path=f"/{database_name}"))
 
 
 class Settings(BaseSettings):
@@ -38,6 +54,7 @@ class Settings(BaseSettings):
 
     # --- 数据库（核心依赖）---
     database_url: str = _DEV_DATABASE_URL
+    database_name: str = ""
 
     # --- 提供方开关（待新增配置；默认密码/邮箱通道开，Google 需配置后可用）---
     auth_google_enabled: bool = True
@@ -53,14 +70,16 @@ class Settings(BaseSettings):
     google_expected_issuer: str = "https://accounts.google.com"
 
     # --- 邮件（依赖邮件的操作：注册/学校验证/密码重置）---
-    # smtp: 真实投递；capture: 仅隔离开发/测试环境的邮件捕获器（生产禁止）
-    mail_mode: Literal["smtp", "capture"] = "capture"
+    # smtp / resend: 真实投递；capture: 仅隔离开发/测试环境的邮件捕获器（生产禁止）
+    mail_mode: Literal["smtp", "resend", "capture"] = "capture"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_tls_mode: Literal["starttls", "implicit", "none"] = "starttls"
     smtp_timeout_seconds: int = 15
+    resend_api_key: str = ""
+    mail_api_timeout_seconds: int = 15
     mail_from: str = ""
     capture_dir: str = ".mail-capture"
 
@@ -112,7 +131,11 @@ class Settings(BaseSettings):
 
     @property
     def mail_configured(self) -> bool:
-        return self.mail_mode == "capture" and not self.is_real or (self.mail_mode == "smtp" and bool(self.smtp_host and self.mail_from))
+        return (
+            (self.mail_mode == "capture" and not self.is_real)
+            or (self.mail_mode == "smtp" and bool(self.smtp_host and self.mail_from))
+            or (self.mail_mode == "resend" and bool(self.resend_api_key and self.mail_from))
+        )
 
     @property
     def mail_available(self) -> bool:
@@ -145,6 +168,9 @@ class Settings(BaseSettings):
         # 空环境变量视为未设置（不覆盖默认值）
         if not self.database_url:
             self.database_url = _DEV_DATABASE_URL
+        self.database_url = _normalize_database_url(self.database_url)
+        if self.database_name:
+            self.database_url = _override_database_name(self.database_url, self.database_name)
         if not self.email_challenge_hmac_key:
             if self.is_real:
                 raise RuntimeError("APP_MODE=real 必须配置 EMAIL_CHALLENGE_HMAC_KEY（生成：openssl rand -hex 32）")
@@ -160,8 +186,8 @@ class Settings(BaseSettings):
                 raise RuntimeError("APP_MODE=real 不允许开启 debug_endpoints")
             if self.acceptance_test_token:
                 raise RuntimeError("APP_MODE=real 不允许配置 ACCEPTANCE_TEST_TOKEN（验收密令必须为空）")
-            if self.mail_mode != "smtp":
-                raise RuntimeError("APP_MODE=real 禁止邮件捕获器（MAIL_MODE 必须为 smtp）")
+            if self.mail_mode not in ("smtp", "resend"):
+                raise RuntimeError("APP_MODE=real 禁止邮件捕获器（MAIL_MODE 必须为 smtp 或 resend）")
 
             # 可选提供方：仅在启用且配置不完整时拒绝启动（发布检查），不影响其他通道
             if self.auth_google_enabled and not self.google_available:
@@ -175,7 +201,8 @@ class Settings(BaseSettings):
                 raise RuntimeError("APP_MODE=real 的 OIDC 发现地址/issuer 必须指向 Google")
             if (self.auth_email_signup_enabled or self.auth_password_reset_enabled) and not self.mail_configured:
                 raise RuntimeError(
-                    "APP_MODE=real 且启用邮箱注册/密码重置时必须配置可用发件服务（MAIL_MODE=smtp 且 SMTP_HOST/MAIL_FROM 完整）；"
+                    "APP_MODE=real 且启用邮箱注册/密码重置时必须配置可用发件服务："
+                    "MAIL_MODE=smtp 且 SMTP_HOST/MAIL_FROM 完整，或 MAIL_MODE=resend 且 RESEND_API_KEY/MAIL_FROM 完整；"
                     "如暂不开放，请设置 AUTH_EMAIL_SIGNUP_ENABLED=false / AUTH_PASSWORD_RESET_ENABLED=false"
                 )
         return self
