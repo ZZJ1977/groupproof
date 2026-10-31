@@ -361,6 +361,7 @@
       "googleLinkFailed": "关联失败，请重试。",
       "googleLinkElsewhere": "该 Google 账号已关联其他 GroupProof 账号，无法关联到本账号。",
       "errors": {
+        "AUTH_UNAVAILABLE": "Google 登录服务暂不可用，请稍后重试。",
         "MAIL_UNAVAILABLE": "邮件服务暂不可用，请稍后重试。",
         "RATE_LIMITED": "操作过于频繁，请稍后再试。",
         "INVALID_CODE": "验证码不正确",

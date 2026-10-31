@@ -361,6 +361,7 @@
       "googleLinkFailed": "Linking failed. Please try again.",
       "googleLinkElsewhere": "This Google account is already linked to another GroupProof account.",
       "errors": {
+        "AUTH_UNAVAILABLE": "Google sign-in is temporarily unavailable. Please retry later.",
         "MAIL_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
         "RATE_LIMITED": "Too many attempts. Please try again later.",
         "INVALID_CODE": "Incorrect code",
