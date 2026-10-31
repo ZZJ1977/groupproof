@@ -20,3 +20,5 @@ Dockerfile*
 **/.env.*
 **/*临时密令.md
 .DS_Store
+
+.next-e2e

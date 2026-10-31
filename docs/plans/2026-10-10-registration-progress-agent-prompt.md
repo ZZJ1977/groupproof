@@ -7,12 +7,12 @@
 
 ## 参考图片
 
-四张图片已按原文件名放在实际项目的 `docs` 根目录，不修改图片像素或其中的文字：
+四张图片已按原文件名放在实际项目的 `docs/design/screenshots` 目录，不修改图片像素或其中的文字：
 
-- [01-完善个人资料.png](../01-完善个人资料.png)
-- [02-学校邮箱验证.png](../02-学校邮箱验证.png)
-- [03-注册与审核状态.png](../03-注册与审核状态.png)
-- [04-账户安全.png](../04-账户安全.png)
+- [01-完善个人资料.png](../design/screenshots/01-完善个人资料.png)
+- [02-学校邮箱验证.png](../design/screenshots/02-学校邮箱验证.png)
+- [03-注册与审核状态.png](../design/screenshots/03-注册与审核状态.png)
+- [04-账户安全.png](../design/screenshots/04-账户安全.png)
 
 截图用作布局、组件和页面关系参考；其中的邮箱、身份、已绑定状态、示例验证码与旧文案不是实际业务事实。文字需求优先于截图。第3张图暴露的 `account.status.basis.password_auth` 是缺失翻译，不应按设计稿原样实现。
 
@@ -24,10 +24,10 @@
 
 读取以下四张图片，复用其页面结构、现有 UI 组件和设计变量：
 
-1. `/Users/motasy_delay/GroupProof/docs/01-完善个人资料.png`
-2. `/Users/motasy_delay/GroupProof/docs/02-学校邮箱验证.png`
-3. `/Users/motasy_delay/GroupProof/docs/03-注册与审核状态.png`
-4. `/Users/motasy_delay/GroupProof/docs/04-账户安全.png`
+1. `/Users/motasy_delay/GroupProof/docs/design/screenshots/01-完善个人资料.png`
+2. `/Users/motasy_delay/GroupProof/docs/design/screenshots/02-学校邮箱验证.png`
+3. `/Users/motasy_delay/GroupProof/docs/design/screenshots/03-注册与审核状态.png`
+4. `/Users/motasy_delay/GroupProof/docs/design/screenshots/04-账户安全.png`
 
 优先核对：`components/account-shell.tsx`、`features/account/AccountView.tsx`、`lib/api/auth-client.ts`、`lib/auth/server.ts`、`app/[[...slug]]/page.tsx`、`app/globals.css`、`messages/`，以及后端 `server/app/services/registration.py`、`services/sessions.py`、`guard.py`、`routers/auth.py`、`routers/me.py`。
 

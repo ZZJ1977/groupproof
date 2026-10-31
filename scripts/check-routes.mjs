@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolveRoute } from "../lib/routes.ts";
 
 const plan = readFileSync(new URL("../FRONTEND_IMPLEMENTATION_PLAN.md", import.meta.url), "utf8");
+const origin = process.env.CHECK_ORIGIN ?? "http://localhost:3000";
 const cases = [...plan.matchAll(/^\|\s*(\d{2})\s*\|[^|]*\|\s*`([^`]+)`\s*\|/gm)].map((match) => ({ screen: Number(match[1]), path: match[2] }));
 assert.equal(cases.length, 56, "计划中应列出全部 56 个设计页");
 
@@ -15,7 +16,7 @@ for (const item of cases) {
 if (process.env.CHECK_HTTP === "1") {
   // 鉴权语义（匿名）：使用 redirect:manual 检查状态码与 Location，不跟随到登录页后用 200 判定业务页正常
   for (const item of cases) {
-    const response = await fetch(`http://localhost:3000${item.path}`, { redirect: "manual" });
+    const response = await fetch(`${origin}${item.path}`, { redirect: "manual" });
     const target = response.headers.get("location") ?? "";
     if (item.screen === 1) {
       assert.equal(response.status, 200, `${item.path} HTTP ${response.status}`);

@@ -1,9 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { mockService, setWorkspaceScope } from "@/lib/api/mock-service";
+import { setWorkspaceScope } from "@/lib/api/mock-service";
+import { workspaceService } from "@/lib/api/workspace-service";
 import { seedData } from "@/mocks/seed";
+import { apiMode } from "@/lib/api/config";
+import { authClient } from "@/lib/api/auth-client";
+import { emptyWorkspace } from "@/lib/empty-workspace";
 import type { CollectionEntity, CollectionKey, MockData, Role } from "@/types/domain";
 
 type SessionUser = { id: string; name: string | null; preferredLocale: string };
@@ -14,9 +18,11 @@ type WorkspaceContextValue = {
   loading: boolean;
   /** 当前会话用户：缓存键与本地存储按用户隔离 */
   userId: string;
+  userName: string | null;
   /** 仅隔离演示模式（NEXT_PUBLIC_APP_MODE=mock）可用；生产无角色切换入口 */
   setRole: (role: Role) => void;
   demoMode: boolean;
+  mockWorkspace: boolean;
   update: <K extends CollectionKey>(collection: K, id: string, patch: Partial<CollectionEntity<K>>) => void;
   add: <K extends CollectionKey>(collection: K, entity: CollectionEntity<K>) => void;
   remove: <K extends CollectionKey>(collection: K, id: string) => void;
@@ -27,25 +33,31 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 export const scopedWorkspaceKey = (userId: string) => ["workspace", userId] as const;
 
 const demoMode = process.env.NEXT_PUBLIC_APP_MODE === "mock";
+const mockWorkspace = apiMode("workspace") === "mock";
 
 function WorkspaceState({ user, children }: { user: SessionUser; children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(!mockWorkspace);
+  const initial = useMemo(() => mockWorkspace ? seedData : emptyWorkspace(user.id), [user.id]);
+  const identity = useQuery({ queryKey: ["workspace-identity", user.id], queryFn: authClient.me,
+    enabled: !mockWorkspace, retry: false, staleTime: 0 });
   // 查询键与本地存储均按用户隔离，防止退出后旧请求写入新用户缓存（A21）
   setWorkspaceScope(user.id);
   const scopedKey = scopedWorkspaceKey(user.id);
-  const { data = seedData } = useQuery({
+  const { data = initial } = useQuery({
     queryKey: scopedKey,
-    queryFn: mockService.getWorkspace,
-    initialData: seedData,
+    queryFn: workspaceService.getWorkspace,
+    initialData: initial,
+    enabled: mockWorkspace,
     staleTime: Infinity,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
+    if (!mockWorkspace) return;
     let active = true;
-    void mockService
+    void workspaceService
       .getWorkspace()
       .then((stored) => {
         if (!active) return;
@@ -66,10 +78,11 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
   }, [queryClient, user.id]);
 
   const commit = useCallback((change: (current: MockData) => MockData) => {
+    if (!mockWorkspace) return; // Legacy collection writes are demo-only.
     const current = queryClient.getQueryData<MockData>(scopedKey) ?? seedData;
     const next = change(current);
     queryClient.setQueryData(scopedKey, next);
-    void mockService.saveWorkspace(next);
+    void workspaceService.saveWorkspace(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, user.id]);
 
@@ -126,7 +139,9 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
   }, [commit]);
 
   return (
-    <WorkspaceContext.Provider value={{ data, role: data.currentRole, loading: !loaded, userId: user.id, setRole, demoMode, update, add, remove }}>
+    <WorkspaceContext.Provider value={{ data, role: mockWorkspace ? data.currentRole :
+      (["admin", "teacher", "ta"] as Role[]).find((role) => identity.data?.user.roles.includes(role)) ?? "student",
+      loading: !loaded, userId: user.id, userName: user.name, setRole, demoMode: demoMode && mockWorkspace, mockWorkspace, update, add, remove }}>
       {loaded ? children : <div className="flex min-h-screen items-center justify-center text-[13px] text-[#75849a]">…</div>}
     </WorkspaceContext.Provider>
   );
@@ -143,7 +158,7 @@ export function WorkspaceProvider({ user, children }: { user: SessionUser; child
   })();
   return (
     <QueryClientProvider client={queryClient}>
-      <WorkspaceState user={user}>{children}</WorkspaceState>
+      <WorkspaceState key={user.id} user={user}>{children}</WorkspaceState>
     </QueryClientProvider>
   );
 }

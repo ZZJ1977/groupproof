@@ -1,8 +1,14 @@
 node_modules/
 .next/
 out/
+.venv/
 .DS_Store
 *.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+test-results/
+playwright-report/
 .env*
 !.env.example
 .vercel/
@@ -28,3 +34,6 @@ htmlcov/
 !.env.example
 # Local-only credential handoff notes
 docs/development-stages/stage-reports/*临时密令.md
+
+# Isolated authenticated UI test build
+.next-e2e/
