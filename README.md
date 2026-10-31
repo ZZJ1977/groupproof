@@ -23,7 +23,7 @@ docker compose exec api alembic upgrade head
 npm run dev                                # 前端（或 docker compose up -d web）
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Sign-in uses real Google OIDC (configure `GOOGLE_*` per [.env.example](.env.example)); without credentials the login start returns a clear service-unavailable error. The demo role selector only appears in the isolated demo mode (`NEXT_PUBLIC_APP_MODE=mock`).
+Open [http://localhost:3000](http://localhost:3000). Sign-in supports password accounts and Google OIDC; configure `GOOGLE_*` to enable Google. Email registration, school-email verification, and password recovery need a mail channel. Local development defaults to the isolated `capture` channel; production can use SMTP or a transactional HTTPS API such as Resend. The demo role selector only appears in the isolated demo mode (`NEXT_PUBLIC_APP_MODE=mock`).
 
 ## Checks
 
