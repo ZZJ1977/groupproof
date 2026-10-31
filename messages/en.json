@@ -100,7 +100,8 @@
     "error": {
       "cancelled": "Sign-in cancelled. You can try again.",
       "failed": "Sign-in failed. Please try again.",
-      "unavailable": "Service temporarily unavailable. Please try again later."
+      "unavailable": "Service temporarily unavailable. Please try again later.",
+      "accountExists": "A GroupProof account already exists for this email. Sign in with your password first, then link Google from account security."
     },
     "passwordLogin": {
       "title": "Sign in with your account",
@@ -285,7 +286,13 @@
         "RATE_LIMITED": "Too many attempts. Please wait and retry.",
         "EMAIL_CONFLICT": "This school email is already verified by another account. Contact an administrator to resolve it.",
         "REAUTH_REQUIRED": "A recent sign-in is required before changing the email",
-        "AUTH_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later."
+        "AUTH_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
+        "MAIL_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
+        "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later.",
+        "INVALID_STATE": "This action is not needed for this account",
+        "REGISTRATION_REQUIRED": "Complete your profile before verifying the school email.",
+        "NETWORK_ERROR": "Cannot reach the service right now. Please retry later.",
+        "VERSION_CONFLICT": "The record was updated elsewhere. Refresh and try again."
       }
     },
     "status": {
@@ -343,14 +350,29 @@
       "sendCode": "Send code",
       "code": "Code",
       "verify": "Verify",
+      "googleTitle": "Google account",
+      "googleLinked": "Linked",
+      "googleBoundEmail": "Linked Google email: {email}",
+      "googleUnboundNote": "No Google account linked yet. Link it to sign in to this account with Google.",
+      "googleLink": "Link Google",
+      "googleUnlink": "Unlink",
+      "googleUnlinkDisabled": "To avoid being locked out, set a password and verify your login email before unlinking.",
+      "googleLinkSuccess": "Google account linked.",
+      "googleLinkFailed": "Linking failed. Please try again.",
+      "googleLinkElsewhere": "This Google account is already linked to another GroupProof account.",
       "errors": {
+        "AUTH_UNAVAILABLE": "Google sign-in is temporarily unavailable. Please retry later.",
         "MAIL_UNAVAILABLE": "Mail service temporarily unavailable. Please retry later.",
         "RATE_LIMITED": "Too many attempts. Please try again later.",
         "INVALID_CODE": "Incorrect code",
         "CODE_EXPIRED": "Code expired. Please resend.",
         "CHALLENGE_INVALID": "This verification request is no longer valid. Please resend.",
         "INVALID_STATE": "This action is not needed for this account",
-        "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later."
+        "SERVICE_UNAVAILABLE": "Service temporarily unavailable. Please retry later.",
+        "REAUTH_REQUIRED": "This action requires a recent sign-in. Please sign out and sign in again.",
+        "IDENTITY_ALREADY_LINKED": "A Google account is already linked to this account.",
+        "LAST_SIGN_IN_METHOD": "Set a password and verify your login email before unlinking Google.",
+        "NETWORK_ERROR": "Cannot reach the service right now. Please retry later."
       }
     },
     "progress": {

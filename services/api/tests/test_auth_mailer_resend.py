@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
 import pytest
 
+from app.auth import security
 from app.auth.config import Settings
 from app.auth.services import mailer
+from app.auth.services.registration import profile_field_errors
 
 
 class FakeResponse:
@@ -140,6 +143,88 @@ def test_public_mail_requires_explicit_enable() -> None:
     )
     assert opened.mail_publicly_available is True
     assert opened.email_signup_available is True
+
+
+def test_google_redirect_uri_matches_app_origin() -> None:
+    settings = Settings(
+        app_mode="dev",
+        app_origin="http://localhost:3000",
+        google_client_id="test-id",
+        google_client_secret="test-secret",
+        google_redirect_uri="http://localhost:3000/api/v1/auth/google/callback",
+    )
+    assert settings.google_configured is True
+
+
+def test_real_mode_rejects_api_origin_google_redirect() -> None:
+    with pytest.raises(RuntimeError, match="GOOGLE_REDIRECT_URI"):
+        Settings(
+            app_mode="real",
+            database_url="postgresql+psycopg://u:p@db.example:5432/x",
+            app_origin="https://app.example",
+            email_challenge_hmac_key="test-key",
+            auth_google_enabled=True,
+            google_client_id="test-id",
+            google_client_secret="test-secret",
+            google_redirect_uri="https://api.example/api/v1/auth/google/callback",
+            mail_mode="resend",
+            resend_api_key="test-key",
+            mail_from="no-reply@test.example",
+            auth_email_signup_enabled=False,
+            auth_password_reset_enabled=False,
+        )
+
+
+def test_dev_mode_only_warns_on_google_redirect_mismatch(caplog) -> None:
+    with caplog.at_level(logging.WARNING):
+        settings = Settings(
+            app_mode="dev",
+            app_origin="http://localhost:3000",
+            google_client_id="test-id",
+            google_client_secret="test-secret",
+            google_redirect_uri="http://localhost:8000/api/v1/auth/google/callback",
+        )
+    assert settings.google_configured is True
+    assert any("GOOGLE_REDIRECT_URI" in message for message in caplog.messages)
+
+
+def test_env_file_defaults_to_repo_root() -> None:
+    """回归：默认 .env 必须解析到仓库根目录（曾误指向 services/ 使 pydantic 读空配置）。"""
+    from app.auth import config
+
+    assert (config._REPO_ROOT / "services" / "api" / "app").is_dir()
+    assert (config._REPO_ROOT / ".env.example").is_file()
+
+
+def test_repo_root_handles_shallow_container_path() -> None:
+    """回归：镜像内路径 /app/app/auth/config.py 上方不足 4 层，不得抛 IndexError。"""
+    from pathlib import Path
+
+    from app.auth import config
+
+    assert config._repo_root(Path("/app/app/auth/config.py")) == Path("/")
+    assert config._repo_root(Path("/r/services/api/app/auth/config.py")) == Path("/r")
+
+
+def test_default_student_id_rules_accept_ten_digit_numeric(monkeypatch) -> None:
+    """回归：默认学号规则（^\\S{4,20}$ / none）下，纯数字 10 位学号必须通过校验。"""
+    monkeypatch.delenv("STUDENT_ID_PATTERN", raising=False)
+    monkeypatch.delenv("STUDENT_ID_EMAIL_RULE", raising=False)
+    settings = Settings(app_mode="dev")
+    assert settings.student_id_pattern == r"^\S{4,20}$"
+    assert settings.student_id_email_rule == "none"
+    monkeypatch.setattr(security, "get_settings", lambda: settings)
+    assert security.student_id_valid("1240025428", "1240025428@student.must.edu.mo") is True
+    assert (
+        profile_field_errors(
+            name="测试同学",
+            username="tester01",
+            student_id="1240025428",
+            requested_identity="student",
+            school_email="1240025428@student.must.edu.mo",
+        )
+        == {}
+    )
 
 
 def test_real_mode_rejects_capture_mailer() -> None:

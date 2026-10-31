@@ -116,9 +116,9 @@ function LoginCard() {
     }
   };
 
-  const showGoogle = !caps || caps.google.available;
-  const showSignup = !caps || caps.emailSignup.enabled;
-  const showForgot = !caps || caps.passwordReset.enabled;
+  const showGoogle = !capsFailed && (!caps || caps.google.available);
+  const showSignup = !capsFailed && (!caps || caps.emailSignup.enabled);
+  const showForgot = !capsFailed && (!caps || caps.passwordReset.enabled);
 
   return (
     <section className="self-start rounded-[8px] border border-[#e0e7f0] bg-white p-8 shadow-[0_16px_45px_#b8c9e425] lg:mt-5 lg:p-11">
@@ -133,7 +133,7 @@ function LoginCard() {
       )}
       {error && (
         <p className="mt-4 rounded-[7px] bg-[#fdecec] p-3 text-[12px] text-[#c3313f]" role="alert">
-          {error === "cancelled" ? t("error.cancelled") : error === "failed" ? t("error.failed") : t("error.unavailable")}
+          {error === "cancelled" ? t("error.cancelled") : error === "failed" ? t("error.failed") : error === "account_exists" ? t("error.accountExists") : t("error.unavailable")}
         </p>
       )}
 

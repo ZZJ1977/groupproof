@@ -228,6 +228,7 @@ jobs:
           npx tsx scripts/check-c-evidence-source.mjs
           npx tsx scripts/check-c-evidence-source-client.mjs
           npx tsx scripts/check-c-api-client.mjs
+          npx tsx scripts/check-c-auth-audit-client.mjs
           npx tsx scripts/check-c-discussions.mjs
           npx tsx scripts/check-c-evidence-decisions.mjs
           npx tsx scripts/check-c-notifications.mjs
@@ -303,24 +304,20 @@ jobs:
           test -n "$RAILWAY_API_TOKEN"
           railway status --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --json | node scripts/railway-service-summary.mjs
           node scripts/railway-auth-config-check.mjs
-          railway api describe volumeInstanceBackupCreate
-          railway api search backup
-          railway api search workflow
-          railway api describe VolumeInstance
-          railway api describe ServiceInstanceUpdateInput
+          node scripts/deploy-staging.mjs --check-only
 
   deploy:
     name: Deploy to Railway
     needs: [quality, backend, e2e, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/develop' && 'staging' || 'production') }}
     env:
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
-      RAILWAY_IDENTITY_SERVICE_ID: ${{ vars.RAILWAY_IDENTITY_SERVICE_ID }}
       RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT || 'production' }}
     steps:
       - name: Check out repository
@@ -333,13 +330,14 @@ jobs:
           test -n "${RAILWAY_API_TOKEN:-}" || { echo "::error::Set the RAILWAY_TOKEN repository secret before enabling Railway deploys."; exit 1; }
           test -n "${RAILWAY_PROJECT_ID:-}" || { echo "::error::Set the RAILWAY_PROJECT_ID environment variable before enabling Railway deploys."; exit 1; }
           test -n "${RAILWAY_SERVICE_ID:-}" || { echo "::error::Set the RAILWAY_SERVICE_ID repository variable before enabling Railway deploys."; exit 1; }
-          test -n "${RAILWAY_IDENTITY_SERVICE_ID:-}" || { echo "::error::Set the RAILWAY_IDENTITY_SERVICE_ID environment variable before enabling Railway deploys."; exit 1; }
 
       - name: Install Railway CLI
         run: npm install --global @railway/cli@5.63.3
 
-      - name: Deploy identity service
-        run: railway up ./server --path-as-root --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_IDENTITY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
+      - name: Back up, migrate, and deploy unified staging API and Web
+        if: github.ref == 'refs/heads/develop'
+        run: node scripts/deploy-staging.mjs
 
-      - name: Deploy Web source with Dockerfile to Railway
+      - name: Deploy production source with Dockerfile to Railway
+        if: github.ref == 'refs/heads/main'
         run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
