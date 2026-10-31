@@ -69,10 +69,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # 构建期 rewrites 兑底地址（容器网络内固定为服务名）；运行时代理另读 API_INTERNAL_URL
+        API_INTERNAL_URL: ${API_DOCKER_INTERNAL_URL:-http://api:8000}
     environment:
       NEXT_PUBLIC_APP_ENV: ${NEXT_PUBLIC_APP_ENV:-development}
       NEXT_PUBLIC_ENABLE_MOCKS: ${NEXT_PUBLIC_ENABLE_MOCKS:-true}
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
     ports:
       - "${WEB_PORT:-3000}:3000"

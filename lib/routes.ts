@@ -88,3 +88,39 @@ export function resolveRoute(pathname: string, view?: string | null): ResolvedRo
 
   return null;
 }
+
+/** 个人中心与旧 onboarding 别名（新系统页，不冒充原 56 个设计页） */
+export const accountScreens: Record<string, number> = {
+  "/account": 100,
+  "/account/profile": 101,
+  "/account/email": 102,
+  "/account/status": 103,
+  "/account/security": 104,
+};
+
+export const onboardingAliases: Record<string, string> = {
+  "/onboarding/profile": "/account/profile",
+  "/onboarding/email-verification": "/account/email",
+};
+
+export type RouteCategory = "public" | "account" | "alias" | "business" | "unknown";
+
+export interface ClassifiedRoute {
+  category: RouteCategory;
+  screen?: number;
+  route?: ResolvedRoute;
+  /** 旧链接兼容目标（别名需经相同门禁） */
+  aliasOf?: string;
+}
+
+/** 页面级路由分类：公开 / 个人中心 / 旧别名 / 业务区 / 未知（默认拒绝业务访问） */
+export function classifyPath(pathname: string, view?: string | null): ClassifiedRoute {
+  const normalized = pathname.replace(/\/$/, "") || "/";
+  if (normalized === "/" || normalized === "/login") return { category: "public", screen: 1 };
+  if (normalized === "/reset-password") return { category: "public", screen: 99 };
+  if (onboardingAliases[normalized]) return { category: "alias", screen: 2, aliasOf: onboardingAliases[normalized] };
+  if (accountScreens[normalized] !== undefined) return { category: "account", screen: accountScreens[normalized] };
+  const route = resolveRoute(normalized, view);
+  if (route && route.screen >= 4) return { category: "business", screen: route.screen, route };
+  return { category: "unknown" };
+}

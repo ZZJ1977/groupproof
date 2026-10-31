@@ -1,0 +1,170 @@
+"""Resend 发信适配器测试（PLAN 三、4：成功/拒绝/限流/超时/重复请求覆盖）。
+
+不连接任何真实邮件服务：发送缝隙 _resend_post 使用测试替身。
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+import pytest
+
+from app.auth.config import Settings
+from app.auth.services import mailer
+
+
+class FakeResponse:
+    def __init__(self, status_code: int, payload: dict | None = None) -> None:
+        self.status_code = status_code
+        self._payload = payload or {}
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class FakePoster:
+    """记录调用并按脚本返回；可模拟网络异常。"""
+
+    def __init__(self, *script: object) -> None:
+        self.script = list(script)
+        self.calls: list[dict] = []
+
+    def __call__(self, url: str, payload: dict, headers: dict, timeout: int):
+        self.calls.append({"url": url, "payload": payload, "headers": headers, "timeout": timeout})
+        item = self.script.pop(0) if self.script else FakeResponse(200, {"id": "msg_ok"})
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+@pytest.fixture()
+def resend_env(monkeypatch):
+    settings = Settings(
+        app_mode="dev",
+        mail_mode="resend",
+        resend_api_key="test-key",
+        mail_from="no-reply@test.example",
+        mail_public_enabled=False,
+        auth_email_signup_enabled=True,
+        auth_password_reset_enabled=True,
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(mailer, "get_settings", lambda: settings)
+    monkeypatch.setattr(mailer, "_sleep", sleeps.append)
+    return settings, sleeps
+
+
+def test_resend_success_uses_stable_idempotency_key_per_logical_email(resend_env, monkeypatch):
+    poster = FakePoster()
+    monkeypatch.setattr(mailer, "_resend_post", poster)
+
+    mailer.send_email("user@test.example", "Code mail", "code 123456", purpose="registration_code")
+    mailer.send_email("user@test.example", "Code mail", "code 123456", purpose="registration_code")
+
+    assert len(poster.calls) == 2
+    first, second = poster.calls
+    expected = hashlib.sha256(b"user@test.example|Code mail|code 123456").hexdigest()
+    assert first["headers"]["Idempotency-Key"] == expected
+    # 同一逻辑邮件（同验证码）网络重试/重复发送使用相同幂等键
+    assert second["headers"]["Idempotency-Key"] == expected
+
+    # 用户主动重发新验证码 → 新的发送标识（不同幂等键）
+    poster2 = FakePoster()
+    monkeypatch.setattr(mailer, "_resend_post", poster2)
+    mailer.send_email("user@test.example", "Code mail", "code 654321", purpose="registration_code")
+    assert poster2.calls[0]["headers"]["Idempotency-Key"] != expected
+
+
+def test_resend_client_error_stops_retry_and_records_reason(resend_env, monkeypatch):
+    poster = FakePoster(FakeResponse(403, {"message": "domain not verified"}))
+    monkeypatch.setattr(mailer, "_resend_post", poster)
+
+    with pytest.raises(mailer.MailSendError) as excinfo:
+        mailer.send_email("user@test.example", "subject", "body", purpose="registration_code")
+
+    assert "403" in str(excinfo.value)
+    assert len(poster.calls) == 1  # 密钥/域名类错误停止重试
+
+
+def test_resend_rate_limit_stops_retry(resend_env, monkeypatch):
+    poster = FakePoster(FakeResponse(429))
+    monkeypatch.setattr(mailer, "_resend_post", poster)
+
+    with pytest.raises(mailer.MailSendError):
+        mailer.send_email("user@test.example", "subject", "body", purpose="registration_code")
+
+    assert len(poster.calls) == 1
+
+
+def test_resend_server_error_retries_then_fails(resend_env, monkeypatch):
+    settings, sleeps = resend_env
+    poster = FakePoster(FakeResponse(500), FakeResponse(500), FakeResponse(500))
+    monkeypatch.setattr(mailer, "_resend_post", poster)
+
+    with pytest.raises(mailer.MailSendError):
+        mailer.send_email("user@test.example", "subject", "body", purpose="registration_code")
+
+    assert len(poster.calls) == 3
+    assert len(sleeps) == 2  # 有限重试
+
+
+def test_resend_network_error_retries_then_fails(resend_env, monkeypatch):
+    poster = FakePoster(TimeoutError("boom"), TimeoutError("boom"), TimeoutError("boom"))
+    monkeypatch.setattr(mailer, "_resend_post", poster)
+
+    with pytest.raises(mailer.MailSendError):
+        mailer.send_email("user@test.example", "subject", "body", purpose="password_recovery_link")
+
+    assert len(poster.calls) == 3
+
+
+def test_public_mail_requires_explicit_enable() -> None:
+    restricted = Settings(
+        app_mode="dev",
+        mail_mode="resend",
+        resend_api_key="test-key",
+        mail_from="no-reply@test.example",
+        mail_public_enabled=False,
+    )
+    assert restricted.mail_configured is True
+    assert restricted.mail_publicly_available is False
+    assert restricted.email_signup_available is False
+    assert restricted.password_reset_available is False
+
+    opened = Settings(
+        app_mode="dev",
+        mail_mode="resend",
+        resend_api_key="test-key",
+        mail_from="no-reply@test.example",
+        mail_public_enabled=True,
+    )
+    assert opened.mail_publicly_available is True
+    assert opened.email_signup_available is True
+
+
+def test_real_mode_rejects_capture_mailer() -> None:
+    with pytest.raises(RuntimeError):
+        Settings(
+            app_mode="real",
+            database_url="postgresql+psycopg://u:p@db.example:5432/x",
+            app_origin="https://app.example",
+            email_challenge_hmac_key="test-key",
+            mail_mode="capture",
+            auth_google_enabled=False,
+        )
+
+
+def test_real_mode_resend_requires_key_and_from() -> None:
+    with pytest.raises(RuntimeError):
+        Settings(
+            app_mode="real",
+            database_url="postgresql+psycopg://u:p@db.example:5432/x",
+            app_origin="https://app.example",
+            email_challenge_hmac_key="test-key",
+            mail_mode="resend",
+            resend_api_key="",
+            mail_from="no-reply@test.example",
+            auth_google_enabled=False,
+            auth_email_signup_enabled=False,
+            auth_password_reset_enabled=False,
+        )

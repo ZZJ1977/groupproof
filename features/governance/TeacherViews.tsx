@@ -1,10 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Clock3, FileText, FolderOpen, Info, Plus, ShieldCheck, UploadCloud, Users } from "lucide-react";
-import { useWorkspace } from "@/lib/workspace";
-import type { Course, FileRecord, Group, Project } from "@/types/domain";
+import { scopedWorkspaceKey, useWorkspace } from "@/lib/workspace";
+import { apiMode } from "@/lib/api/config";
+import { workspaceService } from "@/lib/api/workspace-service";
+import { createCommandRunner } from "@/lib/commands/core";
+import { changeCourseFile, courseFileAccess, listCourseFiles, type CourseFileInput } from "@/features/c/course-file-commands";
+import { can, isCourseStaff } from "@/lib/access/policy";
+import { completedModuleCount, teacherProjectStats } from "@/lib/ux/stats";
+import { compareCourseRuleSnapshots } from "@/lib/commands/rule-change";
+import { useCommands } from "@/lib/commands/use-commands";
+import { SaveState } from "@/components/common";
+import { draftCourseRule, publishedCourseRule } from "@/lib/versioning";
+import type { DelegatedPermission } from "@/types/domain";
+import type { Course, FileRecord, Group, MockData, Project } from "@/types/domain";
 import { auditRecord, Badge, Box, Empty, formatDate, formatDateTime, Header, Metric, newId, Notice, Progress, SearchField, Table } from "./primitives";
 import styles from "./governance.module.css";
 
@@ -40,12 +52,27 @@ function CourseMissing() {
   return <div className={styles.page}><Header title="课程不存在" description="请从我的课程中选择一门课程。" /></div>;
 }
 
+function StaffOnly() {
+  return <div className={styles.page}><Header title="无权访问此页面" description="此页面仅对所属课程教师与在该课程内有助教归属的教学人员开放。" /></div>;
+}
+
+const permissionLabel: Record<string, string> = {
+  "course.settings.update": "课程设置修改",
+  "course.rules.edit": "规则编辑",
+  "course.rules.publish": "规则发布",
+};
+
+function commandFeedback(error: { code: string; message: string; fieldErrors?: Record<string, string[]> }): string {
+  const fields = error.fieldErrors ? Object.values(error.fieldErrors).flat().join("；") : "";
+  return `${error.message}${fields ? `：${fields}` : ""}`;
+}
+
 export function TeacherOverview({ courseId }: { courseId?: string }) {
   const { data, course, groups, projects, actions } = useCourseData(courseId);
   if (!course) return <CourseMissing />;
-  const progress = projects.length ? Math.round(projects.reduce((sum, item) => sum + item.progress, 0) / projects.length) : 0;
-  const highRisk = projects.filter((project) => riskFor(project).tone === "red").length;
-  const complete = projects.filter((project) => project.lifecycle === "finalized" || project.progress === 100).length;
+  const stats = teacherProjectStats(projects);
+  const progress = stats.averageProgress;
+  const highRisk = stats.highRisk;
   const pending = actions.filter((item) => item.status === "pending");
   const moduleGroups = new Map<string, { count: number; sum: number }>();
   data.modules.filter((module) => projects.some((project) => project.id === module.projectId)).forEach((module) => {
@@ -59,16 +86,16 @@ export function TeacherOverview({ courseId }: { courseId?: string }) {
         <Metric label="小组数" value={groups.length} icon={Users} hint="课程内已建立的小组" />
         <Metric label="平均进度" value={`${progress}%`} icon={BarChart3} hint="按小组项目进度汇总" />
         <Metric label="高风险小组" value={highRisk} icon={AlertTriangle} tone="red" hint="需要优先关注" />
-        <Metric label="已完成" value={`${complete} 组`} icon={CheckCircle2} tone="green" hint="已完成项目" />
+        <Metric label="已定稿" value={`${stats.finalized} 组`} icon={CheckCircle2} tone="green" hint={`已定稿项目；另有 ${stats.pendingFinalize} 组进度满但未定稿（100% 进度不等于完成）`} />
       </div>
       <div className={styles.twoColumns}>
         <Box title="小组进度概览" action={<Link className={styles.link} href={`${teacherBase(course.id)}/groups`}>查看全部</Link>}>
-          <Table><thead><tr><th>小组</th><th>整体进度</th><th>已验证模块</th><th>风险</th><th>最近活动</th><th>操作</th></tr></thead><tbody>
+          <Table><thead><tr><th>小组</th><th>整体进度</th><th>进度满模块</th><th>风险</th><th>最近活动</th><th>操作</th></tr></thead><tbody>
             {groups.map((group, index) => {
               const project = groupProject(group, projects);
               const modules = data.modules.filter((item) => item.projectId === project?.id);
               const risk = riskFor(project);
-              return <tr key={group.id}><td><strong>{groupName(group, index)}</strong><div className={styles.subtle}>{group.name}</div></td><td><Progress value={project?.progress ?? 0} /></td><td>{modules.filter((item) => item.progress === 100).length} / {modules.length || "—"}</td><td><Badge tone={risk.tone}>{risk.label}</Badge></td><td>{project ? "近期有更新" : "暂无项目"}</td><td><Link className={styles.link} href={groupHref(course.id, group.id)}>查看小组 →</Link></td></tr>;
+              return <tr key={group.id}><td><strong>{groupName(group, index)}</strong><div className={styles.subtle}>{group.name}</div></td><td><Progress value={project?.progress ?? 0} /></td><td>{completedModuleCount(modules)} / {modules.length || "—"}</td><td><Badge tone={risk.tone}>{risk.label}</Badge></td><td>{project ? "近期有更新" : "暂无项目"}</td><td><Link className={styles.link} href={groupHref(course.id, group.id)}>查看小组 →</Link></td></tr>;
             })}
           </tbody></Table>
           {groups.length === 0 ? <Empty>课程尚无小组</Empty> : null}
@@ -187,7 +214,7 @@ export function TeacherReports({ courseId }: { courseId?: string }) {
 }
 
 export function TeacherSettings({ courseId }: { courseId?: string }) {
-  const { data, role, update, add, course } = useCourseData(courseId);
+  const { data, course } = useCourseData(courseId);
   const [tab, setTab] = useState("通用");
   const [name, setName] = useState(course?.name ?? "");
   const [deadline, setDeadline] = useState(course?.projectDeadline ?? "");
@@ -197,18 +224,27 @@ export function TeacherSettings({ courseId }: { courseId?: string }) {
   const [maxSize, setMaxSize] = useState(course?.maxGroupSize ?? 5);
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
+  const commands = useCommands();
+  const [newAssistantId, setNewAssistantId] = useState("");
   if (!course) return <CourseMissing />;
-  const canEdit = role === "admin" || (role === "teacher" && data.currentUserId === course.teacherId);
-  const save = () => {
-    if (!canEdit) return;
+  const courseTarget = { kind: "course" as const, id: course.id };
+  if (!isCourseStaff(data, data.currentUserId, course.id)) return <StaffOnly />;
+  const canEdit = can(data, data.currentUserId, "course.settings.update", courseTarget);
+  const canStaffManage = can(data, data.currentUserId, "course.staff.manage", courseTarget);
+  const changeGrant = async (userId: string, permissions: DelegatedPermission[]) => {
+    const outcome = await commands.setAssistantPermissions({ courseId: course.id, assistantId: userId, permissions, expectedVersion: course.version });
+    setFeedback(outcome.ok ? (permissions.length ? "助教授权已更新。" : "已撤销操作授权，保留课程归属（只读）。") : commandFeedback(outcome.error));
+  };
+  const save = async () => {
+    if (!can(data, data.currentUserId, "course.settings.update", courseTarget)) { setFeedback("你没有课程设置修改授权。"); return; }
     if (!name.trim() || minSize < 1 || maxSize < minSize || !deadline || !formationDeadline) { setFeedback("请填写有效的课程名称、日期与组队人数范围。"); return; }
     if (!reason.trim()) { setFeedback("请填写变更原因，以便保留课程规则审计记录。"); return; }
     const changed = name !== course.name || deadline !== course.projectDeadline || formationDeadline !== course.formationDeadline || mode !== course.groupingMode || minSize !== course.minGroupSize || maxSize !== course.maxGroupSize;
     if (!changed) { setFeedback("当前设置没有变更。"); return; }
-    update("courses", course.id, { name: name.trim(), projectDeadline: deadline, formationDeadline, groupingMode: mode, minGroupSize: minSize, maxGroupSize: maxSize, version: course.version + 1 });
-    add("logs", auditRecord(data, "课程规则变更", course.id, `v${course.version} → v${course.version + 1}；${reason.trim()}；截止日期 ${course.projectDeadline} → ${deadline}；组队方式 ${course.groupingMode} → ${mode}`));
-    data.groups.filter((group) => group.courseId === course.id).forEach((group) => add("actionItems", { id: newId("action"), assigneeId: group.leaderId, courseId: course.id, projectId: group.projectId, groupId: group.id, type: "rule", title: `确认 ${course.name} 课程规则 v${course.version + 1}`, description: `教师更新了课程规则，请检查对小组项目的影响。原因：${reason.trim()}`, status: "pending", dueAt: formationDeadline, href: `/courses/${course.id}/rule-changes`, priority: "medium" }));
-    setReason(""); setFeedback("课程设置已保存，并通知各小组复核影响。");
+    const outcome = await commands.updateCourseSettings({ courseId: course.id, name: name.trim(), projectDeadline: deadline, formationDeadline, groupingMode: mode, minGroupSize: minSize, maxGroupSize: maxSize, reason: reason.trim(), expectedVersion: course.version });
+    if (!outcome.ok) { setFeedback(commandFeedback(outcome.error)); return; }
+    setReason("");
+    setFeedback("课程设置已保存，变更原因已写入审计日志。");
   };
   return <div className={styles.page}>
     <Header title="课程设置" description="管理课程规则、截止日期、分组方式和课程文件。" breadcrumb={`${course.name} / 课程设置`} />
@@ -217,7 +253,7 @@ export function TeacherSettings({ courseId }: { courseId?: string }) {
       {tab === "通用" ? <div className={styles.stack}><h2>基本信息</h2><div className={styles.formGrid}><label className={styles.field}>课程名称<input className={styles.input} value={name} onChange={(event) => setName(event.target.value)} disabled={!canEdit} /></label><label className={styles.field}>项目最终截止日期<input className={styles.input} type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} disabled={!canEdit} /></label></div><Notice>课程规则更新后，各小组会收到影响复核提醒；已冻结的项目基线不会自动覆盖。</Notice></div> : null}
       {tab === "分组规则" ? <div className={styles.stack}><h2>分组设置</h2><div className={styles.equalColumns}><label className={styles.option}><input type="radio" name="group-mode" checked={mode === "free"} onChange={() => setMode("free")} disabled={!canEdit} /><div><strong>自由组队</strong><span>学生按课程规则组建小组</span></div></label><label className={styles.option}><input type="radio" name="group-mode" checked={mode === "approval"} onChange={() => setMode("approval")} disabled={!canEdit} /><div><strong>教师审批</strong><span>新小组需经过教师确认</span></div></label></div><div className={styles.formGrid}><label className={styles.field}>最少人数<input className={styles.input} type="number" min={1} value={minSize} onChange={(event) => setMinSize(Number(event.target.value))} disabled={!canEdit} /></label><label className={styles.field}>最多人数<input className={styles.input} type="number" min={1} value={maxSize} onChange={(event) => setMaxSize(Number(event.target.value))} disabled={!canEdit} /></label><label className={styles.field}>组队截止日期<input className={styles.input} type="date" value={formationDeadline} onChange={(event) => setFormationDeadline(event.target.value)} disabled={!canEdit} /></label></div><Notice>名单冻结后，退出或移除成员须提交申请并经教师审批。</Notice></div> : null}
       {tab === "要求文件" ? <div className={styles.stack}><h2>课程要求文件</h2>{data.files.filter((file) => file.courseId === course.id && file.status === "current").map((file) => <div className={styles.row} key={file.id}><FileText size={17} color="#1767e7" /><div className={styles.rowMain}><strong>{file.name}</strong><div className={styles.rowMeta}>v{file.version} · {file.size} · {formatDate(file.updatedAt)}</div></div></div>)}<Link className={styles.button} href={`${teacherBase(course.id)}/files`}>管理课程文件 <ChevronRight size={15} /></Link></div> : null}
-      {tab === "教学团队" ? <div className={styles.stack}><h2>教学团队</h2><div className={styles.row}><Users size={17} /><div className={styles.rowMain}><strong>{data.users.find((user) => user.id === course.teacherId)?.name ?? "课程负责人"}</strong><div className={styles.rowMeta}>课程负责人</div></div><Badge tone="blue">Owner</Badge></div><p className={styles.muted}>助教与其他教师的授权应由课程负责人管理，所有身份变化保留审计记录。</p></div> : null}
+      {tab === "教学团队" ? <div className={styles.stack}><h2>教学团队</h2><div className={styles.row}><Users size={17} /><div className={styles.rowMain}><strong>{data.users.find((user) => user.id === course.teacherId)?.name ?? "课程负责人"}</strong><div className={styles.rowMeta}>课程负责人</div></div><Badge tone="blue">Owner</Badge></div>{(course.assistantGrants ?? []).map((grant) => { const assistant = data.users.find((user) => user.id === grant.userId); return <div className={styles.row} key={grant.userId} style={{ alignItems: "flex-start" }}><Users size={17} /><div className={styles.rowMain}><strong>{assistant?.name ?? grant.userId}</strong><div className={styles.rowMeta}>助教 · {grant.permissions.length ? grant.permissions.map((item) => permissionLabel[item] ?? item).join("、") : "只读"}</div><div className={styles.actions} style={{ marginTop: 6 }}>{(["course.settings.update", "course.rules.edit", "course.rules.publish"] as DelegatedPermission[]).map((item) => <label key={item} className={styles.option}><input type="checkbox" checked={grant.permissions.includes(item)} disabled={!canStaffManage || commands.pending === "course.staff.manage"} onChange={(event) => changeGrant(grant.userId, event.target.checked ? [...grant.permissions, item] : grant.permissions.filter((entry) => entry !== item))} /><div><strong>{permissionLabel[item]}</strong></div></label>)}</div></div><Badge tone="gray">TA</Badge></div>; })}{canStaffManage ? <div className={styles.actions}><select className={styles.select} value={newAssistantId} onChange={(event) => setNewAssistantId(event.target.value)} aria-label="选择助教账号"><option value="">选择助教账号</option>{data.users.filter((user) => user.role === "ta" && !(course.assistantGrants ?? []).some((item) => item.userId === user.id)).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select><button type="button" className={styles.button} disabled={!newAssistantId || commands.pending === "course.staff.manage"} onClick={() => { if (!newAssistantId) return; void changeGrant(newAssistantId, []); setNewAssistantId(""); }}>关联助教</button></div> : null}{!(course.assistantGrants ?? []).length ? <p className={styles.muted}>当前课程没有助教归属。</p> : null}{!canStaffManage ? <p className={styles.muted}>授权管理仅属于课程负责人；你可以按已获授权操作。</p> : null}<p className={styles.muted}>助教与其他教师的授权应由课程负责人管理，所有身份变化保留审计记录。</p></div> : null}
       {tab === "高级" ? <div className={styles.stack}><h2>课程状态</h2><div className={styles.row}><span className={styles.rowMain}>当前状态</span><Badge tone={course.status === "active" ? "green" : "gray"}>{course.status === "active" ? "进行中" : course.status === "ended" ? "已结束" : "草稿"}</Badge></div><div className={styles.row}><span className={styles.rowMain}>规则版本</span><strong>v{course.version}</strong></div><Notice>高权限修改会写入审计记录。已归档项目的正式证据与贡献历史仍可查看。</Notice></div> : null}
     </div></Box>
     {(tab === "通用" || tab === "分组规则") && canEdit ? <Box title="保存变更"><div className={styles.panelBody}><label className={styles.field}>变更原因<textarea className={styles.textarea} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明本次课程规则或设置调整的原因" maxLength={500} /></label><div className={styles.actions} style={{ marginTop: 12 }}><button type="button" className={styles.primaryButton} onClick={save}>保存设置</button>{feedback ? <span className={feedback.startsWith("课程设置") ? styles.successMessage : styles.errorMessage}>{feedback}</span> : null}</div></div></Box> : null}
@@ -225,7 +261,7 @@ export function TeacherSettings({ courseId }: { courseId?: string }) {
 }
 
 export function TeacherRules({ courseId }: { courseId?: string }) {
-  const { data, course, groups, role, update, add } = useCourseData(courseId);
+  const { data, course, groups } = useCourseData(courseId);
   const [rules, setRules] = useState(course?.rules.join("\n") ?? "");
   const [phases, setPhases] = useState<NonNullable<Course["milestoneTemplate"]>>(course?.milestoneTemplate ?? []);
   const [files, setFiles] = useState(course?.requiredFiles ?? []);
@@ -235,22 +271,65 @@ export function TeacherRules({ courseId }: { courseId?: string }) {
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
   const [preview, setPreview] = useState(false);
+  const commands = useCommands();
+  const [draftRevisionId, setDraftRevisionId] = useState<string | null>(null);
   if (!course) return <CourseMissing />;
-  const canEdit = role === "admin" || (role === "teacher" && data.currentUserId === course.teacherId);
-  const save = () => {
-    if (!canEdit) return;
+  const courseTarget = { kind: "course" as const, id: course.id };
+  if (!isCourseStaff(data, data.currentUserId, course.id)) return <StaffOnly />;
+  const canEdit = can(data, data.currentUserId, "course.rules.edit", courseTarget);
+  const canPublish = can(data, data.currentUserId, "course.rules.publish", courseTarget);
+  const published = publishedCourseRule(data, course.id);
+  const pendingDraft = draftCourseRule(data, course.id);
+  const effectiveDraftId = draftRevisionId ?? pendingDraft?.id ?? null;
+  const affectedProjects = data.projects.filter((item) => item.courseId === course.id).length;
+  const buildPayload = () => ({
+    projectDeadline: course.projectDeadline,
+    formationDeadline: course.formationDeadline,
+    groupingMode: course.groupingMode,
+    minGroupSize: course.minGroupSize,
+    maxGroupSize: course.maxGroupSize,
+    requiredFiles: files,
+    gradingNotes: "",
+    githubRequired,
+    aiAllowed,
+    rulesText: rules.split("\n").map((item) => item.trim()).filter(Boolean),
+    milestoneTemplate: phases,
+  });
+  const draftPayload = buildPayload();
+  const previewDiff = published ? compareCourseRuleSnapshots(published, {
+    ...published,
+    id: "draft-preview",
+    number: published.number + 1,
+    snapshot: { ...published.snapshot, projectDeadline: draftPayload.projectDeadline, formationDeadline: draftPayload.formationDeadline, groupingMode: draftPayload.groupingMode, minGroupSize: draftPayload.minGroupSize, maxGroupSize: draftPayload.maxGroupSize, requiredFiles: draftPayload.requiredFiles, gradingNotes: draftPayload.gradingNotes, githubRequired: draftPayload.githubRequired, aiAllowed: draftPayload.aiAllowed, milestoneTemplate: draftPayload.milestoneTemplate },
+    rulesText: draftPayload.rulesText,
+  }, []) : undefined;
+  const reviewRequirements = previewDiff ? [previewDiff.baselineReviewRequired && "需求基线复核", previewDiff.planReviewRequired && "任务计划复核", previewDiff.rosterReviewRequired && "组队规则复核"].filter(Boolean) : [];
+  const saveDraft = async () => {
+    if (!canEdit) { setFeedback("你没有规则编辑授权。"); return; }
     if (!reason.trim()) { setFeedback("请填写规则变更原因。"); return; }
     if (phases.some((phase) => !phase.title.trim() || !phase.deadline)) { setFeedback("请填写每个阶段的名称与截止日期。"); return; }
-    const nextRules = rules.split("\n").map((item) => item.trim()).filter(Boolean).filter((item) => !item.includes("GitHub") && !item.includes("AI 使用"));
-    if (githubRequired) nextRules.push("项目需绑定 GitHub 仓库");
-    nextRules.push(aiAllowed ? "允许 AI 使用，须在报告中说明范围与贡献" : "不允许项目使用生成式 AI");
-    update("courses", course.id, { rules: nextRules, requiredFiles: files, milestoneTemplate: phases, version: course.version + 1 });
-    add("logs", auditRecord(data, "课程规则模板变更", course.id, `v${course.version} → v${course.version + 1}；${reason.trim()}`));
-    groups.forEach((group) => add("actionItems", { id: newId("action"), assigneeId: group.leaderId, courseId: course.id, projectId: group.projectId, groupId: group.id, type: "rule", title: `复核课程规则模板 v${course.version + 1}`, description: `规则模板更新，原因：${reason.trim()}。请检查现有项目基线的影响。`, status: "pending", dueAt: course.projectDeadline, href: `/courses/${course.id}/rule-changes`, priority: "medium" }));
-    setFeedback("规则模板已保存，新项目将使用此版本；现有项目已收到复核提醒。"); setReason("");
+    const outcome = await commands.saveCourseRuleDraft({ courseId: course.id, payload: buildPayload(), reason: reason.trim(), expectedVersion: course.version });
+    if (!outcome.ok) { setFeedback(commandFeedback(outcome.error)); return; }
+    setDraftRevisionId(outcome.result.id);
+    setFeedback(`规则草稿 v${outcome.result.number} 已保存；发布前课程规则总览不受影响。`);
+  };
+  const publish = async () => {
+    if (!canPublish) { setFeedback("发布课程规则需要规则发布授权。"); return; }
+    if (!effectiveDraftId) { setFeedback("请先保存规则草稿。"); return; }
+    const outcome = await commands.publishCourseRules({ courseId: course.id, revisionId: effectiveDraftId, expectedVersion: course.version });
+    if (!outcome.ok) { setFeedback(commandFeedback(outcome.error)); return; }
+    setDraftRevisionId(null);
+    setFeedback(`课程规则 v${outcome.result.number} 已发布；关联小组已收到复核提醒。`);
   };
   return <div className={styles.page}>
-    <Header title="课程规则模板配置" description="定义统一的项目规则、阶段要求与提交标准。" breadcrumb={`${course.name} / 课程设置 / 规则模板`} action={<div className={styles.actions}><button type="button" className={styles.button} onClick={() => setPreview(!preview)}>{preview ? "关闭预览" : "预览效果"}</button>{canEdit ? <button type="button" className={styles.primaryButton} onClick={save}>保存配置</button> : null}</div>} />
+    <Header title="课程规则模板配置" description="定义统一的项目规则、阶段要求与提交标准。" breadcrumb={`${course.name} / 课程设置 / 规则模板`} action={<div className={styles.actions}><button type="button" className={styles.button} onClick={() => setPreview(!preview)}>{preview ? "关闭预览" : "预览效果"}</button>{canEdit ? <span className="flex items-center gap-2"><button type="button" className={styles.button} onClick={() => void saveDraft()} disabled={commands.pending === "course.rules.edit"}>保存草稿</button><SaveState state={commands.pending === "course.rules.edit" ? "saving" : "clean"} /></span> : null}{canPublish ? <button type="button" className={styles.primaryButton} onClick={() => void publish()} disabled={!effectiveDraftId || commands.pending === "course.rules.publish"}>{commands.pending === "course.rules.publish" ? "发布中..." : "发布配置"}</button> : canEdit ? <span className={styles.muted} title="已获规则编辑授权，发布仍需规则发布授权">已获编辑授权 · 发布需发布授权</span> : null}</div>} />
+    <Notice>规则草稿不覆盖已发布版本。下一版本 v{pendingDraft?.number ?? (published?.number ?? course.version) + 1} · 影响 {affectedProjects} 个课程项目（发布只通知复核，不改写已有项目基线）。</Notice>
+    <Box title="变更预览（前 → 后）">{previewDiff && (previewDiff.changedFields.length || previewDiff.materialChanges.length) ? <div className={styles.panelBody}>
+      {previewDiff.changedFields.map((item) => <div className={styles.row} key={item.field}><span className={styles.rowMain}><strong>{item.field}</strong></span><span className={styles.muted}>{JSON.stringify(item.before)} → {JSON.stringify(item.after)}</span></div>)}
+      {previewDiff.materialChanges.map((item) => <div className={styles.row} key={item}><span className={styles.rowMain}>{item}</span></div>)}
+      <div className={styles.rowMeta}>影响对象：{affectedProjects} 个项目 · {groups.length} 个小组；发布只通知复核，不改写已有基线与正式计划。</div>
+      <div className={styles.rowMeta}>复核要求：{reviewRequirements.join("、") || "无"}</div>
+    </div> : <div className={styles.panelBody}><span className={styles.muted}>与已发布版本相比暂无字段变化。</span></div>}</Box>
     <div className={styles.twoColumns}><div className={styles.stack}>
       <Box title="基本信息"><div className={styles.panelBody}><div className={styles.formGrid}><label className={styles.field}>模板名称<input className={styles.input} value={`${course.name} 项目规则`} readOnly /></label><label className={styles.field}>适用学期<input className={styles.input} value={course.semester} readOnly /></label><label className={`${styles.field} ${styles.fieldFull}`}>项目规则<textarea className={styles.textarea} value={rules} onChange={(event) => setRules(event.target.value)} disabled={!canEdit} maxLength={2000} /><span className={styles.fieldHint}>每行一条规则；保存后生成新的课程规则版本。</span></label></div></div></Box>
       <Box title="阶段 / Milestone" action={canEdit ? <button type="button" className={styles.button} onClick={() => setPhases([...phases, { id: newId("template-phase"), title: "", description: "", deadline: course.projectDeadline }])}><Plus size={15} />添加阶段</button> : null}><div className={styles.panelBody}>{phases.length ? phases.map((phase, index) => <div className={styles.row} key={phase.id} style={{ alignItems: "flex-start" }}><Badge tone="blue">M{index + 1}</Badge><div className={styles.rowMain}><div className={styles.formGrid}><label className={styles.field}>阶段名称<input className={styles.input} value={phase.title} onChange={(event) => setPhases(phases.map((item) => item.id === phase.id ? { ...item, title: event.target.value } : item))} disabled={!canEdit} /></label><label className={styles.field}>截止日期<input className={styles.input} type="date" value={phase.deadline} onChange={(event) => setPhases(phases.map((item) => item.id === phase.id ? { ...item, deadline: event.target.value } : item))} disabled={!canEdit} /></label><label className={`${styles.field} ${styles.fieldFull}`}>主要要求<input className={styles.input} value={phase.description} onChange={(event) => setPhases(phases.map((item) => item.id === phase.id ? { ...item, description: event.target.value } : item))} disabled={!canEdit} /></label></div></div>{canEdit ? <button type="button" className={styles.textButton} onClick={() => setPhases(phases.filter((item) => item.id !== phase.id))}>删除</button> : null}</div>) : <Empty>尚未配置阶段模板</Empty>}<div className={styles.rowMeta}>模板用于新项目。已有项目的里程碑需单独复核，不自动覆盖。</div></div></Box>
@@ -384,43 +463,69 @@ export function TeacherAppeals({ courseId }: { courseId?: string }) {
 }
 
 export function TeacherFiles({ courseId }: { courseId?: string }) {
-  const { data, course, groups, role, update, add } = useCourseData(courseId);
+  const { userId, data } = useWorkspace();
+  return <TeacherCourseFiles key={`${userId}:${data.currentUserId}:${courseId ?? ""}`} courseId={courseId} />;
+}
+
+function TeacherCourseFiles({ courseId }: { courseId?: string }) {
+  const { data, userId } = useWorkspace();
+  const queryClient = useQueryClient();
+  const workspaceKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
+  const runner = useMemo(() => createCommandRunner({
+    repository: { read: async () => queryClient.getQueryData<MockData>(workspaceKey) ?? await workspaceService.getWorkspace(), save: workspaceService.saveWorkspace },
+    currentActorId: () => queryClient.getQueryData<MockData>(workspaceKey)?.currentUserId ?? "",
+    onSaved: (next) => queryClient.setQueryData(workspaceKey, next),
+  }), [queryClient, workspaceKey]);
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState("");
   const [reason, setReason] = useState("");
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState({ message: "", ok: false });
+  const [pendingFile, setPendingFile] = useState<{ fileId: string; name: string; sizeBytes: number; mimeType: string; replacesFileId?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const attempt = useRef<{ signature: string; input: CourseFileInput } | null>(null);
+  const { course, readable, writable } = courseFileAccess(data, data.currentUserId, courseId);
+  if (apiMode("workspace") !== "mock") return <div className={styles.page}><Header title="课程文件管理" description="真实课程资料服务尚未接入。" /><Notice>暂时无法读取或发布真实课程资料，文件存储与通知服务等待 A 接入。</Notice></div>;
   if (!course) return <CourseMissing />;
-  const canEdit = role === "admin" || (role === "teacher" && data.currentUserId === course.teacherId);
-  const files = data.files.filter((item) => item.courseId === course.id);
+  if (!readable) return <StaffOnly />;
+  const canEdit = writable;
+  const files = listCourseFiles(data, data.currentUserId, course.id);
   const current = files.filter((item) => item.status !== "superseded" && `${item.name} ${item.type}`.toLowerCase().includes(query.toLowerCase()));
   const selected = selectedName || current[0]?.name;
   const history = files.filter((item) => item.name === selected).sort((a, b) => b.version - a.version);
   const upload = (file: File, replace?: FileRecord) => {
-    if (!canEdit) return;
-    const extension = file.name.split(".").pop()?.toUpperCase() ?? "";
-    if (!["PDF", "DOC", "DOCX", "PPT", "PPTX", "XLS", "XLSX", "MD", "TXT"].includes(extension)) { setFeedback("不支持此文件格式。"); return; }
-    if (file.size > 50 * 1024 * 1024) { setFeedback("单个文件不得超过 50MB。"); return; }
-    const name = replace?.name ?? file.name;
-    const version = Math.max(0, ...files.filter((item) => item.name === name).map((item) => item.version)) + 1;
-    add("files", { id: newId("course-file"), courseId: course.id, name, type: extension, source: "课程文件", uploaderId: data.currentUserId, version, status: "draft", updatedAt: new Date().toISOString(), size: file.size >= 1024 * 1024 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB` });
-    setSelectedName(name); setFeedback(`已添加 ${name} v${version} 草稿，请填写发布原因后发布。`);
+    if (!canEdit || busy.current) return;
+    setPendingFile({ fileId: crypto.randomUUID(), name: file.name, sizeBytes: file.size, mimeType: file.type || "application/octet-stream", replacesFileId: replace?.id });
+    setFeedback({ message: "", ok: false }); attempt.current = null;
   };
-  const publish = (file: FileRecord) => {
-    if (!canEdit) return;
-    if (!reason.trim()) { setFeedback("发布新版本前请填写变更原因。"); return; }
-    files.filter((item) => item.name === file.name && item.status === "current").forEach((item) => update("files", item.id, { status: "superseded" }));
-    update("files", file.id, { status: "current", updatedAt: new Date().toISOString() });
-    add("logs", auditRecord(data, "课程文件发布", file.id, `${file.name} v${file.version}；${reason.trim()}`));
-    groups.forEach((group) => add("actionItems", { id: newId("action"), assigneeId: group.leaderId, courseId: course.id, projectId: group.projectId, groupId: group.id, type: "course_file", title: `复核课程文件 ${file.name} v${file.version}`, description: `课程文件已更新：${reason.trim()}。请检查对现有需求基线的影响。`, status: "pending", dueAt: course.projectDeadline, href: `/courses/${course.id}/rule-changes`, priority: "medium" }));
-    setFeedback("新版本已发布，各小组将收到影响复核提醒。"); setReason("");
+  type WithoutKey<T> = T extends unknown ? Omit<T, "idempotencyKey"> : never;
+  const save = async (input: WithoutKey<CourseFileInput>) => {
+    if (!canEdit || busy.current) return;
+    const signature = JSON.stringify(input);
+    if (attempt.current?.signature !== signature) attempt.current = { signature, input: { ...input, idempotencyKey: crypto.randomUUID() } };
+    busy.current = true; setSaving(true); setFeedback({ message: "", ok: false });
+    try {
+      const result = await runner(changeCourseFile, attempt.current.input);
+      if (!result.ok) { setFeedback({ message: commandFeedback(result.error), ok: false }); return; }
+      setSelectedName(result.result.name); setReason(""); setPendingFile(null); attempt.current = null;
+      setFeedback({ message: input.action === "publish" ? `已发布 ${result.result.name} v${result.result.version} 的演示元数据；真实通知未发送。` : `已保存 ${result.result.name} v${result.result.version} 的演示草稿；文件字节尚未上传。`, ok: true });
+    } catch { setFeedback({ message: "保存失败，请重试；文件与填写的原因已保留。", ok: false }); }
+    finally { busy.current = false; setSaving(false); }
+  };
+  const saveDraft = () => {
+    if (!pendingFile) return;
+    const common = { courseId: course.id, fileId: pendingFile.fileId, expectedCourseVersion: course.version, reason,
+      name: pendingFile.name, sizeBytes: pendingFile.sizeBytes, mimeType: pendingFile.mimeType };
+    void save(pendingFile.replacesFileId ? { ...common, action: "replace", replacesFileId: pendingFile.replacesFileId } : { ...common, action: "upload" });
   };
   return <div className={styles.page}>
-    <Header title="课程文件管理" description="上传、替换与发布课程要求文件，并追踪版本历史。" breadcrumb={`${course.name} / 课程文件`} />
-    {canEdit ? <label className={styles.dropzone} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (event.dataTransfer.files[0]) upload(event.dataTransfer.files[0]); }}><input type="file" hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ""; }} /><UploadCloud size={28} /><strong>拖拽文件到此处，或点击上传</strong><span>PDF、DOCX、PPTX、XLSX、MD 等格式，单文件不超过 50MB</span></label> : null}
-    <Notice>发布新版本后，系统会提示受影响的小组复核；已冻结的项目基线不会自动覆盖。</Notice>
-    {feedback ? <div className={feedback.startsWith("已添加") || feedback.startsWith("新版本") ? styles.successMessage : styles.errorMessage}>{feedback}</div> : null}
-    <div className={styles.twoColumns}><Box title="课程文件列表" action={<div style={{ width: 190 }}><SearchField value={query} onChange={setQuery} placeholder="搜索文件名" /></div>}><Table><thead><tr><th>文件名</th><th>类型</th><th>当前版本</th><th>最近更新</th><th>范围</th><th>操作</th></tr></thead><tbody>{current.map((file) => <tr key={file.id}><td><strong>{file.name}</strong></td><td>{file.type}</td><td><Badge tone={file.status === "current" ? "blue" : "amber"}>v{file.version}{file.status === "draft" ? " 草稿" : ""}</Badge></td><td>{formatDateTime(file.updatedAt)}</td><td>全部小组</td><td><div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => setSelectedName(file.name)}>查看</button>{canEdit && file.status === "draft" ? <button type="button" className={styles.textButton} onClick={() => publish(file)}>发布</button> : null}{canEdit ? <label className={styles.textButton} style={{ cursor: "pointer" }}>替换<input type="file" hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) upload(selectedFile, file); event.target.value = ""; }} /></label> : null}</div></td></tr>)}</tbody></Table>{current.length === 0 ? <Empty>暂无课程文件</Empty> : null}</Box>
-      <div className={styles.sideStack}><Box title="版本历史"><div className={styles.panelBody}><strong>{selected || "请选择文件"}</strong>{history.map((file) => <div className={styles.row} key={file.id}><div className={styles.rowMain}><Badge tone={file.status === "current" ? "blue" : file.status === "draft" ? "amber" : "gray"}>v{file.version}</Badge><div className={styles.rowMeta}>{formatDateTime(file.updatedAt)} · {data.users.find((user) => user.id === file.uploaderId)?.name ?? "—"}</div></div><span className={styles.muted}>{file.status === "current" ? "已发布" : file.status === "draft" ? "草稿" : "历史"}</span></div>)}{history.length === 0 ? <Empty>暂无版本记录</Empty> : null}</div></Box>{canEdit ? <Box title="发布说明"><div className={styles.panelBody}><label className={styles.field}>本次文件更新原因<textarea className={styles.textarea} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} placeholder="说明内容变化及可能影响的小组" /></label></div></Box> : null}</div>
+    <Header title="课程文件管理" description="保存、替换与发布课程资料的演示元数据，并保留版本历史。" breadcrumb={`${course.name} / 课程文件`} />
+    <Notice>当前仅保存演示元数据，不上传文件字节，不提供真实预览或下载，也不发送通知。冻结项目的原资料引用保持不变。</Notice>
+    {!canEdit && <Notice>当前为只读：助教只能查看；课程结束或教师邮箱未验证时不能修改资料。</Notice>}
+    {canEdit ? <label className={styles.dropzone} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (event.dataTransfer.files[0]) upload(event.dataTransfer.files[0]); }}><input type="file" aria-label="选择课程资料" disabled={saving} hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ""; }} /><UploadCloud size={28} /><strong>选择文件以登记演示元数据</strong><span>PDF、DOCX、PPTX、XLSX、MD 等格式，单文件不超过 50MB</span></label> : null}
+    {feedback.message ? <div role={feedback.ok ? "status" : "alert"} className={feedback.ok ? styles.successMessage : styles.errorMessage}>{feedback.message}</div> : null}
+    <div className={styles.twoColumns}><Box title="课程文件列表" action={<div style={{ width: 190 }}><SearchField value={query} onChange={setQuery} placeholder="搜索文件名" /></div>}><Table><thead><tr><th>文件名</th><th>类型</th><th>当前版本</th><th>最近更新</th><th>范围</th><th>操作</th></tr></thead><tbody>{current.map((file) => <tr key={file.id}><td><strong>{file.name}</strong></td><td>{file.type}</td><td><Badge tone={file.status === "current" ? "blue" : "amber"}>v{file.version}{file.status === "draft" ? " 草稿" : ""}</Badge></td><td>{formatDateTime(file.updatedAt)}</td><td>全部小组</td><td><div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => setSelectedName(file.name)}>查看</button>{canEdit && file.status === "draft" ? <button type="button" className={styles.textButton} disabled={saving || Boolean(pendingFile)} onClick={() => void save({ action: "publish", courseId: course.id, fileId: file.id, expectedCourseVersion: course.version, reason })}>发布</button> : null}{canEdit && !files.some((item) => item.name === file.name && item.version > file.version) ? <label className={styles.textButton} style={{ cursor: "pointer" }}>替换<input type="file" aria-label={`替换 ${file.name} v${file.version}`} disabled={saving} hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.txt" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) upload(selectedFile, file); event.target.value = ""; }} /></label> : null}</div></td></tr>)}</tbody></Table>{current.length === 0 ? <Empty>暂无课程文件</Empty> : null}</Box>
+      <div className={styles.sideStack}><Box title="版本历史"><div className={styles.panelBody}><strong>{selected || "请选择文件"}</strong>{history.map((file) => <div className={styles.row} key={file.id}><div className={styles.rowMain}><Badge tone={file.status === "current" ? "blue" : file.status === "draft" ? "amber" : "gray"}>v{file.version}</Badge><div className={styles.rowMeta}>{formatDateTime(file.updatedAt)} · {data.users.find((user) => user.id === file.uploaderId)?.name ?? "—"}</div>{file.cCourseFileHistory?.map((change) => <p className={styles.rowMeta} key={change.idempotencyKey}>{change.action === "publish" ? "发布" : "草稿"}：{change.reason}</p>)}</div><span className={styles.muted}>{file.status === "current" ? "已发布" : file.status === "draft" ? "草稿" : "历史"}</span></div>)}{history.length === 0 ? <Empty>暂无版本记录</Empty> : null}</div></Box>{canEdit ? <Box title="变更说明"><div className={styles.panelBody}>{pendingFile && <p>待保存：{pendingFile.name}（{pendingFile.replacesFileId ? "替换草稿" : "新增草稿"}）</p>}<label className={styles.field}>本次文件更新原因<textarea className={styles.textarea} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} disabled={saving} placeholder="说明内容变化及可能影响的小组；每次保存或发布均需填写" /></label>{pendingFile && <div className={styles.actions}><button type="button" className={styles.primaryButton} disabled={saving} onClick={saveDraft}>{saving ? "正在保存…" : "保存演示草稿"}</button><button type="button" className={styles.button} disabled={saving} onClick={() => { setPendingFile(null); attempt.current = null; }}>取消选择</button></div>}</div></Box> : null}</div>
     </div>
   </div>;
 }
