@@ -366,11 +366,13 @@ test("C6 a failed reply retries its receipt, but a later identical reply creates
   await expect(page.getByText("服务暂不可用，暂不能确认结果。请稍后重试。", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "回复正文", exact: true })).toHaveValue("同意");
   await page.getByRole("button", { name: "保存回复", exact: true }).click();
-  await expect(page.getByText("同意", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("textbox", { name: "回复正文", exact: true })).toHaveCount(0);
+  await expect(page.locator('article[id^="reply-"]').getByText("同意", { exact: true })).toHaveCount(1);
   await page.getByRole("button", { name: "回复讨论", exact: true }).click();
   await page.getByRole("textbox", { name: "回复正文", exact: true }).fill("同意");
   await page.getByRole("button", { name: "保存回复", exact: true }).click();
-  await expect(page.getByText("同意", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("textbox", { name: "回复正文", exact: true })).toHaveCount(0);
+  await expect(page.locator('article[id^="reply-"]').getByText("同意", { exact: true })).toHaveCount(2);
   expect(attempts).toHaveLength(3); expect(attempts[1]).toEqual(attempts[0]); expect(attempts[2].body).toEqual(attempts[0].body); expect(attempts[2].key).not.toBe(attempts[0].key);
   expect(replies).toHaveLength(2);
 });
