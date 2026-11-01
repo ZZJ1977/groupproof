@@ -2,7 +2,14 @@
 
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
-Current snapshot (2026-10-15): PRs #9–#12 and #16 are merged. Team PR #14 unified
+Current follow-up (2026-11-01): PR #17 is merged. `C_task` has been fast-forwarded
+to `develop` `302bf4e`, including Google linking and D/OAuth migrations 0014/0015.
+The current batch adds Google-to-C HTTP and real-browser integration coverage,
+data-preserving migration regressions, and repairs the missing CSRF check on
+canonical business writes. Scope and reproducible commands are recorded below;
+the current PR checks are the authority for executed PostgreSQL/browser results.
+
+Previous snapshot (2026-10-15): PRs #9–#12 and #16 are merged. Team PR #14 unified
 authentication into the canonical API. This follow-up starts at `22c0d1a` and
 reuses A's existing persisted authentication events and teacher applications for
 C7-05/C7-03. The preceding [C functional audit](reviews/2026-10-14-c-function-audit.md)
@@ -597,3 +604,68 @@ Authentication audit is a working subset of C7-05, not full all-site business
 audit. A's storage, GitHub/Feishu, inbox, AI usage, access-grant and durable event
 delivery providers remain separate dependencies, along with B's canonical task
 references, D's verification consumers and clean-database staging acceptance.
+
+### Google identity and 0013-to-0015 compatibility (2026-11-01)
+
+The requested scope is the previous review's items 2 and 3: new authentication
+integration and migration compatibility. The four newly introduced Google audit
+event labels remain a separate C7-05 follow-up.
+
+The integration review found that canonical business writes authenticated the
+Cookie but did not call A's CSRF guard. `get_current_user` now reuses that guard
+after checking current account/registration facts. The generated API transport
+reads the current session before a write and attaches its token, retaining the
+original body and idempotency key. It does not cache tokens across account or
+session changes or automatically retry a write. Failed session lookups do not
+send the command. Read requests and the explicitly enabled development demo
+identity keep their existing behavior.
+
+New regression coverage:
+
+- `test_c_google_auth_integration.py`: actual Google callback/session routes,
+  school-code consumption and cookie rotation, linked/unlinked canonical UUIDs,
+  task/note ownership, cross-project denial, Admin disable/revocation, OAuth
+  replay, mailbox conflict and revoked school proof. Missing/incorrect CSRF and
+  foreign Origin cases assert rejected execution/note commands leave data intact.
+- `test_c_auth_migration_compatibility.py`: two isolated PostgreSQL databases
+  exercise an empty rebuild and an upgrade with persisted C data. Task progress,
+  note versions, evidence/decisions/snapshots, file versions, discussions,
+  teacher reviews, audit, idempotency and outbox rows are compared column by
+  column across 0014 and 0015. D constraints, OAuth backfill/FK behavior, one head
+  and `alembic check` are verified. Each test drops only its UUID-named database;
+  the supplied maintenance database is not modified. A test role needs CREATEDB.
+- `playwright.c-integration.config.ts`: a separate real Next/FastAPI/PostgreSQL
+  suite, with no product response interception or injected login Cookie. It
+  follows the OIDC browser round trip, exercises task/progress/notes/evidence,
+  refresh persistence, foreign-member denial, Admin disable and CSRF rejection,
+  then independently reads committed PostgreSQL rows.
+- `check-c-session-client.mjs`: fresh tokens after rotation, preserved commands
+  and idempotency keys, no write on invalid/unavailable sessions.
+
+The browser harness is a separate test-only process, guarded by explicit test
+flags, a random control token and a loopback database. It creates one random
+schema from ORM metadata and removes only that schema, including startup-error
+cleanup. Migration correctness is tested by the independent Alembic tests.
+Only the external OIDC issuer and prerequisite users/plans are fixtures; real
+Google accounts, production email, B planning and third-party providers are not
+claimed as tested. File migration fixtures use explicit storage receipts, not
+uploaded object bytes. No A/D migration or external deployment is changed.
+
+Reproduction with a disposable PostgreSQL database:
+
+1. Set `GROUPPROOF_ENV_FILE` to `NUL` (Windows) or `/dev/null` (Linux), `APP_ENV=test`,
+   `APP_MODE=dev`, `MAIL_MODE=capture` and a test-only `EMAIL_CHALLENGE_HMAC_KEY`.
+2. Set `DATABASE_URL`, `C_TEST_DATABASE_URL`, `C_EXECUTION_TEST_DATABASE_URL` to
+   the isolated database. From `services/api`, run `python -m alembic upgrade head`
+   and `python -m pytest tests/test_c_google_auth_integration.py tests/test_c_auth_migration_compatibility.py -q`.
+3. Set `C_BROWSER_DATABASE_URL` to a loopback PostgreSQL test database. From the
+   repository root run `npx playwright test --config playwright.c-integration.config.ts`.
+   Python defaults to the local Windows API venv or `python`; override with
+   `C_BROWSER_PYTHON` if needed. Ports 13007 and 18007 must be free.
+
+The new browser job is included in the deployment dependency list so a failed
+integration check cannot be ignored by a later deployment. Local Docker did not
+start because its `dockerInference` socket failed; local static/client checks
+are recorded separately from the actual PostgreSQL and browser CI executions.
+The Railway backup-plan restriction remains A's deployment dependency; this
+batch neither bypasses it nor claims staging acceptance.

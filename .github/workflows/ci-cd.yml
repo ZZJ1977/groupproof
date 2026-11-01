@@ -228,6 +228,7 @@ jobs:
           npx tsx scripts/check-c-evidence-source.mjs
           npx tsx scripts/check-c-evidence-source-client.mjs
           npx tsx scripts/check-c-api-client.mjs
+          npx tsx scripts/check-c-session-client.mjs
           npx tsx scripts/check-c-auth-audit-client.mjs
           npx tsx scripts/check-c-discussions.mjs
           npx tsx scripts/check-c-evidence-decisions.mjs
@@ -236,6 +237,55 @@ jobs:
           npx tsx scripts/check-c-file-decisions.mjs
           npx tsx scripts/check-c-activity-records.mjs
           npx tsx scripts/check-c-course-files.mjs
+
+  c-integration:
+    name: C real API browser integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: gp_browser
+          POSTGRES_PASSWORD: isolated-browser-test
+          POSTGRES_DB: gp_browser_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gp_browser -d gp_browser_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      C_BROWSER_DATABASE_URL: postgresql+psycopg://gp_browser:isolated-browser-test@127.0.0.1:5432/gp_browser_test
+      APP_ENV: test
+      C_BROWSER_TEST: "1"
+      GROUPPROOF_ENV_FILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: services/api/requirements*.txt
+      - name: Install API and browser dependencies
+        run: |
+          npm ci
+          python -m pip install -r services/api/requirements.txt -r services/api/requirements-dev.txt
+          npx playwright install --with-deps chromium
+      - name: Exercise real sessions, proxy, C writes and PostgreSQL
+        run: npx playwright test --config playwright.c-integration.config.ts
+      - name: Preserve integration failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-real-integration-failure
+          path: test-results/
+          retention-days: 7
 
   docker:
     name: Build and smoke test Docker image
@@ -308,7 +358,7 @@ jobs:
 
   deploy:
     name: Deploy to Railway
-    needs: [quality, backend, e2e, docker]
+    needs: [quality, backend, e2e, c-integration, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
