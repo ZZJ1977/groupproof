@@ -669,3 +669,19 @@ start because its `dockerInference` socket failed; local static/client checks
 are recorded separately from the actual PostgreSQL and browser CI executions.
 The Railway backup-plan restriction remains A's deployment dependency; this
 batch neither bypasses it nor claims staging acceptance.
+
+The first [PR #26 CI run](https://github.com/ZZJ1977/groupproof/actions/runs/41287908296)
+passed the full backend suite (**973 passed, zero skipped**, including the 17 new
+identity/CSRF cases and two migration cases), all **four real browser cases**,
+lint/typecheck/build/route checks and the Docker image smoke test. The existing
+C API browser suite passed 85/86: its reply test counted the still-open editor
+as a saved reply before the new session preflight finished. The assertion now
+waits for that editor to close and counts only saved reply articles; the three
+request/two record and retry/new-command key assertions are unchanged.
+
+The local targeted browser rerun did not start because SWC rejected its Windows
+native-module cache permissions. An extra local SQLite identity run was stopped
+after stalling at its first HTTP fixture; neither local run is counted as passed.
+The completed CI backend suite includes that identity regression file. Final
+post-fix results are recorded in [PR #26](https://github.com/ZZJ1977/groupproof/pull/26)
+and its checks, separately from this first-run record.
