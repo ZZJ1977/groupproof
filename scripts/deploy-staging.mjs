@@ -81,7 +81,7 @@ const googleRedirectUri = apiVars.GOOGLE_REDIRECT_URI || identityVars.GOOGLE_RED
 assert(googleClientId && googleClientSecret, "Staging Google OAuth client ID and secret must be configured");
 assert.equal(googleRedirectUri, `${origin}/api/v1/auth/google/callback`, "Staging Google OAuth redirect URI must match the Web callback");
 const before = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
-console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "groupproof-staging", postgresVolume: volume.id, existingBackups: before.volumeInstanceBackupList.length, resendConfigured: Boolean(apiVars.RESEND_API_KEY || identityVars.RESEND_API_KEY), googleConfigured: true, workflowStates: schema.states.enumValues.map((value) => value.name) }));
+console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "groupproof-staging", postgresVolume: volume.id, existingBackups: before.volumeInstanceBackupList.length, resendConfigured: Boolean(apiVars.RESEND_API_KEY || identityVars.RESEND_API_KEY), brevoConfigured: Boolean(apiVars.BREVO_API_KEY), googleConfigured: true, workflowStates: schema.states.enumValues.map((value) => value.name) }));
 if (checkOnly) process.exit(0);
 
 // Snapshot stays in Railway. No account rows or database dumps are exported to CI.
@@ -116,12 +116,13 @@ if (workflowId) {
 // Preserve the team's database connection and existing credentials. Never copy old
 // sessions, acceptance tokens, debug switches or a separate identity database name.
 const authVariables = {};
-for (const key of ["RESEND_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "STUDENT_EMAIL_DOMAIN", "TEACHER_EMAIL_DOMAIN", "STUDENT_ID_PATTERN", "STUDENT_ID_EMAIL_RULE"]) {
+for (const key of ["RESEND_API_KEY", "BREVO_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "STUDENT_EMAIL_DOMAIN", "TEACHER_EMAIL_DOMAIN", "STUDENT_ID_PATTERN", "STUDENT_ID_EMAIL_RULE"]) {
   if (apiVars[key] || identityVars[key]) authVariables[key] = apiVars[key] || identityVars[key];
 }
 Object.assign(authVariables, {
   APP_ENV: "staging", APP_MODE: apiVars.APP_MODE || identityVars.APP_MODE || "dev",
-  APP_ORIGIN: origin, PORT: "8000", MAIL_MODE: "resend",
+  APP_ORIGIN: origin, PORT: "8000", // Brevo works without an own domain (single verified sender); keep it when an operator picked it.
+  MAIL_MODE: apiVars.MAIL_MODE === "brevo" ? "brevo" : "resend",
   // Keep an operator-set MAIL_PUBLIC_ENABLED (turned on after the sending domain is verified); default stays off.
   MAIL_PUBLIC_ENABLED: apiVars.MAIL_PUBLIC_ENABLED === "true" ? "true" : "false",
   AUTH_GOOGLE_ENABLED: "true", AUTH_PASSWORD_ENABLED: "true",
