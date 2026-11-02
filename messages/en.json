@@ -359,6 +359,8 @@
       "googleUnlinkDisabled": "To avoid being locked out, set a password and verify your login email before unlinking.",
       "googleLinkSuccess": "Google account linked.",
       "googleLinkFailed": "Linking failed. Please try again.",
+      "googleLinkCancelled": "Linking was cancelled. You can try again any time.",
+      "googleLinkUnavailable": "Google is temporarily unavailable. Please try again later.",
       "googleLinkElsewhere": "This Google account is already linked to another GroupProof account.",
       "errors": {
         "AUTH_UNAVAILABLE": "Google sign-in is temporarily unavailable. Please retry later.",

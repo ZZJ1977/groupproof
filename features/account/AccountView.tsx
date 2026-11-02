@@ -428,6 +428,16 @@ function GooglePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO;
           {t("googleLinkFailed")}
         </p>
       )}
+      {linkError === "cancelled" && (
+        <p className="mt-2 text-[12px] text-[#6f7f95]" role="status">
+          {t("googleLinkCancelled")}
+        </p>
+      )}
+      {linkError === "unavailable" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkUnavailable")}
+        </p>
+      )}
       {error && (
         <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
           {error}
