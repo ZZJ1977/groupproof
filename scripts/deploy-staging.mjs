@@ -130,8 +130,12 @@ Object.assign(authVariables, {
 await setVariables(apiId, authVariables);
 // All service settings are written explicitly below. Railway now rejects the railwayConfigFile field
 // ("Config as Code is deprecated"), so the deploy no longer depends on services/api/railway.toml.
+// Railway runs a Dockerfile service's start command in exec form, without a shell, so a bare
+// "$PORT" reaches uvicorn literally ("'$PORT' is not a valid integer") and the healthcheck never
+// passes. Wrap it in sh -c so the variable is expanded, same as the Dockerfile CMD.
+const API_START_COMMAND = `sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port "\${PORT:-8000}"'`;
 await graphql("mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}", {
-  s: apiId, e: environmentId, input: { rootDirectory: "services/api", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT" },
+  s: apiId, e: environmentId, input: { rootDirectory: "services/api", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: API_START_COMMAND },
 });
 async function deploy(serviceId, label) {
   const args = ["--project", projectId, "--environment", environment, "--service", serviceId];
