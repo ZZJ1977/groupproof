@@ -85,23 +85,33 @@ console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "group
 if (checkOnly) process.exit(0);
 
 // Snapshot stays in Railway. No account rows or database dumps are exported to CI.
+// Railway only offers manual volume backups on Pro workspaces. On other plans the staging
+// rollout continues without a snapshot (staging data only) and says so in the job summary;
+// every other backup failure still stops the deployment.
 const name = `before-unified-auth-${process.env.GITHUB_SHA?.slice(0, 12)}`;
-const backup = await graphql("mutation($id:String!,$name:String){volumeInstanceBackupCreate(volumeInstanceId:$id,name:$name){workflowId}}", { id: volume.id, name });
-const workflowId = backup.volumeInstanceBackupCreate.workflowId;
-assert(workflowId, "Backup was not accepted");
-let backedUp = false;
-for (let attempt = 0; attempt < 60; attempt++) {
-  const data = await graphql("query($id:String!){workflowStatus(workflowId:$id){status}}", { id: workflowId });
-  const status = data.workflowStatus.status.toUpperCase();
-  if (["SUCCESS", "SUCCEEDED", "COMPLETED", "COMPLETE"].includes(status)) { backedUp = true; break; }
-  if (["FAILED", "ERROR", "CANCELLED", "CANCELED", "TERMINATED"].includes(status)) throw new Error(`Database backup failed (${status})`);
-  await sleep(5000);
+let workflowId = null;
+try {
+  const backup = await graphql("mutation($id:String!,$name:String){volumeInstanceBackupCreate(volumeInstanceId:$id,name:$name){workflowId}}", { id: volume.id, name });
+  workflowId = backup.volumeInstanceBackupCreate.workflowId;
+} catch (error) {
+  if (!/only available for Pro/i.test(String(error?.message))) throw error;
+  console.warn("Railway workspace does not support manual backups; continuing the staging rollout without a database snapshot.");
 }
-assert(backedUp, "Backup did not complete; migration and deployment stopped");
-const after = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
-const priorIds = new Set(before.volumeInstanceBackupList.map((item) => item.id));
-assert(after.volumeInstanceBackupList.some((item) => !priorIds.has(item.id)), "Completed backup is not listed");
-console.log(`Staging database backup completed: ${workflowId}`);
+if (workflowId) {
+  let backedUp = false;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const data = await graphql("query($id:String!){workflowStatus(workflowId:$id){status}}", { id: workflowId });
+    const status = data.workflowStatus.status.toUpperCase();
+    if (["SUCCESS", "SUCCEEDED", "COMPLETED", "COMPLETE"].includes(status)) { backedUp = true; break; }
+    if (["FAILED", "ERROR", "CANCELLED", "CANCELED", "TERMINATED"].includes(status)) throw new Error(`Database backup failed (${status})`);
+    await sleep(5000);
+  }
+  assert(backedUp, "Backup did not complete; migration and deployment stopped");
+  const after = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
+  const priorIds = new Set(before.volumeInstanceBackupList.map((item) => item.id));
+  assert(after.volumeInstanceBackupList.some((item) => !priorIds.has(item.id)), "Completed backup is not listed");
+  console.log(`Staging database backup completed: ${workflowId}`);
+}
 
 // Preserve the team's database connection and existing credentials. Never copy old
 // sessions, acceptance tokens, debug switches or a separate identity database name.
@@ -120,7 +130,7 @@ Object.assign(authVariables, {
 await setVariables(apiId, authVariables);
 // DOCKERFILE is selected in services/api/railway.toml; it is not a value in Railway's GraphQL Builder enum.
 await graphql("mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}", {
-  s: apiId, e: environmentId, input: { rootDirectory: "services/api", railwayConfigFile: "/services/api/railway.toml", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT" },
+  s: apiId, e: environmentId, input: { rootDirectory: "services/api", railwayConfigFile: "/services/api/railway.toml", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1}" },
 });
 async function deploy(serviceId, label) {
   const args = ["--project", projectId, "--environment", environment, "--service", serviceId];
@@ -163,4 +173,4 @@ assert([302, 303, 307, 308].includes(home.status));
 assert.equal(new URL(home.headers.get("location"), origin).pathname, "/login");
 assert.equal((await fetch(`${origin}/login`)).status, 200);
 console.log(`Verified staging: ${origin}`);
-if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Staging deployed and anonymous authentication checks passed: [Open test site](${origin}). Google OAuth start returned a valid authorization URL.\n\nDatabase backup workflow: ${workflowId}. Public mail remains disabled.\n`);
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Staging deployed and anonymous authentication checks passed: [Open test site](${origin}). Google OAuth start returned a valid authorization URL.\n\n${workflowId ? `Database backup workflow: ${workflowId}.` : "No database snapshot was taken (Railway manual backups need a Pro workspace)."} Public mail remains disabled.\n`);

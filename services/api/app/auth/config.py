@@ -142,9 +142,8 @@ class Settings(BaseSettings):
 
     @property
     def google_available(self) -> bool:
-        """Google 登录入口（按钮）可见性：按用户决策随开关显示，不等待凭据；
-        实际登录还需 google_configured（未配置时点击入口返回明确的服务暂不可用）。"""
-        return self.auth_google_enabled
+        """Google 登录入口（按钮）可见性：开关开启且凭据齐全才显示，避免展示点了必失败的按钮。"""
+        return self.auth_google_enabled and self.google_configured
 
     @property
     def mail_configured(self) -> bool:
