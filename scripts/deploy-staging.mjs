@@ -121,7 +121,9 @@ for (const key of ["RESEND_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CL
 }
 Object.assign(authVariables, {
   APP_ENV: "staging", APP_MODE: apiVars.APP_MODE || identityVars.APP_MODE || "dev",
-  APP_ORIGIN: origin, PORT: "8000", MAIL_MODE: "resend", MAIL_PUBLIC_ENABLED: "false",
+  APP_ORIGIN: origin, PORT: "8000", MAIL_MODE: "resend",
+  // Keep an operator-set MAIL_PUBLIC_ENABLED (turned on after the sending domain is verified); default stays off.
+  MAIL_PUBLIC_ENABLED: apiVars.MAIL_PUBLIC_ENABLED === "true" ? "true" : "false",
   AUTH_GOOGLE_ENABLED: "true", AUTH_PASSWORD_ENABLED: "true",
   AUTH_EMAIL_SIGNUP_ENABLED: "true", AUTH_PASSWORD_RESET_ENABLED: "true",
   DEBUG_ENDPOINTS: "false", ENABLE_DEMO_AUTH: "false", ACCEPTANCE_TEST_TOKEN: "",
