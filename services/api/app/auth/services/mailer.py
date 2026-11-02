@@ -158,6 +158,12 @@ def send_email(to_email: str, subject: str, body: str, purpose: str | None = Non
             db.commit()
         finally:
             db.close()
+        # 运维可见：capture 模式下邮件不会到达收件箱（不记录收件人、验证码或正文）
+        logger.warning(
+            "mail captured (not delivered) purpose=%s：MAIL_MODE=capture，"
+            "如需真实发信请设置 MAIL_MODE=resend + RESEND_API_KEY + MAIL_FROM",
+            purpose,
+        )
         return
 
     if settings.mail_mode == "resend":
