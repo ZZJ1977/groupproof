@@ -96,6 +96,17 @@ MAIL_PUBLIC_ENABLED=true        # 域名验证并实测投递成功后再开；�
 EMAIL_CHALLENGE_HMAC_KEY=...    # openssl rand -hex 32，保持稳定，改动会让未使用的验证码全部失效
 ```
 
+**没有自有域名时用 Brevo**：Brevo 只要求验证一个发件邮箱（点一下验证邮件即可），免费额度每天 300 封，走 HTTPS API。步骤：注册 Brevo → Senders & IP → Senders 添加并验证发件邮箱 → SMTP & API → API Keys 生成 Key；然后在 API 服务设置：
+
+```text
+MAIL_MODE=brevo
+BREVO_API_KEY=xkeysib-...
+MAIL_FROM=GroupProof <已在 Brevo 验证的邮箱>
+MAIL_PUBLIC_ENABLED=true
+```
+
+部署脚本默认写入 `MAIL_MODE=resend`，但会保留手动设置的 `MAIL_MODE=brevo` 与 `BREVO_API_KEY`。用个人邮箱（如 Gmail）作为发件人时，学校邮箱可能把邮件放进垃圾箱，首次请检查垃圾箱/隔离区。排查日志：`brevo rejected ... status=400` 多为发件人未验证，`status=401` 为 API Key 无效或 Brevo 开启了 IP 限制。
+
 注意：`MAIL_FROM` 若使用 Resend 默认的 `onboarding@resend.dev`，Resend 只允许发给注册 Resend 的那个邮箱，发往学校邮箱会被拒（API 返回“邮件服务暂不可用”）。必须先在 Resend → Domains 添加并验证自己的域名（按提示在 DNS 加 SPF/DKIM 记录），再用该域名下的地址作为 `MAIL_FROM`。学校邮箱（Microsoft 365）可能把新域名的邮件放进垃圾箱或隔离区，首次验收时请一并检查。
 
 排查：API 日志出现 `mail captured (not delivered)` 表示仍是 capture 模式；`resend rejected ... status=403/422` 多为发信域名未验证或 `MAIL_FROM` 不在已验证域名下；`status=401` 为 API Key 无效。前端在 capture 模式下会明确提示“验证码不会送达邮箱”。
