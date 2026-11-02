@@ -219,6 +219,8 @@ def test_full_registration_activates_business_access(client: TestClient) -> None
         headers={"X-CSRF-Token": csrf},
     )
     assert challenge.status_code == 200
+    # capture 模式不会投递到真实邮箱，接口须如实标记，前端据此不显示“已发送”
+    assert challenge.json()["data"]["sendStatus"] == "captured"
     challenge_id = challenge.json()["data"]["challengeId"]
 
     verified = client.post(
