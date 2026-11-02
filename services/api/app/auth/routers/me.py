@@ -565,8 +565,11 @@ def link_google_identity(
     check_csrf(request, context)
     if context.facts["accountState"] == "disabled":
         raise AppError("ACCOUNT_DISABLED", 403)
-    if not within_recent_auth(context.user.last_login_at, utcnow()):
+    if not _session_recently_authenticated(context):
         raise AppError("REAUTH_REQUIRED", 403)
+    settings = get_settings()
+    if not settings.google_available or not settings.google_configured:
+        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"})
     existing = db.execute(
         select(AuthIdentity).where(
             AuthIdentity.user_id == context.user.id, AuthIdentity.provider == "google"
@@ -577,9 +580,15 @@ def link_google_identity(
     state, transaction = google_oidc.create_transaction(
         db, None, purpose="link", user_id=context.user.id
     )
+    try:
+        url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
+    except AppError:
+        db.rollback()
+        raise
+    except Exception as exc:  # noqa: BLE001 - provider discovery is an external dependency
+        db.rollback()
+        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
     db.commit()
-    url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
-    settings = get_settings()
     response = JSONResponse({"authorizeUrl": url}, headers={"Cache-Control": "private, no-store"})
     response.set_cookie(
         settings.oauth_cookie_name,
@@ -610,6 +619,8 @@ def unlink_google_identity(
     ).scalar_one_or_none()
     if identity_row is None:
         raise AppError("INVALID_STATE", 409, params={"reason": "identity_not_linked"})
+    if not _session_recently_authenticated(context):
+        raise AppError("REAUTH_REQUIRED", 403)
     from ..models import PasswordCredential
 
     credential = db.get(PasswordCredential, context.user.id)
@@ -624,6 +635,12 @@ def unlink_google_identity(
 
 
 # --- 内部工具 ---
+
+
+def _session_recently_authenticated(context: AuthContext) -> bool:
+    """近期认证看本会话自己的认证时间，而不是用户级 last_login_at（其他设备登录会刷新它）。"""
+    session = context.session
+    return within_recent_auth(session.authenticated_at or session.created_at, utcnow())
 
 
 def _facts_with_checks(db: DbSession, user) -> dict:

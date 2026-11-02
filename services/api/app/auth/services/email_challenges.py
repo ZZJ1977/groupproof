@@ -115,7 +115,8 @@ def create_challenge(
         ) from exc
     try:
         send_code_email(to_email, code)
-        challenge.send_status = "accepted"
+        # capture 模式只写入 email_outbox，不会投递到真实邮箱；如实告知前端，避免显示“已发送”
+        challenge.send_status = "captured" if settings.mail_mode == "capture" else "accepted"
     except MailSendError:
         challenge.send_status = "failed"
         audit.record(db, "email_challenge.send_failed", actor_id=user.id, result="failure")

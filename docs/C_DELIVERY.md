@@ -2,9 +2,19 @@
 
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
-Current snapshot (2026-10-14): PRs #9–#12 are merged. Team PR #14 unified
-authentication into the canonical API. This follow-up starts at `4143991` and
-addresses the [C functional audit](reviews/2026-10-14-c-function-audit.md).
+Current follow-up (2026-11-01): PR #17 is merged. `C_task` has been fast-forwarded
+to `develop` `302bf4e`, including Google linking and D/OAuth migrations 0014/0015.
+The current batch adds Google-to-C HTTP and real-browser integration coverage,
+data-preserving migration regressions, and repairs the missing CSRF check on
+canonical business writes. Scope and reproducible commands are recorded below;
+the current PR checks are the authority for executed PostgreSQL/browser results.
+
+Previous snapshot (2026-10-15): PRs #9–#12 and #16 are merged. Team PR #14 unified
+authentication into the canonical API. This follow-up starts at `22c0d1a` and
+reuses A's existing persisted authentication events and teacher applications for
+C7-05/C7-03. The preceding [C functional audit](reviews/2026-10-14-c-function-audit.md)
+was delivered in PR #16; its final CI passed 869 backend tests, 121 C browser cases,
+733 C script assertions, frontend quality/build and Docker smoke checks.
 There is partial code/contract coverage for **35/35 C task IDs, not 35 accepted
 tasks**. Historical commit/test counts below describe their original batches.
 All complete team acceptance rows remain open until staging verification.
@@ -542,3 +552,136 @@ access providers and durable delivery, B stable task codes and frozen references
 D verification/invalidation consumers, account restore/create contracts, and
 clean-database staging acceptance. Current source-check UI is useful with an
 available provider; it is not automatic external-source event delivery.
+
+### Reuse A's persisted authentication records (2026-10-15)
+
+Base: merged `develop` `22c0d1a` (PR #16). The available A code already persists
+teacher applications and authentication audit events. This batch reads those
+records through C-owned projections instead of waiting for a new provider or
+introducing a second identity database. No schema migration or deployment is
+included.
+
+- **C7-03:** teacher-review queries support pending/approved/rejected/all,
+  fixed ten-row pagination and read-only history. Submitted name, identity and
+  email domain are distinguished from the current account; reviewer name is
+  explicitly current. Missing historical facts remain empty. History does not
+  offer another decision, and lost permission removes protected details.
+- **C7-05:** two read-only API routes expose A's `AuthAuditEvent` using the real
+  current Admin/session checks. Filters cover action, result, actor, target user
+  and timezone-aware dates. One SQL statement produces the filtered count and
+  stable page. The response only exposes allowlisted metadata; it does not
+  invent historical roles, reasons or before/after values.
+- **C7-05 UI:** `/admin/logs?source=auth` has URL filters, pagination and event
+  detail. Authentication and all-site business audit remain explicit separate
+  sources. Revoked access clears list, directory and detail data; unavailable
+  reads do not keep displaying stale results. Generated client types, browser
+  contracts and a new client-check script are included in CI.
+
+Local verification for this batch:
+
+| Check | Observed result |
+| --- | --- |
+| PostgreSQL API/auth regressions | **61 passed**, zero skipped: audit 34, teacher history 10, existing unified-auth integration 17 |
+| Changed browser files | **35 distinct cases passed** across the initial run and unchanged audit-suite rerun; **10 new cases** |
+| New authentication-audit client script | **19 assertions passed** |
+| Existing generated C client script | **55 assertions passed** |
+| Python lint/format | Ruff passed; **179 files** passed the format check |
+| Frontend and routes | Full lint, typecheck and **56 route mappings** passed |
+| Production build | Compilation, type checking, static generation and trace collection passed |
+
+The first combined browser run passed 34/35. The remaining case timed out at
+its first `page.goto` during local cold compilation, before business assertions.
+The complete new audit suite then passed **8/8** with unchanged assertions and
+timeouts. Both the failure log/trace and rerun log are retained locally under
+`test-results`; this is not represented as a single all-green first run.
+
+The backend tests use A's actual session, account-disable, teacher-review and
+audit persistence paths with the isolated PostgreSQL database. Browser tests
+intercept API responses to verify UI behavior; they do not establish deployed
+integration. Final full-suite results belong to this batch's PR checks.
+
+Authentication audit is a working subset of C7-05, not full all-site business
+audit. A's storage, GitHub/Feishu, inbox, AI usage, access-grant and durable event
+delivery providers remain separate dependencies, along with B's canonical task
+references, D's verification consumers and clean-database staging acceptance.
+
+### Google identity and 0013-to-0015 compatibility (2026-11-01)
+
+The requested scope is the previous review's items 2 and 3: new authentication
+integration and migration compatibility. The four newly introduced Google audit
+event labels remain a separate C7-05 follow-up.
+
+The integration review found that canonical business writes authenticated the
+Cookie but did not call A's CSRF guard. `get_current_user` now reuses that guard
+after checking current account/registration facts. The generated API transport
+reads the current session before a write and attaches its token, retaining the
+original body and idempotency key. It does not cache tokens across account or
+session changes or automatically retry a write. Failed session lookups do not
+send the command. Read requests and the explicitly enabled development demo
+identity keep their existing behavior.
+
+New regression coverage:
+
+- `test_c_google_auth_integration.py`: actual Google callback/session routes,
+  school-code consumption and cookie rotation, linked/unlinked canonical UUIDs,
+  task/note ownership, cross-project denial, Admin disable/revocation, OAuth
+  replay, mailbox conflict and revoked school proof. Missing/incorrect CSRF and
+  foreign Origin cases assert rejected execution/note commands leave data intact.
+- `test_c_auth_migration_compatibility.py`: two isolated PostgreSQL databases
+  exercise an empty rebuild and an upgrade with persisted C data. Task progress,
+  note versions, evidence/decisions/snapshots, file versions, discussions,
+  teacher reviews, audit, idempotency and outbox rows are compared column by
+  column across 0014 and 0015. D constraints, OAuth backfill/FK behavior, one head
+  and `alembic check` are verified. Each test drops only its UUID-named database;
+  the supplied maintenance database is not modified. A test role needs CREATEDB.
+- `playwright.c-integration.config.ts`: a separate real Next/FastAPI/PostgreSQL
+  suite, with no product response interception or injected login Cookie. It
+  follows the OIDC browser round trip, exercises task/progress/notes/evidence,
+  refresh persistence, foreign-member denial, Admin disable and CSRF rejection,
+  then independently reads committed PostgreSQL rows.
+- `check-c-session-client.mjs`: fresh tokens after rotation, preserved commands
+  and idempotency keys, no write on invalid/unavailable sessions.
+
+The browser harness is a separate test-only process, guarded by explicit test
+flags, a random control token and a loopback database. It creates one random
+schema from ORM metadata and removes only that schema, including startup-error
+cleanup. Migration correctness is tested by the independent Alembic tests.
+Only the external OIDC issuer and prerequisite users/plans are fixtures; real
+Google accounts, production email, B planning and third-party providers are not
+claimed as tested. File migration fixtures use explicit storage receipts, not
+uploaded object bytes. No A/D migration or external deployment is changed.
+
+Reproduction with a disposable PostgreSQL database:
+
+1. Set `GROUPPROOF_ENV_FILE` to `NUL` (Windows) or `/dev/null` (Linux), `APP_ENV=test`,
+   `APP_MODE=dev`, `MAIL_MODE=capture` and a test-only `EMAIL_CHALLENGE_HMAC_KEY`.
+2. Set `DATABASE_URL`, `C_TEST_DATABASE_URL`, `C_EXECUTION_TEST_DATABASE_URL` to
+   the isolated database. From `services/api`, run `python -m alembic upgrade head`
+   and `python -m pytest tests/test_c_google_auth_integration.py tests/test_c_auth_migration_compatibility.py -q`.
+3. Set `C_BROWSER_DATABASE_URL` to a loopback PostgreSQL test database. From the
+   repository root run `npx playwright test --config playwright.c-integration.config.ts`.
+   Python defaults to the local Windows API venv or `python`; override with
+   `C_BROWSER_PYTHON` if needed. Ports 13007 and 18007 must be free.
+
+The new browser job is included in the deployment dependency list so a failed
+integration check cannot be ignored by a later deployment. Local Docker did not
+start because its `dockerInference` socket failed; local static/client checks
+are recorded separately from the actual PostgreSQL and browser CI executions.
+The Railway backup-plan restriction remains A's deployment dependency; this
+batch neither bypasses it nor claims staging acceptance.
+
+The first [PR #26 CI run](https://github.com/ZZJ1977/groupproof/actions/runs/41287908296)
+passed the full backend suite (**973 passed, zero skipped**, including the 17 new
+identity/CSRF cases and two migration cases), all **four real browser cases**,
+lint/typecheck/build/route checks and the Docker image smoke test. The existing
+C API browser suite passed 85/86: its reply test counted the still-open editor
+as a saved reply before the new session preflight finished. The assertion now
+waits for that editor to close and counts only saved reply articles; the three
+request/two record and retry/new-command key assertions are unchanged.
+
+The local targeted browser rerun did not start because SWC rejected its Windows
+native-module cache permissions. An extra local SQLite identity run was stopped
+after stalling at its first HTTP fixture; neither local run is counted as passed.
+The completed CI backend suite includes that identity regression file. Final
+post-fix results are recorded in [PR #26](https://github.com/ZZJ1977/groupproof/pull/26)
+and its checks, separately from this first-run record.
