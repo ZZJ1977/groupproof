@@ -19,9 +19,34 @@ const FEATURES = [
   { icon: ShieldCheck, titleKey: "feature4Title", subKey: "feature4Sub" },
 ] as const;
 
+/** 与后端 safe_return_to 同一规则：只接受站内路径，拒绝 //host、反斜杠、编码绕过，以及认证/账户相关前缀。 */
 function safeLocalTarget(value: string | null): string | null {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
-  return value;
+  if (!value) return null;
+  const candidate = value.trim();
+  if (!candidate.startsWith("/") || candidate.startsWith("//") || candidate.includes("\\")) return null;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(candidate);
+  } catch {
+    return null;
+  }
+  if (decoded.includes("\\") || decoded.startsWith("//")) return null;
+  const path = candidate.split(/[?#]/, 1)[0];
+  for (const prefix of ["/api", "/login", "/account", "/onboarding"]) {
+    if (path === prefix || path.startsWith(`${prefix}/`)) return null;
+  }
+  return candidate;
+}
+
+function GoogleMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
 }
 
 /** 统一错误呈现：字段错误/稳定错误码 + 可复制请求编号 + 限流倒计时（由服务端时间推导） */
@@ -96,9 +121,30 @@ function LoginCard() {
     router.refresh();
   };
 
+  // 从 Google 页面按“返回”时浏览器会从 bfcache 恢复本页，按钮必须复位
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        startedRef.current = false;
+        setRedirecting(false);
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
+  // 开始任何登录动作时清掉 URL 上遗留的 Google 错误，避免红色提示一直挂着
+  const [dismissedError, setDismissedError] = useState(false);
+  const clearUrlError = () => {
+    if (!error) return;
+    setDismissedError(true);
+    router.replace(returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login");
+  };
+
   const startGoogleLogin = () => {
     if (startedRef.current) return;
     startedRef.current = true;
+    clearUrlError();
     setRedirecting(true);
     window.location.href = authClient.googleStartUrl(returnTo ?? undefined);
   };
@@ -108,6 +154,7 @@ function LoginCard() {
     if (loginState === "pending") return;
     setLoginState("pending");
     setLoginError(null);
+    clearUrlError();
     try {
       goAfterAuth(await authClient.passwordLogin(identifier.trim(), password));
     } catch (err) {
@@ -116,7 +163,8 @@ function LoginCard() {
     }
   };
 
-  const showGoogle = !capsFailed && (!caps || caps.google.available);
+  const googleLoading = !caps && !capsFailed;
+  const showGoogle = !capsFailed && Boolean(caps?.google.available);
   const showSignup = !capsFailed && (!caps || caps.emailSignup.enabled);
   const showForgot = !capsFailed && (!caps || caps.passwordReset.enabled);
 
@@ -125,15 +173,22 @@ function LoginCard() {
       <h2 className="text-[28px] font-bold text-[#14213b]">{t("loginTitle")}</h2>
       <p className="mt-2 text-[#718097]">{t("loginSubtitle")}</p>
 
+      {googleLoading && <div className="mt-8 h-12 w-full animate-pulse rounded-[7px] bg-[#eef2f8]" aria-hidden="true" />}
       {showGoogle && (
-        <Button className="mt-8 h-12 w-full text-[14px]" onClick={startGoogleLogin} loading={redirecting} aria-busy={redirecting}>
-          {!redirecting && <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white font-bold text-[#4285f4]">G</span>}
+        <Button
+          variant="outline"
+          className="mt-8 h-12 w-full border-[#dadce0] bg-white text-[14px] font-medium text-[#3c4043] hover:bg-[#f8f9fa]"
+          onClick={startGoogleLogin}
+          loading={redirecting}
+          aria-busy={redirecting}
+        >
+          {!redirecting && <GoogleMark />}
           {redirecting ? t("redirecting") : t("googleLogin")}
         </Button>
       )}
-      {error && (
+      {error && !dismissedError && (
         <p className="mt-4 rounded-[7px] bg-[#fdecec] p-3 text-[12px] text-[#c3313f]" role="alert">
-          {error === "cancelled" ? t("error.cancelled") : error === "failed" ? t("error.failed") : error === "account_exists" ? t("error.accountExists") : t("error.unavailable")}
+          {error === "cancelled" ? t("error.cancelled") : error === "account_exists" ? t("error.accountExists") : error === "unavailable" ? t("error.unavailable") : t("error.failed")}
         </p>
       )}
 

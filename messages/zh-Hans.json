@@ -359,6 +359,8 @@
       "googleUnlinkDisabled": "为防止无法登录，解除关联前需要先设置密码并验证登录邮箱。",
       "googleLinkSuccess": "Google 账号关联成功。",
       "googleLinkFailed": "关联失败，请重试。",
+      "googleLinkCancelled": "已取消关联，可随时重试。",
+      "googleLinkUnavailable": "Google 服务暂不可用，请稍后重试。",
       "googleLinkElsewhere": "该 Google 账号已关联其他 GroupProof 账号，无法关联到本账号。",
       "errors": {
         "AUTH_UNAVAILABLE": "Google 登录服务暂不可用，请稍后重试。",

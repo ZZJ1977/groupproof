@@ -140,6 +140,8 @@ class Session(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+    # 本会话最近一次真实认证（密码/Google）的时间；会话轮换时保留，用于“近期认证”判断
+    authenticated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )  # 闲置期限（按 scope 滚动）
