@@ -7,6 +7,7 @@ let nextResponse = { status: 200, body: { data: { id: "test-evidence" }, meta: {
 const client = createCClient(createApiClient({
   baseUrl: "http://127.0.0.1:8001",
   fetch: async (request) => {
+    if (new URL(request.url).pathname === "/api/v1/auth/session") return Response.json({ data: { authenticated: true, csrfToken: "client-contract-token" } });
     requests.push(request.clone());
     return Response.json(nextResponse.body, { status: nextResponse.status });
   },

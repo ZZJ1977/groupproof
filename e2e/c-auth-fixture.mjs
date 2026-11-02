@@ -29,6 +29,7 @@ const server = http.createServer((request, response) => {
   }
   if (request.url === "/api/v1/auth/session") return response.end(JSON.stringify({
     authenticated: true,
+    csrfToken: "c-contract-fixture-csrf",
     sessionScope: "full",
     accountState: "active",
     canEnterWorkspace: true,
