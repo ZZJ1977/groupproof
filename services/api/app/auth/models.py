@@ -180,7 +180,8 @@ class EmailChallenge(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    send_status: Mapped[str] = mapped_column(String(16), default="accepted")  # accepted|failed
+    # accepted|captured（capture 模式未真实投递）|failed
+    send_status: Mapped[str] = mapped_column(String(16), default="accepted")
     resend_available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False

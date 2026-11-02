@@ -84,6 +84,22 @@ DATABASE_TIMEZONE=Asia/Shanghai
 REDIS_URL=${{Redis.REDIS_URL}}
 ```
 
+### 发信（学校邮箱验证码 / 注册 / 密码恢复）
+
+验证码由 **API 服务**（Railway staging 里名为 `groupproof` 的服务，不是 `groupproof-staging` Web 服务，也不是已下线的 `identity`）在请求内同步发送，不经过 worker/Redis 队列，所以以下变量只需配在 API 服务上。Staging 部署脚本每次都会写入 `MAIL_MODE=resend`，并保留已手动设置的 `RESEND_API_KEY`、`MAIL_FROM` 和 `MAIL_PUBLIC_ENABLED=true`：
+
+```text
+MAIL_MODE=resend                # 未设置时默认 capture：只写数据库 email_outbox，不会投递到任何邮箱
+RESEND_API_KEY=re_...           # Resend 控制台 → API Keys（Sending access 即可）
+MAIL_FROM=GroupProof <noreply@你的已验证域名>
+MAIL_PUBLIC_ENABLED=true        # 域名验证并实测投递成功后再开；它控制注册/找回密码入口是否开放
+EMAIL_CHALLENGE_HMAC_KEY=...    # openssl rand -hex 32，保持稳定，改动会让未使用的验证码全部失效
+```
+
+注意：`MAIL_FROM` 若使用 Resend 默认的 `onboarding@resend.dev`，Resend 只允许发给注册 Resend 的那个邮箱，发往学校邮箱会被拒（API 返回“邮件服务暂不可用”）。必须先在 Resend → Domains 添加并验证自己的域名（按提示在 DNS 加 SPF/DKIM 记录），再用该域名下的地址作为 `MAIL_FROM`。学校邮箱（Microsoft 365）可能把新域名的邮件放进垃圾箱或隔离区，首次验收时请一并检查。
+
+排查：API 日志出现 `mail captured (not delivered)` 表示仍是 capture 模式；`resend rejected ... status=403/422` 多为发信域名未验证或 `MAIL_FROM` 不在已验证域名下；`status=401` 为 API Key 无效。前端在 capture 模式下会明确提示“验证码不会送达邮箱”。
+
 API 另外设置 `PORT=8000`，worker 使用 `services/worker` 作为根目录并运行 Celery consumer。Production 的 API/worker 服务在 `main` 尚未包含后端目录期间保持停止，避免错误镜像接收正式流量。
 
 ## CI/CD 触发方式
