@@ -3,7 +3,7 @@
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CApiError, createCClient } from "@/lib/api/c-client";
-import { createGovernanceClient, type AccessQuery, type AuditQuery, type CourseQuery, type UsageQuery } from "@/lib/api/c-governance-client";
+import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type UsageQuery } from "@/lib/api/c-governance-client";
 import { useWorkspace } from "@/lib/workspace";
 import type { components } from "@/packages/domain/api.generated";
 import { Box, Empty, Header, Notice, Table, formatDateTime } from "@/features/governance/primitives";
@@ -18,6 +18,19 @@ const courseStatuses = { draft: "草稿", active: "已发布", ended: "已结束
 const requestStatuses = { pending: "待审批", approved: "已批准", rejected: "已拒绝" } as const;
 const auditRoles = { student: "学生", leader: "组长", teacher: "教师", ta: "助教", admin: "管理员", system: "系统" } as const;
 const targetTypes = { user: "用户", course: "课程", project: "项目", task: "任务", evidence: "证据", system: "系统" } as const;
+const authActions = {
+  "admin.bootstrapped": "初始化管理员", "auth.acceptance_test_entry": "验收测试入口", "auth.email_registered": "邮箱注册完成",
+  "auth.google.cancelled": "取消 Google 登录", "auth.login": "登录", "auth.logout": "退出登录", "auth.password_change": "修改密码",
+  "auth.password_login": "密码登录", "auth.password_login.rate_limited": "密码登录触发限流", "auth.password_register.closed_path": "已关闭的密码注册入口",
+  "auth.registered": "账号注册", "auth.session_refresh": "刷新会话", "email_challenge.consume_failed": "邮箱验证码校验失败",
+  "email_challenge.rate_limited": "邮箱验证触发限流", "email_challenge.send_failed": "验证码发送失败", "email_challenge.sent": "验证码已发送",
+  "login_email.verified": "登录邮箱验证完成", "password_recovery.notice_failed": "密码恢复通知失败", "password_recovery.requested_ineligible": "不符合条件的密码恢复请求",
+  "password_recovery.reset": "密码恢复完成", "password_recovery.sent": "密码恢复邮件已发送", "pre_registration.code_verified": "注册验证码验证完成",
+  "pre_registration.created": "创建注册申请", "preferences.updated": "更新偏好", "profile.updated": "更新个人资料", "role.granted_student": "授予学生角色",
+  "school_email.change_authorized": "授权变更学校邮箱", "school_email.change_requested": "申请变更学校邮箱", "school_email.verified": "学校邮箱验证完成",
+  "teacher.role_revoked_basis_changed": "审核依据变化后撤销教师角色", "teacher_application.approved": "通过教师审核", "teacher_application.rejected": "拒绝教师审核",
+  "teacher_application.resubmitted": "重新提交教师申请", "teacher_application.submitted": "提交教师申请", "user.disabled": "停用账号",
+} satisfies Record<NonNullable<NonNullable<AuthAuditQuery>["action"]>, string>;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function selected(value: string | null) { return value && uuid.test(value) ? value : undefined; }
 function pageNumber(value: string | null) { const n = Number(value ?? 1); return Number.isSafeInteger(n) && n >= 1 && n <= 1_000_000 ? n : 1; }
@@ -92,8 +105,8 @@ function conflictNeedsRefresh(command: ReturnType<typeof useCommand>, dataUpdate
 }
 
 /** Options come only from the canonical Admin directory, with explicit search/paging. */
-function UserSelect({ label, value, onChange, teacherOnly = false, required = false, onUnauthorized }: {
-  label: string; value: string; onChange: (value: string) => void; teacherOnly?: boolean; required?: boolean; onUnauthorized?: (error: CApiError) => void;
+function UserSelect({ label, value, onChange, teacherOnly = false, required = false, includeSystem = false, onUnauthorized }: {
+  label: string; value: string; onChange: (value: string) => void; teacherOnly?: boolean; required?: boolean; includeSystem?: boolean; onUnauthorized?: (error: CApiError) => void;
 }) {
   const { userId } = useWorkspace();
   const [search, setSearch] = useState("");
@@ -101,13 +114,13 @@ function UserSelect({ label, value, onChange, teacherOnly = false, required = fa
   const query = { page, page_size: 10, q: search || undefined, ...(teacherOnly ? { role: "teacher" as const, status: "active" as const } : {}) };
   const list = useQuery({ queryKey: ["c-governance-users", userId, query], queryFn: async () => { try { return await directory.adminUsers(query); } catch (error) { if (unauthorized(error)) onUnauthorized?.(error); throw error; } }, ...querySettings });
   const options = list.isSuccess && !list.isFetching ? list.data.items.filter((item) => !teacherOnly || item.email_verified) : [];
-  const selectedUser = useQuery({ queryKey: ["c-governance-selected-user", userId, value], queryFn: async () => { try { return await directory.adminUser(value); } catch (error) { if (unauthorized(error)) onUnauthorized?.(error); throw error; } }, enabled: Boolean(value) && list.isSuccess && !list.isFetching, ...querySettings });
+  const selectedUser = useQuery({ queryKey: ["c-governance-selected-user", userId, value], queryFn: async () => { try { return await directory.adminUser(value); } catch (error) { if (unauthorized(error)) onUnauthorized?.(error); throw error; } }, enabled: Boolean(value) && !(includeSystem && value === "system") && list.isSuccess && !list.isFetching, ...querySettings });
   const retained = list.isSuccess && !list.isFetching && selectedUser.isSuccess && !selectedUser.isFetching && selectedUser.data.id === value
     && (!teacherOnly || (selectedUser.data.global_role === "teacher" && selectedUser.data.status === "active" && selectedUser.data.email_verified)) ? selectedUser.data : undefined;
   const combined = retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options;
   return <div className={styles.stack}>
     <Field label={`${label}搜索`}><input className={styles.input} type="search" maxLength={200} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></Field>
-    <Field label={label}><select className={styles.select} aria-label={label} value={combined.some((item) => item.id === value) ? value : ""} required={required} disabled={list.isFetching || list.isError} onChange={(event) => onChange(event.target.value)}><option value="">{required ? "请选择有效教师" : "全部用户"}</option>{combined.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.email}</option>)}</select></Field>
+    <Field label={label}><select className={styles.select} aria-label={label} value={(includeSystem && value === "system") || combined.some((item) => item.id === value) ? value : ""} required={required} disabled={list.isFetching || list.isError} onChange={(event) => onChange(event.target.value)}><option value="">{required ? "请选择有效教师" : includeSystem ? "全部操作人" : "全部用户"}</option>{includeSystem && list.isSuccess && !list.isFetching && <option value="system">系统操作</option>}{combined.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.email}</option>)}</select></Field>
     {list.isError && <ErrorBox error={list.error} retry={() => void list.refetch()} label="重试用户目录" />}
     {list.isFetching && <p role="status">正在读取用户选项…</p>}
     {list.isSuccess && !list.isFetching && <><small>{teacherOnly ? "仅可选择已验证邮箱的有效教师。" : "搜索后选择已有用户。"}{!options.length && "当前查询没有可选用户。"}</small><div className={styles.actions}><button type="button" className={styles.button} disabled={page === 1} onClick={() => setPage(page - 1)}>用户上一页</button><span>用户第 {page} 页</span><button type="button" className={styles.button} disabled={page * 10 >= list.data.total} onClick={() => setPage(page + 1)}>用户下一页</button></div></>}
@@ -260,7 +273,7 @@ function AuditPanel({ id, close }: { id: string; close: () => void }) {
   return <Box title="日志详情" action={<button type="button" className={styles.button} onClick={close}>关闭详情</button>}><div className={styles.panelBody}>{detail.isFetching && <p role="status">正在读取日志详情…</p>}<ErrorBox error={detail.error} retry={() => void detail.refetch()} label="重试详情" />{detail.isSuccess && !detail.isFetching && <><p>{detail.data.action} · {detail.data.result} · {formatDateTime(detail.data.occurred_at)}</p><p>操作人：{detail.data.actor_id}</p><p>目标：{detail.data.target_type} / {detail.data.target_id ?? "系统"}</p><p>理由：{detail.data.reason}</p><h3>变更前</h3><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(detail.data.before, null, 2)}</pre><h3>变更后</h3><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(detail.data.after, null, 2)}</pre></>}</div></Box>;
 }
 
-function LogsPage() {
+function BusinessLogsPage() {
   const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
   const page = pageNumber(query.get("page")); const resultFilter = choice(query.get("result"), { success: "成功", failure: "失败" });
   const filters: AuditQuery = { page, page_size: 10, actor_id: selected(query.get("actor")), actor_role: choice(query.get("actor_role"), auditRoles), target_type: choice(query.get("target_type"), targetTypes), target_id: selected(query.get("target_id")), action: query.get("action") || undefined, result: resultFilter, since: isoTime(query.get("since") ?? ""), until: isoTime(query.get("until") ?? "") };
@@ -269,7 +282,7 @@ function LogsPage() {
   const formKey = JSON.stringify([filters.actor_role, filters.target_type, filters.action, filters.result, filters.since, filters.until]);
   const list = useQuery({ queryKey: ["c-governance-audits", userId, filters], queryFn: () => api.auditLogs(filters), ...querySettings });
   const data = list.isSuccess && !list.isFetching ? list.data : undefined; const id = selected(query.get("log"));
-  return <><Header title="系统日志" description="按操作、角色、结果和对象查询操作历史及变更摘要。" action={<button className={styles.button} type="button" onClick={() => void list.refetch()}>刷新日志</button>} />
+  return <><Header title="全站业务日志" description="查询全站业务审计服务提供的操作、历史角色、对象与变更摘要；来源未接通时显示不可用。" action={<button className={styles.button} type="button" onClick={() => void list.refetch()}>刷新日志</button>} />
     <UserSelect label="操作人" value={filters.actor_id ?? ""} onChange={(value) => updateQuery({ actor: value || null, page: null, log: null })} />
     <form key={formKey} className={styles.filters} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); const targetType = inputValue(input, "target_type"); updateQuery({ action: inputValue(input, "action") || null, actor_role: inputValue(input, "actor_role") || null, target_type: targetType || null, target_id: targetType === (filters.target_type ?? "") ? filters.target_id ?? null : null, result: inputValue(input, "result") || null, since: isoTime(inputValue(input, "since")) || null, until: isoTime(inputValue(input, "until")) || null, page: null, log: null }); }}>
       <Field label="操作时角色"><select className={styles.select} name="actor_role" aria-label="操作时角色" defaultValue={filters.actor_role ?? ""}><option value="">全部角色</option>{Object.entries(auditRoles).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="对象类型"><select className={styles.select} name="target_type" aria-label="对象类型" defaultValue={filters.target_type ?? ""}><option value="">全部对象</option>{Object.entries(targetTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
@@ -280,6 +293,63 @@ function LogsPage() {
     {data && <Box><Table><thead><tr><th>时间</th><th>操作人 / 角色</th><th>操作</th><th>对象</th><th>结果</th><th>理由</th><th>详情</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td>{formatDateTime(item.occurred_at)}</td><td>{item.actor_id} / {auditRoles[item.actor_role]}</td><td>{item.action}</td><td>{targetTypes[item.target_type]} {item.target_id && <button className={styles.button} type="button" onClick={() => updateQuery({ target_type: item.target_type, target_id: item.target_id, page: null, log: null })}>筛选此对象</button>}</td><td>{item.result === "success" ? "成功" : "失败"}</td><td>{item.reason}</td><td><button className={styles.button} type="button" onClick={() => updateQuery({ log: item.id })}>查看日志</button></td></tr>)}</tbody></Table>{!data.items.length && <Empty />}<Pager page={page} total={data.total} change={(next) => updateQuery({ page: String(next), log: null })} /></Box>}
     {id && data && <AuditPanel key={`${userId}:${id}`} id={id} close={() => updateQuery({ log: null })} />}
   </>;
+}
+
+function authActor(value: string | null) { return value === "system" ? "系统" : value ?? "未记录"; }
+const authResults = { success: "成功", failure: "失败", unknown: "未识别结果" } as const;
+
+function AuthLogsPage() {
+  const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
+  const [denied, setDenied] = useState<CApiError | null>(null);
+  const page = pageNumber(query.get("auth_page"));
+  const filters: AuthAuditQuery = { page, page_size: 10, action: choice(query.get("auth_action"), authActions),
+    result: choice(query.get("auth_result"), { success: "成功", failure: "失败" }),
+    actor_id: query.get("auth_actor") === "system" ? "system" : selected(query.get("auth_actor")), target_user_id: selected(query.get("auth_target")),
+    since: isoTime(query.get("auth_since") ?? ""), until: isoTime(query.get("auth_until") ?? "") };
+  const rawId = query.get("auth_log"); const id = rawId && /^[A-Za-z0-9_-]{1,64}$/.test(rawId) ? rawId : undefined;
+  function block(error: CApiError) { setDenied(error); updateQuery({ auth_log: null }); }
+  const list = useQuery({ queryKey: ["c-auth-audits", userId, filters], queryFn: async () => { try { return await api.authAuditLogs(filters); } catch (error) { if (unauthorized(error)) block(error); throw error; } }, enabled: !denied, ...querySettings });
+  const data = !denied && list.isSuccess && !list.isFetching ? list.data : undefined;
+  const detail = useQuery({ queryKey: ["c-auth-audit", userId, id], queryFn: async () => { try { return await api.authAuditLog(id!); } catch (error) { if (unauthorized(error)) block(error); throw error; } }, enabled: Boolean(id && data), ...querySettings });
+  const item = data && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
+  const formKey = JSON.stringify([filters.action, filters.result, filters.since, filters.until]);
+  async function refresh() {
+    const result = await list.refetch();
+    if (result.isSuccess) { setDenied(null); if (id && !denied) await detail.refetch(); }
+  }
+  const updateFilters = (patch: Record<string, string | null>) => updateQuery({ ...patch, auth_page: null, auth_log: null });
+  return <>
+    <Header title="认证日志" description="来源：认证服务已保存的认证、注册和账号管理事件；不包含全站业务操作。" action={<button className={styles.button} type="button" disabled={list.isFetching || detail.isFetching} onClick={() => void refresh()}>刷新认证日志</button>} />
+    <Notice>认证来源只记录事件、结果和变更字段名；操作时角色、操作理由、变更前后值均未记录。</Notice>
+    <ErrorBox error={denied ?? list.error} retry={() => void refresh()} />
+    {list.isFetching && <p role="status">正在读取认证日志…</p>}
+    {!denied && <>
+      <div className={styles.formGrid}>
+        <UserSelect label="认证操作人" includeSystem value={filters.actor_id ?? ""} onChange={(value) => updateFilters({ auth_actor: value || null })} onUnauthorized={block} />
+        <UserSelect label="目标账号" value={filters.target_user_id ?? ""} onChange={(value) => updateFilters({ auth_target: value || null })} onUnauthorized={block} />
+      </div>
+      <small>账号选项来自当前用户目录，仅用于筛选已记录的标识，不代表事件发生时的角色或资料。{filters.actor_id && ` 当前操作人筛选：${authActor(filters.actor_id)}。`}{filters.target_user_id && ` 当前目标账号筛选：${filters.target_user_id}。`}</small>
+      <form key={formKey} className={styles.filters} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateFilters({ auth_action: inputValue(input, "action") || null, auth_result: inputValue(input, "result") || null, auth_since: isoTime(inputValue(input, "since")) || null, auth_until: isoTime(inputValue(input, "until")) || null }); }}>
+        <Field label="认证事件"><select className={styles.select} name="action" defaultValue={filters.action ?? ""}><option value="">全部认证事件</option>{Object.entries(authActions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+        <Field label="认证结果"><select className={styles.select} name="result" defaultValue={filters.result ?? ""}><option value="">全部结果</option><option value="success">成功</option><option value="failure">失败</option></select></Field>
+        <Field label="认证开始时间"><input className={styles.input} type="datetime-local" name="since" defaultValue={filters.since ? localTime(filters.since) : ""} /></Field>
+        <Field label="认证结束时间"><input className={styles.input} type="datetime-local" name="until" defaultValue={filters.until ? localTime(filters.until) : ""} /></Field>
+        <button className={styles.primaryButton} type="submit">查询认证日志</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateFilters({ auth_actor: null, auth_target: null, auth_action: null, auth_result: null, auth_since: null, auth_until: null }); }}>重置认证筛选</button>
+      </form>
+      <small>时间使用本地时区输入；查询包含开始时间、不包含结束时间。</small>
+      {data && <Box><Table><thead><tr><th>时间</th><th>记录的操作人标识</th><th>认证事件</th><th>目标账号标识</th><th>结果</th><th>详情</th></tr></thead><tbody>{data.items.map((row) => <tr key={row.id}><td>{formatDateTime(row.occurred_at)}</td><td>{authActor(row.actor_id)}</td><td>{row.action === "unrecognized" ? "未识别认证事件" : authActions[row.action]}</td><td>{row.target_user_id ?? "未记录"}</td><td>{authResults[row.result]}</td><td><button className={styles.button} type="button" onClick={() => updateQuery({ auth_log: row.id })}>查看认证日志</button></td></tr>)}</tbody></Table>{!data.items.length && <Empty>没有符合条件的认证日志</Empty>}<Pager page={data.page} total={data.total} change={(next) => updateQuery({ auth_page: String(next), auth_log: null })} /></Box>}
+      {id && data && <Box title="认证日志详情" action={<button className={styles.button} type="button" onClick={() => updateQuery({ auth_log: null })}>关闭认证详情</button>}><div className={styles.panelBody}>
+        {detail.isFetching && <p role="status">正在读取认证日志详情…</p>}<ErrorBox error={detail.error} retry={() => void detail.refetch()} label="重试认证详情" />
+        {item && <><p>来源：认证日志（仅认证与账号管理）</p><p>事件：{item.action === "unrecognized" ? "未识别认证事件" : authActions[item.action]}</p><p>结果：{authResults[item.result]} · {formatDateTime(item.occurred_at)}</p><p>记录的操作人标识：{authActor(item.actor_id)}</p><p>记录的目标账号标识：{item.target_user_id ?? "未记录"}</p><h3>已记录的变更字段名</h3>{item.changed_fields.length ? <ul>{item.changed_fields.map((field, index) => <li key={`${index}:${field}`}>{field}</li>)}</ul> : <p>没有可展示的变更字段名；不能据此判断是否修改过数据。</p>}{item.metadata_redacted && <Notice>部分来源元数据已隐藏，不显示其原始内容。</Notice>}<p>操作时角色：未记录</p><p>操作理由：未记录</p><p>变更前值：未记录</p><p>变更后值：未记录</p></>}
+      </div></Box>}
+    </>}
+  </>;
+}
+
+function LogsPage() {
+  const { query, updateQuery } = useUrlQuery();
+  const authentication = query.get("source") === "auth";
+  return <><div className={styles.actions} aria-label="日志来源"><button className={styles.button} type="button" aria-pressed={authentication} onClick={() => updateQuery({ source: "auth" })}>认证日志</button><button className={styles.button} type="button" aria-pressed={!authentication} onClick={() => updateQuery({ source: "business" })}>全站业务日志</button></div>{authentication ? <AuthLogsPage /> : <BusinessLogsPage />}</>;
 }
 
 function costs(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" / ") || "无费用样本"; }

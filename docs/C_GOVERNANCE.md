@@ -6,7 +6,7 @@
 
 所有管理接口重新查询当前 canonical User，要求 active Admin；写入另要求 A 当前学校邮箱绑定有效，并锁定当前操作人行。申请人接口使用当前身份，没有自由 applicant 参数。浏览器展示不代替服务端授权。PR #14 已交付 `services/api/app/auth` 的统一 Cookie/UUID 身份；浏览器 fixtures 仍不等于真实环境联调验收。
 
-## 12 个接口
+## 14 个接口
 
 共同前缀 `/api/v1`，命令必须提供 `Idempotency-Key`。分页默认 10、最多 100；用户目录固定每页 10。
 
@@ -23,6 +23,8 @@
 | POST /admin/access-requests/{request_id}/decisions | Admin；approved/rejected、reason、expected_version；批准需要 expires_at |
 | GET /admin/audit-logs | Admin；actor_id、actor_role、target_type、target_id、action、result、since/until、分页 |
 | GET /admin/audit-logs/{record_id} | Admin；脱敏元数据详情 |
+| GET /admin/auth-audit-logs | Admin；A 已持久化的认证事件，操作、结果、用户、时间与分页 |
+| GET /admin/auth-audit-logs/{record_id} | Admin；认证事件安全投影，不透明字符串 ID |
 | GET /admin/ai-usage | Admin；days=7/30/90、user_id、feature、model |
 
 ## 课程与邀请码
@@ -44,6 +46,22 @@
 同 key 同内容重试首先检查当前操作者权限并校验原内容指纹，随后返回当前实体详情，不重复授权；相同 key 不同内容 409。课程已结束或访问期限已过时，重试不会返回旧的 active/未到期状态。Admin 决定只允许 pending 转 approved/rejected；拒绝不调用激活服务。outbox 仅持久化事实，不声称通知已送达。`authorization_state=receipt_recorded_current_access_not_checked` 表示曾收到激活回执，不表示现在仍有权限；当前授权的撤销/到期检查仍由 A 执行。详情与幂等重试均实时计算 `approval_expired`。
 
 ## A 审计与 AI 用量只读协议
+
+### 已接入的认证日志（C7-05，2026-10-15）
+
+`/admin/logs?source=auth` 通过 C 的两个只读接口直接读取 A 已有的
+`AuthAuditEvent`，无需新的外部服务或数据库迁移：
+
+- `GET /api/v1/admin/auth-audit-logs`：按操作、结果、操作者、目标用户和时间筛选，服务器分页。
+- `GET /api/v1/admin/auth-audit-logs/{record_id}`：读取原始认证事件的安全投影；ID 沿用 A 的不透明字符串。
+
+响应明确标明 `source=auth_audit_events`、`scope=authentication`。认证日志与原全站业务日志分别查询；
+认证记录可用不表示全站审计提供方已经接通。所有请求检查当前管理员身份；页面不提供修改或删除日志的操作。
+显示事件时间、操作、结果和白名单内的变更字段名。A 未保存的历史角色、改前/改后值、处理原因不推断补齐，
+请求原文、完整邮箱、会话和验证码也不从底层记录透传。未知元数据使用显式脱敏标记。
+筛选和当前页写入网址，权限失效后清除旧列表与详情。验证记录见 `C_DELIVERY.md`。
+
+### 全站业务日志和 AI 用量
 
 `GovernanceReadPort` 默认为 503，禁止用 C 本地历史假装完整 A 审计。审计页要求过滤后的精确 total、完整指定页、时间降序和 ID 稳定排序、无重复且符合全部条件；actor_role 是事件发生时的角色（含历史组长或系统），不能用当前角色猜测。角色、对象类型和对象 ID 过滤一并前推 provider，返回不匹配记录会拒绝。详情 ID 必须精确匹配。before/after 只接受明示白名单的标量元数据，禁止任意正文、密钥或嵌套对象；A 适配器仍有责任脱敏 reason/action，不可把敏感正文塞入描述字段。
 

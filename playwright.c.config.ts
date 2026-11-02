@@ -29,6 +29,8 @@ export default defineConfig({
       env: {
         API_INTERNAL_URL: "http://127.0.0.1:18006",
         NEXT_DIST_DIR: ".next-e2e",
+        // 跳过 next dev 启动时阻塞的 npm 版本检查，避免网络慢时超过 webServer 等待上限
+        NODE_OPTIONS: "--require ./e2e/skip-next-version-check.cjs",
         NEXT_PUBLIC_APP_MODE: "mock",
         NEXT_PUBLIC_ENABLE_MOCKS: "true",
         NEXT_PUBLIC_API_FEATURES: "admin=real",

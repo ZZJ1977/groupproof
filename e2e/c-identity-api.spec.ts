@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { IdentityAdminUser, IdentityTeacherApplication } from "../lib/api/c-identity-client";
 
 const target: IdentityAdminUser = { id: "identity-student", name: "真实账号", studentId: "S123", college: "计算机学院", roles: ["student"], status: "enabled", version: 3, schoolEmail: "student@must.edu.mo", schoolEmailVerified: true, canDisable: true };
-const application: IdentityTeacherApplication = { id: "identity-application", userId: "identity-teacher", name: "申请教师", college: "计算机学院", applicationVersion: 4, status: "pending", createdAt: "2026-10-12T00:00:00Z", emailVerified: true, emailDomain: "must.edu.mo" };
+const application: IdentityTeacherApplication = { id: "identity-application", userId: "identity-teacher", name: "申请教师", college: "计算机学院", applicationVersion: 4, status: "pending", createdAt: "2026-10-12T00:00:00Z", emailVerified: true, emailDomain: "must.edu.mo", submittedName: "提交时姓名", submittedIdentity: "teacher", submittedEmailDomain: "must.edu.mo", reviewedAt: null, reviewerName: null, reviewReason: null };
 async function session(page: Page, actor = () => "c-url-fixture") {
   await page.route("**/api/v1/auth/session", (route) => route.fulfill({ json: {
     authenticated: true, sessionScope: "full", accountState: "active", canEnterWorkspace: true,
@@ -214,4 +214,62 @@ test("C7-03 teacher approval preserves reasons on a conflict and never approves 
   await page.getByRole("button", { name: "通过", exact: true }).click();
   await expect(page.getByText("决定已保存。", { exact: true })).toBeVisible();
   expect(writes).toBe(2);
+});
+
+test("C7-03 review history filters and pagination persist; saved basis and decision stay read-only", async ({ page }) => {
+  await session(page);
+  const history: IdentityTeacherApplication = { ...application, status: "rejected", name: "后来更名", emailDomain: "current.example.edu", emailVerified: false, submittedEmailDomain: "original.example.edu", reviewedAt: "2026-10-13T08:00:00Z", reviewerName: "审核人现在的姓名", reviewReason: "<script>保持为普通文字</script>\n请重新核对资料" };
+  const queries: URLSearchParams[] = [];
+  await page.route("**/api/v1/c-admin/teacher-applications?**", (route) => {
+    const query = new URL(route.request().url()).searchParams; queries.push(query);
+    return route.fulfill({ json: { items: [query.get("status") === "pending" ? application : history], total: query.get("status") === "pending" ? 1 : 11, page: Number(query.get("page")), pageSize: 10 } });
+  });
+  let writes = 0;
+  await page.route("**/api/v1/c-admin/teacher-applications/identity-application/review", (route) => { writes++; return route.fulfill({ status: 500 }); });
+  await page.goto("/admin/teacher-verifications");
+  await expect(page.getByRole("button", { name: "查看", exact: true })).toBeVisible();
+  expect(queries.at(-1)?.get("status")).toBe("pending");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await page.getByLabel("处理原因", { exact: true }).fill("切换状态前的草稿");
+  await page.getByRole("combobox", { name: "审核状态", exact: true }).selectOption("rejected");
+  await page.getByRole("button", { name: "筛选申请", exact: true }).click();
+  await expect(page).toHaveURL(/status=rejected/);
+  await expect(page.getByLabel("处理原因", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "下一页", exact: true }).click();
+  await expect(page).toHaveURL(/page=2/);
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "审核状态", exact: true })).toHaveValue("rejected");
+  await expect(page.getByText("共 11 条 · 第 2 页", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByText("姓名：提交时姓名", { exact: true })).toBeVisible();
+  await expect(page.getByText("学校邮箱域：original.example.edu", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前学校邮箱域：current.example.edu · 未验证", { exact: true })).toBeVisible();
+  await expect(page.getByText("审核人（当前姓名）：审核人现在的姓名", { exact: true })).toBeVisible();
+  await expect(page.getByText(`审核原因：${history.reviewReason}`, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "通过", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拒绝", exact: true })).toHaveCount(0);
+  await page.getByRole("combobox", { name: "审核状态", exact: true }).selectOption("pending");
+  await page.getByRole("button", { name: "筛选申请", exact: true }).click();
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByLabel("处理原因", { exact: true })).toHaveValue("");
+  await expect(page).not.toHaveURL(/[?&]page=/);
+  expect(writes).toBe(0);
+});
+
+test("C7-03 a review completed elsewhere removes decision controls and revoked access hides history", async ({ page }) => {
+  await session(page);
+  let row = application; let allowed = true;
+  await page.route("**/api/v1/c-admin/teacher-applications?**", (route) => route.fulfill(allowed ? { json: { items: [row], total: 1, page: 1, pageSize: 10 } } : { status: 403, json: { code: "FORBIDDEN" } }));
+  await page.goto("/admin/teacher-verifications?status=all");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await page.getByLabel("处理原因", { exact: true }).fill("不会带入历史的草稿");
+  row = { ...application, status: "approved", reviewedAt: "2026-10-14T08:00:00Z", reviewerName: "另一审核人", reviewReason: "已完成审核" };
+  await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
+  await expect(page.getByText("已保存的审核结果：已通过", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("处理原因", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "通过", exact: true })).toHaveCount(0);
+  allowed = false;
+  await page.getByRole("button", { name: "刷新列表", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("没有管理权限");
+  await expect(page.getByText("审核原因：已完成审核", { exact: true })).toHaveCount(0);
 });

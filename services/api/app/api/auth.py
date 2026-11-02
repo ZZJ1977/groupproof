@@ -1,6 +1,7 @@
 """业务模块的当前用户依赖（PLAN 二、3：团队业务接口使用真实会话取得用户和权限）。
 
 - 生产：只认 Cookie 会话（app.auth guard 逐请求校验会话、注册资格与账号状态）；
+- Cookie 身份的写请求复用 A 的 CSRF/Origin 校验，读取请求不要求 CSRF Token；
 - 隔离开发/测试：保留显式开启的演示头（ENABLE_DEMO_AUTH=true）用于本地联调；
 - 未完成学校验证/未具备密码凭据的账号不能绕过验证进入业务（会话范围与注册事实同口径）。
 """
@@ -42,7 +43,7 @@ def get_current_user(
             raise ApiError(403, "ACCOUNT_INACTIVE", "The account is not active.")
         return user
 
-    from app.auth.guard import read_session
+    from app.auth.guard import check_csrf, read_session
     from app.auth.services import sessions as sessions_service
 
     context = read_session(request, session)
@@ -61,4 +62,5 @@ def get_current_user(
             "Complete the required registration steps first.",
             details={"accountState": context.facts["accountState"]},
         )
+    check_csrf(request, context)
     return context.user
