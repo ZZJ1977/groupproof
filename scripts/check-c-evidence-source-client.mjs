@@ -7,6 +7,7 @@ const requests = [];
 let status = 200;
 let body = { data: { source_changed: false, lock_version: 2 }, meta: { request_id: "source-check" } };
 const client = createCClient(createApiClient({ baseUrl: "http://127.0.0.1:8001", fetch: async (request) => {
+  if (new URL(request.url).pathname === "/api/v1/auth/session") return Response.json({ data: { authenticated: true, csrfToken: "source-contract-token" } });
   requests.push(request.clone());
   return Response.json(body, { status });
 } }));
