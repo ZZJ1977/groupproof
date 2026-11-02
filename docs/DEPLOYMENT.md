@@ -86,7 +86,7 @@ REDIS_URL=${{Redis.REDIS_URL}}
 
 ### 发信（学校邮箱验证码 / 注册 / 密码恢复）
 
-验证码由 **API 服务**在请求内同步发送（不经过 worker/Redis 队列），所以以下变量只需配在 API 服务上：
+验证码由 **API 服务**（Railway staging 里名为 `groupproof` 的服务，不是 `groupproof-staging` Web 服务，也不是已下线的 `identity`）在请求内同步发送，不经过 worker/Redis 队列，所以以下变量只需配在 API 服务上。Staging 部署脚本每次都会写入 `MAIL_MODE=resend`，并保留已手动设置的 `RESEND_API_KEY`、`MAIL_FROM` 和 `MAIL_PUBLIC_ENABLED=true`：
 
 ```text
 MAIL_MODE=resend                # 未设置时默认 capture：只写数据库 email_outbox，不会投递到任何邮箱
