@@ -69,7 +69,7 @@ assert(schema.workflow.fields.some((field) => field.name === "status"));
 assert(schema.workflowId.fields.some((field) => field.name === "workflowId"));
 assert(schema.backup.fields.some((field) => field.name === "id"));
 assert(schema.variables.inputFields.some((field) => field.name === "skipDeploys"));
-for (const field of ["rootDirectory", "railwayConfigFile", "dockerfilePath", "healthcheckPath", "healthcheckTimeout", "preDeployCommand", "preDeployTimeoutSeconds", "startCommand"]) {
+for (const field of ["rootDirectory", "dockerfilePath", "healthcheckPath", "healthcheckTimeout", "preDeployCommand", "preDeployTimeoutSeconds", "startCommand"]) {
   assert(schema.serviceConfig.inputFields.some((entry) => entry.name === field), `Railway service configuration field ${field} is unavailable`);
 }
 const apiVars = await variablesFor(apiId);
@@ -128,9 +128,10 @@ Object.assign(authVariables, {
   EMAIL_CHALLENGE_HMAC_KEY: apiVars.EMAIL_CHALLENGE_HMAC_KEY || identityVars.EMAIL_CHALLENGE_HMAC_KEY || randomBytes(32).toString("hex"),
 });
 await setVariables(apiId, authVariables);
-// DOCKERFILE is selected in services/api/railway.toml; it is not a value in Railway's GraphQL Builder enum.
+// All service settings are written explicitly below. Railway now rejects the railwayConfigFile field
+// ("Config as Code is deprecated"), so the deploy no longer depends on services/api/railway.toml.
 await graphql("mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}", {
-  s: apiId, e: environmentId, input: { rootDirectory: "services/api", railwayConfigFile: "/services/api/railway.toml", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1}" },
+  s: apiId, e: environmentId, input: { rootDirectory: "services/api", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1}" },
 });
 async function deploy(serviceId, label) {
   const args = ["--project", projectId, "--environment", environment, "--service", serviceId];
