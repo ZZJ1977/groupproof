@@ -119,6 +119,8 @@ GitHub Actions 在目标分支的 PR 和推送 `develop` 或 `main` 时执行前
 
 GitHub 仓库 Actions Secret：`RAILWAY_TOKEN`，存放有 `zzj1977's Projects` 工作区权限的 Railway API Token。工作流将其映射为 Railway CLI 使用的 `RAILWAY_API_TOKEN`。GitHub Environment `staging` 和 `production` 各自设置 `RAILWAY_PROJECT_ID`、`RAILWAY_SERVICE_ID`，避免部署到错误项目。`RAILWAY_ENVIRONMENT` 可按项目单独设置；目前两个独立 Railway 项目内部的环境名都为 `production`，工作流默认使用这个值。GitHub Environment 的 `staging`/`production` 名称与 Railway 项目内环境名不是同一个配置项。
 
+生产发布使用 `scripts/deploy-production.mjs`：推送 `main`（且仓库变量 `RAILWAY_DEPLOY_PRODUCTION=true`）时，先检查生产 API 服务（`groupproof`）上必须由负责人配置的变量，缺任何一项就在部署前失败、不动生产；通过后依次做数据库备份（Pro 工作区）、写入服务设置、部署 API（预部署命令执行 Alembic 迁移）和 Web，并做不需要登录的部署后检查。需要的变量：`APP_MODE=real`、`APP_ORIGIN`（https）、`DATABASE_URL`、`EMAIL_CHALLENGE_HMAC_KEY`、`MAIL_MODE`（resend/brevo/smtp）及对应 Key 和 `MAIL_FROM`；启用 Google 时还要 `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`，不启用则设 `AUTH_GOOGLE_ENABLED=false`。只读自检：`node scripts/deploy-production.mjs --check-only`（需要 `RAILWAY_API_TOKEN` 和 `RAILWAY_PROJECT_ID`）。
+
 仓库级变量 `RAILWAY_DEPLOY_STAGING` 和 `RAILWAY_DEPLOY_PRODUCTION` 控制推送后的自动部署；两者为 `true` 时才自动部署。生产发布由负责人在 Staging 验收后推送 `main`。如 GitHub 套餐支持分支保护，可将质量和 Docker 检查设为必需检查。
 
 ## 未来扩展为多应用仓库
