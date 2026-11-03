@@ -74,8 +74,9 @@ class Settings(BaseSettings):
     google_expected_issuer: str = "https://accounts.google.com"
 
     # --- 邮件（依赖邮件的操作：注册/学校验证/密码重置）---
-    # smtp: SMTP 投递；resend: Resend HTTPS API（Railway Free 可用）；capture: 仅隔离开发/测试环境
-    mail_mode: Literal["smtp", "capture", "resend"] = "capture"
+    # smtp: SMTP 投递；resend: Resend HTTPS API（需验证发信域名）；
+    # brevo: Brevo HTTPS API（可只验证单个发件邮箱，无需域名）；capture: 仅隔离开发/测试环境
+    mail_mode: Literal["smtp", "capture", "resend", "brevo"] = "capture"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -86,6 +87,9 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_api_url: str = "https://api.resend.com/emails"
     resend_timeout_seconds: int = 15
+    # Brevo：API Key 仅保存在后端运行环境；MAIL_FROM 须为 Brevo 中已验证的发件人邮箱
+    brevo_api_key: str = ""
+    brevo_api_url: str = "https://api.brevo.com/v3/smtp/email"
     # 公开发信开关（PLAN）：域名验证并完成实际投递验收后才允许为 true
     mail_public_enabled: bool = False
     mail_from: str = ""
@@ -142,9 +146,8 @@ class Settings(BaseSettings):
 
     @property
     def google_available(self) -> bool:
-        """Google 登录入口（按钮）可见性：按用户决策随开关显示，不等待凭据；
-        实际登录还需 google_configured（未配置时点击入口返回明确的服务暂不可用）。"""
-        return self.auth_google_enabled
+        """Google 登录入口（按钮）可见性：开关开启且凭据齐全才显示，避免展示点了必失败的按钮。"""
+        return self.auth_google_enabled and self.google_configured
 
     @property
     def mail_configured(self) -> bool:
@@ -153,6 +156,8 @@ class Settings(BaseSettings):
             return not self.is_real
         if self.mail_mode == "resend":
             return bool(self.resend_api_key and self.mail_from)
+        if self.mail_mode == "brevo":
+            return bool(self.brevo_api_key and self.mail_from)
         return bool(self.smtp_host and self.mail_from)
 
     @property
@@ -228,13 +233,18 @@ class Settings(BaseSettings):
                 )
             if self.mail_mode == "capture":
                 raise RuntimeError(
-                    "APP_MODE=real 禁止邮件捕获器（MAIL_MODE 必须为 smtp 或 resend）"
+                    "APP_MODE=real 禁止邮件捕获器（MAIL_MODE 必须为 smtp、resend 或 brevo）"
                 )
             if self.mail_mode == "resend" and not self.resend_api_key:
                 raise RuntimeError("APP_MODE=real 且 MAIL_MODE=resend 时必须配置 RESEND_API_KEY")
             if self.mail_mode == "resend" and not self.mail_from:
                 raise RuntimeError(
                     "APP_MODE=real 且 MAIL_MODE=resend 时必须配置 MAIL_FROM（已验证域名下的地址）"
+                )
+            if self.mail_mode == "brevo" and not (self.brevo_api_key and self.mail_from):
+                raise RuntimeError(
+                    "APP_MODE=real 且 MAIL_MODE=brevo 时必须配置 BREVO_API_KEY 和 MAIL_FROM"
+                    "（Brevo 中已验证的发件人邮箱）"
                 )
 
             # 可选提供方：仅在启用且配置不完整时拒绝启动（发布检查），不影响其他通道
@@ -254,7 +264,7 @@ class Settings(BaseSettings):
             ) and not self.mail_configured:
                 raise RuntimeError(
                     "APP_MODE=real 且启用邮箱注册/密码重置时必须配置可用发件服务"
-                    "（MAIL_MODE=resend 或 smtp）；"
+                    "（MAIL_MODE=resend、brevo 或 smtp）；"
                     "如暂不开放，请设置 "
                     "AUTH_EMAIL_SIGNUP_ENABLED=false / AUTH_PASSWORD_RESET_ENABLED=false"
                 )

@@ -84,6 +84,33 @@ DATABASE_TIMEZONE=Asia/Shanghai
 REDIS_URL=${{Redis.REDIS_URL}}
 ```
 
+### 发信（学校邮箱验证码 / 注册 / 密码恢复）
+
+验证码由 **API 服务**（Railway staging 里名为 `groupproof` 的服务，不是 `groupproof-staging` Web 服务，也不是已下线的 `identity`）在请求内同步发送，不经过 worker/Redis 队列，所以以下变量只需配在 API 服务上。Staging 部署脚本每次都会写入 `MAIL_MODE=resend`，并保留已手动设置的 `RESEND_API_KEY`、`MAIL_FROM` 和 `MAIL_PUBLIC_ENABLED=true`：
+
+```text
+MAIL_MODE=resend                # 未设置时默认 capture：只写数据库 email_outbox，不会投递到任何邮箱
+RESEND_API_KEY=re_...           # Resend 控制台 → API Keys（Sending access 即可）
+MAIL_FROM=GroupProof <noreply@你的已验证域名>
+MAIL_PUBLIC_ENABLED=true        # 域名验证并实测投递成功后再开；它控制注册/找回密码入口是否开放
+EMAIL_CHALLENGE_HMAC_KEY=...    # openssl rand -hex 32，保持稳定，改动会让未使用的验证码全部失效
+```
+
+**没有自有域名时用 Brevo**：Brevo 只要求验证一个发件邮箱（点一下验证邮件即可），免费额度每天 300 封，走 HTTPS API。步骤：注册 Brevo → Senders & IP → Senders 添加并验证发件邮箱 → SMTP & API → API Keys 生成 Key；然后在 API 服务设置：
+
+```text
+MAIL_MODE=brevo
+BREVO_API_KEY=xkeysib-...
+MAIL_FROM=GroupProof <已在 Brevo 验证的邮箱>
+MAIL_PUBLIC_ENABLED=true
+```
+
+部署脚本默认写入 `MAIL_MODE=resend`，但会保留手动设置的 `MAIL_MODE=brevo` 与 `BREVO_API_KEY`。用个人邮箱（如 Gmail）作为发件人时，学校邮箱可能把邮件放进垃圾箱，首次请检查垃圾箱/隔离区。排查日志：`brevo rejected ... status=400` 多为发件人未验证，`status=401` 为 API Key 无效或 Brevo 开启了 IP 限制。
+
+注意：`MAIL_FROM` 若使用 Resend 默认的 `onboarding@resend.dev`，Resend 只允许发给注册 Resend 的那个邮箱，发往学校邮箱会被拒（API 返回“邮件服务暂不可用”）。必须先在 Resend → Domains 添加并验证自己的域名（按提示在 DNS 加 SPF/DKIM 记录），再用该域名下的地址作为 `MAIL_FROM`。学校邮箱（Microsoft 365）可能把新域名的邮件放进垃圾箱或隔离区，首次验收时请一并检查。
+
+排查：API 日志出现 `mail captured (not delivered)` 表示仍是 capture 模式；`resend rejected ... status=403/422` 多为发信域名未验证或 `MAIL_FROM` 不在已验证域名下；`status=401` 为 API Key 无效。前端在 capture 模式下会明确提示“验证码不会送达邮箱”。
+
 API 另外设置 `PORT=8000`，worker 使用 `services/worker` 作为根目录并运行 Celery consumer。Production 的 API/worker 服务在 `main` 尚未包含后端目录期间保持停止，避免错误镜像接收正式流量。
 
 ## CI/CD 触发方式
@@ -91,6 +118,8 @@ API 另外设置 `PORT=8000`，worker 使用 `services/worker` 作为根目录�
 GitHub Actions 在目标分支的 PR 和推送 `develop` 或 `main` 时执行前端质量、Python 后端检查、路由检查、生产构建和 Docker 冒烟测试；全部通过后才执行对应环境的 Railway 部署。Railway 服务自身的 GitHub 自动部署连接已断开，避免绕过 CI 或重复部署。
 
 GitHub 仓库 Actions Secret：`RAILWAY_TOKEN`，存放有 `zzj1977's Projects` 工作区权限的 Railway API Token。工作流将其映射为 Railway CLI 使用的 `RAILWAY_API_TOKEN`。GitHub Environment `staging` 和 `production` 各自设置 `RAILWAY_PROJECT_ID`、`RAILWAY_SERVICE_ID`，避免部署到错误项目。`RAILWAY_ENVIRONMENT` 可按项目单独设置；目前两个独立 Railway 项目内部的环境名都为 `production`，工作流默认使用这个值。GitHub Environment 的 `staging`/`production` 名称与 Railway 项目内环境名不是同一个配置项。
+
+生产发布使用 `scripts/deploy-production.mjs`：推送 `main`（且仓库变量 `RAILWAY_DEPLOY_PRODUCTION=true`）时，先检查生产 API 服务（`groupproof`）上必须由负责人配置的变量，缺任何一项就在部署前失败、不动生产；通过后依次做数据库备份（Pro 工作区）、写入服务设置、部署 API（预部署命令执行 Alembic 迁移）和 Web，并做不需要登录的部署后检查。需要的变量：`APP_MODE=real`、`APP_ORIGIN`（https）、`DATABASE_URL`、`EMAIL_CHALLENGE_HMAC_KEY`、`MAIL_MODE`（resend/brevo/smtp）及对应 Key 和 `MAIL_FROM`；启用 Google 时还要 `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`，不启用则设 `AUTH_GOOGLE_ENABLED=false`。只读自检：`node scripts/deploy-production.mjs --check-only`（需要 `RAILWAY_API_TOKEN` 和 `RAILWAY_PROJECT_ID`）。
 
 仓库级变量 `RAILWAY_DEPLOY_STAGING` 和 `RAILWAY_DEPLOY_PRODUCTION` 控制推送后的自动部署；两者为 `true` 时才自动部署。生产发布由负责人在 Staging 验收后推送 `main`。如 GitHub 套餐支持分支保护，可将质量和 Docker 检查设为必需检查。
 

@@ -188,7 +188,8 @@ export interface ChallengeDTO {
   email: string;
   expiresAt: string;
   resendAvailableAt: string;
-  sendStatus: "accepted" | "failed";
+  /** captured：测试环境邮件捕获器，未投递到真实邮箱 */
+  sendStatus: "accepted" | "captured" | "failed";
 }
 
 export const authClient = {
