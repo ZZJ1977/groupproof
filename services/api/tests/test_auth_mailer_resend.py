@@ -253,3 +253,78 @@ def test_real_mode_resend_requires_key_and_from() -> None:
             auth_email_signup_enabled=False,
             auth_password_reset_enabled=False,
         )
+
+
+# ---------------- Brevo（无需自有域名，只验证发件邮箱）----------------
+
+
+@pytest.fixture()
+def brevo_env(monkeypatch):
+    settings = Settings(
+        app_mode="dev",
+        mail_mode="brevo",
+        brevo_api_key="test-brevo-key",
+        mail_from="GroupProof <sender@test.example>",
+        mail_public_enabled=True,
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(mailer, "get_settings", lambda: settings)
+    monkeypatch.setattr(mailer, "_sleep", sleeps.append)
+    return settings, sleeps
+
+
+def test_brevo_success_sends_expected_payload(brevo_env, monkeypatch):
+    poster = FakePoster(FakeResponse(201, {"messageId": "<abc@smtp-relay>"}))
+    monkeypatch.setattr(mailer, "_brevo_post", poster)
+
+    mailer.send_email(
+        "user@test.example", "subject", "body 123456", purpose="school_verification_code"
+    )
+
+    call = poster.calls[0]
+    assert call["url"] == "https://api.brevo.com/v3/smtp/email"
+    assert call["headers"]["api-key"] == "test-brevo-key"
+    assert call["payload"]["sender"] == {"email": "sender@test.example", "name": "GroupProof"}
+    assert call["payload"]["to"] == [{"email": "user@test.example"}]
+    assert call["payload"]["textContent"] == "body 123456"
+
+
+def test_brevo_client_error_stops_retry(brevo_env, monkeypatch):
+    poster = FakePoster(FakeResponse(400, {"code": "invalid_parameter"}))
+    monkeypatch.setattr(mailer, "_brevo_post", poster)
+
+    with pytest.raises(mailer.MailSendError) as excinfo:
+        mailer.send_email("user@test.example", "subject", "body", purpose="registration_code")
+
+    assert "400" in str(excinfo.value)
+    assert len(poster.calls) == 1
+
+
+def test_brevo_server_error_retries_then_fails(brevo_env, monkeypatch):
+    settings, sleeps = brevo_env
+    poster = FakePoster(FakeResponse(500), FakeResponse(502), FakeResponse(503))
+    monkeypatch.setattr(mailer, "_brevo_post", poster)
+
+    with pytest.raises(mailer.MailSendError):
+        mailer.send_email("user@test.example", "subject", "body", purpose="registration_code")
+
+    assert len(poster.calls) == 3
+    assert len(sleeps) == 2
+
+
+def test_brevo_configuration_and_public_availability() -> None:
+    incomplete = Settings(app_mode="dev", mail_mode="brevo", mail_from="a@test.example")
+    assert not incomplete.mail_configured
+    ready = Settings(
+        app_mode="dev", mail_mode="brevo", brevo_api_key="k", mail_from="a@test.example"
+    )
+    assert ready.mail_configured
+    assert not ready.mail_publicly_available
+    public = Settings(
+        app_mode="dev",
+        mail_mode="brevo",
+        brevo_api_key="k",
+        mail_from="a@test.example",
+        mail_public_enabled=True,
+    )
+    assert public.mail_publicly_available

@@ -428,6 +428,16 @@ function GooglePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO;
           {t("googleLinkFailed")}
         </p>
       )}
+      {linkError === "cancelled" && (
+        <p className="mt-2 text-[12px] text-[#6f7f95]" role="status">
+          {t("googleLinkCancelled")}
+        </p>
+      )}
+      {linkError === "unavailable" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkUnavailable")}
+        </p>
+      )}
       {error && (
         <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
           {error}
@@ -451,6 +461,7 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
   const [seconds, setSeconds] = useState(0);
   const [pending, setPending] = useState(false);
   const [changeTarget, setChangeTarget] = useState("");
+  const [captured, setCaptured] = useState(false);
   const acceptance = useAcceptanceTest();
 
   useEffect(() => {
@@ -468,7 +479,8 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
       setChallengeId(created.challengeId);
       setMasked(created.email);
       setSeconds(Math.max(1, Math.ceil((new Date(created.resendAvailableAt).getTime() - Date.now()) / 1000)));
-      setInfo(t("sent"));
+      setCaptured(created.sendStatus === "captured");
+      setInfo(created.sendStatus === "captured" ? null : t("sent"));
     } catch (err) {
       setError(err instanceof ApiError ? t(`errors.${err.code}`) : t("errors.AUTH_UNAVAILABLE"));
     } finally {
@@ -521,7 +533,10 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
             <Mail size={25} />
           </span>
           <h2 className="mt-5 text-[18px] font-semibold">{t("verifyTitle")}</h2>
-          <p className="mt-2 text-[12px] text-[#7d8ca0]">{displayEmail ? t("sentTo", { email: displayEmail }) : t("noPending")}</p>
+          {/* 进入页面时尚未发码：只有本页发送成功后才显示“已发送” */}
+          <p className="mt-2 text-[12px] text-[#7d8ca0]">
+            {displayEmail ? t(challengeId ? "sentTo" : "sendTo", { email: displayEmail }) : t("noPending")}
+          </p>
           <label className="gp-field mt-7 text-left">
             <span className="sr-only">{t("codeLabel")}</span>
             <Input
@@ -540,12 +555,13 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
           </label>
           {error && <p className="mt-2 text-[12px] text-[#e54955]" role="alert">{error}</p>}
           {info && <Feedback tone="success" className="mt-3">{info}</Feedback>}
+          {captured && <Feedback tone="warning" className="mt-3">{t("captured")}</Feedback>}
           <Button className="mt-5 w-full" onClick={() => void verify()} loading={pending} disabled={(!challengeId && !acceptance) || code.length !== 6}>
             {t("verify")}
           </Button>
           {!challengeId ? (
             <Button variant="secondary" className="mt-4 w-full" onClick={() => void send()} loading={pending}>
-              {t("resend")}
+              {t("send")}
             </Button>
           ) : (
             <button className="mt-5 text-[12px] text-[#246bfa] disabled:text-[#98a4b5]" disabled={seconds > 0 || pending} onClick={() => void send()}>

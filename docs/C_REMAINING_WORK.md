@@ -2,6 +2,15 @@
 
 ## Current correction — 2026-10-14
 
+2026-11-01 follow-up: PR #17 is merged and C is synchronized with `develop`
+`302bf4e`. Google linking/unlinking and D history tables now exist. New C tests
+exercise their integration and migrations 0013–0015; a discovered missing CSRF
+check on business writes is repaired with A's existing guard and current-session
+client tokens. See `C_DELIVERY.md` and the current PR's executed checks. D's new
+tables still have no verification query/decision/event consumer; B's latest
+branch sync did not add planning or invitation-consumption APIs. The four new
+Google audit action labels remain separate from this selected verification batch.
+
 2026-10-15 follow-up: PR #16 is merged (`22c0d1a`). C7-05 now adds a separate
 authentication-log view over A's actual `AuthAuditEvent`, while the whole-system
 audit adapter remains unavailable. C7-03 also reads approved/rejected applications

@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+import base64
+import json
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -57,6 +60,37 @@ def _discovery() -> dict[str, Any]:
 
 def reset_discovery_cache() -> None:
     _discovery_cache.clear()
+    _jwks_cache.clear()
+
+
+# Google 公钥按 URL 缓存一小时；遇到未知 kid（密钥轮换）时强制刷新一次
+JWKS_TTL_SECONDS = 3600
+_jwks_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _fetch_jwks(jwks_uri: str, *, force: bool = False) -> dict[str, Any]:
+    cached = _jwks_cache.get(jwks_uri)
+    if cached and not force and time.monotonic() - cached[0] < JWKS_TTL_SECONDS:
+        return cached[1]
+    try:
+        response = httpx.get(jwks_uri, timeout=10)
+        response.raise_for_status()
+        document = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
+    _jwks_cache[jwks_uri] = (time.monotonic(), document)
+    return document
+
+
+def _token_kid(id_token: str) -> str | None:
+    try:
+        header_segment = id_token.split(".", 1)[0]
+        padded = header_segment + "=" * (-len(header_segment) % 4)
+        header = json.loads(base64.urlsafe_b64decode(padded))
+    except (ValueError, TypeError):
+        return None
+    kid = header.get("kid") if isinstance(header, dict) else None
+    return kid if isinstance(kid, str) else None
 
 
 def create_transaction(
@@ -82,6 +116,15 @@ def create_transaction(
     db.add(record)
     db.flush()
     return state, record
+
+
+def transaction_purpose(db: DbSession, state: str | None) -> str | None:
+    """只读查询事务用途（不消费），用于决定失败时回到登录页还是账户安全页。"""
+    if not state:
+        return None
+    return db.execute(
+        select(OAuthTransaction.purpose).where(OAuthTransaction.state_digest == token_digest(state))
+    ).scalar_one_or_none()
 
 
 def consume_transaction(db: DbSession, state: str | None) -> OAuthTransaction:
@@ -114,6 +157,8 @@ def build_authorize_url(state: str, nonce: str, code_verifier: str) -> str:
         state=state,
         code_verifier=code_verifier,
         nonce=nonce,
+        # 学生常同时登录个人和学校 Google 账号：每次让用户明确选择账号
+        prompt="select_account",
     )
     return uri
 
@@ -153,12 +198,11 @@ def exchange_and_verify(transaction: OAuthTransaction, code: str) -> GoogleIdent
 def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
     settings = get_settings()
     discovery = _discovery()
-    try:
-        jwks_response = httpx.get(discovery["jwks_uri"], timeout=10)
-        jwks_response.raise_for_status()
-        jwks_document = jwks_response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
+    jwks_document = _fetch_jwks(discovery["jwks_uri"])
+    kid = _token_kid(id_token)
+    known_kids = {key.get("kid") for key in jwks_document.get("keys", []) if isinstance(key, dict)}
+    if kid and kid not in known_kids:
+        jwks_document = _fetch_jwks(discovery["jwks_uri"], force=True)
     try:
         jwks = JsonWebKey.import_key_set(jwks_document)
         claims = jwt.decode(id_token, jwks)

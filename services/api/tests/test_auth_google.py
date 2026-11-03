@@ -449,7 +449,10 @@ def test_link_requires_recent_auth(client: TestClient, oidc_provider):
     csrf = _password_login(client, username)
     with SessionLocal() as session:
         session.execute(
-            text("UPDATE users SET last_login_at = :t WHERE username_normalized = :u"),
+            text(
+                "UPDATE auth_sessions SET authenticated_at = :t, created_at = :t "
+                "WHERE user_id = (SELECT id FROM users WHERE username_normalized = :u)"
+            ),
             {"t": utcnow() - timedelta(hours=2), "u": username.lower()},
         )
         session.commit()
@@ -505,6 +508,95 @@ def test_unlink_rejected_when_google_is_only_sign_in(client: TestClient, oidc_pr
     assert response.json()["error"]["code"] == "LAST_SIGN_IN_METHOD"
     me = client.get("/api/v1/me").json()["data"]
     assert me["user"]["googleEmailBound"] is True
+
+
+def test_link_recent_auth_is_per_session_not_per_user(client: TestClient, oidc_provider):
+    """别的设备刚登录会刷新 users.last_login_at，但不能让本会话的旧认证变成“近期”。"""
+    _login_email, username = _register_account(client)
+    csrf = _password_login(client, username)
+    with SessionLocal() as session:
+        session.execute(
+            text(
+                "UPDATE auth_sessions SET authenticated_at = :t, created_at = :t "
+                "WHERE user_id = (SELECT id FROM users WHERE username_normalized = :u)"
+            ),
+            {"t": utcnow() - timedelta(hours=2), "u": username.lower()},
+        )
+        session.execute(
+            text("UPDATE users SET last_login_at = :t WHERE username_normalized = :u"),
+            {"t": utcnow(), "u": username.lower()},
+        )
+        session.commit()
+
+    started = client.post(
+        "/api/v1/me/identities/google/link", json={}, headers={"X-CSRF-Token": csrf}
+    )
+    assert started.status_code == 403
+    assert started.json()["error"]["code"] == "REAUTH_REQUIRED"
+
+
+def test_link_cancelled_returns_to_account_security(client: TestClient, oidc_provider):
+    _login_email, username = _register_account(client)
+    csrf = _password_login(client, username)
+    started = client.post(
+        "/api/v1/me/identities/google/link", json={}, headers={"X-CSRF-Token": csrf}
+    )
+    state = parse_qs(urlparse(started.json()["data"]["authorizeUrl"]).query)["state"][0]
+
+    response = _callback(client, state=state, error="access_denied")
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/account/security?error=cancelled"
+
+
+def test_login_cancelled_still_returns_to_login(client: TestClient, oidc_provider):
+    state = _start_login(client)
+    response = _callback(client, state=state, error="access_denied")
+    assert response.headers["location"] == "/login?error=cancelled"
+
+
+def test_google_start_requests_account_chooser(client: TestClient):
+    response = client.get("/api/v1/auth/google/start", follow_redirects=False)
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["prompt"] == ["select_account"]
+
+
+def test_capabilities_hide_google_without_credentials(
+    client: TestClient, monkeypatch, oidc_provider
+):
+    _configure(monkeypatch, oidc_provider, GOOGLE_CLIENT_ID="", GOOGLE_CLIENT_SECRET="")
+    data = client.get("/api/v1/auth/capabilities").json()["data"]
+    assert data["google"]["enabled"] is True
+    assert data["google"]["available"] is False
+
+
+def test_unlink_requires_recent_auth(client: TestClient, oidc_provider):
+    _login_email, username = _register_account(client)
+    csrf = _password_login(client, username)
+    with SessionLocal() as session:
+        me_user_id = client.get("/api/v1/me").json()["data"]["user"]["id"]
+        session.add(
+            AuthIdentity(
+                id=new_token()[:32],
+                provider="google",
+                issuer=oidc_provider.issuer,
+                subject=_unique("sub"),
+                user_id=uuid.UUID(me_user_id),
+                google_email=f"{_unique('g')}@gmail.test",
+                last_authenticated_at=utcnow(),
+            )
+        )
+        session.execute(
+            text("UPDATE auth_sessions SET authenticated_at = :t, created_at = :t"),
+            {"t": utcnow() - timedelta(hours=2)},
+        )
+        session.commit()
+
+    response = client.request(
+        "DELETE", "/api/v1/me/identities/google", headers={"X-CSRF-Token": csrf}
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "REAUTH_REQUIRED"
 
 
 def test_unlink_succeeds_with_password_login(client: TestClient, oidc_provider):

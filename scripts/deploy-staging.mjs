@@ -69,7 +69,7 @@ assert(schema.workflow.fields.some((field) => field.name === "status"));
 assert(schema.workflowId.fields.some((field) => field.name === "workflowId"));
 assert(schema.backup.fields.some((field) => field.name === "id"));
 assert(schema.variables.inputFields.some((field) => field.name === "skipDeploys"));
-for (const field of ["rootDirectory", "railwayConfigFile", "dockerfilePath", "healthcheckPath", "healthcheckTimeout", "preDeployCommand", "preDeployTimeoutSeconds", "startCommand"]) {
+for (const field of ["rootDirectory", "dockerfilePath", "healthcheckPath", "healthcheckTimeout", "preDeployCommand", "preDeployTimeoutSeconds", "startCommand"]) {
   assert(schema.serviceConfig.inputFields.some((entry) => entry.name === field), `Railway service configuration field ${field} is unavailable`);
 }
 const apiVars = await variablesFor(apiId);
@@ -81,46 +81,64 @@ const googleRedirectUri = apiVars.GOOGLE_REDIRECT_URI || identityVars.GOOGLE_RED
 assert(googleClientId && googleClientSecret, "Staging Google OAuth client ID and secret must be configured");
 assert.equal(googleRedirectUri, `${origin}/api/v1/auth/google/callback`, "Staging Google OAuth redirect URI must match the Web callback");
 const before = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
-console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "groupproof-staging", postgresVolume: volume.id, existingBackups: before.volumeInstanceBackupList.length, resendConfigured: Boolean(apiVars.RESEND_API_KEY || identityVars.RESEND_API_KEY), googleConfigured: true, workflowStates: schema.states.enumValues.map((value) => value.name) }));
+console.log(JSON.stringify({ project: state.name, api: "groupproof", web: "groupproof-staging", postgresVolume: volume.id, existingBackups: before.volumeInstanceBackupList.length, resendConfigured: Boolean(apiVars.RESEND_API_KEY || identityVars.RESEND_API_KEY), brevoConfigured: Boolean(apiVars.BREVO_API_KEY), googleConfigured: true, workflowStates: schema.states.enumValues.map((value) => value.name) }));
 if (checkOnly) process.exit(0);
 
 // Snapshot stays in Railway. No account rows or database dumps are exported to CI.
+// Railway only offers manual volume backups on Pro workspaces. On other plans the staging
+// rollout continues without a snapshot (staging data only) and says so in the job summary;
+// every other backup failure still stops the deployment.
 const name = `before-unified-auth-${process.env.GITHUB_SHA?.slice(0, 12)}`;
-const backup = await graphql("mutation($id:String!,$name:String){volumeInstanceBackupCreate(volumeInstanceId:$id,name:$name){workflowId}}", { id: volume.id, name });
-const workflowId = backup.volumeInstanceBackupCreate.workflowId;
-assert(workflowId, "Backup was not accepted");
-let backedUp = false;
-for (let attempt = 0; attempt < 60; attempt++) {
-  const data = await graphql("query($id:String!){workflowStatus(workflowId:$id){status}}", { id: workflowId });
-  const status = data.workflowStatus.status.toUpperCase();
-  if (["SUCCESS", "SUCCEEDED", "COMPLETED", "COMPLETE"].includes(status)) { backedUp = true; break; }
-  if (["FAILED", "ERROR", "CANCELLED", "CANCELED", "TERMINATED"].includes(status)) throw new Error(`Database backup failed (${status})`);
-  await sleep(5000);
+let workflowId = null;
+try {
+  const backup = await graphql("mutation($id:String!,$name:String){volumeInstanceBackupCreate(volumeInstanceId:$id,name:$name){workflowId}}", { id: volume.id, name });
+  workflowId = backup.volumeInstanceBackupCreate.workflowId;
+} catch (error) {
+  if (!/only available for Pro/i.test(String(error?.message))) throw error;
+  console.warn("Railway workspace does not support manual backups; continuing the staging rollout without a database snapshot.");
 }
-assert(backedUp, "Backup did not complete; migration and deployment stopped");
-const after = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
-const priorIds = new Set(before.volumeInstanceBackupList.map((item) => item.id));
-assert(after.volumeInstanceBackupList.some((item) => !priorIds.has(item.id)), "Completed backup is not listed");
-console.log(`Staging database backup completed: ${workflowId}`);
+if (workflowId) {
+  let backedUp = false;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const data = await graphql("query($id:String!){workflowStatus(workflowId:$id){status}}", { id: workflowId });
+    const status = data.workflowStatus.status.toUpperCase();
+    if (["SUCCESS", "SUCCEEDED", "COMPLETED", "COMPLETE"].includes(status)) { backedUp = true; break; }
+    if (["FAILED", "ERROR", "CANCELLED", "CANCELED", "TERMINATED"].includes(status)) throw new Error(`Database backup failed (${status})`);
+    await sleep(5000);
+  }
+  assert(backedUp, "Backup did not complete; migration and deployment stopped");
+  const after = await graphql("query($id:String!){volumeInstanceBackupList(volumeInstanceId:$id){id}}", { id: volume.id });
+  const priorIds = new Set(before.volumeInstanceBackupList.map((item) => item.id));
+  assert(after.volumeInstanceBackupList.some((item) => !priorIds.has(item.id)), "Completed backup is not listed");
+  console.log(`Staging database backup completed: ${workflowId}`);
+}
 
 // Preserve the team's database connection and existing credentials. Never copy old
 // sessions, acceptance tokens, debug switches or a separate identity database name.
 const authVariables = {};
-for (const key of ["RESEND_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "STUDENT_EMAIL_DOMAIN", "TEACHER_EMAIL_DOMAIN", "STUDENT_ID_PATTERN", "STUDENT_ID_EMAIL_RULE"]) {
+for (const key of ["RESEND_API_KEY", "BREVO_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "STUDENT_EMAIL_DOMAIN", "TEACHER_EMAIL_DOMAIN", "STUDENT_ID_PATTERN", "STUDENT_ID_EMAIL_RULE"]) {
   if (apiVars[key] || identityVars[key]) authVariables[key] = apiVars[key] || identityVars[key];
 }
 Object.assign(authVariables, {
   APP_ENV: "staging", APP_MODE: apiVars.APP_MODE || identityVars.APP_MODE || "dev",
-  APP_ORIGIN: origin, PORT: "8000", MAIL_MODE: "resend", MAIL_PUBLIC_ENABLED: "false",
+  APP_ORIGIN: origin, PORT: "8000", // Brevo works without an own domain (single verified sender); keep it when an operator picked it.
+  MAIL_MODE: apiVars.MAIL_MODE === "brevo" ? "brevo" : "resend",
+  // Keep an operator-set MAIL_PUBLIC_ENABLED (turned on after the sending domain is verified); default stays off.
+  MAIL_PUBLIC_ENABLED: apiVars.MAIL_PUBLIC_ENABLED === "true" ? "true" : "false",
   AUTH_GOOGLE_ENABLED: "true", AUTH_PASSWORD_ENABLED: "true",
   AUTH_EMAIL_SIGNUP_ENABLED: "true", AUTH_PASSWORD_RESET_ENABLED: "true",
   DEBUG_ENDPOINTS: "false", ENABLE_DEMO_AUTH: "false", ACCEPTANCE_TEST_TOKEN: "",
   EMAIL_CHALLENGE_HMAC_KEY: apiVars.EMAIL_CHALLENGE_HMAC_KEY || identityVars.EMAIL_CHALLENGE_HMAC_KEY || randomBytes(32).toString("hex"),
 });
 await setVariables(apiId, authVariables);
-// DOCKERFILE is selected in services/api/railway.toml; it is not a value in Railway's GraphQL Builder enum.
+// All service settings are written explicitly below. Railway now rejects the railwayConfigFile field
+// ("Config as Code is deprecated"), so the deploy no longer depends on services/api/railway.toml.
+// Railway runs a Dockerfile service's start command in exec form, without a shell, so a bare
+// "$PORT" reaches uvicorn literally ("'$PORT' is not a valid integer") and the healthcheck never
+// passes. Wrap it in sh -c so the variable is expanded, same as the Dockerfile CMD.
+const API_START_COMMAND = `sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port "\${PORT:-8000}"'`;
 await graphql("mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}", {
-  s: apiId, e: environmentId, input: { rootDirectory: "services/api", railwayConfigFile: "/services/api/railway.toml", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT" },
+  s: apiId, e: environmentId, input: { rootDirectory: "services/api", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: API_START_COMMAND },
 });
 async function deploy(serviceId, label) {
   const args = ["--project", projectId, "--environment", environment, "--service", serviceId];
@@ -148,8 +166,12 @@ const settings = (await capabilities.json()).data;
 assert.equal(settings.google.enabled, true);
 assert.equal(settings.google.available, true);
 assert.equal(settings.password.available, true);
-assert.equal(settings.emailSignup.available, false);
-assert.equal(settings.passwordReset.available, false);
+// Public mail is off by default; once an operator has configured a sender and set MAIL_PUBLIC_ENABLED=true it must be on.
+const mailKey = authVariables.MAIL_MODE === "brevo" ? "BREVO_API_KEY" : "RESEND_API_KEY";
+const mailShouldBePublic = authVariables.MAIL_PUBLIC_ENABLED === "true" && Boolean(authVariables[mailKey] && authVariables.MAIL_FROM);
+assert.equal(settings.emailSignup.available, mailShouldBePublic);
+assert.equal(settings.passwordReset.available, mailShouldBePublic);
+assert.equal(settings.schoolEmailVerification.available, mailShouldBePublic);
 assert.equal(settings.acceptanceTest.enabled, false);
 const googleStart = await fetch(`${origin}/api/v1/auth/google/start`, { redirect: "manual", signal: AbortSignal.timeout(30_000) });
 assert.equal(googleStart.status, 302, "Google authorization could not be started");
@@ -163,4 +185,4 @@ assert([302, 303, 307, 308].includes(home.status));
 assert.equal(new URL(home.headers.get("location"), origin).pathname, "/login");
 assert.equal((await fetch(`${origin}/login`)).status, 200);
 console.log(`Verified staging: ${origin}`);
-if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Staging deployed and anonymous authentication checks passed: [Open test site](${origin}). Google OAuth start returned a valid authorization URL.\n\nDatabase backup workflow: ${workflowId}. Public mail remains disabled.\n`);
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Staging deployed and anonymous authentication checks passed: [Open test site](${origin}). Google OAuth start returned a valid authorization URL.\n\n${workflowId ? `Database backup workflow: ${workflowId}.` : "No database snapshot was taken (Railway manual backups need a Pro workspace)."} Public mail is ${mailShouldBePublic ? "enabled" : "disabled"}.\n`);
