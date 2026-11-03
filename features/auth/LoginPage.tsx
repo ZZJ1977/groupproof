@@ -169,15 +169,16 @@ function LoginCard() {
   const showForgot = !capsFailed && (!caps || caps.passwordReset.enabled);
 
   return (
-    <section className="self-start rounded-[8px] border border-[#e0e7f0] bg-white p-8 shadow-[0_16px_45px_#b8c9e425] lg:mt-5 lg:p-11">
-      <h2 className="text-[28px] font-bold text-[#14213b]">{t("loginTitle")}</h2>
+    <section className="relative self-start overflow-hidden rounded-[24px] border border-white/70 bg-white/80 p-8 shadow-[0_30px_80px_-20px_rgba(36,107,250,0.30),0_8px_24px_-8px_rgba(20,33,59,0.10)] backdrop-blur-xl lg:mt-5 lg:p-10">
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#246bfa] via-[#7c5cff] to-[#22c1c3]" />
+      <h2 className="text-[30px] font-extrabold tracking-tight text-[#14213b]">{t("loginTitle")}</h2>
       <p className="mt-2 text-[#718097]">{t("loginSubtitle")}</p>
 
       {googleLoading && <div className="mt-8 h-12 w-full animate-pulse rounded-[7px] bg-[#eef2f8]" aria-hidden="true" />}
       {showGoogle && (
         <Button
           variant="outline"
-          className="mt-8 h-12 w-full border-[#dadce0] bg-white text-[14px] font-medium text-[#3c4043] hover:bg-[#f8f9fa]"
+          className="mt-8 h-12 w-full rounded-[14px] border-[#dadce0] bg-white text-[14px] font-medium text-[#3c4043] shadow-sm transition hover:-translate-y-px hover:bg-[#f8f9fa] hover:shadow-md"
           onClick={startGoogleLogin}
           loading={redirecting}
           aria-busy={redirecting}
@@ -193,9 +194,13 @@ function LoginCard() {
       )}
 
       {/* 已注册账户登录窗口：用户名/邮箱 + 密码 */}
-      <div className={showGoogle ? "my-6 border-t border-[#e7edf5]" : "mt-8"} />
+      <div className={showGoogle ? "my-6 flex items-center gap-3" : "mt-6 mb-5 flex items-center gap-3"} aria-hidden="true">
+        <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d5deec]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[#b9c7dd]" />
+        <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d5deec]" />
+      </div>
       <h3 className="text-[14px] font-semibold text-[#14213b]">{tp("title")}</h3>
-      <form className="mt-3 space-y-3" onSubmit={submitPasswordLogin}>
+      <form className="mt-3 space-y-3 [&_input]:h-11 [&_input]:rounded-[12px] [&_input]:border-[#dbe4f1] [&_input]:bg-white/90 [&_input:focus]:border-[#246bfa] [&_input:focus]:ring-4 [&_input:focus]:ring-[#246bfa]/15 [&_button[type=submit]]:h-12 [&_button[type=submit]]:rounded-[14px] [&_button[type=submit]]:border-0 [&_button[type=submit]]:bg-gradient-to-r [&_button[type=submit]]:from-[#246bfa] [&_button[type=submit]]:to-[#6a4cff] [&_button[type=submit]]:font-semibold [&_button[type=submit]]:shadow-[0_10px_24px_-8px_rgba(36,107,250,0.65)] [&_button[type=submit]]:transition hover:[&_button[type=submit]]:-translate-y-px hover:[&_button[type=submit]]:shadow-[0_14px_28px_-8px_rgba(36,107,250,0.75)]" onSubmit={submitPasswordLogin}>
         <label className="gp-field">
           {tp("identifier")}
           <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} autoComplete="username" placeholder={tp("identifierPlaceholder")} aria-label={tp("identifier")} />
@@ -232,13 +237,14 @@ function LoginCard() {
       )}
 
       <p className="mt-6 text-center text-[12px] text-[#8794a7]">{t("firstUse")}</p>
-      <div className="mt-6 border-t border-[#e7edf5]" />
-      <div className="mt-6 rounded-[7px] bg-[#f5f8fd] p-4">
+      <div className="mt-6 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-4 ring-1 ring-[#e3eafb]">
         <div className="flex gap-3">
-          <Mail size={19} className="mt-0.5 text-[#246bfa]" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm">
+            <Mail size={18} />
+          </span>
           <div>
             <div className="font-semibold">{t("emailRuleTitle")}</div>
-            <p className="mt-2 text-[12px] leading-6 text-[#7b899c]">
+            <p className="mt-2 text-[12px] leading-6 text-[#6b7a92]">
               {t("emailRuleStudent")}
               <br />
               {t("emailRuleTeacher")}
@@ -246,8 +252,10 @@ function LoginCard() {
           </div>
         </div>
       </div>
-      <div className="mt-5 flex gap-3 rounded-[7px] bg-[#f5f8fd] p-4">
-        <ShieldCheck size={19} className="mt-0.5 shrink-0 text-[#246bfa]" />
+      <div className="mt-4 flex gap-3 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-4 ring-1 ring-[#e3eafb]">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm">
+          <ShieldCheck size={18} />
+        </span>
         <div>
           <div className="font-semibold">{t("privacyTitle")}</div>
           <p className="mt-2 text-[12px] leading-6 text-[#7b899c]">{t("privacyBody")}</p>
@@ -509,28 +517,42 @@ function ForgotDialog({ open, onOpenChange, locale }: { open: boolean; onOpenCha
 export function LoginPage() {
   const t = useTranslations("auth");
   return (
-    <div className="min-h-screen bg-[#f6f9fd]">
-      <header className="flex h-[65px] items-center justify-between border-b border-[#e7edf5] bg-white px-[max(24px,4vw)]">
-        <div className="text-[22px] font-bold text-[#14213b]">GroupProof</div>
+    <div className="relative min-h-screen overflow-hidden bg-[#f4f7fe]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-40 -top-40 h-[560px] w-[560px] rounded-full bg-[#7aa7ff]/35 blur-[110px]" />
+        <div className="absolute -right-32 top-10 h-[520px] w-[520px] rounded-full bg-[#b79bff]/35 blur-[120px]" />
+        <div className="absolute bottom-[-220px] left-1/3 h-[520px] w-[520px] rounded-full bg-[#5fe0d0]/25 blur-[120px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(#14213b14_1px,transparent_1px)] [background-size:26px_26px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
+      </div>
+      <header className="relative z-10 flex h-[68px] items-center justify-between px-[max(24px,4vw)]">
+        <div className="flex items-center gap-2.5 text-[22px] font-extrabold tracking-tight text-[#14213b]">
+          <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#246bfa] to-[#7c5cff] text-white shadow-[0_8px_18px_-6px_rgba(36,107,250,0.7)]">
+            <ShieldCheck size={19} />
+          </span>
+          GroupProof
+        </div>
         <div className="flex items-center gap-5 text-[12px] text-[#66748b]">
           <span>{t("helpCenter")}</span>
           <span>{t("about")}</span>
           <LanguageSwitcher compact />
         </div>
       </header>
-      <main className="mx-auto grid max-w-[1380px] grid-cols-1 gap-12 px-[max(24px,4vw)] py-14 lg:grid-cols-[1.16fr_.84fr] lg:gap-20">
-        <section className="min-w-0 pt-8">
-          <p className="mb-4 text-[14px] text-[#6d7b91]">{t("tagline")}</p>
-          <h1 className="max-w-[590px] text-[clamp(31px,3.5vw,46px)] font-bold leading-[1.2] text-[#101d35]">
-            {t("heroTitle1")}
+      <main className="relative z-10 mx-auto grid max-w-[1380px] grid-cols-1 gap-12 px-[max(24px,4vw)] py-10 lg:grid-cols-[1.16fr_.84fr] lg:gap-20">
+        <section className="min-w-0 pt-6">
+          <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-[13px] font-medium text-[#4b5d7a] shadow-sm ring-1 ring-[#e3eafb] backdrop-blur">
+            <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-[#246bfa] to-[#7c5cff]" />
+            {t("tagline")}
+          </p>
+          <h1 className="max-w-[620px] text-[clamp(34px,4vw,54px)] font-extrabold leading-[1.15] tracking-tight text-[#101d35]">
+            <span className="bg-gradient-to-r from-[#246bfa] via-[#6a4cff] to-[#1fb6c1] bg-clip-text text-transparent">{t("heroTitle1")}</span>
             <br />
             {t("heroTitle2")}
           </h1>
           <p className="mt-6 max-w-[560px] text-[16px] leading-[1.8] text-[#62728d]">{t("heroDescription")}</p>
           <div className="mt-10 grid grid-cols-2 gap-5 sm:grid-cols-4">
             {FEATURES.map((feature) => (
-              <div key={feature.titleKey} className="border-r border-[#e7edf5] pr-3 last:border-0">
-                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#eaf2ff] text-[#246bfa]">
+              <div key={feature.titleKey} className="rounded-[18px] bg-white/70 p-4 shadow-[0_10px_30px_-14px_rgba(36,70,150,0.25)] ring-1 ring-white/80 backdrop-blur transition hover:-translate-y-1 hover:shadow-[0_16px_36px_-14px_rgba(36,107,250,0.35)]">
+                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#e6efff] to-[#efe9ff] text-[#246bfa]">
                   <feature.icon size={20} />
                 </span>
                 <div className="font-semibold text-[#17243c]">{t(feature.titleKey)}</div>
@@ -538,7 +560,7 @@ export function LoginPage() {
               </div>
             ))}
           </div>
-          <div className="mt-12 max-w-[620px] rounded-[8px] border border-[#dce7f7] bg-white p-4 shadow-[0_14px_35px_#cddcf029]">
+          <div className="mt-12 max-w-[620px] rounded-[20px] border border-white/80 bg-white/85 p-5 shadow-[0_30px_70px_-24px_rgba(36,70,150,0.35)] backdrop-blur lg:-rotate-1">
             <div className="flex items-center gap-2 border-b border-[#e6edf5] pb-3 text-[12px] font-semibold">
               <span className="h-2 w-2 rounded-full bg-[#12a66a]" /> {t("sampleCourse")}
               <span className="ml-auto text-[#246bfa]">{t("sampleOverviewTag")}</span>
