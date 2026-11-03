@@ -388,6 +388,6 @@ jobs:
         if: github.ref == 'refs/heads/develop'
         run: node scripts/deploy-staging.mjs
 
-      - name: Deploy production source with Dockerfile to Railway
+      - name: Validate, back up, migrate, and deploy production API and Web
         if: github.ref == 'refs/heads/main'
-        run: railway up --ci --project "$RAILWAY_PROJECT_ID" --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT"
+        run: node scripts/deploy-production.mjs
