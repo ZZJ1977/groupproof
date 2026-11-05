@@ -610,7 +610,28 @@
       "NETWORK_ERROR": "网络连接失败，请检查网络后重试。",
       "FORBIDDEN": "你没有权限执行此操作。",
       "UNAUTHENTICATED": "请重新登录。",
-      "DEFAULT": "操作失败，请稍后重试。"
+      "DEFAULT": "操作失败，请稍后重试。",
+      "ALREADY_IN_GROUP": "已经在本课程的一个小组里了。",
+      "GROUP_FULL": "小组人数已满。",
+      "FORMATION_CLOSED": "组队已截止或名单已冻结。",
+      "GROUP_NAME_TAKEN": "本课程已有同名小组，请换一个名称。",
+      "GROUP_NAME_REQUIRED": "请填写小组名称。",
+      "COURSE_MEMBER_REQUIRED": "只有本课程的学生可以执行此操作。",
+      "GROUP_MEMBER_REQUIRED": "只有本组成员可以执行此操作。",
+      "GROUP_NOT_FOUND": "小组不存在。",
+      "INVITEE_INVALID": "不能邀请自己。",
+      "INVITEE_NOT_IN_COURSE": "只能邀请本课程的同学。",
+      "INVITEE_IN_GROUP": "这位同学已经加入了小组。",
+      "INVITATION_PENDING": "已经邀请过这位同学，正在等待处理。",
+      "INVITATION_NOT_FOUND": "邀请不存在。",
+      "INVITATION_CLOSED": "这条邀请已经处理过或在等待老师审批。",
+      "CANDIDATE_NOT_MEMBER": "候选人必须是本组成员。",
+      "CANDIDATE_IS_LEADER": "候选人已经是组长。",
+      "LEADER_CHANGE_PENDING": "本组已有一个正在确认的组长变更。",
+      "LEADER_CHANGE_NOT_FOUND": "组长变更申请不存在。",
+      "NOT_A_CONFIRMER": "你不需要确认这条组长变更。",
+      "ALREADY_CONFIRMED": "你已经确认过了。",
+      "LEADER_CHANGE_CLOSED": "这条组长变更已经结束。"
     }
   }
 }

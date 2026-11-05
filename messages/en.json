@@ -610,7 +610,28 @@
       "NETWORK_ERROR": "Network connection failed. Check your network and try again.",
       "FORBIDDEN": "You do not have permission to do this.",
       "UNAUTHENTICATED": "Please sign in again.",
-      "DEFAULT": "Something went wrong. Please try again later."
+      "DEFAULT": "Something went wrong. Please try again later.",
+      "ALREADY_IN_GROUP": "Already in a group in this course.",
+      "GROUP_FULL": "The group is full.",
+      "FORMATION_CLOSED": "Group formation has closed or the roster is frozen.",
+      "GROUP_NAME_TAKEN": "A group with this name already exists in the course.",
+      "GROUP_NAME_REQUIRED": "Enter a group name.",
+      "COURSE_MEMBER_REQUIRED": "Only students of this course can do this.",
+      "GROUP_MEMBER_REQUIRED": "Only members of this group can do this.",
+      "GROUP_NOT_FOUND": "The group does not exist.",
+      "INVITEE_INVALID": "You cannot invite yourself.",
+      "INVITEE_NOT_IN_COURSE": "You can only invite students of this course.",
+      "INVITEE_IN_GROUP": "This student is already in a group.",
+      "INVITATION_PENDING": "This student has already been invited.",
+      "INVITATION_NOT_FOUND": "The invitation does not exist.",
+      "INVITATION_CLOSED": "This invitation has been handled or is waiting for the teacher.",
+      "CANDIDATE_NOT_MEMBER": "The candidate must be a member of this group.",
+      "CANDIDATE_IS_LEADER": "The candidate is already the leader.",
+      "LEADER_CHANGE_PENDING": "A leader change is already waiting for confirmation.",
+      "LEADER_CHANGE_NOT_FOUND": "The leader change request does not exist.",
+      "NOT_A_CONFIRMER": "You do not need to confirm this leader change.",
+      "ALREADY_CONFIRMED": "You have already confirmed.",
+      "LEADER_CHANGE_CLOSED": "This leader change has ended."
     }
   }
 }

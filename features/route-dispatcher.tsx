@@ -30,6 +30,9 @@ const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((mod
 const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
 const MyCoursesApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.MyCoursesApiPage));
 const JoinCourseApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.JoinCourseApiPage));
+const GroupsApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupsApiPage));
+const GroupDetailApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupDetailApiPage));
+const ChangeLeaderApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.ChangeLeaderApiPage));
 const MemberChangesApiPage = dynamic(() => import("@/features/b/MemberChangesApiPage").then((module) => module.MemberChangesApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
@@ -69,6 +72,9 @@ export function RouteDispatcher() {
   if (isBScreen(screen) && apiMode("bworkspace") === "real") {
     if (screen === 31) realContent = <MyCoursesApiPage />;
     else if (screen === 32) realContent = <JoinCourseApiPage />;
+    else if (screen === 33 && courseId) realContent = <GroupsApiPage courseId={courseId} />;
+    else if (screen === 34 && courseId && groupId) realContent = <GroupDetailApiPage courseId={courseId} groupId={groupId} />;
+    else if (screen === 36 && courseId && groupId) realContent = <ChangeLeaderApiPage courseId={courseId} groupId={groupId} />;
     else if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
     else realContent = <BNotConnectedPage screen={screen} />;
   }
