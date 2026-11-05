@@ -102,7 +102,8 @@ def test_capabilities_report_restricted_mail_without_public_switch(client: TestC
     data = body["data"]
     assert data["password"]["enabled"] is True
     assert data["google"]["enabled"] is True  # 开关默认开
-    assert data["google"]["available"] is True  # 入口先显示（用户决策）；实际登录需 GOOGLE_* 凭据
+    # 入口可见性 = 开关开启且 GOOGLE_* 凭据齐全；测试环境未配置凭据，因此不显示
+    assert data["google"]["available"] is False
     # capture 模式（隔离环境）允许完整邮件流程；真实公开发信需 MAIL_PUBLIC_ENABLED
     assert data["emailSignup"]["available"] is True
 
@@ -218,6 +219,8 @@ def test_full_registration_activates_business_access(client: TestClient) -> None
         headers={"X-CSRF-Token": csrf},
     )
     assert challenge.status_code == 200
+    # capture 模式不会投递到真实邮箱，接口须如实标记，前端据此不显示“已发送”
+    assert challenge.json()["data"]["sendStatus"] == "captured"
     challenge_id = challenge.json()["data"]["challengeId"]
 
     verified = client.post(

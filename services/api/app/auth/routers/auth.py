@@ -120,8 +120,12 @@ def google_start(
     if not settings.google_available or not settings.google_configured:
         return _google_failure(db, settings, "unavailable", reason="not_configured")
     state, transaction = google_oidc.create_transaction(db, safe_return_to(returnTo))
+    try:
+        url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
+    except Exception:  # noqa: BLE001 - discovery/provider failures return to login as unavailable
+        db.rollback()
+        return _google_failure(db, settings, "unavailable", reason="provider_unavailable")
     db.commit()
-    url = google_oidc.build_authorize_url(state, transaction.nonce, transaction.code_verifier)
     response = RedirectResponse(url, status_code=302)
     response.set_cookie(
         settings.oauth_cookie_name,
@@ -145,33 +149,48 @@ def google_callback(
     db: DbSession = Depends(get_db),
 ) -> RedirectResponse:
     settings = get_settings()
+    browser_state = request.cookies.get(settings.oauth_cookie_name)
+    # 关联流程（账户安全页发起）的失败应回到账户安全页，而不是登录页
+    try:
+        purpose = google_oidc.transaction_purpose(db, browser_state or state)
+    except Exception:  # noqa: BLE001 - 数据库不可用时按登录流程处理
+        db.rollback()
+        purpose = None
+    link_flow = purpose == "link"
+
+    def fail(error_param: str, *, reason: str) -> RedirectResponse:
+        return _google_failure(
+            db,
+            settings,
+            error_param,
+            reason=reason,
+            redirect_to=f"/account/security?error={error_param}" if link_flow else None,
+        )
+
     # Google 侧回调错误：用户拒绝授权按“取消”处理，其余按登录失败处理
     if error == "access_denied":
-        return _google_failure(db, settings, "cancelled", reason="access_denied")
+        return fail("cancelled", reason="access_denied")
     if error:
-        return _google_failure(db, settings, "failed", reason="provider_error")
-    browser_state = request.cookies.get(settings.oauth_cookie_name)
+        return fail("failed", reason="provider_error")
     if not state or not browser_state or not hmac.compare_digest(state, browser_state):
-        return _google_failure(db, settings, "failed", reason="oauth_browser_binding")
+        return fail("failed", reason="oauth_browser_binding")
     try:
         transaction = google_oidc.consume_transaction(db, state)
     except AppError:
-        return _google_failure(db, settings, "failed", reason="state_invalid")
+        return fail("failed", reason="state_invalid")
     except Exception:  # noqa: BLE001 - 数据库不可用统一回登录页提示稍后重试
-        return _google_failure(db, settings, "unavailable", reason="database_unavailable")
+        return fail("unavailable", reason="database_unavailable")
     if not code:
-        return _google_failure(db, settings, "cancelled", reason="code_missing")
+        return fail("cancelled", reason="code_missing")
     try:
         identity = google_oidc.exchange_and_verify(transaction, code)
     except AppError as exc:
         # 401 类（state/nonce/签名/audience）→ 登录失败；503 类（Google/数据库）→ 稍后重试
         if exc.status == 401:
-            return _google_failure(
-                db, settings, "failed", reason=str(exc.params.get("reason") or "verify_failed")
-            )
-        return _google_failure(db, settings, "unavailable", reason="service_unavailable")
+            return fail("failed", reason=str(exc.params.get("reason") or "verify_failed"))
+        return fail("unavailable", reason="service_unavailable")
     except Exception:  # noqa: BLE001 - 服务故障不回退 Mock，统一提示稍后重试
-        return _google_failure(db, settings, "unavailable", reason="service_unavailable")
+        return fail("unavailable", reason="service_unavailable")
 
     # 关联事务：只建绑定行，不建用户、不轮换会话
     if transaction.purpose == "link":
@@ -258,7 +277,11 @@ def google_callback(
     audit.record(db, "auth.login", actor_id=user.id, changed_fields=["session"])
     db.commit()
 
-    target = safe_return_to(transaction.return_to) or facts["nextAction"]["href"]
+    # 与密码登录一致：只有能进入工作区时才回到 returnTo，否则按下一步引导（补全注册等）
+    return_to = (
+        safe_return_to(transaction.return_to) if can_enter_workspace(facts, "google") else None
+    )
+    target = return_to or facts["nextAction"]["href"]
     response = RedirectResponse(target, status_code=302)
     response.delete_cookie(
         settings.oauth_cookie_name, path="/", secure=settings.is_real, httponly=True, samesite="lax"

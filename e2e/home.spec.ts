@@ -15,3 +15,11 @@ test("匿名用户直达业务首页会被引导登录", async ({ page }) => {
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fhome$/);
   await expect(page.getByRole("button", { name: "注册账号", exact: true })).toBeVisible();
 });
+
+test("认证能力接口不可用时隐藏 Google 登录入口", async ({ page }) => {
+  await page.route("**/api/v1/auth/capabilities", (route) => route.abort());
+  await page.goto("/login");
+
+  await expect(page.getByRole("button", { name: "使用 Google 登录", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("暂时无法连接");
+});
