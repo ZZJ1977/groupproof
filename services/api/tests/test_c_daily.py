@@ -267,8 +267,9 @@ def test_home_counts_only_current_assignments_and_canonical_status(client, daily
     assert data["course_count"] == data["project_count"] == data["my_task_count"] == 1
     assert data["my_completed_tasks"] == 0
     assert data["task_counts"]["in_progress"] == 1
-    assert data["unread_notifications"] is data["pending_action_items"] is None
-    assert data["unavailable_sources"] == ["notifications", "action_items", "github", "feishu"]
+    # A4-01/A4-03 已接入：通知和待办来自 A 的数据库实现；GitHub/飞书仍未接入。
+    assert data["unread_notifications"] == data["pending_action_items"] == 0
+    assert data["unavailable_sources"] == ["github", "feishu"]
     daily.task.progress_percent = 100
     db.flush()
     assert get_home_summary(db, daily.actor)["my_completed_tasks"] == 0

@@ -106,7 +106,10 @@ def invalid_receipt() -> ApiError:
 
 
 def get_storage_port() -> StoragePort:
-    return UnavailableStoragePort()
+    # A4-04：配置了 Supabase 时使用 A 的适配器，否则保持不可用（不假装上传成功）。
+    from app.modules.a.storage import project_storage_port
+
+    return project_storage_port() or UnavailableStoragePort()
 
 
 def resolve_receipt(
