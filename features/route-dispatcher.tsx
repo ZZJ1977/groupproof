@@ -38,6 +38,7 @@ const NewProjectApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").
 const ProjectOverviewApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectOverviewApiPage));
 const ProjectSetupApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectSetupApiPage));
 const RequirementsApiPage = dynamic(() => import("@/features/b/RequirementsApiPage").then((module) => module.RequirementsApiPage));
+const TasksApiPage = dynamic(() => import("@/features/b/TasksApiPage").then((module) => module.TasksApiPage));
 const PlanningApiPage = dynamic(() => import("@/features/b/PlanningApiPage").then((module) => module.PlanningApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
@@ -86,6 +87,7 @@ export function RouteDispatcher() {
     else if (screen === 8 && projectId) realContent = <ProjectSetupApiPage projectId={projectId} />;
     else if (screen === 9 && projectId) realContent = <RequirementsApiPage projectId={projectId} />;
     else if (screen === 10 && projectId) realContent = <PlanningApiPage projectId={projectId} />;
+    else if ([11, 12, 13].includes(screen) && projectId) realContent = <TasksApiPage projectId={projectId} view={screen === 12 ? "board" : screen === 13 ? "list" : "tree"} />;
     else realContent = <BNotConnectedPage screen={screen} />;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
