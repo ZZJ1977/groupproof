@@ -11,6 +11,7 @@ import { createCommandRunner } from "@/lib/commands/core";
 import { changeCourseFile, courseFileAccess, listCourseFiles, type CourseFileInput } from "@/features/c/course-file-commands";
 import { can, isCourseStaff } from "@/lib/access/policy";
 import { completedModuleCount, teacherProjectStats } from "@/lib/ux/stats";
+import { teacherOverviewAcceptance, teacherOverviewActivities, teacherOverviewModuleProgress, teacherOverviewProgress, teacherOverviewRisk } from "@/lib/ux/teacher-overview";
 import { compareCourseRuleSnapshots } from "@/lib/commands/rule-change";
 import { useCommands } from "@/lib/commands/use-commands";
 import { SaveState } from "@/components/common";
@@ -26,7 +27,7 @@ const groupHref = (courseId: string, groupId: string) => `${teacherBase(courseId
 function useCourseData(courseId?: string) {
   const workspace = useWorkspace();
   const { data } = workspace;
-  const course = data.courses.find((item) => item.id === courseId) ?? data.courses[0];
+  const course = data.courses.find((item) => item.id === courseId);
   const groups = data.groups.filter((item) => item.courseId === course?.id);
   const projects = data.projects.filter((item) => item.courseId === course?.id);
   const actions = data.actionItems.filter((item) => item.courseId === course?.id && item.assigneeId === course?.teacherId);
@@ -37,6 +38,7 @@ function groupProject(group: Group, projects: Project[]) {
   return projects.find((item) => item.groupId === group.id || item.id === group.projectId);
 }
 
+// D6-01 总览使用 teacherOverviewRisk；其余后续页面暂保留原有显示口径。
 function riskFor(project?: Project) {
   if (!project) return { label: "未开始", tone: "gray" as const };
   if (project.progress < 55) return { label: "高风险", tone: "red" as const };
@@ -68,34 +70,43 @@ function commandFeedback(error: { code: string; message: string; fieldErrors?: R
 }
 
 export function TeacherOverview({ courseId }: { courseId?: string }) {
-  const { data, course, groups, projects, actions } = useCourseData(courseId);
+  const { data, course, groups, projects, actions, mockWorkspace } = useCourseData(courseId);
+  if (!mockWorkspace) return <div className={styles.page}><Header title="课程总览" description="真实教师总览服务尚未接入。" /><Notice>当前无法读取真实课程、任务和验收数据。</Notice></div>;
   if (!course) return <CourseMissing />;
-  const stats = teacherProjectStats(projects);
-  const progress = stats.averageProgress;
-  const highRisk = stats.highRisk;
+  if (!isCourseStaff(data, data.currentUserId, course.id)) return <StaffOnly />;
+  const overviewProjects = projects.map((project) => ({ ...project, progress: teacherOverviewProgress(data, project) ?? 0 }));
+  const stats = teacherProjectStats(overviewProjects);
+  const availableProgress = projects.map((project) => teacherOverviewProgress(data, project)).filter((value): value is number => value !== null);
+  const progress = availableProgress.length ? `${Math.round(availableProgress.reduce((sum, value) => sum + value, 0) / availableProgress.length)}%` : "—";
+  const highRisk = projects.filter((project) => teacherOverviewRisk(data, project).level === "high").length;
   const pending = actions.filter((item) => item.status === "pending");
+  const courseActivities = projects.flatMap((project) => teacherOverviewActivities(data, project)).sort((a, b) => b.at.localeCompare(a.at));
   const moduleGroups = new Map<string, { count: number; sum: number }>();
   data.modules.filter((module) => projects.some((project) => project.id === module.projectId)).forEach((module) => {
+    const moduleProgress = teacherOverviewModuleProgress(data, module.projectId, module.id);
+    if (moduleProgress === null) return;
     const current = moduleGroups.get(module.name) ?? { count: 0, sum: 0 };
-    moduleGroups.set(module.name, { count: current.count + 1, sum: current.sum + module.progress });
+    moduleGroups.set(module.name, { count: current.count + 1, sum: current.sum + moduleProgress });
   });
   return (
     <div className={styles.page}>
       <Header title="课程总览" description="查看各小组的整体进度、核心完成情况与需要关注的风险。" breadcrumb={`${course.name} / 课程总览`} action={<Badge tone="gray">{course.semester}</Badge>} />
       <div className={styles.metrics}>
         <Metric label="小组数" value={groups.length} icon={Users} hint="课程内已建立的小组" />
-        <Metric label="平均进度" value={`${progress}%`} icon={BarChart3} hint="按小组项目进度汇总" />
+        <Metric label="平均进度" value={progress} icon={BarChart3} hint="按有任务计划的小组汇总" />
         <Metric label="高风险小组" value={highRisk} icon={AlertTriangle} tone="red" hint="需要优先关注" />
         <Metric label="已定稿" value={`${stats.finalized} 组`} icon={CheckCircle2} tone="green" hint={`已定稿项目；另有 ${stats.pendingFinalize} 组进度满但未定稿（100% 进度不等于完成）`} />
       </div>
       <div className={styles.twoColumns}>
         <Box title="小组进度概览" action={<Link className={styles.link} href={`${teacherBase(course.id)}/groups`}>查看全部</Link>}>
-          <Table><thead><tr><th>小组</th><th>整体进度</th><th>进度满模块</th><th>风险</th><th>最近活动</th><th>操作</th></tr></thead><tbody>
+          <Table><thead><tr><th>小组</th><th>整体进度</th><th>验收通过任务</th><th>风险</th><th>最近活动</th><th>操作</th></tr></thead><tbody>
             {groups.map((group, index) => {
               const project = groupProject(group, projects);
-              const modules = data.modules.filter((item) => item.projectId === project?.id);
-              const risk = riskFor(project);
-              return <tr key={group.id}><td><strong>{groupName(group, index)}</strong><div className={styles.subtle}>{group.name}</div></td><td><Progress value={project?.progress ?? 0} /></td><td>{completedModuleCount(modules)} / {modules.length || "—"}</td><td><Badge tone={risk.tone}>{risk.label}</Badge></td><td>{project ? "近期有更新" : "暂无项目"}</td><td><Link className={styles.link} href={groupHref(course.id, group.id)}>查看小组 →</Link></td></tr>;
+              const projectProgress = teacherOverviewProgress(data, project);
+              const acceptance = teacherOverviewAcceptance(data, project);
+              const risk = teacherOverviewRisk(data, project);
+              const latestActivity = teacherOverviewActivities(data, project)[0];
+              return <tr key={group.id}><td><strong>{groupName(group, index)}</strong><div className={styles.subtle}>{group.name}</div></td><td>{projectProgress === null ? "暂无计划" : <Progress value={projectProgress} />}</td><td>{acceptance.total ? `${acceptance.passed} / ${acceptance.total}` : "—"}</td><td><Badge tone={risk.tone}>{risk.label}</Badge></td><td>{latestActivity ? `${latestActivity.title} · ${formatDateTime(latestActivity.at)}` : project ? "暂无近期动态" : "暂无项目"}</td><td><Link className={styles.link} href={groupHref(course.id, group.id)}>查看小组 →</Link></td></tr>;
             })}
           </tbody></Table>
           {groups.length === 0 ? <Empty>课程尚无小组</Empty> : null}
@@ -104,10 +115,10 @@ export function TeacherOverview({ courseId }: { courseId?: string }) {
           <Box title={`提醒 (${pending.length})`} action={<Link className={styles.link} href={`${teacherBase(course.id)}/actions`}>查看全部</Link>}>
             <div className={styles.panelBody}>{pending.length ? pending.slice(0, 4).map((item) => <div className={styles.row} key={item.id}><AlertTriangle size={16} color={item.priority === "high" ? "#d43b38" : "#c88104"} /><div className={styles.rowMain}><div className={styles.rowTitle}>{item.title}</div><div className={styles.rowMeta}>{item.description}</div></div><span className={styles.subtle}>{formatDate(item.dueAt)}</span></div>) : <Empty>暂无待处理提醒</Empty>}</div>
           </Box>
-          <Box title="模块整体进度" action={<Link className={styles.link} href={`${teacherBase(course.id)}/groups`}>查看小组</Link>}>
-            <div className={styles.panelBody}>{Array.from(moduleGroups).map(([name, value]) => <div className={styles.row} key={name}><div className={styles.rowMain}><div className={styles.rowTitle}>{name}</div><div className={styles.rowMeta}>{value.count} 个小组</div></div><Progress value={value.sum / value.count} /></div>)}{moduleGroups.size === 0 ? <Empty>尚无功能模块</Empty> : null}</div>
+          <Box title="模块任务进度" action={<Link className={styles.link} href={`${teacherBase(course.id)}/groups`}>查看小组</Link>}>
+            <div className={styles.panelBody}>{Array.from(moduleGroups).map(([name, value]) => <div className={styles.row} key={name}><div className={styles.rowMain}><div className={styles.rowTitle}>{name}</div><div className={styles.rowMeta}>{value.count} 个小组</div></div><Progress value={value.sum / value.count} /></div>)}{moduleGroups.size === 0 ? <Empty>暂无可计算的模块任务</Empty> : null}</div>
           </Box>
-          <Box title="近期动态"><div className={styles.panelBody}>{data.logs.filter((log) => log.target === course.id || groups.some((group) => log.target === group.id)).slice(0, 3).map((log) => <div className={styles.row} key={log.id}><Clock3 size={15} /><div className={styles.rowMain}><div className={styles.rowTitle}>{log.action}</div><div className={styles.rowMeta}>{log.detail}</div></div></div>)}{data.logs.filter((log) => log.target === course.id).length === 0 ? <Empty>暂无课程动态</Empty> : null}</div></Box>
+          <Box title="近期动态"><div className={styles.panelBody}>{courseActivities.slice(0, 3).map((activity) => <div className={styles.row} key={activity.id}><Clock3 size={15} /><div className={styles.rowMain}><div className={styles.rowTitle}>{activity.title}</div><div className={styles.rowMeta}>{formatDateTime(activity.at)}</div></div></div>)}{courseActivities.length === 0 ? <Empty>暂无课程动态</Empty> : null}</div></Box>
         </div>
       </div>
     </div>
