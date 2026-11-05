@@ -7,6 +7,8 @@ single B entry point.
 
 from fastapi import APIRouter
 
+from app.modules.b.courses_router import router as courses_router
+
 router = APIRouter(tags=["b"])
 
 ready_router = APIRouter(prefix="/api/b", tags=["b"])
@@ -18,3 +20,4 @@ def ready() -> dict[str, str]:
 
 
 router.include_router(ready_router)
+router.include_router(courses_router, prefix="/api/v1")

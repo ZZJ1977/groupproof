@@ -28,6 +28,9 @@ const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
 const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.HomeApiPage));
 const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
+const MyCoursesApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.MyCoursesApiPage));
+const JoinCourseApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.JoinCourseApiPage));
+const MemberChangesApiPage = dynamic(() => import("@/features/b/MemberChangesApiPage").then((module) => module.MemberChangesApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
 function AccessDenied({ message }: { message?: string }) {
@@ -63,7 +66,12 @@ export function RouteDispatcher() {
     else if ([16, 17].includes(screen)) realContent = <div role="status" className="gp-empty">验收服务暂未接入，请返回任务页面查看已保存的提交。</div>;
   }
   // B pages: each stage replaces this placeholder with its real page; real mode never shows demo data.
-  if (isBScreen(screen) && apiMode("bworkspace") === "real") realContent = <BNotConnectedPage screen={screen} />;
+  if (isBScreen(screen) && apiMode("bworkspace") === "real") {
+    if (screen === 31) realContent = <MyCoursesApiPage />;
+    else if (screen === 32) realContent = <JoinCourseApiPage />;
+    else if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
+    else realContent = <BNotConnectedPage screen={screen} />;
+  }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;
   if (screen >= 53 && apiMode("governance") === "real") {
