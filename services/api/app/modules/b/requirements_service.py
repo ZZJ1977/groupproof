@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import (
+    AcceptanceCriterion,
     ConflictResolution,
     FunctionalModule,
     Project,
@@ -32,6 +33,7 @@ from app.db.models import (
     RequirementSourceReference,
     SourceReference,
     Task,
+    TaskRequirement,
     User,
 )
 from app.modules.a import permissions
@@ -44,14 +46,19 @@ from app.modules.a.ai.schemas import (
     SourceDocument,
 )
 from app.modules.a.audit import record_audit
+from app.modules.b import requirement_history as history
 from app.modules.b.common import now, require_reason, require_version
 from app.modules.b.courses_schemas import PersonDTO
 from app.modules.b.models import (
     BAnalysisRun,
+    BCriterionRecheck,
     BModuleMeta,
     BProjectMaterial,
+    BRequirementCode,
     BRequirementMeta,
+    BRequirementVersion,
 )
+from app.modules.b.ports import VerificationPort
 from app.modules.b.requirements_schemas import (
     AdvanceSetup,
     AnalysisRunDTO,
@@ -172,11 +179,19 @@ def requirement_dtos(session: Session, project_id: UUID) -> dict[UUID, Requireme
         )
     }
     sources = _sources(session, [r.id for r in requirements])
+    codes = dict(
+        session.execute(
+            select(BRequirementCode.requirement_id, BRequirementCode.seq).where(
+                BRequirementCode.project_id == project_id
+            )
+        ).all()
+    )
     result = {}
     for row in requirements:
         meta = metas.get(row.id)
         result[row.id] = RequirementDTO(
             id=row.id,
+            code=history.code_of(codes.get(row.id)),
             module_id=row.module_id,
             title=row.title,
             description=row.description,
@@ -528,6 +543,7 @@ def merge_result(
         )
         session.add(row)
         session.flush()
+        history.register(session, row, run.requested_by)
         session.add(
             BRequirementMeta(
                 requirement_id=row.id,
@@ -824,6 +840,7 @@ def create_requirement(
     )
     session.add(row)
     session.flush()
+    history.register(session, row, user.id)
     session.add(
         BRequirementMeta(
             requirement_id=row.id, project_id=project.id, origin="manual", edited_by_human=True
@@ -850,9 +867,29 @@ def update_requirement(
     project_id: UUID,
     requirement_id: UUID,
     command: UpdateRequirement,
+    verification: VerificationPort,
     request=None,
 ) -> RequirementDTO:
-    _, project = require_draft_writer(session, user, project_id)
+    """Draft: free edits. Frozen baseline (B4-02): only with a reason; every save is a
+    new version and the linked acceptance criteria are flagged for re-checking."""
+    permissions.require_project_member(session, user, project_id)
+    project = session.scalar(
+        select(Project)
+        .where(Project.id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    frozen = project.setup_status == "frozen"
+    reason = (command.reason or "").strip() or None
+    if frozen and reason is None:
+        raise ApiError(
+            409,
+            "BASELINE_FROZEN",
+            "需求基线已冻结，修改需求必须写明原因。",
+            details={"field": "reason", "reason_required": True},
+        )
+    if not frozen:
+        check_draft(project)
     row = session.scalar(
         select(Requirement)
         .where(Requirement.id == requirement_id, Requirement.project_id == project.id)
@@ -868,19 +905,32 @@ def update_requirement(
         raise ApiError(
             422, "REQUIREMENT_TITLE_REQUIRED", "请填写需求标题。", details={"field": "title"}
         )
-    before = {
-        "title": row.title,
-        "description": row.description,
-        "priority": row.priority,
-        "module_id": row.module_id,
-    }
+    before = history.snapshot(row)
     row.title = title
     row.description = (command.description or "").strip() or None
     row.priority = command.priority
     row.module_id = command.module_id
+    if history.snapshot(row) == before:
+        return requirement_dtos(session, project.id)[row.id]
     row.lock_version += 1
     _mark_requirement(session, row)
     session.flush()
+    if history.latest_version(session, row.id) == 0:
+        # Created before versions existed: keep its old state as version 1.
+        session.add(
+            BRequirementVersion(
+                id=uuid4(),
+                requirement_id=row.id,
+                project_id=row.project_id,
+                version_no=1,
+                snapshot=before,
+                created_by=row.created_by,
+                created_at=row.created_at,
+            )
+        )
+        session.flush()
+    version_no = history.add_version(session, row, user.id, reason=reason, after_freeze=frozen)
+    flagged = flag_rechecks(session, user, row, version_no, reason, verification)
     record_audit(
         session,
         actor=user,
@@ -889,15 +939,63 @@ def update_requirement(
         project_id=project.id,
         course_id=project.course_id,
         before=before,
-        after={
-            "title": title,
-            "description": row.description,
-            "priority": row.priority,
-            "module_id": row.module_id,
-        },
+        after={**history.snapshot(row), "version_no": version_no, "rechecks": flagged},
+        reason=reason,
         request=request,
     )
     return requirement_dtos(session, project.id)[row.id]
+
+
+def linked_criteria(session: Session, requirement_id: UUID) -> list[tuple[Task, list]]:
+    tasks = session.scalars(
+        select(Task)
+        .join(TaskRequirement, TaskRequirement.task_id == Task.id)
+        .where(TaskRequirement.requirement_id == requirement_id)
+        .order_by(Task.created_at, Task.id)
+    ).all()
+    result = []
+    for task in tasks:
+        criteria = session.scalars(
+            select(AcceptanceCriterion)
+            .where(AcceptanceCriterion.task_id == task.id)
+            .order_by(AcceptanceCriterion.sort_order, AcceptanceCriterion.criterion_key)
+        ).all()
+        result.append((task, list(criteria)))
+    return result
+
+
+def flag_rechecks(
+    session: Session,
+    user: User,
+    row: Requirement,
+    version_no: int,
+    reason: str | None,
+    verification: VerificationPort,
+) -> int:
+    """Mark every acceptance criterion of the linked tasks "needs re-check" and tell D."""
+    flagged = 0
+    for task, criteria in linked_criteria(session, row.id):
+        if not criteria:
+            continue
+        outcome = verification.invalidate_criterion_results(
+            session,
+            task_id=task.id,
+            criterion_ids=[c.id for c in criteria],
+            reason=reason or f"需求 {row.title} 已修改",
+            actor_id=user.id,
+        )
+        for criterion in criteria:
+            mark = session.get(BCriterionRecheck, criterion.id)
+            if mark is None:
+                mark = BCriterionRecheck(criterion_id=criterion.id)
+                session.add(mark)
+            mark.project_id, mark.task_id, mark.requirement_id = row.project_id, task.id, row.id
+            mark.requirement_version_no, mark.reason = version_no, reason
+            mark.flagged_by, mark.flagged_at, mark.cleared_at = user.id, now(), None
+            mark.verification_notified = outcome.accepted
+            flagged += 1
+    session.flush()
+    return flagged
 
 
 def _mark_requirement(session: Session, row: Requirement, *, excluded: bool | None = None):

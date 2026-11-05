@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
@@ -18,6 +19,7 @@ from app.modules.b.common import (
     private_response,
     run_command,
 )
+from app.modules.b.ports import VerificationPort, get_verification_port
 from app.modules.b.requirements_schemas import (
     AdvanceSetup,
     CheckItem,
@@ -30,6 +32,8 @@ from app.modules.b.requirements_schemas import (
     UpdateModule,
     UpdateRequirement,
 )
+
+Verification = Annotated[VerificationPort, Depends(get_verification_port)]
 
 router = APIRouter(
     tags=["b-requirements"], dependencies=[Depends(private_response)], responses=ERROR_RESPONSES
@@ -193,6 +197,7 @@ def update_requirement(
     session: Database,
     user: CurrentUser,
     key: IdempotencyKey,
+    verification: Verification,
 ):
     return _write(
         session,
@@ -202,7 +207,7 @@ def update_requirement(
         f"requirement.update:{requirement_id}",
         command.model_dump(mode="json"),
         lambda: requirements_service.update_requirement(
-            session, user, project_id, requirement_id, command, request
+            session, user, project_id, requirement_id, command, verification, request
         ),
     )
 

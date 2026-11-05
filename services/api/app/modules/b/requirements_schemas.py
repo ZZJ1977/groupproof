@@ -44,6 +44,7 @@ class ModuleDTO(BaseModel):
 
 class RequirementDTO(BaseModel):
     id: UUID
+    code: str | None
     module_id: UUID
     title: str
     description: str | None
@@ -109,6 +110,8 @@ class UpdateRequirement(Strict):
     title: str = Field(min_length=1, max_length=240)
     description: str | None = Field(default=None, max_length=5000)
     priority: Priority
+    # Required once the baseline is frozen (B4-02).
+    reason: str | None = Field(default=None, max_length=2000)
     expected_version: int = Field(ge=0, strict=True)
 
 
