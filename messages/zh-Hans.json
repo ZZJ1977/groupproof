@@ -631,7 +631,27 @@
       "LEADER_CHANGE_NOT_FOUND": "组长变更申请不存在。",
       "NOT_A_CONFIRMER": "你不需要确认这条组长变更。",
       "ALREADY_CONFIRMED": "你已经确认过了。",
-      "LEADER_CHANGE_CLOSED": "这条组长变更已经结束。"
+      "LEADER_CHANGE_CLOSED": "这条组长变更已经结束。",
+      "PROJECT_ALREADY_EXISTS": "本组已经创建了项目。",
+      "PROJECT_NAME_REQUIRED": "请填写项目名称。",
+      "PROJECT_NOT_FOUND": "项目不存在或你没有权限查看。",
+      "PROJECT_READ_ONLY": "项目已归档或定稿，只能查看。",
+      "PROJECT_MEMBER_REQUIRED": "只有本项目成员可以执行此操作。",
+      "GROUP_LEADER_REQUIRED": "只有组长可以执行此操作。",
+      "BASELINE_FROZEN": "需求基线已冻结，初始化信息不能再修改。",
+      "END_BEFORE_START": "结束日期不能早于开始日期。",
+      "END_AFTER_COURSE_DEADLINE": "结束日期不能晚于课程截止日期。",
+      "MATERIAL_TEXT_REQUIRED": "请粘贴资料正文。",
+      "UPLOAD_RECEIPT_REQUIRED": "请先上传文件。",
+      "UPLOAD_RECEIPT_INVALID": "上传凭证无效或尚未完成，请重新上传。",
+      "MATERIAL_ALREADY_ADDED": "这个文件已经添加过了。",
+      "MATERIAL_NOT_FOUND": "资料不存在。",
+      "UPLOAD_FAILED": "文件上传失败，请重试。",
+      "FILE_STORAGE_UNAVAILABLE": "文件存储暂未配置，暂时只能添加文本资料。",
+      "FILE_TOO_LARGE": "文件太大。",
+      "FILE_TYPE_NOT_ALLOWED": "不支持这种文件类型。",
+      "UPLOAD_REJECTED": "文件未通过检查，已被拒绝。",
+      "VALIDATION_ERROR": "填写的内容不符合要求，请检查后重试。"
     }
   }
 }

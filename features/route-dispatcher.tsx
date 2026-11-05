@@ -34,6 +34,9 @@ const GroupsApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((
 const GroupDetailApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupDetailApiPage));
 const ChangeLeaderApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.ChangeLeaderApiPage));
 const MemberChangesApiPage = dynamic(() => import("@/features/b/MemberChangesApiPage").then((module) => module.MemberChangesApiPage));
+const NewProjectApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.NewProjectApiPage));
+const ProjectOverviewApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectOverviewApiPage));
+const ProjectSetupApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectSetupApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
 function AccessDenied({ message }: { message?: string }) {
@@ -76,6 +79,9 @@ export function RouteDispatcher() {
     else if (screen === 34 && courseId && groupId) realContent = <GroupDetailApiPage courseId={courseId} groupId={groupId} />;
     else if (screen === 36 && courseId && groupId) realContent = <ChangeLeaderApiPage courseId={courseId} groupId={groupId} />;
     else if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
+    else if (screen === 35 && courseId) realContent = <NewProjectApiPage courseId={courseId} />;
+    else if (screen === 7 && projectId) realContent = <ProjectOverviewApiPage projectId={projectId} />;
+    else if (screen === 8 && projectId) realContent = <ProjectSetupApiPage projectId={projectId} />;
     else realContent = <BNotConnectedPage screen={screen} />;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
@@ -96,8 +102,9 @@ export function RouteDispatcher() {
 
   let content;
   if ([4, 5, 6, 30].includes(screen)) content = <CoreView screen={screen} />;
-  else if (screen >= 7 && screen <= 20) content = <ProjectCoreView screen={screen} projectId={projectId ?? "project-1"} taskId={taskId} milestoneId={milestoneId} />;
-  else if (screen >= 21 && screen <= 29) content = <ProjectSupportView screen={screen} projectId={projectId ?? "project-1"} memberId={memberId} />;
+  // Project pages always carry the project ID in the URL; there is no default project.
+  else if (screen >= 7 && screen <= 20 && projectId) content = <ProjectCoreView screen={screen} projectId={projectId} taskId={taskId} milestoneId={milestoneId} />;
+  else if (screen >= 21 && screen <= 29 && projectId) content = <ProjectSupportView screen={screen} projectId={projectId} memberId={memberId} />;
   else if (screen >= 31 && screen <= 40) content = <CourseView screen={screen} courseId={courseId} groupId={groupId} />;
   else if (screen >= 41) content = <GovernanceView screen={screen} courseId={courseId} groupId={groupId} />;
   else content = <div className="gp-empty">{tc("loading")}</div>;

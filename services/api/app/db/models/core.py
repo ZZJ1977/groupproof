@@ -372,6 +372,14 @@ class Project(TimestampMixin, LockVersionMixin, Base):
             "lifecycle IN ('active', 'finalized', 'archived')", name="ck_projects_lifecycle"
         ),
         CheckConstraint("setup_step >= 0", name="ck_projects_setup_step"),
+        # B3-01: one project per group.
+        Index(
+            "uq_projects_group",
+            "group_id",
+            unique=True,
+            postgresql_where=sa_text("group_id IS NOT NULL"),
+            sqlite_where=sa_text("group_id IS NOT NULL"),
+        ),
     )
 
 

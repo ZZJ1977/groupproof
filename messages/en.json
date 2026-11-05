@@ -631,7 +631,27 @@
       "LEADER_CHANGE_NOT_FOUND": "The leader change request does not exist.",
       "NOT_A_CONFIRMER": "You do not need to confirm this leader change.",
       "ALREADY_CONFIRMED": "You have already confirmed.",
-      "LEADER_CHANGE_CLOSED": "This leader change has ended."
+      "LEADER_CHANGE_CLOSED": "This leader change has ended.",
+      "PROJECT_ALREADY_EXISTS": "Your group already has a project.",
+      "PROJECT_NAME_REQUIRED": "Enter a project name.",
+      "PROJECT_NOT_FOUND": "Project not found, or you cannot view it.",
+      "PROJECT_READ_ONLY": "This project is archived or finalized and is read-only.",
+      "PROJECT_MEMBER_REQUIRED": "Only project members can do this.",
+      "GROUP_LEADER_REQUIRED": "Only the group leader can do this.",
+      "BASELINE_FROZEN": "The requirements baseline is frozen; setup can no longer change.",
+      "END_BEFORE_START": "The end date cannot be before the start date.",
+      "END_AFTER_COURSE_DEADLINE": "The end date cannot be after the course deadline.",
+      "MATERIAL_TEXT_REQUIRED": "Paste the material text.",
+      "UPLOAD_RECEIPT_REQUIRED": "Upload a file first.",
+      "UPLOAD_RECEIPT_INVALID": "The upload is invalid or unfinished; upload again.",
+      "MATERIAL_ALREADY_ADDED": "This file has already been added.",
+      "MATERIAL_NOT_FOUND": "Material not found.",
+      "UPLOAD_FAILED": "The upload failed. Try again.",
+      "FILE_STORAGE_UNAVAILABLE": "File storage is not set up yet; add text materials for now.",
+      "FILE_TOO_LARGE": "The file is too large.",
+      "FILE_TYPE_NOT_ALLOWED": "This file type is not supported.",
+      "UPLOAD_REJECTED": "The file failed checks and was rejected.",
+      "VALIDATION_ERROR": "Some fields are invalid. Check and try again."
     }
   }
 }

@@ -631,7 +631,27 @@
       "LEADER_CHANGE_NOT_FOUND": "組長變更申請不存在。",
       "NOT_A_CONFIRMER": "你不需要確認這條組長變更。",
       "ALREADY_CONFIRMED": "你已經確認過了。",
-      "LEADER_CHANGE_CLOSED": "這條組長變更已經結束。"
+      "LEADER_CHANGE_CLOSED": "這條組長變更已經結束。",
+      "PROJECT_ALREADY_EXISTS": "本組已經建立了專案。",
+      "PROJECT_NAME_REQUIRED": "請填寫專案名稱。",
+      "PROJECT_NOT_FOUND": "專案不存在或你沒有權限檢視。",
+      "PROJECT_READ_ONLY": "專案已封存或定稿，只能檢視。",
+      "PROJECT_MEMBER_REQUIRED": "只有本專案成員可以執行此操作。",
+      "GROUP_LEADER_REQUIRED": "只有組長可以執行此操作。",
+      "BASELINE_FROZEN": "需求基線已凍結，初始化資訊不能再修改。",
+      "END_BEFORE_START": "結束日期不能早於開始日期。",
+      "END_AFTER_COURSE_DEADLINE": "結束日期不能晚於課程截止日期。",
+      "MATERIAL_TEXT_REQUIRED": "請貼上資料正文。",
+      "UPLOAD_RECEIPT_REQUIRED": "請先上傳檔案。",
+      "UPLOAD_RECEIPT_INVALID": "上傳憑證無效或尚未完成，請重新上傳。",
+      "MATERIAL_ALREADY_ADDED": "這個檔案已經加入過了。",
+      "MATERIAL_NOT_FOUND": "資料不存在。",
+      "UPLOAD_FAILED": "檔案上傳失敗，請重試。",
+      "FILE_STORAGE_UNAVAILABLE": "檔案儲存尚未設定，暫時只能加入文字資料。",
+      "FILE_TOO_LARGE": "檔案太大。",
+      "FILE_TYPE_NOT_ALLOWED": "不支援這種檔案類型。",
+      "UPLOAD_REJECTED": "檔案未通過檢查，已被拒絕。",
+      "VALIDATION_ERROR": "填寫的內容不符合要求，請檢查後重試。"
     }
   }
 }
