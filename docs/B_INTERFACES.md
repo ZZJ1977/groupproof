@@ -121,3 +121,11 @@ class TaskVerificationStatus:
 | 任务表 | 草稿期 B 直接写 `tasks`、`task_requirements`、`task_assignees`（`role=responsible`，取消分配写 `unassigned_at`）、`task_dependencies`、`task_milestones`、`acceptance_criteria`。改动定义时 `tasks.lock_version` 加一；执行字段（`status`、`progress_percent`、`started_at`）B 不改。 |
 | 删除限制 | 已开始的任务、还有子任务或被别的任务设为前置的任务不能删；有证据或验收记录的验收标准不能删（外键 RESTRICT 时返回 `CRITERION_HAS_RECORDS`）。 |
 | 通知 D | 已开始过的任务修改验收标准时，B 调 `VerificationPort.invalidate_criterion_results`；D 未接入时记在 `b_criterion_invalidations`（`accepted=false`），等 D 接入后可补发。 |
+
+## 6. B-7 任务视图和 C 的约定（需要 C 确认）
+
+| 约定 | 说明 |
+| --- | --- |
+| 只读查询 | `GET /api/v1/projects/{id}/tasks?view=tree\|board\|list&q=&status=&assignee=&module=&milestone=&sort=&page=&page_size=`，三个视图共用。B 没有改任务状态的接口。 |
+| 可以做的状态变化 | 每行的 `transitions` 按 C 的规则计算：负责人、前置任务全部完成、计划已冻结且任务在快照里、学校邮箱已验证、项目可写。未开始到进行中给出 C 的 `POST /api/v1/tasks/{id}/start`（`expected_version` = `tasks.lock_version`）；进行中到待提交只给出 C 的提交页链接（`/tasks/{id}/submit`，C2-08 需要填写内容）。其余状态由提交和验收流程改变，看板上拖不动，并显示原因 `blocked_reason`。C 的规则如果改了，这里需要同步。 |
+| 进度 | 用 C 的 `progress_projection` 汇总；任务树数据有问题时退回显示每个任务自己的进度，不报错。 |
