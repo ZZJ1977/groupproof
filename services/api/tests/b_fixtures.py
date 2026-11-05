@@ -307,6 +307,11 @@ class BApi:
     def patch(self, path: str, json=None, key: str | None = None):
         return self.client.patch(path, json=json, headers={"Idempotency-Key": key or self.key()})
 
+    def delete(self, path: str, key: str | None = None, **params):
+        return self.client.delete(
+            path, params=params or None, headers={"Idempotency-Key": key or self.key()}
+        )
+
     def close(self) -> None:
         self.client.close()
         self._app.dependency_overrides.clear()

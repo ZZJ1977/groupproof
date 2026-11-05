@@ -676,7 +676,25 @@
       "NOT_YOUR_CONFIRMATION": "只能确认你自己的那一条。",
       "PROJECT_LEADER_REQUIRED": "只有组长可以执行此操作。",
       "INVALID_FILTER": "筛选条件无效，请检查后重试。",
-      "VERSION_NOT_FOUND": "要对比的版本不存在。"
+      "VERSION_NOT_FOUND": "要对比的版本不存在。",
+      "BASELINE_NOT_FROZEN": "需求基线冻结后才能制定任务计划。",
+      "PLAN_FROZEN": "任务计划已冻结，组长解锁后才能修改。",
+      "PLAN_NOT_FROZEN": "计划还没有冻结，不需要解锁。",
+      "PLAN_NOT_STARTED": "还没有任务计划草稿。",
+      "PLAN_NOT_READY": "还不能冻结，请先处理下面列出的问题和未确认的组员。",
+      "PLAN_VALIDATION_FAILED": "任务保存失败：关联的内容不属于本项目，或任务关系成环。",
+      "ASSIGNMENT_CHANGED": "分给你的任务刚刚有变化，请刷新后再确认。",
+      "CRITERION_EMPTY": "验收标准不能为空。",
+      "CRITERION_NOT_FOUND": "这条验收标准不属于这个任务。",
+      "CRITERION_HAS_RECORDS": "这条验收标准已有证据或验收记录，不能删除，可以改写内容。",
+      "TASK_NOT_FOUND": "任务不存在。",
+      "TASK_STARTED": "已经开始执行的任务不能删除。",
+      "TASK_HAS_CHILDREN": "先删除或移走它的子任务。",
+      "TASK_IS_DEPENDENCY": "还有任务把它设为前置任务，先去掉这些依赖。",
+      "TASK_HAS_RECORDS": "这个任务已有执行或证据记录，不能删除。",
+      "NO_REQUIREMENTS": "基线里没有需求，无法生成任务建议。",
+      "SUGGESTION_NOT_FOUND": "建议不存在。",
+      "SUGGESTION_HANDLED": "这条建议已经处理过了。"
     }
   }
 }

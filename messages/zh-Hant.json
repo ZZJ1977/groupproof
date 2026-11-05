@@ -676,7 +676,25 @@
       "NOT_YOUR_CONFIRMATION": "只能確認你自己的那一條。",
       "PROJECT_LEADER_REQUIRED": "只有組長可以執行此操作。",
       "INVALID_FILTER": "篩選條件無效，請檢查後重試。",
-      "VERSION_NOT_FOUND": "要對比的版本不存在。"
+      "VERSION_NOT_FOUND": "要對比的版本不存在。",
+      "BASELINE_NOT_FROZEN": "需求基線凍結後才能制定任務計畫。",
+      "PLAN_FROZEN": "任務計畫已凍結，組長解鎖後才能修改。",
+      "PLAN_NOT_FROZEN": "計畫還沒有凍結，不需要解鎖。",
+      "PLAN_NOT_STARTED": "還沒有任務計畫草稿。",
+      "PLAN_NOT_READY": "還不能凍結，請先處理下面列出的問題和未確認的組員。",
+      "PLAN_VALIDATION_FAILED": "任務儲存失敗：關聯的內容不屬於本專案，或任務關係成環。",
+      "ASSIGNMENT_CHANGED": "分給你的任務剛剛有變化，請重新整理後再確認。",
+      "CRITERION_EMPTY": "驗收標準不能為空。",
+      "CRITERION_NOT_FOUND": "這條驗收標準不屬於這個任務。",
+      "CRITERION_HAS_RECORDS": "這條驗收標準已有證據或驗收紀錄，不能刪除，可以改寫內容。",
+      "TASK_NOT_FOUND": "任務不存在。",
+      "TASK_STARTED": "已經開始執行的任務不能刪除。",
+      "TASK_HAS_CHILDREN": "先刪除或移走它的子任務。",
+      "TASK_IS_DEPENDENCY": "還有任務把它設為前置任務，先去掉這些依賴。",
+      "TASK_HAS_RECORDS": "這個任務已有執行或證據紀錄，不能刪除。",
+      "NO_REQUIREMENTS": "基線裡沒有需求，無法產生任務建議。",
+      "SUGGESTION_NOT_FOUND": "建議不存在。",
+      "SUGGESTION_HANDLED": "這條建議已經處理過了。"
     }
   }
 }

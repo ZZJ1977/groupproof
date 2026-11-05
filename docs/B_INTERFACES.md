@@ -111,3 +111,13 @@ class TaskVerificationStatus:
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/v1/projects/{id}/criteria-rechecks?task_id=` | 因需求修改而需要重新检查的验收标准（`criterion_id`、`requirement_id`、需求版本号、原因、是否已通知 D）。建议 C 的任务详情页（页面 14）在对应验收标准旁显示“需要重新检查”。目前 B 的需求管理页（09）的证据链和影响预览里已经显示。 |
+
+## 5. B-6 任务计划和 C 的约定（需要 C 确认）
+
+| 约定 | 说明 |
+| --- | --- |
+| 计划状态 | B 写 `plan_versions`。C 的 `require_task_plan` 只看最新一版：冻结时 `status=frozen`，`snapshot_json.tasks` 是任务对象列表（每项有 `id`，另有编号、内容版本、负责人、验收标准等），C 已按 `entry.get("id")` 读取。解锁时旧版改为 `archived`，并新建一版 `draft`，C 会按现有规则拒绝开始任务（`PLAN_NOT_FROZEN`）。 |
+| 锁顺序 | B 所有计划写操作都先 `SELECT ... FOR UPDATE` 锁 `projects` 行，再锁最新 `plan_versions` 行，和 C 执行写入的顺序一致。 |
+| 任务表 | 草稿期 B 直接写 `tasks`、`task_requirements`、`task_assignees`（`role=responsible`，取消分配写 `unassigned_at`）、`task_dependencies`、`task_milestones`、`acceptance_criteria`。改动定义时 `tasks.lock_version` 加一；执行字段（`status`、`progress_percent`、`started_at`）B 不改。 |
+| 删除限制 | 已开始的任务、还有子任务或被别的任务设为前置的任务不能删；有证据或验收记录的验收标准不能删（外键 RESTRICT 时返回 `CRITERION_HAS_RECORDS`）。 |
+| 通知 D | 已开始过的任务修改验收标准时，B 调 `VerificationPort.invalidate_criterion_results`；D 未接入时记在 `b_criterion_invalidations`（`accepted=false`），等 D 接入后可补发。 |
