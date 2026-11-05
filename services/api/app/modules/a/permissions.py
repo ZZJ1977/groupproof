@@ -229,7 +229,7 @@ def project_relation(session: Session, user: User | None, project_id: UUID) -> P
         raise ApiError(409, "INVALID_PROJECT_CONTEXT", "项目所属课程或小组数据不一致。")
 
     membership = None
-    if is_student(user):
+    if is_active(user):  # 个人项目的创建者可能是老师或管理员，成员关系对所有活跃账号生效
         membership = _fresh(
             session,
             select(ProjectMember).where(
