@@ -13,6 +13,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
+import { useUrlFilters } from "@/lib/use-url-filters";
 import { can } from "@/lib/access/policy";
 import { useCommands } from "@/lib/commands/use-commands";
 import { publishedCourseRule } from "@/lib/versioning";
@@ -98,13 +99,19 @@ export function CourseView({ screen, courseId = "course-1", groupId = "group-1" 
 type Workspace = ReturnType<typeof useWorkspace>;
 type Context = Workspace & { course: Course; group?: Group; user?: User };
 
+// B1-01：Tab 写入 URL（?tab=active|ended），刷新或复制链接后保持一致
+const myCourseTabs = [["all", "全部课程"], ["active", "进行中"], ["ended", "已结束"]] as const;
+const myCourseFilters = { tab: { kind: "enum", values: myCourseTabs.map(([key]) => key), default: "all" } } as const;
+
 function MyCourses({ data }: Workspace) {
-  const [tab, setTab] = useState("全部课程");
+  const { filters, setFilters } = useUrlFilters(myCourseFilters);
+  const tabLabel = myCourseTabs.find(([key]) => key === filters.tab)?.[1] ?? "全部课程";
+  const setTab = (label: string) => setFilters({ tab: myCourseTabs.find(([, text]) => text === label)?.[0] ?? "all" });
   const courses = data.courses.filter((course) => course.memberIds.includes(data.currentUserId));
-  const visible = courses.filter((course) => tab === "全部课程" || (tab === "进行中" && course.status === "active") || (tab === "已结束" && course.status === "ended"));
+  const visible = courses.filter((course) => filters.tab === "all" || course.status === filters.tab);
   const pending = data.actionItems.filter((item) => item.assigneeId === data.currentUserId && item.courseId && item.status === "pending").slice(0, 3);
   return <div><Header title="我的课程" description="查看你已加入的课程、组队状态和课程项目入口。" crumbs={[{ title: "首页", href: "/home" }, { title: "我的课程" }]} action={<Link href="/courses/join" className={button}><Plus size={15} />加入课程</Link>} />
-    <Tabs items={["全部课程", "进行中", "已结束"]} active={tab} onChange={setTab} />
+    <Tabs items={myCourseTabs.map(([, text]) => text)} active={tabLabel} onChange={setTab} />
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]"><div className="space-y-3">{visible.length ? visible.map((course) => {
       const teacher = byId(data.users, course.teacherId);
       const group = data.groups.find((item) => item.courseId === course.id && item.memberIds.includes(data.currentUserId));

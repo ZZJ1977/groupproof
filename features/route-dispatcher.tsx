@@ -14,6 +14,7 @@ import { resolveRoute } from "@/lib/routes";
 import { useWorkspace } from "@/lib/workspace";
 import { useTranslations } from "next-intl";
 import { apiMode } from "@/lib/api/config";
+import { isBScreen } from "@/features/b/screens";
 
 const ActivityApiPage = dynamic(() => import("@/features/c/ActivityApiPages").then((module) => module.ActivityApiPage));
 const ProjectFilesApiPage = dynamic(() => import("@/features/c/ProjectFilesApiPage").then((module) => module.ProjectFilesApiPage));
@@ -27,6 +28,7 @@ const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
 const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.HomeApiPage));
 const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
+const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
 function AccessDenied({ message }: { message?: string }) {
   const t = useTranslations("errors");
@@ -60,6 +62,8 @@ export function RouteDispatcher() {
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
     else if ([16, 17].includes(screen)) realContent = <div role="status" className="gp-empty">验收服务暂未接入，请返回任务页面查看已保存的提交。</div>;
   }
+  // B pages: each stage replaces this placeholder with its real page; real mode never shows demo data.
+  if (isBScreen(screen) && apiMode("bworkspace") === "real") realContent = <BNotConnectedPage screen={screen} />;
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;
   if (screen >= 53 && apiMode("governance") === "real") {
