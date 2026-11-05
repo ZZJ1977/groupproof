@@ -26,12 +26,18 @@ def upgrade() -> None:
         sa.Column("level", sa.String(16), nullable=False),
         sa.Column("status", sa.String(16), nullable=False),
         sa.Column("due_at", sa.DateTime(timezone=True)),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.Column("lock_version", sa.Integer(), server_default="0", nullable=False),
         sa.CheckConstraint("level IN ('low','medium','high')", name="ck_risks_level"),
         sa.CheckConstraint("status IN ('open','mitigating','closed')", name="ck_risks_status"),
-        sa.CheckConstraint("task_id IS NOT NULL OR milestone_id IS NOT NULL", name="ck_risks_target"),
+        sa.CheckConstraint(
+            "task_id IS NOT NULL OR milestone_id IS NOT NULL", name="ck_risks_target"
+        ),
     )
     op.create_index("ix_risks_project_id", "risks", ["project_id"])
     op.create_table(
@@ -41,7 +47,9 @@ def upgrade() -> None:
         sa.Column("actor_id", sa.Uuid(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("event_type", sa.String(16), nullable=False),
         sa.Column("note", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
     )
     op.create_index("ix_risk_events_risk_id", "risk_events", ["risk_id"])
 
