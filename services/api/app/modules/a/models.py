@@ -225,3 +225,53 @@ class UploadReceipt(Base):
         CheckConstraint("declared_size >= 0", name="ck_a_upload_receipts_size"),
         Index("ix_a_upload_receipts_scope", "scope", "scope_id", "created_at"),
     )
+
+
+class FeishuChatLink(Base):
+    """A6-01/02：项目负责人把一个飞书群（chat_id）绑定到项目，之后只读同步它的消息。"""
+
+    __tablename__ = "a_feishu_chat_links"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    chat_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    linked_by_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "chat_id", name="uq_a_feishu_chat_links_project_chat"),
+    )
+
+
+class FeishuMessage(Base):
+    """A6-03：飞书群消息的本地快照（只读同步）。删除的消息保留行，正文清空并标记 deleted。"""
+
+    __tablename__ = "a_feishu_messages"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    chat_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    sender_open_id: Mapped[str | None] = mapped_column(String(200))
+    sender_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    msg_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    deleted: Mapped[bool] = mapped_column(nullable=False, server_default=sa_text("false"))
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "message_id", name="uq_a_feishu_messages_project_message"),
+        Index("ix_a_feishu_messages_project_time", "project_id", "occurred_at", "id"),
+    )
