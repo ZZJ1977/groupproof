@@ -587,5 +587,12 @@
       "due": "Due {date}",
       "empty": "No records"
     }
+  },
+  "b": {
+    "notConnected": {
+      "title": "This page is not connected yet",
+      "description": "The real data service for this page has not been connected. No demo data is shown.",
+      "back": "Back to home"
+    }
   }
 }
