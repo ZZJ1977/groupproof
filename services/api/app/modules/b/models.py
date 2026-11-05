@@ -411,6 +411,7 @@ class BProjectCounter(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
     )
     requirement_seq: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    task_seq: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
 
 class BRequirementCode(Base):
@@ -474,3 +475,119 @@ class BCriterionRecheck(Base):
     cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("ix_b_criterion_rechecks_task", "task_id"),)
+
+
+# ---------------------------------------------------------------- B-6 task planning
+
+
+class BTaskMeta(Base):
+    """B5-01 plan facts B keeps per task: number (``T-001``) and content version.
+
+    ``content_version`` counts saved plan definitions; C's ``tasks.lock_version``
+    also moves on execution writes, so it cannot tell a confirmation what changed.
+    """
+
+    __tablename__ = "b_task_meta"
+
+    task_id: Mapped[UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+    content_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    origin: Mapped[str] = mapped_column(String(16), server_default=text("'manual'"))
+    suggestion_id: Mapped[UUID | None] = mapped_column(Uuid)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "seq", name="uq_b_task_meta_seq"),
+        CheckConstraint("origin IN ('manual', 'ai')", name="ck_b_task_meta_origin"),
+    )
+
+
+class BTaskVersion(Base):
+    """B5-01 one saved definition of a task (every save that changes something)."""
+
+    __tablename__ = "b_task_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    plan_version_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("plan_versions.id", ondelete="SET NULL")
+    )
+    version_no: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("task_id", "version_no", name="uq_b_task_versions_no"),)
+
+
+class BTaskSuggestion(Base):
+    """B5-03 an AI task suggestion; it becomes a task only when someone adopts it.
+
+    ``fingerprint`` = requirement + normalised title, unique per project, so
+    generating twice never lists the same suggestion twice (even after it was
+    adopted or dismissed).
+    """
+
+    __tablename__ = "b_task_suggestions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    acceptance_criteria: Mapped[list] = mapped_column(DocumentJSON)
+    provider: Mapped[str] = mapped_column(String(40))
+    is_placeholder: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    adopted_task_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    handled_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "fingerprint", name="uq_b_task_suggestions_fingerprint"),
+        CheckConstraint(
+            "status IN ('pending', 'adopted', 'dismissed')", name="ck_b_task_suggestions_status"
+        ),
+    )
+
+
+class BPlanConfirmationSnapshot(Base):
+    """B5-04 the task versions a member confirmed; any change makes the confirmation stale."""
+
+    __tablename__ = "b_plan_confirmation_snapshots"
+
+    confirmation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("plan_confirmations.id", ondelete="CASCADE"), primary_key=True
+    )
+    task_versions: Mapped[dict] = mapped_column(DocumentJSON)
+
+
+class BCriterionInvalidation(Base):
+    """B5-02 a request to D to void old results after a criterion changed.
+
+    ``accepted`` is D's answer; false while D is unavailable, so it can be resent.
+    """
+
+    __tablename__ = "b_criterion_invalidations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    criterion_ids: Mapped[list] = mapped_column(DocumentJSON)
+    task_content_version: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_b_criterion_invalidations_task", "task_id"),)

@@ -676,7 +676,25 @@
       "NOT_YOUR_CONFIRMATION": "You can only confirm for yourself.",
       "PROJECT_LEADER_REQUIRED": "Only the group leader can do this.",
       "INVALID_FILTER": "Invalid filter. Check and try again.",
-      "VERSION_NOT_FOUND": "That version does not exist."
+      "VERSION_NOT_FOUND": "That version does not exist.",
+      "BASELINE_NOT_FROZEN": "Freeze the requirement baseline before planning tasks.",
+      "PLAN_FROZEN": "The task plan is frozen. The leader must unlock it before changes.",
+      "PLAN_NOT_FROZEN": "The plan is not frozen, so there is nothing to unlock.",
+      "PLAN_NOT_STARTED": "There is no task plan draft yet.",
+      "PLAN_NOT_READY": "The plan cannot be frozen yet. Fix the problems and unconfirmed members listed below.",
+      "PLAN_VALIDATION_FAILED": "The task was not saved: a link points outside this project, or tasks form a loop.",
+      "ASSIGNMENT_CHANGED": "Your assigned tasks just changed. Refresh and confirm again.",
+      "CRITERION_EMPTY": "An acceptance criterion cannot be empty.",
+      "CRITERION_NOT_FOUND": "This acceptance criterion does not belong to the task.",
+      "CRITERION_HAS_RECORDS": "This criterion already has evidence or verification records. Rewrite it instead of deleting it.",
+      "TASK_NOT_FOUND": "Task not found.",
+      "TASK_STARTED": "A task that has started cannot be deleted.",
+      "TASK_HAS_CHILDREN": "Delete or move its subtasks first.",
+      "TASK_IS_DEPENDENCY": "Other tasks depend on it. Remove those dependencies first.",
+      "TASK_HAS_RECORDS": "This task already has execution or evidence records and cannot be deleted.",
+      "NO_REQUIREMENTS": "The baseline has no requirements, so no task suggestions can be made.",
+      "SUGGESTION_NOT_FOUND": "Suggestion not found.",
+      "SUGGESTION_HANDLED": "This suggestion has already been handled."
     }
   }
 }
