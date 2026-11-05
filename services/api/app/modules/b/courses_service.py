@@ -101,7 +101,7 @@ def join_mode(session: Session, course_id: UUID) -> str:
     return policy.mode if policy else "direct"
 
 
-def _teacher_ids(session: Session, course: Course) -> list[UUID]:
+def teacher_ids(session: Session, course: Course) -> list[UUID]:
     staff = session.scalars(
         select(CourseStaff.user_id)
         .join(User, User.id == CourseStaff.user_id)
@@ -343,7 +343,7 @@ def join(session: Session, user: User, command: JoinCourse, request=None) -> Joi
     )
     session.add(row)
     session.flush()
-    for teacher_id in _teacher_ids(session, course):
+    for teacher_id in teacher_ids(session, course):
         create_action_item(
             session,
             recipient=teacher_id,

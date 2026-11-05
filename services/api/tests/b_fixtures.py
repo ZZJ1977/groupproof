@@ -31,6 +31,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import Request
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session
@@ -188,6 +189,14 @@ def add_student(session: Session, *, verified: bool = True) -> User:
     return user
 
 
+def add_course_student(session: Session, world: BWorld, *, verified: bool = True) -> UUID:
+    """A student who has joined the world's course but no group."""
+    user = add_student(session, verified=verified)
+    session.add(CourseMember(course_id=world.course_id, user_id=user.id, role="student"))
+    session.flush()
+    return user.id
+
+
 def add_invite(session: Session, world: BWorld) -> str:
     """Publish an invitation code for the world's course, as C does on publish."""
     code = "B-INVITE-" + uuid4().hex
@@ -263,16 +272,24 @@ class BApi:
         if user_id is None:
             self._app.dependency_overrides.pop(self._get_current_user, None)
             return self
+        self._default_user = user_id
         engine = self.engine
 
-        def current_user():
+        def current_user(request: Request):
+            # A per-request header lets concurrent tests act as different users.
+            chosen = request.headers.get("x-b-test-user") or self._default_user
             with Session(engine) as session:
-                user = session.get(User, user_id)
+                user = session.get(User, UUID(str(chosen)))
                 session.expunge(user)
                 return user
 
         self._app.dependency_overrides[self._get_current_user] = current_user
         return self
+
+    def post_as(self, user_id: UUID, path: str, json=None):
+        return self.client.post(
+            path, json=json, headers={"Idempotency-Key": self.key(), "X-B-Test-User": str(user_id)}
+        )
 
     def key(self) -> str:
         self._key += 1

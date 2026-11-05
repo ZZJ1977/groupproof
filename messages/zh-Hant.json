@@ -610,7 +610,28 @@
       "NETWORK_ERROR": "網路連線失敗，請檢查網路後重試。",
       "FORBIDDEN": "你沒有權限執行此操作。",
       "UNAUTHENTICATED": "請重新登入。",
-      "DEFAULT": "操作失敗，請稍後重試。"
+      "DEFAULT": "操作失敗，請稍後重試。",
+      "ALREADY_IN_GROUP": "已經在本課程的一個小組裡了。",
+      "GROUP_FULL": "小組人數已滿。",
+      "FORMATION_CLOSED": "組隊已截止或名單已凍結。",
+      "GROUP_NAME_TAKEN": "本課程已有同名小組，請換一個名稱。",
+      "GROUP_NAME_REQUIRED": "請填寫小組名稱。",
+      "COURSE_MEMBER_REQUIRED": "只有本課程的學生可以執行此操作。",
+      "GROUP_MEMBER_REQUIRED": "只有本組成員可以執行此操作。",
+      "GROUP_NOT_FOUND": "小組不存在。",
+      "INVITEE_INVALID": "不能邀請自己。",
+      "INVITEE_NOT_IN_COURSE": "只能邀請本課程的同學。",
+      "INVITEE_IN_GROUP": "這位同學已經加入了小組。",
+      "INVITATION_PENDING": "已經邀請過這位同學，正在等待處理。",
+      "INVITATION_NOT_FOUND": "邀請不存在。",
+      "INVITATION_CLOSED": "這條邀請已經處理過或在等待老師審批。",
+      "CANDIDATE_NOT_MEMBER": "候選人必須是本組成員。",
+      "CANDIDATE_IS_LEADER": "候選人已經是組長。",
+      "LEADER_CHANGE_PENDING": "本組已有一個正在確認的組長變更。",
+      "LEADER_CHANGE_NOT_FOUND": "組長變更申請不存在。",
+      "NOT_A_CONFIRMER": "你不需要確認這條組長變更。",
+      "ALREADY_CONFIRMED": "你已經確認過了。",
+      "LEADER_CHANGE_CLOSED": "這條組長變更已經結束。"
     }
   }
 }
