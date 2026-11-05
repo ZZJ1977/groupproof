@@ -20,7 +20,7 @@ from app.api.auth import get_current_user
 from app.api.responses import SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
-from app.modules.a import feishu, storage
+from app.modules.a import feishu, projects, storage
 
 router = APIRouter(tags=["a"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -181,3 +181,64 @@ def sync_feishu(project_id: UUID, request: Request, session: Database, user: Cur
             reader.close()
     session.commit()
     return success(FeishuSyncDTO(**totals), request)
+
+
+# ------------------------------------------------------------------ 项目创建与组长转让
+
+
+class CreatePersonalProjectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class PersonalProjectDTO(BaseModel):
+    project_id: UUID
+    name: str
+    kind: Literal["personal"]
+
+
+class TransferLeadershipRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_leader_id: UUID
+
+
+@router.post(
+    "/api/v1/a/projects",
+    response_model=SuccessResponse[PersonalProjectDTO],
+    status_code=201,
+    dependencies=[Depends(_private)],
+)
+def create_personal_project(
+    payload: CreatePersonalProjectRequest, request: Request, session: Database, user: CurrentUser
+):
+    project = projects.create_personal_project(
+        session, user, name=payload.name, description=payload.description
+    )
+    session.commit()
+    return success(
+        PersonalProjectDTO(project_id=project.id, name=project.name, kind="personal"), request
+    )
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/leader",
+    response_model=SuccessResponse[dict],
+    dependencies=[Depends(_private)],
+)
+def transfer_leader(
+    project_id: UUID,
+    payload: TransferLeadershipRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    projects.transfer_personal_leadership(
+        session, user, project_id, new_leader_id=payload.new_leader_id
+    )
+    session.commit()
+    return success(
+        {"project_id": str(project_id), "leader_id": str(payload.new_leader_id)}, request
+    )
