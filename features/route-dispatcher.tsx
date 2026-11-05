@@ -37,6 +37,7 @@ const MemberChangesApiPage = dynamic(() => import("@/features/b/MemberChangesApi
 const NewProjectApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.NewProjectApiPage));
 const ProjectOverviewApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectOverviewApiPage));
 const ProjectSetupApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectSetupApiPage));
+const RequirementsApiPage = dynamic(() => import("@/features/b/RequirementsApiPage").then((module) => module.RequirementsApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
 function AccessDenied({ message }: { message?: string }) {
@@ -82,6 +83,7 @@ export function RouteDispatcher() {
     else if (screen === 35 && courseId) realContent = <NewProjectApiPage courseId={courseId} />;
     else if (screen === 7 && projectId) realContent = <ProjectOverviewApiPage projectId={projectId} />;
     else if (screen === 8 && projectId) realContent = <ProjectSetupApiPage projectId={projectId} />;
+    else if (screen === 9 && projectId) realContent = <RequirementsApiPage projectId={projectId} />;
     else realContent = <BNotConnectedPage screen={screen} />;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;

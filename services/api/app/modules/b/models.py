@@ -397,3 +397,80 @@ class BBaselineChecklistItem(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "item_key", name="uq_b_baseline_checklist_items_key"),
     )
+
+
+# ---------------------------------------------------------------- B-5 requirement management
+
+
+class BProjectCounter(Base):
+    """Per-project sequences; requirement numbers only grow and are never reused."""
+
+    __tablename__ = "b_project_counters"
+
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    requirement_seq: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class BRequirementCode(Base):
+    """B4-01 requirement number (``R-001``), unique inside its project."""
+
+    __tablename__ = "b_requirement_codes"
+
+    requirement_id: Mapped[UUID] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (UniqueConstraint("project_id", "seq", name="uq_b_requirement_codes_seq"),)
+
+
+class BRequirementVersion(Base):
+    """B4-02 one saved state of a requirement; changes after the freeze carry a reason."""
+
+    __tablename__ = "b_requirement_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    reason: Mapped[str | None] = mapped_column(Text)
+    after_freeze: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "version_no", name="uq_b_requirement_versions_no"),
+        CheckConstraint(
+            "NOT after_freeze OR length(trim(coalesce(reason, ''))) > 0",
+            name="ck_b_requirement_versions_reason",
+        ),
+    )
+
+
+class BCriterionRecheck(Base):
+    """B4-02 an acceptance criterion whose requirement changed and needs checking again.
+
+    ``verification_notified`` records whether D accepted the invalidation
+    (``VerificationPort``); while D is unavailable it stays false.
+    """
+
+    __tablename__ = "b_criterion_rechecks"
+
+    criterion_id: Mapped[UUID] = mapped_column(
+        ForeignKey("acceptance_criteria.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    requirement_version_no: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(Text)
+    flagged_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    flagged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    verification_notified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_b_criterion_rechecks_task", "task_id"),)

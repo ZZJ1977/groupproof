@@ -103,3 +103,11 @@ class TaskVerificationStatus:
 | `extract_requirements`（A7-03）、`suggest_tasks`（A7-04） | A | 同上（固定假结果版） |
 | `governance_course_service.resolve_course_invite` | C | 已在 main |
 | `POST /tasks/{id}/start`、`PATCH /tasks/{id}/progress`（C2-01） | C | 已在 main |
+
+---
+
+## 4. B 提供给 C 的接口（B-5 新增，需要 C 确认）
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/v1/projects/{id}/criteria-rechecks?task_id=` | 因需求修改而需要重新检查的验收标准（`criterion_id`、`requirement_id`、需求版本号、原因、是否已通知 D）。建议 C 的任务详情页（页面 14）在对应验收标准旁显示“需要重新检查”。目前 B 的需求管理页（09）的证据链和影响预览里已经显示。 |

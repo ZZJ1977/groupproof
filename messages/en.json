@@ -638,7 +638,7 @@
       "PROJECT_READ_ONLY": "This project is archived or finalized and is read-only.",
       "PROJECT_MEMBER_REQUIRED": "Only project members can do this.",
       "GROUP_LEADER_REQUIRED": "Only the group leader can do this.",
-      "BASELINE_FROZEN": "The requirements baseline is frozen; setup can no longer change.",
+      "BASELINE_FROZEN": "The baseline is frozen: setup can no longer change, and changing a requirement needs a reason.",
       "END_BEFORE_START": "The end date cannot be before the start date.",
       "END_AFTER_COURSE_DEADLINE": "The end date cannot be after the course deadline.",
       "MATERIAL_TEXT_REQUIRED": "Paste the material text.",
@@ -674,7 +674,9 @@
       "BASELINE_NOT_FOUND": "Baseline not found.",
       "BASELINE_CLOSED": "This baseline version is already frozen or returned.",
       "NOT_YOUR_CONFIRMATION": "You can only confirm for yourself.",
-      "PROJECT_LEADER_REQUIRED": "Only the group leader can do this."
+      "PROJECT_LEADER_REQUIRED": "Only the group leader can do this.",
+      "INVALID_FILTER": "Invalid filter. Check and try again.",
+      "VERSION_NOT_FOUND": "That version does not exist."
     }
   }
 }

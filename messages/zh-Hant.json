@@ -638,7 +638,7 @@
       "PROJECT_READ_ONLY": "專案已封存或定稿，只能檢視。",
       "PROJECT_MEMBER_REQUIRED": "只有本專案成員可以執行此操作。",
       "GROUP_LEADER_REQUIRED": "只有組長可以執行此操作。",
-      "BASELINE_FROZEN": "需求基線已凍結，初始化資訊不能再修改。",
+      "BASELINE_FROZEN": "需求基線已凍結：初始化內容不能再改，修改需求要寫明原因。",
       "END_BEFORE_START": "結束日期不能早於開始日期。",
       "END_AFTER_COURSE_DEADLINE": "結束日期不能晚於課程截止日期。",
       "MATERIAL_TEXT_REQUIRED": "請貼上資料正文。",
@@ -674,7 +674,9 @@
       "BASELINE_NOT_FOUND": "基線不存在。",
       "BASELINE_CLOSED": "這一版基線已經凍結或被退回。",
       "NOT_YOUR_CONFIRMATION": "只能確認你自己的那一條。",
-      "PROJECT_LEADER_REQUIRED": "只有組長可以執行此操作。"
+      "PROJECT_LEADER_REQUIRED": "只有組長可以執行此操作。",
+      "INVALID_FILTER": "篩選條件無效，請檢查後重試。",
+      "VERSION_NOT_FOUND": "要對比的版本不存在。"
     }
   }
 }

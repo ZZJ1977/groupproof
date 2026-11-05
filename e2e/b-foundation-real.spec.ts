@@ -4,10 +4,9 @@ import { expect, test } from "@playwright/test";
 const project = "00000000-0000-0000-0000-0000000000b1";
 const course = "00000000-0000-0000-0000-0000000000c1";
 const group = "00000000-0000-0000-0000-0000000000d1";
-// Pages 31/32/48 (B-1), 33/34/36 (B-2) and 35/07/08 (B-3) have real pages; see b-*-real specs.
+// Pages 31/32/48 (B-1), 33/34/36 (B-2), 35/07/08 (B-3/B-4) and 09 (B-5) have real pages; see b-*-real specs.
 const pages = [
   `/courses/${course}/groups/${group}/leave`,
-  `/projects/${project}/requirements`,
   `/projects/${project}/planning`,
   `/projects/${project}/tasks`,
   `/projects/${project}/tasks?view=board`,
