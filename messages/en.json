@@ -593,6 +593,24 @@
       "title": "This page is not connected yet",
       "description": "The real data service for this page has not been connected. No demo data is shown.",
       "back": "Back to home"
+    },
+    "errors": {
+      "COURSE_INVITE_NOT_FOUND": "This invite code does not exist or is no longer valid. Please check with your teacher.",
+      "EMAIL_NOT_VERIFIED": "Verify your school email before joining a course.",
+      "COURSE_CLOSED": "This course has ended and can no longer be joined.",
+      "ALREADY_MEMBER": "You are already a member of this course.",
+      "JOIN_REQUEST_PENDING": "Your join request is waiting for the teacher's approval.",
+      "STUDENT_ONLY": "Only student accounts can join a course with an invite code.",
+      "COURSE_NOT_FOUND": "The course does not exist or you are not a member.",
+      "JOIN_REQUEST_DECIDED": "This request has already been handled.",
+      "VERSION_CONFLICT": "Someone else changed this. Refresh and try again.",
+      "REASON_REQUIRED": "Please enter a reason.",
+      "IDEMPOTENCY_CONFLICT": "A repeated request had different content. Refresh and try again.",
+      "CONCURRENT_WRITE_CONFLICT": "The data was changed by another action. Refresh and try again.",
+      "NETWORK_ERROR": "Network connection failed. Check your network and try again.",
+      "FORBIDDEN": "You do not have permission to do this.",
+      "UNAUTHENTICATED": "Please sign in again.",
+      "DEFAULT": "Something went wrong. Please try again later."
     }
   }
 }

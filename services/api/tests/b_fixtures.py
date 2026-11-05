@@ -47,6 +47,10 @@ from app.db.models import (
     ProjectMember,
     User,
 )
+from app.modules.a import models as _a_models  # noqa: F401 - register A tables
+from app.modules.b import models as _b_models  # noqa: F401 - register B tables
+from app.modules.c import governance_models as _c_governance  # noqa: F401
+from app.modules.c.governance_models import CourseInvite
 
 UTC = ZoneInfo("UTC")
 B_TEST_DATABASE_ENV = "B_TEST_DATABASE_URL"
@@ -70,7 +74,9 @@ class BWorld:
         return self.student_ids[1:]
 
 
-def _user(session: Session, *, tag: str, role: str, index: int, now: datetime) -> User:
+def _user(
+    session: Session, *, tag: str, role: str, index: int, now: datetime, verified: bool = True
+) -> User:
     email = f"b-{tag}-{role}-{index}@b-fixture.test"
     user = User(
         id=uuid4(),
@@ -85,6 +91,8 @@ def _user(session: Session, *, tag: str, role: str, index: int, now: datetime) -
     )
     session.add(user)
     session.flush()
+    if not verified:
+        return user
     # A3 requires a verified school email binding before course actions.
     session.add(
         SchoolEmailBinding(
@@ -166,6 +174,28 @@ def build_b_world(
     )
 
 
+def add_student(session: Session, *, verified: bool = True) -> User:
+    """A student outside every course (for join tests)."""
+    user = _user(
+        session,
+        tag=uuid4().hex[:8],
+        role="student",
+        index=9,
+        now=datetime.now(UTC),
+        verified=verified,
+    )
+    session.flush()
+    return user
+
+
+def add_invite(session: Session, world: BWorld) -> str:
+    """Publish an invitation code for the world's course, as C does on publish."""
+    code = "B-INVITE-" + uuid4().hex
+    session.add(CourseInvite(course_id=world.course_id, code=code, created_by=world.teacher_id))
+    session.flush()
+    return code
+
+
 def b_test_database_url() -> str:
     url = os.getenv(B_TEST_DATABASE_ENV)
     if not url:
@@ -200,3 +230,75 @@ def b_postgres_schema(url: str, *, prefix: str = "b_test_") -> Iterator[Engine]:
         with admin.begin() as connection:
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+class BApi:
+    """TestClient over the real app with session and current user overridden.
+
+    ``api.as_user(user_id)`` switches the caller; ``api.as_user(None)`` drops the
+    override so the real authentication path answers (401 without a session).
+    Every request gets its own ORM session, like production.
+    """
+
+    def __init__(self, engine: Engine) -> None:
+        from fastapi.testclient import TestClient
+
+        from app.api.auth import get_current_user
+        from app.db.session import get_session
+        from app.main import app
+
+        self._app = app
+        self._get_current_user = get_current_user
+        self.engine = engine
+
+        def session_override():
+            with Session(engine) as session:
+                yield session
+
+        app.dependency_overrides[get_session] = session_override
+        self.client = TestClient(app)
+        self._key = 0
+
+    def as_user(self, user_id: UUID | None) -> BApi:
+        if user_id is None:
+            self._app.dependency_overrides.pop(self._get_current_user, None)
+            return self
+        engine = self.engine
+
+        def current_user():
+            with Session(engine) as session:
+                user = session.get(User, user_id)
+                session.expunge(user)
+                return user
+
+        self._app.dependency_overrides[self._get_current_user] = current_user
+        return self
+
+    def key(self) -> str:
+        self._key += 1
+        return f"b-test-{self._key}-{uuid4().hex[:6]}"
+
+    def get(self, path: str, **params):
+        return self.client.get(path, params=params or None)
+
+    def post(self, path: str, json=None, key: str | None = None):
+        return self.client.post(path, json=json, headers={"Idempotency-Key": key or self.key()})
+
+    def put(self, path: str, json=None, key: str | None = None):
+        return self.client.put(path, json=json, headers={"Idempotency-Key": key or self.key()})
+
+    def patch(self, path: str, json=None, key: str | None = None):
+        return self.client.patch(path, json=json, headers={"Idempotency-Key": key or self.key()})
+
+    def close(self) -> None:
+        self.client.close()
+        self._app.dependency_overrides.clear()
+
+
+@contextmanager
+def b_api(engine: Engine) -> Iterator[BApi]:
+    api = BApi(engine)
+    try:
+        yield api
+    finally:
+        api.close()

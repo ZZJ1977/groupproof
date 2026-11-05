@@ -593,6 +593,24 @@
       "title": "介面未接入",
       "description": "本頁面的真實資料服務尚未接入，因此不顯示示範資料。",
       "back": "返回首頁"
+    },
+    "errors": {
+      "COURSE_INVITE_NOT_FOUND": "邀請碼不存在或已失效，請向老師確認。",
+      "EMAIL_NOT_VERIFIED": "請先完成學校郵箱驗證，再加入課程。",
+      "COURSE_CLOSED": "這門課程已經結束，不能再加入。",
+      "ALREADY_MEMBER": "你已經是這門課程的成員。",
+      "JOIN_REQUEST_PENDING": "你的加入申請正在等待老師審批。",
+      "STUDENT_ONLY": "只有學生帳號可以通過邀請碼加入課程。",
+      "COURSE_NOT_FOUND": "課程不存在或你不是該課程成員。",
+      "JOIN_REQUEST_DECIDED": "這條申請已經處理過了。",
+      "VERSION_CONFLICT": "內容已被其他人修改，請重新整理後再操作。",
+      "REASON_REQUIRED": "請填寫原因。",
+      "IDEMPOTENCY_CONFLICT": "請求重複但內容不同，請重新整理後重試。",
+      "CONCURRENT_WRITE_CONFLICT": "資料已被其他操作修改，請重新整理後重試。",
+      "NETWORK_ERROR": "網路連線失敗，請檢查網路後重試。",
+      "FORBIDDEN": "你沒有權限執行此操作。",
+      "UNAUTHENTICATED": "請重新登入。",
+      "DEFAULT": "操作失敗，請稍後重試。"
     }
   }
 }

@@ -593,6 +593,24 @@
       "title": "接口未接入",
       "description": "本页面的真实数据服务尚未接入，因此不显示演示数据。",
       "back": "返回首页"
+    },
+    "errors": {
+      "COURSE_INVITE_NOT_FOUND": "邀请码不存在或已失效，请向老师确认。",
+      "EMAIL_NOT_VERIFIED": "请先完成学校邮箱验证，再加入课程。",
+      "COURSE_CLOSED": "这门课程已经结束，不能再加入。",
+      "ALREADY_MEMBER": "你已经是这门课程的成员。",
+      "JOIN_REQUEST_PENDING": "你的加入申请正在等待老师审批。",
+      "STUDENT_ONLY": "只有学生账号可以通过邀请码加入课程。",
+      "COURSE_NOT_FOUND": "课程不存在或你不是该课程成员。",
+      "JOIN_REQUEST_DECIDED": "这条申请已经处理过了。",
+      "VERSION_CONFLICT": "内容已被其他人修改，请刷新后再操作。",
+      "REASON_REQUIRED": "请填写原因。",
+      "IDEMPOTENCY_CONFLICT": "请求重复但内容不同，请刷新后重试。",
+      "CONCURRENT_WRITE_CONFLICT": "数据已被其他操作修改，请刷新后重试。",
+      "NETWORK_ERROR": "网络连接失败，请检查网络后重试。",
+      "FORBIDDEN": "你没有权限执行此操作。",
+      "UNAUTHENTICATED": "请重新登录。",
+      "DEFAULT": "操作失败，请稍后重试。"
     }
   }
 }

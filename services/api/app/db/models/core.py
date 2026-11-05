@@ -276,6 +276,15 @@ class CourseMember(TimestampMixin, LockVersionMixin, Base):
     __table_args__ = (
         CheckConstraint("role IN ('student', 'teacher', 'ta')", name="ck_course_members_role"),
         CheckConstraint("status IN ('active', 'pending', 'left')", name="ck_course_members_status"),
+        # B1-03: at most one current membership per course and user.
+        Index(
+            "uq_course_members_current",
+            "course_id",
+            "user_id",
+            unique=True,
+            postgresql_where=sa_text("left_at IS NULL"),
+            sqlite_where=sa_text("left_at IS NULL"),
+        ),
     )
 
 
