@@ -651,7 +651,30 @@
       "FILE_TOO_LARGE": "檔案太大。",
       "FILE_TYPE_NOT_ALLOWED": "不支援這種檔案類型。",
       "UPLOAD_REJECTED": "檔案未通過檢查，已被拒絕。",
-      "VALIDATION_ERROR": "填寫的內容不符合要求，請檢查後重試。"
+      "VALIDATION_ERROR": "填寫的內容不符合要求，請檢查後重試。",
+      "BASELINE_IN_CONFIRMATION": "基線正在等待組員確認，確認結束前不能修改。",
+      "NO_ANALYZABLE_MATERIALS": "還沒有可分析的資料正文，請先加入文字資料或手動輸入需求。",
+      "ANALYSIS_RUNNING": "分析正在進行中，請稍候。",
+      "ANALYSIS_NOT_FOUND": "分析記錄不存在。",
+      "AI_UNAVAILABLE": "AI 暫不可用，請改為手動輸入。",
+      "MODULE_NOT_FOUND": "模組不存在。",
+      "MODULE_NAME_TAKEN": "已有同名模組。",
+      "MODULE_NAME_REQUIRED": "請填寫模組名稱。",
+      "MODULE_NOT_EMPTY": "模組下還有需求或任務，請先移走再刪除。",
+      "OWNER_NOT_MEMBER": "負責人必須是本專案成員。",
+      "REQUIREMENT_NOT_FOUND": "需求不存在。",
+      "REQUIREMENT_TITLE_REQUIRED": "請填寫需求標題。",
+      "CONFLICT_NOT_FOUND": "衝突不存在。",
+      "CONFLICT_CLOSED": "這個衝突已經處理過了。",
+      "MERGED_TITLE_REQUIRED": "合併時請填寫合併後的需求標題。",
+      "REQUIREMENTS_REQUIRED": "至少需要一條需求才能繼續。",
+      "CONFLICTS_UNRESOLVED": "還有衝突沒有處理，處理完才能繼續。",
+      "CHECK_ITEM_NOT_FOUND": "沒有這個檢查項。",
+      "CHECKLIST_INCOMPLETE": "審核清單還有未滿足的項。",
+      "BASELINE_NOT_FOUND": "基線不存在。",
+      "BASELINE_CLOSED": "這一版基線已經凍結或被退回。",
+      "NOT_YOUR_CONFIRMATION": "只能確認你自己的那一條。",
+      "PROJECT_LEADER_REQUIRED": "只有組長可以執行此操作。"
     }
   }
 }

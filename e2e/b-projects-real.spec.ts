@@ -66,7 +66,7 @@ test("B3-01 本组已有项目时不再显示创建表单", async ({ page }) => 
 
 for (const [entry, extra, action, href] of [
   ["setup", {}, "去初始化", `/projects/${project}/setup`],
-  ["baseline", { setup_status: "frozen" }, "查看基线", `/projects/${project}/requirements`],
+  ["baseline", { setup_status: "frozen" }, "查看基线", `/projects/${project}/setup`],
   ["readonly", { lifecycle: "archived", can_edit: false }, "查看项目", `/projects/${project}/setup`],
 ] as const) {
   test(`B3-02 总览按状态分流：${entry}`, async ({ page }) => {

@@ -64,7 +64,8 @@ from app.modules.b.projects_schemas import (
 from app.modules.c.task_execution import progress_projection
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-EDITABLE_SETUP = {"not_initialized", "draft", "pending_confirmation"}
+# Setup can change only while the baseline is a draft (not in confirmation, not frozen).
+EDITABLE_SETUP = {"not_initialized", "draft"}
 
 
 def _local_date(value: datetime | None) -> date | None:
@@ -408,8 +409,12 @@ def _require_setup_writer(session: Session, user: User, project_id: UUID):
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    if project.setup_status not in EDITABLE_SETUP:
+    if project.setup_status == "frozen":
         raise ApiError(409, "BASELINE_FROZEN", "需求基线已冻结，初始化信息不能再修改。")
+    if project.setup_status not in EDITABLE_SETUP:
+        raise ApiError(
+            409, "BASELINE_IN_CONFIRMATION", "基线正在等待组员确认，确认结束前不能修改。"
+        )
     return relation, project
 
 
