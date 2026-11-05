@@ -1,5 +1,29 @@
 # 部署基线
 
+## A3 统一认证测试发布（2026-10-12）
+
+本轮代码来源为 `~/GroupProof-team/groupproof` 的 `compat/unified-auth-resend`（`b2d1f2c`），交付 PR 为 [#14](https://github.com/ZZJ1977/groupproof/pull/14)。`services/api` 统一承载认证和业务，`server/` 保留为历史参考；以下历史基础设施描述不代表旧身份服务仍是正式入口。
+
+`develop` 的 GitHub Actions 在全部质量检查通过后运行 `scripts/deploy-staging.mjs`，按以下顺序发布到既有 `groupproof-staging` 项目：
+
+1. 核对固定的测试项目、API、Web、PostgreSQL 卷和部署接口；保留团队 API 原数据库连接。
+2. 在 Railway 中创建数据库卷备份，确认备份工作流完成且新备份可查询；失败时不继续迁移。
+3. 配置统一 API 的认证变量、迁移前置命令和 `/readyz`，部署 `services/api`；就绪检查同时核对数据库迁移 head。
+4. API 成功后，将 Web 的 `API_INTERNAL_URL` 从旧 `identity` 切到 `http://groupproof.railway.internal:8000`，再部署 Web。
+5. 从测试网站验证同源认证封装、匿名会话、邮件限制、个人中心 401 和业务页登录跳转。
+
+GitHub Environment `staging` 的项目 ID 和 Web 服务 ID仍使用现有配置。Railway 项目内部环境名为 `production`，但脚本同时校验项目 ID/名称并只接受 `develop`，不会把这次改造发布到生产项目。
+
+PR 上的 preflight 只读取服务、备份和配置是否存在，不更改平台配置、不迁移、不部署、不打印密钥。实际发布依赖 `develop` 的团队审查/保护规则；不能通过 PR 的检查成功宣布已经部署。
+
+测试站点：<https://groupproof-staging-production.up.railway.app>。
+
+当前现场核对：统一 API 和旧 `identity` 尚未配置 Resend/Google 凭据，Web 仍指向旧身份服务。发布会明确使用 `MAIL_MODE=resend`、`MAIL_PUBLIC_ENABLED=false`，禁用邮件捕获、演示身份、debug 和验收密令；使用稳定的服务端 HMAC 密钥。Google 按钮按交付代码显示，未配置凭据时实际登录返回暂不可用。没有发信凭据/域名时，真实注册、学校验证和密码恢复不作为线上已验收项；已有有效密码账号可登录。
+
+本地旧账号、密码散列及旧会话不会由 CI 自动上传或导入。旧数据导入须另行备份、dry-run 和冲突核对。回退应用时保留升级后的数据库和新记录，不自动 downgrade 或清库。
+
+本轮只改造 Staging 发布链路。生产发布仍需由负责人完成生产认证配置、迁移和成套 API/Web 验收，再决定发布。
+
 当前仓库是 GroupProof 的 Next.js 前端原型。它可以作为一个独立的 Railway Web 服务运行；真实 API、管理后台、异步任务和数据服务接入后，再按服务边界扩展 Railway 项目。
 
 ## 环境策略
@@ -60,6 +84,33 @@ DATABASE_TIMEZONE=Asia/Shanghai
 REDIS_URL=${{Redis.REDIS_URL}}
 ```
 
+### 发信（学校邮箱验证码 / 注册 / 密码恢复）
+
+验证码由 **API 服务**（Railway staging 里名为 `groupproof` 的服务，不是 `groupproof-staging` Web 服务，也不是已下线的 `identity`）在请求内同步发送，不经过 worker/Redis 队列，所以以下变量只需配在 API 服务上。Staging 部署脚本每次都会写入 `MAIL_MODE=resend`，并保留已手动设置的 `RESEND_API_KEY`、`MAIL_FROM` 和 `MAIL_PUBLIC_ENABLED=true`：
+
+```text
+MAIL_MODE=resend                # 未设置时默认 capture：只写数据库 email_outbox，不会投递到任何邮箱
+RESEND_API_KEY=re_...           # Resend 控制台 → API Keys（Sending access 即可）
+MAIL_FROM=GroupProof <noreply@你的已验证域名>
+MAIL_PUBLIC_ENABLED=true        # 域名验证并实测投递成功后再开；它控制注册/找回密码入口是否开放
+EMAIL_CHALLENGE_HMAC_KEY=...    # openssl rand -hex 32，保持稳定，改动会让未使用的验证码全部失效
+```
+
+**没有自有域名时用 Brevo**：Brevo 只要求验证一个发件邮箱（点一下验证邮件即可），免费额度每天 300 封，走 HTTPS API。步骤：注册 Brevo → Senders & IP → Senders 添加并验证发件邮箱 → SMTP & API → API Keys 生成 Key；然后在 API 服务设置：
+
+```text
+MAIL_MODE=brevo
+BREVO_API_KEY=xkeysib-...
+MAIL_FROM=GroupProof <已在 Brevo 验证的邮箱>
+MAIL_PUBLIC_ENABLED=true
+```
+
+部署脚本默认写入 `MAIL_MODE=resend`，但会保留手动设置的 `MAIL_MODE=brevo` 与 `BREVO_API_KEY`。用个人邮箱（如 Gmail）作为发件人时，学校邮箱可能把邮件放进垃圾箱，首次请检查垃圾箱/隔离区。排查日志：`brevo rejected ... status=400` 多为发件人未验证，`status=401` 为 API Key 无效或 Brevo 开启了 IP 限制。
+
+注意：`MAIL_FROM` 若使用 Resend 默认的 `onboarding@resend.dev`，Resend 只允许发给注册 Resend 的那个邮箱，发往学校邮箱会被拒（API 返回“邮件服务暂不可用”）。必须先在 Resend → Domains 添加并验证自己的域名（按提示在 DNS 加 SPF/DKIM 记录），再用该域名下的地址作为 `MAIL_FROM`。学校邮箱（Microsoft 365）可能把新域名的邮件放进垃圾箱或隔离区，首次验收时请一并检查。
+
+排查：API 日志出现 `mail captured (not delivered)` 表示仍是 capture 模式；`resend rejected ... status=403/422` 多为发信域名未验证或 `MAIL_FROM` 不在已验证域名下；`status=401` 为 API Key 无效。前端在 capture 模式下会明确提示“验证码不会送达邮箱”。
+
 API 另外设置 `PORT=8000`，worker 使用 `services/worker` 作为根目录并运行 Celery consumer。Production 的 API/worker 服务在 `main` 尚未包含后端目录期间保持停止，避免错误镜像接收正式流量。
 
 ## CI/CD 触发方式
@@ -67,6 +118,8 @@ API 另外设置 `PORT=8000`，worker 使用 `services/worker` 作为根目录�
 GitHub Actions 在目标分支的 PR 和推送 `develop` 或 `main` 时执行前端质量、Python 后端检查、路由检查、生产构建和 Docker 冒烟测试；全部通过后才执行对应环境的 Railway 部署。Railway 服务自身的 GitHub 自动部署连接已断开，避免绕过 CI 或重复部署。
 
 GitHub 仓库 Actions Secret：`RAILWAY_TOKEN`，存放有 `zzj1977's Projects` 工作区权限的 Railway API Token。工作流将其映射为 Railway CLI 使用的 `RAILWAY_API_TOKEN`。GitHub Environment `staging` 和 `production` 各自设置 `RAILWAY_PROJECT_ID`、`RAILWAY_SERVICE_ID`，避免部署到错误项目。`RAILWAY_ENVIRONMENT` 可按项目单独设置；目前两个独立 Railway 项目内部的环境名都为 `production`，工作流默认使用这个值。GitHub Environment 的 `staging`/`production` 名称与 Railway 项目内环境名不是同一个配置项。
+
+生产发布使用 `scripts/deploy-production.mjs`：推送 `main`（且仓库变量 `RAILWAY_DEPLOY_PRODUCTION=true`）时，先检查生产 API 服务（`groupproof`）上必须由负责人配置的变量，缺任何一项就在部署前失败、不动生产；通过后依次做数据库备份（Pro 工作区）、写入服务设置、部署 API（预部署命令执行 Alembic 迁移）和 Web，并做不需要登录的部署后检查。需要的变量：`APP_MODE=real`、`APP_ORIGIN`（https）、`DATABASE_URL`、`EMAIL_CHALLENGE_HMAC_KEY`、`MAIL_MODE`（resend/brevo/smtp）及对应 Key 和 `MAIL_FROM`；启用 Google 时还要 `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`，不启用则设 `AUTH_GOOGLE_ENABLED=false`。只读自检：`node scripts/deploy-production.mjs --check-only`（需要 `RAILWAY_API_TOKEN` 和 `RAILWAY_PROJECT_ID`）。
 
 仓库级变量 `RAILWAY_DEPLOY_STAGING` 和 `RAILWAY_DEPLOY_PRODUCTION` 控制推送后的自动部署；两者为 `true` 时才自动部署。生产发布由负责人在 Staging 验收后推送 `main`。如 GitHub 套餐支持分支保护，可将质量和 Docker 检查设为必需检查。
 

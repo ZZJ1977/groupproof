@@ -560,8 +560,25 @@ erDiagram
         timestamptz created_at
     }
 
+    INTEGRITY_CHECKS {
+        uuid id PK
+        uuid project_id FK
+        uuid task_id FK
+        uuid checked_by FK
+        varchar rule_version
+        int total_criteria
+        int covered_criteria
+        numeric coverage_rate
+        varchar status
+        jsonb missing_criteria_json
+        int pending_sources
+        timestamptz checked_at
+        timestamptz created_at
+    }
+
     VERIFICATION_RUNS {
         uuid id PK
+        uuid integrity_check_id FK
         uuid project_id FK
         uuid task_id FK
         uuid triggered_by FK
@@ -582,6 +599,9 @@ erDiagram
         numeric confidence
         text reason
         text remediation
+        timestamptz invalidated_at
+        uuid invalidated_by FK
+        text invalidated_reason
         timestamptz created_at
     }
 
@@ -652,6 +672,10 @@ erDiagram
     TASKS ||--o{ VERIFICATION_RUNS : verifies
     PROJECTS ||--o{ VERIFICATION_RUNS : runs
     USERS ||--o{ VERIFICATION_RUNS : triggers
+    PROJECTS ||--o{ INTEGRITY_CHECKS : checks
+    TASKS ||--o{ INTEGRITY_CHECKS : checks
+    USERS ||--o{ INTEGRITY_CHECKS : checks
+    INTEGRITY_CHECKS o|--o{ VERIFICATION_RUNS : gates
     VERIFICATION_RUNS ||--o{ CRITERION_RESULTS : produces
     ACCEPTANCE_CRITERIA ||--o{ CRITERION_RESULTS : evaluates
     CRITERION_RESULTS ||--o{ CRITERION_RESULT_EVIDENCE : uses
@@ -936,10 +960,13 @@ erDiagram
     CONTRIBUTION_CALCULATIONS {
         uuid id PK
         uuid project_id FK
-        uuid created_by FK
-        varchar algorithm_version
+        varchar formula_version
         varchar status
         varchar input_hash
+        varchar basis_version
+        uuid basis_snapshot_id
+        uuid calculated_by FK
+        timestamptz calculated_at
         timestamptz started_at
         timestamptz completed_at
         timestamptz created_at
@@ -1022,7 +1049,8 @@ erDiagram
         uuid contribution_snapshot_id FK
         int version_no
         varchar status
-        jsonb content_json
+        jsonb data_snapshot
+        timestamptz snapshot_created_at
         timestamptz finalized_at
         timestamptz created_at
     }
@@ -1193,9 +1221,13 @@ erDiagram
 | 004 | `functional_modules`、`requirements`、`source_references`、`milestones` | B |
 | 005 | `tasks`、任务关联表、`acceptance_criteria`、`progress_events` | B |
 | 006 | `baseline_versions`、`baseline_confirmations`、`plan_versions`、`plan_confirmations` | B |
-| 007 | `files`、`file_versions`、`evidence`、`verification_*`、`verified_work` | B/C |
-| 008 | GitHub/飞书同步、讨论、通知、行动项 | C/A |
-| 009 | 贡献、申诉、报告、导出、教师请求和审计 | D/A |
+| 007 | C 证据生命周期、来源快照、任务笔记和事务 outbox | C |
+| 008 | C 讨论、回复、提及和证据来源快照 | C |
+| 009 | C 活动记录和来源决策 | C |
+| 010 | C 项目文件和不可变文件版本 | C |
+| 011 | C 课程文件和不可变文件版本 | C |
+| 012 | C 课程治理和访问审批 | C |
+| 014 | D 完整性校验历史、贡献计算/快照和报告快照 | D |
 
 首次迁移完成后，应至少能在干净数据库中创建这条闭环：
 

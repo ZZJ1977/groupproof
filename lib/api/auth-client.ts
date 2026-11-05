@@ -145,6 +145,7 @@ export interface MeDTO {
     preferredLocale: string;
     version: number;
     googleEmailBound?: boolean;
+    googleEmail?: string | null;
     passwordLoginEnabled?: boolean;
   };
   schoolEmail: {
@@ -187,7 +188,8 @@ export interface ChallengeDTO {
   email: string;
   expiresAt: string;
   resendAvailableAt: string;
-  sendStatus: "accepted" | "failed";
+  /** captured：测试环境邮件捕获器，未投递到真实邮箱 */
+  sendStatus: "accepted" | "captured" | "failed";
 }
 
 export const authClient = {
@@ -217,6 +219,10 @@ export const authClient = {
   changePassword: (csrf: string, currentPassword: string, newPassword: string) =>
     request<{ changed: boolean }>("/api/v1/me/password", { method: "POST", body: { currentPassword, newPassword }, csrf }),
   me: () => request<MeDTO>("/api/v1/me"),
+  linkGoogle: (csrf: string) =>
+    request<{ authorizeUrl: string }>("/api/v1/me/identities/google/link", { method: "POST", body: {}, csrf }),
+  unlinkGoogle: (csrf: string) =>
+    request<{ googleEmailBound: boolean }>("/api/v1/me/identities/google", { method: "DELETE", csrf }),
   updateProfile: (csrf: string, body: Record<string, unknown>) =>
     request<MeDTO>("/api/v1/me/profile", { method: "PATCH", body, csrf }),
   preferences: (csrf: string, preferredLocale: string) =>

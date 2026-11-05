@@ -8,7 +8,11 @@
 
 from __future__ import annotations
 
+import base64
+import json
+import time
 from datetime import timedelta
+from typing import Any
 
 import httpx
 from authlib.integrations.httpx_client import OAuth2Client
@@ -23,7 +27,7 @@ from ..security import new_token, safe_return_to, token_digest
 
 SCOPES = "openid email profile"
 
-_discovery_cache: dict = {}
+_discovery_cache: dict[str, dict[str, Any]] = {}
 
 
 class GoogleIdentity:
@@ -37,20 +41,66 @@ class GoogleIdentity:
         self.name = name
 
 
-def _discovery() -> dict:
+def _discovery() -> dict[str, Any]:
     settings = get_settings()
-    if not _discovery_cache:
-        response = httpx.get(settings.google_discovery_url, timeout=10)
-        response.raise_for_status()
-        _discovery_cache.update(response.json())
-    return _discovery_cache
+    url = settings.google_discovery_url
+    if url not in _discovery_cache:
+        try:
+            response = httpx.get(url, timeout=10)
+            response.raise_for_status()
+            document = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
+        required = ("issuer", "authorization_endpoint", "token_endpoint", "jwks_uri")
+        if not isinstance(document, dict) or any(not document.get(key) for key in required):
+            raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"})
+        _discovery_cache[url] = document
+    return _discovery_cache[url]
 
 
 def reset_discovery_cache() -> None:
     _discovery_cache.clear()
+    _jwks_cache.clear()
 
 
-def create_transaction(db: DbSession, return_to: str | None) -> tuple[str, OAuthTransaction]:
+# Google 公钥按 URL 缓存一小时；遇到未知 kid（密钥轮换）时强制刷新一次
+JWKS_TTL_SECONDS = 3600
+_jwks_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _fetch_jwks(jwks_uri: str, *, force: bool = False) -> dict[str, Any]:
+    cached = _jwks_cache.get(jwks_uri)
+    if cached and not force and time.monotonic() - cached[0] < JWKS_TTL_SECONDS:
+        return cached[1]
+    try:
+        response = httpx.get(jwks_uri, timeout=10)
+        response.raise_for_status()
+        document = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
+    _jwks_cache[jwks_uri] = (time.monotonic(), document)
+    return document
+
+
+def _token_kid(id_token: str) -> str | None:
+    try:
+        header_segment = id_token.split(".", 1)[0]
+        padded = header_segment + "=" * (-len(header_segment) % 4)
+        header = json.loads(base64.urlsafe_b64decode(padded))
+    except (ValueError, TypeError):
+        return None
+    kid = header.get("kid") if isinstance(header, dict) else None
+    return kid if isinstance(kid, str) else None
+
+
+def create_transaction(
+    db: DbSession,
+    return_to: str | None,
+    *,
+    purpose: str = "login",
+    user_id: Any | None = None,
+) -> tuple[str, OAuthTransaction]:
+    """创建 OAuth 事务；purpose=link 时必须带上发起关联的用户（回调只建绑定，不建用户）。"""
     settings = get_settings()
     nonce = new_token()
     state = new_token()
@@ -59,11 +109,22 @@ def create_transaction(db: DbSession, return_to: str | None) -> tuple[str, OAuth
         nonce=nonce,
         code_verifier=new_token(),
         return_to=safe_return_to(return_to),
+        purpose=purpose,
+        user_id=user_id,
         expires_at=utcnow() + timedelta(seconds=settings.oauth_transaction_ttl),
     )
     db.add(record)
     db.flush()
     return state, record
+
+
+def transaction_purpose(db: DbSession, state: str | None) -> str | None:
+    """只读查询事务用途（不消费），用于决定失败时回到登录页还是账户安全页。"""
+    if not state:
+        return None
+    return db.execute(
+        select(OAuthTransaction.purpose).where(OAuthTransaction.state_digest == token_digest(state))
+    ).scalar_one_or_none()
 
 
 def consume_transaction(db: DbSession, state: str | None) -> OAuthTransaction:
@@ -96,6 +157,8 @@ def build_authorize_url(state: str, nonce: str, code_verifier: str) -> str:
         state=state,
         code_verifier=code_verifier,
         nonce=nonce,
+        # 学生常同时登录个人和学校 Google 账号：每次让用户明确选择账号
+        prompt="select_account",
     )
     return uri
 
@@ -108,13 +171,23 @@ def exchange_and_verify(transaction: OAuthTransaction, code: str) -> GoogleIdent
         redirect_uri=settings.google_redirect_uri,
     )
     try:
+        discovery = _discovery()
         session.fetch_token(
-            _discovery()["token_endpoint"],
+            discovery["token_endpoint"],
             code=code,
             grant_type="authorization_code",
             code_verifier=transaction.code_verifier,
         )
+    except AppError:
+        raise
     except Exception as exc:  # noqa: BLE001
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if (
+            isinstance(exc, httpx.HTTPError)
+            or status_code == 429
+            or (isinstance(status_code, int) and status_code >= 500)
+        ):
+            raise AppError("AUTH_UNAVAILABLE", 503, params={"service": "google"}) from exc
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "token_exchange_failed"}) from exc
     id_token = session.token.get("id_token")
     if not id_token:
@@ -125,10 +198,13 @@ def exchange_and_verify(transaction: OAuthTransaction, code: str) -> GoogleIdent
 def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
     settings = get_settings()
     discovery = _discovery()
+    jwks_document = _fetch_jwks(discovery["jwks_uri"])
+    kid = _token_kid(id_token)
+    known_kids = {key.get("kid") for key in jwks_document.get("keys", []) if isinstance(key, dict)}
+    if kid and kid not in known_kids:
+        jwks_document = _fetch_jwks(discovery["jwks_uri"], force=True)
     try:
-        jwks_response = httpx.get(discovery["jwks_uri"], timeout=10)
-        jwks_response.raise_for_status()
-        jwks = JsonWebKey.import_key_set(jwks_response.json())
+        jwks = JsonWebKey.import_key_set(jwks_document)
         claims = jwt.decode(id_token, jwks)
         claims.validate()  # exp/iat/aud（Authlib 校验）
     except Exception as exc:  # noqa: BLE001
@@ -136,14 +212,10 @@ def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
     if claims["iss"] != settings.google_expected_issuer or claims["iss"] != discovery.get("issuer"):
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "issuer_mismatch"})
     audience = claims.get("aud")
-    if isinstance(audience, list):
-        aud_ok = settings.google_client_id in audience
-    else:
-        aud_ok = audience == settings.google_client_id
-    if not aud_ok:
+    if not _valid_audience(audience, settings.google_client_id):
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "audience_mismatch"})
-    azp = claims.get("azp")
-    if isinstance(audience, list) and azp and azp != settings.google_client_id:
+    authorized_party = claims.get("azp")
+    if not _valid_authorized_party(audience, authorized_party, settings.google_client_id):
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "azp_mismatch"})
     if claims.get("nonce") != expected_nonce:
         raise AppError("UNAUTHENTICATED", 401, params={"reason": "nonce_mismatch"})
@@ -157,3 +229,15 @@ def verify_id_token(id_token: str, expected_nonce: str) -> GoogleIdentity:
         email_verified=bool(claims.get("email_verified")),
         name=claims.get("name"),
     )
+
+
+def _valid_audience(audience: Any, client_id: str) -> bool:
+    if isinstance(audience, list):
+        return client_id in audience
+    return audience == client_id
+
+
+def _valid_authorized_party(audience: Any, authorized_party: Any, client_id: str) -> bool:
+    if authorized_party is not None and authorized_party != client_id:
+        return False
+    return not (isinstance(audience, list) and len(audience) > 1) or authorized_party == client_id

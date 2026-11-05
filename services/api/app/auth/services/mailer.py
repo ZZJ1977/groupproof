@@ -4,6 +4,7 @@
   只有 SMTP 服务接受发送请求才返回成功。
 - resend：通过 Resend HTTPS API 投递（Railway Free 可用）；同一逻辑邮件的网络重试使用相同幂等键，
   用户主动重发新验证码使用新的发送标识（PLAN 三、4）。
+- brevo：通过 Brevo HTTPS API 投递；只需在 Brevo 验证单个发件邮箱，不要求自有域名。
 - capture：隔离开发/测试邮件捕获器（写 email_outbox 供测试读取）；APP_MODE=real 禁止。
 - 邮件发送失败只关闭依赖邮件的操作（返回 MAIL_UNAVAILABLE），不跳过验证、不伪造发送成功。
 - 日志只记录请求标识/邮件用途/服务商消息 ID，不记录验证码、恢复令牌或 API Key。
@@ -16,6 +17,7 @@ import logging
 import smtplib
 import time
 from email.message import EmailMessage
+from email.utils import parseaddr
 
 import httpx
 
@@ -32,6 +34,12 @@ _sleep = time.sleep
 
 
 def _resend_post(url: str, payload: dict, headers: dict, timeout: int):
+    """测试可替换的发送缝隙（不暴露密钥/正文到日志）。"""
+    with httpx.Client(timeout=timeout) as client:
+        return client.post(url, json=payload, headers=headers)
+
+
+def _brevo_post(url: str, payload: dict, headers: dict, timeout: int):
     """测试可替换的发送缝隙（不暴露密钥/正文到日志）。"""
     with httpx.Client(timeout=timeout) as client:
         return client.post(url, json=payload, headers=headers)
@@ -158,10 +166,20 @@ def send_email(to_email: str, subject: str, body: str, purpose: str | None = Non
             db.commit()
         finally:
             db.close()
+        # 运维可见：capture 模式下邮件不会到达收件箱（不记录收件人、验证码或正文）
+        logger.warning(
+            "mail captured (not delivered) purpose=%s：MAIL_MODE=capture，"
+            "如需真实发信请设置 MAIL_MODE=resend + RESEND_API_KEY + MAIL_FROM",
+            purpose,
+        )
         return
 
     if settings.mail_mode == "resend":
         _send_via_resend(to_email, subject, body, purpose)
+        return
+
+    if settings.mail_mode == "brevo":
+        _send_via_brevo(to_email, subject, body, purpose)
         return
 
     msg = EmailMessage()
@@ -241,6 +259,69 @@ def _send_via_resend(to_email: str, subject: str, body: str, purpose: str | None
             _sleep(min(2**attempt, 5))
             continue
     raise MailSendError(last_error or "resend_failed")
+
+
+def _send_via_brevo(to_email: str, subject: str, body: str, purpose: str | None) -> None:
+    """Brevo 事务邮件 API 投递，重试策略与 Resend 一致。
+
+    MAIL_FROM 可写成 "GroupProof <sender@example.com>" 或纯地址；地址须在 Brevo 中已验证。
+    """
+    settings = get_settings()
+    name, address = parseaddr(settings.mail_from)
+    sender: dict[str, str] = {"email": address or settings.mail_from}
+    if name:
+        sender["name"] = name
+    payload = {
+        "sender": sender,
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": body,
+    }
+    headers = {"api-key": settings.brevo_api_key, "accept": "application/json"}
+    last_error = ""
+    for attempt in range(1, RESEND_MAX_ATTEMPTS + 1):
+        try:
+            response = _brevo_post(
+                settings.brevo_api_url, payload, headers, settings.resend_timeout_seconds
+            )
+        except Exception as exc:  # noqa: BLE001 - 网络/超时类临时错误，有限重试
+            last_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+            logger.warning(
+                "brevo attempt=%s purpose=%s network_error=%s", attempt, purpose, last_error
+            )
+            if attempt < RESEND_MAX_ATTEMPTS:
+                _sleep(min(2**attempt, 5))
+                continue
+            raise MailSendError(last_error) from exc
+
+        status = getattr(response, "status_code", 0)
+        if 200 <= status < 300:
+            message_id = ""
+            try:
+                message_id = str((response.json() or {}).get("messageId", ""))
+            except Exception:  # noqa: BLE001 - 消息 ID 仅用于日志
+                message_id = ""
+            logger.info(
+                "brevo accepted purpose=%s message_id=%s", purpose, message_id or "(unknown)"
+            )
+            return
+        if 400 <= status < 500:
+            # 密钥无效(401)/发件人未验证(400)/额度(402)/IP 未授权(401)/限流(429)：停止重试
+            reason = ""
+            try:
+                reason = str((response.json() or {}).get("code", ""))[:40]
+            except Exception:  # noqa: BLE001
+                reason = ""
+            logger.error(
+                "brevo rejected purpose=%s status=%s code=%s（停止重试）", purpose, status, reason
+            )
+            raise MailSendError(f"brevo_http_{status}")
+        last_error = f"brevo_http_{status}"
+        logger.warning("brevo attempt=%s purpose=%s status=%s", attempt, purpose, status)
+        if attempt < RESEND_MAX_ATTEMPTS:
+            _sleep(min(2**attempt, 5))
+            continue
+    raise MailSendError(last_error or "brevo_failed")
 
 
 # 兼容旧调用（学校邮箱验证码）；新代码使用 send_template

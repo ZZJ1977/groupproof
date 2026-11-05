@@ -56,6 +56,7 @@ def issue_session(
     *,
     auth_method: str | None = None,
     credential_version: int | None = None,
+    authenticated_at: datetime | None = None,
 ) -> IssuedSession:
     scope = cap_scope(db, user, scope_for_state(facts["accountState"]), auth_method)
     is_admin = "admin" in (user.roles or []) and scope == "full"
@@ -73,6 +74,7 @@ def issue_session(
         auth_version=user.auth_version,
         created_at=now,
         last_seen_at=now,
+        authenticated_at=authenticated_at or now,
         expires_at=now + timedelta(seconds=idle),
         absolute_expires_at=now + timedelta(seconds=absolute),
     )
@@ -85,7 +87,12 @@ def rotate_session(db: DbSession, old: Session, user: User, facts: dict) -> Issu
     old.revoked_at = utcnow()
     old.revoke_reason = "rotated"
     return issue_session(
-        db, user, facts, auth_method=old.auth_method, credential_version=old.credential_version
+        db,
+        user,
+        facts,
+        auth_method=old.auth_method,
+        credential_version=old.credential_version,
+        authenticated_at=old.authenticated_at or old.created_at,
     )
 
 

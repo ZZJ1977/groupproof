@@ -1349,6 +1349,192 @@
         "title": "AuditRecord",
         "type": "object"
       },
+      "AuthAuditLogDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin.bootstrapped",
+                  "auth.acceptance_test_entry",
+                  "auth.email_registered",
+                  "auth.google.cancelled",
+                  "auth.login",
+                  "auth.logout",
+                  "auth.password_change",
+                  "auth.password_login",
+                  "auth.password_login.rate_limited",
+                  "auth.password_register.closed_path",
+                  "auth.registered",
+                  "auth.session_refresh",
+                  "email_challenge.consume_failed",
+                  "email_challenge.rate_limited",
+                  "email_challenge.send_failed",
+                  "email_challenge.sent",
+                  "login_email.verified",
+                  "password_recovery.notice_failed",
+                  "password_recovery.requested_ineligible",
+                  "password_recovery.reset",
+                  "password_recovery.sent",
+                  "pre_registration.code_verified",
+                  "pre_registration.created",
+                  "preferences.updated",
+                  "profile.updated",
+                  "role.granted_student",
+                  "school_email.change_authorized",
+                  "school_email.change_requested",
+                  "school_email.verified",
+                  "teacher.role_revoked_basis_changed",
+                  "teacher_application.approved",
+                  "teacher_application.rejected",
+                  "teacher_application.resubmitted",
+                  "teacher_application.submitted",
+                  "user.disabled"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unrecognized",
+                "type": "string"
+              }
+            ],
+            "title": "Action"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "const": "system",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "changed_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Fields",
+            "type": "array"
+          },
+          "id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata_redacted": {
+            "title": "Metadata Redacted",
+            "type": "boolean"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "success",
+              "failure",
+              "unknown"
+            ],
+            "title": "Result",
+            "type": "string"
+          },
+          "scope": {
+            "const": "authentication",
+            "default": "authentication",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "const": "auth_audit_events",
+            "default": "auth_audit_events",
+            "title": "Source",
+            "type": "string"
+          },
+          "target_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target User Id"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "actor_id",
+          "target_user_id",
+          "result",
+          "occurred_at",
+          "changed_fields",
+          "metadata_redacted"
+        ],
+        "title": "AuthAuditLogDTO",
+        "type": "object"
+      },
+      "AuthAuditPageDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuthAuditLogDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "scope": {
+            "const": "authentication",
+            "default": "authentication",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "const": "auth_audit_events",
+            "default": "auth_audit_events",
+            "title": "Source",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AuthAuditPageDTO",
+        "type": "object"
+      },
       "CContextActorDTO": {
         "properties": {
           "id": {
@@ -5855,6 +6041,38 @@
         "title": "SuccessResponse[AuditRecord]",
         "type": "object"
       },
+      "SuccessResponse_AuthAuditLogDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuthAuditLogDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AuthAuditLogDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_AuthAuditPageDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuthAuditPageDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AuthAuditPageDTO]",
+        "type": "object"
+      },
       "SuccessResponse_CProjectContextDTO_": {
         "properties": {
           "data": {
@@ -8355,6 +8573,389 @@
         ]
       }
     },
+    "/api/v1/admin/auth-audit-logs": {
+      "get": {
+        "operationId": "auth_audit_collection_api_v1_admin_auth_audit_logs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "admin.bootstrapped",
+                    "auth.acceptance_test_entry",
+                    "auth.email_registered",
+                    "auth.google.cancelled",
+                    "auth.login",
+                    "auth.logout",
+                    "auth.password_change",
+                    "auth.password_login",
+                    "auth.password_login.rate_limited",
+                    "auth.password_register.closed_path",
+                    "auth.registered",
+                    "auth.session_refresh",
+                    "email_challenge.consume_failed",
+                    "email_challenge.rate_limited",
+                    "email_challenge.send_failed",
+                    "email_challenge.sent",
+                    "login_email.verified",
+                    "password_recovery.notice_failed",
+                    "password_recovery.requested_ineligible",
+                    "password_recovery.reset",
+                    "password_recovery.sent",
+                    "pre_registration.code_verified",
+                    "pre_registration.created",
+                    "preferences.updated",
+                    "profile.updated",
+                    "role.granted_student",
+                    "school_email.change_authorized",
+                    "school_email.change_requested",
+                    "school_email.verified",
+                    "teacher.role_revoked_basis_changed",
+                    "teacher_application.approved",
+                    "teacher_application.rejected",
+                    "teacher_application.resubmitted",
+                    "teacher_application.submitted",
+                    "user.disabled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "success",
+                    "failure"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "const": "system",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AuthAuditPageDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Auth Audit Collection",
+        "tags": [
+          "c",
+          "c-authentication-audit"
+        ]
+      }
+    },
+    "/api/v1/admin/auth-audit-logs/{record_id}": {
+      "get": {
+        "operationId": "auth_audit_detail_api_v1_admin_auth_audit_logs__record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AuthAuditLogDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Auth Audit Detail",
+        "tags": [
+          "c",
+          "c-authentication-audit"
+        ]
+      }
+    },
     "/api/v1/admin/courses": {
       "get": {
         "operationId": "course_list_api_v1_admin_courses_get",
@@ -9584,6 +10185,22 @@
               ],
               "title": "State"
             }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
           }
         ],
         "responses": {
@@ -9892,6 +10509,22 @@
               "minimum": 1,
               "title": "Page",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
             }
           }
         ],
@@ -11690,6 +12323,46 @@
         "tags": [
           "c",
           "c-daily"
+        ]
+      }
+    },
+    "/api/v1/me/identities/google": {
+      "delete": {
+        "description": "解除 Google 关联：必须另有已验证登录邮箱的密码凭据，防止把自己锁在门外。",
+        "operationId": "unlink_google_identity_api_v1_me_identities_google_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Unlink Google Identity",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/identities/google/link": {
+      "post": {
+        "description": "发起关联 Google：要求近期认证；返回授权地址，由前端整页跳转。",
+        "operationId": "link_google_identity_api_v1_me_identities_google_link_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Link Google Identity",
+        "tags": [
+          "me"
         ]
       }
     },

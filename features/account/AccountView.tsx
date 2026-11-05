@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AlertCircle, Info, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
 import { Feedback, PageHeader, Panel, SaveState, StatusBadge } from "@/components/common";
@@ -16,7 +16,7 @@ type FieldErrors = Record<string, string>;
 
 function fieldError(errors: FieldErrors, field: string, t: (key: string) => string) {
   const code = errors[field];
-  return code ? t(code) : null;
+  return code ? t(`errors.${code}`) : null;
 }
 
 /** 个人中心：受限注册模式与已激活模式共用同一套资料/邮箱组件，按服务端状态呈现 */
@@ -344,10 +344,106 @@ function SecurityPanel({ session, me, refetch }: { session: SessionDTO; me: MeDT
             </div>
           )}
         </Panel>
+        <GooglePanel session={session} me={me} refetch={refetch} />
         <PasswordPanel session={session} me={me} />
         <p className="text-[11px] text-[#8d9aad]">{tc("appName")}</p>
       </div>
     </div>
+  );
+}
+
+/* ---------------- Google 身份关联 / 解除 ---------------- */
+
+function GooglePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; refetch: () => unknown }) {
+  const t = useTranslations("account.security");
+  const search = useSearchParams();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const linked = Boolean(me.user.googleEmailBound);
+  const canUnlink = Boolean(me.user.passwordLoginEnabled);
+  const linkedNow = search.get("linked") === "google";
+  const linkError = search.get("error");
+
+  const link = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.linkGoogle(session.csrfToken ?? "");
+      window.location.href = result.authorizeUrl;
+    } catch (err) {
+      setError(err instanceof ApiError ? t(`errors.${err.code}`) : t("errors.SERVICE_UNAVAILABLE"));
+      setPending(false);
+    }
+  };
+
+  const unlink = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      await authClient.unlinkGoogle(session.csrfToken ?? "");
+      void refetch();
+    } catch (err) {
+      setError(err instanceof ApiError ? t(`errors.${err.code}`) : t("errors.SERVICE_UNAVAILABLE"));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Panel title={t("googleTitle")}>
+      {linked ? (
+        <div>
+          <p className="flex items-center gap-2 text-[12px] text-[#52627b]">
+            <StatusBadge status="verified" label={t("googleLinked")} />
+            {me.user.googleEmail ? t("googleBoundEmail", { email: me.user.googleEmail }) : t("googleLinked")}
+          </p>
+          {canUnlink ? (
+            <Button variant="outline" className="mt-3" onClick={() => void unlink()} loading={pending}>
+              {t("googleUnlink")}
+            </Button>
+          ) : (
+            <p className="mt-3 text-[12px] leading-6 text-[#8d9aad]">{t("googleUnlinkDisabled")}</p>
+          )}
+        </div>
+      ) : (
+        <div>
+          <p className="text-[12px] leading-6 text-[#6f7f95]">{t("googleUnboundNote")}</p>
+          <Button className="mt-3" onClick={() => void link()} loading={pending}>
+            {t("googleLink")}
+          </Button>
+        </div>
+      )}
+      {linkedNow && (
+        <p className="mt-2 text-[12px] text-[#2f9e63]" role="status">
+          {t("googleLinkSuccess")}
+        </p>
+      )}
+      {linkError === "identity_linked_elsewhere" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkElsewhere")}
+        </p>
+      )}
+      {linkError === "failed" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkFailed")}
+        </p>
+      )}
+      {linkError === "cancelled" && (
+        <p className="mt-2 text-[12px] text-[#6f7f95]" role="status">
+          {t("googleLinkCancelled")}
+        </p>
+      )}
+      {linkError === "unavailable" && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {t("googleLinkUnavailable")}
+        </p>
+      )}
+      {error && (
+        <p className="mt-2 text-[12px] text-[#e54955]" role="alert">
+          {error}
+        </p>
+      )}
+    </Panel>
   );
 }
 
@@ -365,6 +461,7 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
   const [seconds, setSeconds] = useState(0);
   const [pending, setPending] = useState(false);
   const [changeTarget, setChangeTarget] = useState("");
+  const [captured, setCaptured] = useState(false);
   const acceptance = useAcceptanceTest();
 
   useEffect(() => {
@@ -382,7 +479,8 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
       setChallengeId(created.challengeId);
       setMasked(created.email);
       setSeconds(Math.max(1, Math.ceil((new Date(created.resendAvailableAt).getTime() - Date.now()) / 1000)));
-      setInfo(t("sent"));
+      setCaptured(created.sendStatus === "captured");
+      setInfo(created.sendStatus === "captured" ? null : t("sent"));
     } catch (err) {
       setError(err instanceof ApiError ? t(`errors.${err.code}`) : t("errors.AUTH_UNAVAILABLE"));
     } finally {
@@ -435,7 +533,10 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
             <Mail size={25} />
           </span>
           <h2 className="mt-5 text-[18px] font-semibold">{t("verifyTitle")}</h2>
-          <p className="mt-2 text-[12px] text-[#7d8ca0]">{displayEmail ? t("sentTo", { email: displayEmail }) : t("noPending")}</p>
+          {/* 进入页面时尚未发码：只有本页发送成功后才显示“已发送” */}
+          <p className="mt-2 text-[12px] text-[#7d8ca0]">
+            {displayEmail ? t(challengeId ? "sentTo" : "sendTo", { email: displayEmail }) : t("noPending")}
+          </p>
           <label className="gp-field mt-7 text-left">
             <span className="sr-only">{t("codeLabel")}</span>
             <Input
@@ -454,12 +555,13 @@ function EmailPanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; 
           </label>
           {error && <p className="mt-2 text-[12px] text-[#e54955]" role="alert">{error}</p>}
           {info && <Feedback tone="success" className="mt-3">{info}</Feedback>}
+          {captured && <Feedback tone="warning" className="mt-3">{t("captured")}</Feedback>}
           <Button className="mt-5 w-full" onClick={() => void verify()} loading={pending} disabled={(!challengeId && !acceptance) || code.length !== 6}>
             {t("verify")}
           </Button>
           {!challengeId ? (
             <Button variant="secondary" className="mt-4 w-full" onClick={() => void send()} loading={pending}>
-              {t("resend")}
+              {t("send")}
             </Button>
           ) : (
             <button className="mt-5 text-[12px] text-[#246bfa] disabled:text-[#98a4b5]" disabled={seconds > 0 || pending} onClick={() => void send()}>

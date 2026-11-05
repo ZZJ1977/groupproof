@@ -19,9 +19,34 @@ const FEATURES = [
   { icon: ShieldCheck, titleKey: "feature4Title", subKey: "feature4Sub" },
 ] as const;
 
+/** 与后端 safe_return_to 同一规则：只接受站内路径，拒绝 //host、反斜杠、编码绕过，以及认证/账户相关前缀。 */
 function safeLocalTarget(value: string | null): string | null {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
-  return value;
+  if (!value) return null;
+  const candidate = value.trim();
+  if (!candidate.startsWith("/") || candidate.startsWith("//") || candidate.includes("\\")) return null;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(candidate);
+  } catch {
+    return null;
+  }
+  if (decoded.includes("\\") || decoded.startsWith("//")) return null;
+  const path = candidate.split(/[?#]/, 1)[0];
+  for (const prefix of ["/api", "/login", "/account", "/onboarding"]) {
+    if (path === prefix || path.startsWith(`${prefix}/`)) return null;
+  }
+  return candidate;
+}
+
+function GoogleMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
 }
 
 /** 统一错误呈现：字段错误/稳定错误码 + 可复制请求编号 + 限流倒计时（由服务端时间推导） */
@@ -96,9 +121,30 @@ function LoginCard() {
     router.refresh();
   };
 
+  // 从 Google 页面按“返回”时浏览器会从 bfcache 恢复本页，按钮必须复位
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        startedRef.current = false;
+        setRedirecting(false);
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
+  // 开始任何登录动作时清掉 URL 上遗留的 Google 错误，避免红色提示一直挂着
+  const [dismissedError, setDismissedError] = useState(false);
+  const clearUrlError = () => {
+    if (!error) return;
+    setDismissedError(true);
+    router.replace(returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login");
+  };
+
   const startGoogleLogin = () => {
     if (startedRef.current) return;
     startedRef.current = true;
+    clearUrlError();
     setRedirecting(true);
     window.location.href = authClient.googleStartUrl(returnTo ?? undefined);
   };
@@ -108,6 +154,7 @@ function LoginCard() {
     if (loginState === "pending") return;
     setLoginState("pending");
     setLoginError(null);
+    clearUrlError();
     try {
       goAfterAuth(await authClient.passwordLogin(identifier.trim(), password));
     } catch (err) {
@@ -116,31 +163,44 @@ function LoginCard() {
     }
   };
 
-  const showGoogle = !caps || caps.google.available;
-  const showSignup = !caps || caps.emailSignup.enabled;
-  const showForgot = !caps || caps.passwordReset.enabled;
+  const googleLoading = !caps && !capsFailed;
+  const showGoogle = !capsFailed && Boolean(caps?.google.available);
+  const showSignup = !capsFailed && (!caps || caps.emailSignup.enabled);
+  const showForgot = !capsFailed && (!caps || caps.passwordReset.enabled);
 
   return (
-    <section className="self-start rounded-[8px] border border-[#e0e7f0] bg-white p-8 shadow-[0_16px_45px_#b8c9e425] lg:mt-5 lg:p-11">
-      <h2 className="text-[28px] font-bold text-[#14213b]">{t("loginTitle")}</h2>
+    <section className="relative self-start overflow-hidden rounded-[24px] border border-white/70 bg-white/80 p-8 shadow-[0_30px_80px_-20px_rgba(36,107,250,0.30),0_8px_24px_-8px_rgba(20,33,59,0.10)] backdrop-blur-xl lg:mt-5 lg:p-10">
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#246bfa] via-[#7c5cff] to-[#22c1c3]" />
+      <h2 className="text-[30px] font-extrabold tracking-tight text-[#14213b]">{t("loginTitle")}</h2>
       <p className="mt-2 text-[#718097]">{t("loginSubtitle")}</p>
 
+      {googleLoading && <div className="mt-8 h-12 w-full animate-pulse rounded-[7px] bg-[#eef2f8]" aria-hidden="true" />}
       {showGoogle && (
-        <Button className="mt-8 h-12 w-full text-[14px]" onClick={startGoogleLogin} loading={redirecting} aria-busy={redirecting}>
-          {!redirecting && <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white font-bold text-[#4285f4]">G</span>}
+        <Button
+          variant="outline"
+          className="mt-8 h-12 w-full rounded-[14px] border-[#dadce0] bg-white text-[14px] font-medium text-[#3c4043] shadow-sm transition hover:-translate-y-px hover:bg-[#f8f9fa] hover:shadow-md"
+          onClick={startGoogleLogin}
+          loading={redirecting}
+          aria-busy={redirecting}
+        >
+          {!redirecting && <GoogleMark />}
           {redirecting ? t("redirecting") : t("googleLogin")}
         </Button>
       )}
-      {error && (
+      {error && !dismissedError && (
         <p className="mt-4 rounded-[7px] bg-[#fdecec] p-3 text-[12px] text-[#c3313f]" role="alert">
-          {error === "cancelled" ? t("error.cancelled") : error === "failed" ? t("error.failed") : t("error.unavailable")}
+          {error === "cancelled" ? t("error.cancelled") : error === "account_exists" ? t("error.accountExists") : error === "unavailable" ? t("error.unavailable") : t("error.failed")}
         </p>
       )}
 
       {/* 已注册账户登录窗口：用户名/邮箱 + 密码 */}
-      <div className={showGoogle ? "my-6 border-t border-[#e7edf5]" : "mt-8"} />
+      <div className={showGoogle ? "my-6 flex items-center gap-3" : "mt-6 mb-5 flex items-center gap-3"} aria-hidden="true">
+        <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d5deec]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[#b9c7dd]" />
+        <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d5deec]" />
+      </div>
       <h3 className="text-[14px] font-semibold text-[#14213b]">{tp("title")}</h3>
-      <form className="mt-3 space-y-3" onSubmit={submitPasswordLogin}>
+      <form className="mt-3 space-y-3 [&_input]:h-11 [&_input]:rounded-[12px] [&_input]:border-[#dbe4f1] [&_input]:bg-white/90 [&_input:focus]:border-[#246bfa] [&_input:focus]:ring-4 [&_input:focus]:ring-[#246bfa]/15 [&_button[type=submit]]:h-12 [&_button[type=submit]]:rounded-[14px] [&_button[type=submit]]:border-0 [&_button[type=submit]]:bg-gradient-to-r [&_button[type=submit]]:from-[#246bfa] [&_button[type=submit]]:to-[#6a4cff] [&_button[type=submit]]:font-semibold [&_button[type=submit]]:shadow-[0_10px_24px_-8px_rgba(36,107,250,0.65)] [&_button[type=submit]]:transition hover:[&_button[type=submit]]:-translate-y-px hover:[&_button[type=submit]]:shadow-[0_14px_28px_-8px_rgba(36,107,250,0.75)]" onSubmit={submitPasswordLogin}>
         <label className="gp-field">
           {tp("identifier")}
           <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} autoComplete="username" placeholder={tp("identifierPlaceholder")} aria-label={tp("identifier")} />
@@ -177,13 +237,14 @@ function LoginCard() {
       )}
 
       <p className="mt-6 text-center text-[12px] text-[#8794a7]">{t("firstUse")}</p>
-      <div className="mt-6 border-t border-[#e7edf5]" />
-      <div className="mt-6 rounded-[7px] bg-[#f5f8fd] p-4">
+      <div className="mt-6 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-4 ring-1 ring-[#e3eafb]">
         <div className="flex gap-3">
-          <Mail size={19} className="mt-0.5 text-[#246bfa]" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm">
+            <Mail size={18} />
+          </span>
           <div>
             <div className="font-semibold">{t("emailRuleTitle")}</div>
-            <p className="mt-2 text-[12px] leading-6 text-[#7b899c]">
+            <p className="mt-2 text-[12px] leading-6 text-[#6b7a92]">
               {t("emailRuleStudent")}
               <br />
               {t("emailRuleTeacher")}
@@ -191,8 +252,10 @@ function LoginCard() {
           </div>
         </div>
       </div>
-      <div className="mt-5 flex gap-3 rounded-[7px] bg-[#f5f8fd] p-4">
-        <ShieldCheck size={19} className="mt-0.5 shrink-0 text-[#246bfa]" />
+      <div className="mt-4 flex gap-3 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-4 ring-1 ring-[#e3eafb]">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm">
+          <ShieldCheck size={18} />
+        </span>
         <div>
           <div className="font-semibold">{t("privacyTitle")}</div>
           <p className="mt-2 text-[12px] leading-6 text-[#7b899c]">{t("privacyBody")}</p>
@@ -454,28 +517,42 @@ function ForgotDialog({ open, onOpenChange, locale }: { open: boolean; onOpenCha
 export function LoginPage() {
   const t = useTranslations("auth");
   return (
-    <div className="min-h-screen bg-[#f6f9fd]">
-      <header className="flex h-[65px] items-center justify-between border-b border-[#e7edf5] bg-white px-[max(24px,4vw)]">
-        <div className="text-[22px] font-bold text-[#14213b]">GroupProof</div>
+    <div className="relative min-h-screen overflow-hidden bg-[#f4f7fe]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-40 -top-40 h-[560px] w-[560px] rounded-full bg-[#7aa7ff]/35 blur-[110px]" />
+        <div className="absolute -right-32 top-10 h-[520px] w-[520px] rounded-full bg-[#b79bff]/35 blur-[120px]" />
+        <div className="absolute bottom-[-220px] left-1/3 h-[520px] w-[520px] rounded-full bg-[#5fe0d0]/25 blur-[120px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(#14213b14_1px,transparent_1px)] [background-size:26px_26px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
+      </div>
+      <header className="relative z-10 flex h-[68px] items-center justify-between px-[max(24px,4vw)]">
+        <div className="flex items-center gap-2.5 text-[22px] font-extrabold tracking-tight text-[#14213b]">
+          <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#246bfa] to-[#7c5cff] text-white shadow-[0_8px_18px_-6px_rgba(36,107,250,0.7)]">
+            <ShieldCheck size={19} />
+          </span>
+          GroupProof
+        </div>
         <div className="flex items-center gap-5 text-[12px] text-[#66748b]">
           <span>{t("helpCenter")}</span>
           <span>{t("about")}</span>
           <LanguageSwitcher compact />
         </div>
       </header>
-      <main className="mx-auto grid max-w-[1380px] grid-cols-1 gap-12 px-[max(24px,4vw)] py-14 lg:grid-cols-[1.16fr_.84fr] lg:gap-20">
-        <section className="min-w-0 pt-8">
-          <p className="mb-4 text-[14px] text-[#6d7b91]">{t("tagline")}</p>
-          <h1 className="max-w-[590px] text-[clamp(31px,3.5vw,46px)] font-bold leading-[1.2] text-[#101d35]">
-            {t("heroTitle1")}
+      <main className="relative z-10 mx-auto grid max-w-[1380px] grid-cols-1 gap-12 px-[max(24px,4vw)] py-10 lg:grid-cols-[1.16fr_.84fr] lg:gap-20">
+        <section className="min-w-0 pt-6">
+          <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-[13px] font-medium text-[#4b5d7a] shadow-sm ring-1 ring-[#e3eafb] backdrop-blur">
+            <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-[#246bfa] to-[#7c5cff]" />
+            {t("tagline")}
+          </p>
+          <h1 className="max-w-[620px] text-[clamp(34px,4vw,54px)] font-extrabold leading-[1.15] tracking-tight text-[#101d35]">
+            <span className="bg-gradient-to-r from-[#246bfa] via-[#6a4cff] to-[#1fb6c1] bg-clip-text text-transparent">{t("heroTitle1")}</span>
             <br />
             {t("heroTitle2")}
           </h1>
           <p className="mt-6 max-w-[560px] text-[16px] leading-[1.8] text-[#62728d]">{t("heroDescription")}</p>
           <div className="mt-10 grid grid-cols-2 gap-5 sm:grid-cols-4">
             {FEATURES.map((feature) => (
-              <div key={feature.titleKey} className="border-r border-[#e7edf5] pr-3 last:border-0">
-                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#eaf2ff] text-[#246bfa]">
+              <div key={feature.titleKey} className="rounded-[18px] bg-white/70 p-4 shadow-[0_10px_30px_-14px_rgba(36,70,150,0.25)] ring-1 ring-white/80 backdrop-blur transition hover:-translate-y-1 hover:shadow-[0_16px_36px_-14px_rgba(36,107,250,0.35)]">
+                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#e6efff] to-[#efe9ff] text-[#246bfa]">
                   <feature.icon size={20} />
                 </span>
                 <div className="font-semibold text-[#17243c]">{t(feature.titleKey)}</div>
@@ -483,7 +560,7 @@ export function LoginPage() {
               </div>
             ))}
           </div>
-          <div className="mt-12 max-w-[620px] rounded-[8px] border border-[#dce7f7] bg-white p-4 shadow-[0_14px_35px_#cddcf029]">
+          <div className="mt-12 max-w-[620px] rounded-[20px] border border-white/80 bg-white/85 p-5 shadow-[0_30px_70px_-24px_rgba(36,70,150,0.35)] backdrop-blur lg:-rotate-1">
             <div className="flex items-center gap-2 border-b border-[#e6edf5] pb-3 text-[12px] font-semibold">
               <span className="h-2 w-2 rounded-full bg-[#12a66a]" /> {t("sampleCourse")}
               <span className="ml-auto text-[#246bfa]">{t("sampleOverviewTag")}</span>
