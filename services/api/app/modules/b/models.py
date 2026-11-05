@@ -591,3 +591,134 @@ class BCriterionInvalidation(Base):
     )
 
     __table_args__ = (Index("ix_b_criterion_invalidations_task", "task_id"),)
+
+
+# ---------------------------------------------------------------- B-8 milestones
+
+
+class BMilestoneDeliverable(Base):
+    """B7-02 a deliverable of a milestone; only the leader ticks it."""
+
+    __tablename__ = "b_milestone_deliverables"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    milestone_id: Mapped[UUID] = mapped_column(ForeignKey("milestones.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(200))
+    sort_order: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    done: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    done_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # C's file id; no FK so C's own migrations stay independent of B.
+    # B checks the file belongs to the project when it is written.
+    file_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (Index("ix_b_milestone_deliverables_milestone", "milestone_id"),)
+
+
+class BMilestoneDeliverableEvent(Base):
+    """B7-02 every tick and untick, so unticking also leaves a record."""
+
+    __tablename__ = "b_milestone_deliverable_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    deliverable_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_milestone_deliverables.id", ondelete="CASCADE")
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    # C's file id; no FK so C's own migrations stay independent of B.
+    # B checks the file belongs to the project when it is written.
+    file_id: Mapped[UUID | None] = mapped_column(Uuid)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('checked', 'unchecked')", name="ck_b_milestone_deliverable_events_action"
+        ),
+    )
+
+
+class BMilestoneDateChange(Base):
+    """B7-04 a deadline change with its reason."""
+
+    __tablename__ = "b_milestone_date_changes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    milestone_id: Mapped[UUID] = mapped_column(ForeignKey("milestones.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    old_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    new_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(Text)
+    changed_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("length(trim(reason)) > 0", name="ck_b_milestone_date_changes_reason"),
+    )
+
+
+# ---------------------------------------------------------------- B-8 member removal / leaving
+
+
+class BMembershipChangeRequest(Base):
+    """B2-04/B2-06 a removal (by the leader) or a leave (by the member).
+
+    Before the course's formation deadline it applies at once (``applied``);
+    after it the teacher decides (B2-07).
+    """
+
+    __tablename__ = "b_membership_change_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
+    change_type: Mapped[str] = mapped_column(String(16))
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    reason: Mapped[str] = mapped_column(Text)
+    teacher_comment: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "change_type IN ('remove', 'leave')", name="ck_b_membership_change_requests_type"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'needs_info', 'approved', 'rejected', 'applied')",
+            name="ck_b_membership_change_requests_status",
+        ),
+        Index(
+            "uq_b_membership_change_requests_open",
+            "group_id",
+            "member_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'needs_info')"),
+        ),
+    )
+
+
+class BTaskHandover(Base):
+    """B2-04/B2-06 who takes over each unfinished task of the leaving member."""
+
+    __tablename__ = "b_task_handovers"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_membership_change_requests.id", ondelete="CASCADE")
+    )
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    from_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    to_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("request_id", "task_id", name="uq_b_task_handovers_task"),)

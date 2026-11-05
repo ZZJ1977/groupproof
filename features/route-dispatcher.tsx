@@ -40,6 +40,9 @@ const ProjectSetupApiPage = dynamic(() => import("@/features/b/ProjectsApiPages"
 const RequirementsApiPage = dynamic(() => import("@/features/b/RequirementsApiPage").then((module) => module.RequirementsApiPage));
 const TasksApiPage = dynamic(() => import("@/features/b/TasksApiPage").then((module) => module.TasksApiPage));
 const PlanningApiPage = dynamic(() => import("@/features/b/PlanningApiPage").then((module) => module.PlanningApiPage));
+const MilestonesApiPage = dynamic(() => import("@/features/b/MilestonesApiPage").then((module) => module.MilestonesApiPage));
+const MilestoneDetailApiPage = dynamic(() => import("@/features/b/MilestonesApiPage").then((module) => module.MilestoneDetailApiPage));
+const LeaveGroupApiPage = dynamic(() => import("@/features/b/MembershipApiPages").then((module) => module.LeaveGroupApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
 
 function AccessDenied({ message }: { message?: string }) {
@@ -88,6 +91,9 @@ export function RouteDispatcher() {
     else if (screen === 9 && projectId) realContent = <RequirementsApiPage projectId={projectId} />;
     else if (screen === 10 && projectId) realContent = <PlanningApiPage projectId={projectId} />;
     else if ([11, 12, 13].includes(screen) && projectId) realContent = <TasksApiPage projectId={projectId} view={screen === 12 ? "board" : screen === 13 ? "list" : "tree"} />;
+    else if (screen === 18 && projectId) realContent = <MilestonesApiPage projectId={projectId} />;
+    else if (screen === 19 && projectId && milestoneId) realContent = <MilestoneDetailApiPage projectId={projectId} milestoneId={milestoneId} />;
+    else if (screen === 37 && courseId && groupId) realContent = <LeaveGroupApiPage courseId={courseId} groupId={groupId} />;
     else realContent = <BNotConnectedPage screen={screen} />;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
@@ -96,7 +102,7 @@ export function RouteDispatcher() {
     const section = ({ 53: "courses", 54: "logs", 55: "ai-usage", 56: "access-requests" } as const)[screen as 53 | 54 | 55 | 56];
     if (section) realContent = <GovernanceApiPage screen={section} />;
   }
-  if (realContent) return <WorkspaceShell kind={kind}><div key={`${userId}:${screen}:${projectId ?? courseId ?? ""}:${taskId ?? ""}`}>{realContent}</div></WorkspaceShell>;
+  if (realContent) return <WorkspaceShell kind={kind}><div key={`${userId}:${screen}:${projectId ?? courseId ?? ""}:${taskId ?? milestoneId ?? ""}`}>{realContent}</div></WorkspaceShell>;
   const allowed = kind === "admin" ? role === "admin"
     : kind === "teacher" ? role === "teacher" || role === "ta"
     : screen >= 7 && screen <= 40 ? role !== "admin"

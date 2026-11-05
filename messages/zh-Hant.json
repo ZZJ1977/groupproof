@@ -694,7 +694,28 @@
       "TASK_HAS_RECORDS": "這個任務已有執行或證據紀錄，不能刪除。",
       "NO_REQUIREMENTS": "基線裡沒有需求，無法產生任務建議。",
       "SUGGESTION_NOT_FOUND": "建議不存在。",
-      "SUGGESTION_HANDLED": "這條建議已經處理過了。"
+      "SUGGESTION_HANDLED": "這條建議已經處理過了。",
+      "MILESTONE_NOT_FOUND": "里程碑不存在。",
+      "MILESTONE_COMPLETED": "這個階段已經確認交付，不能再修改。",
+      "MILESTONE_NOT_READY": "還不能確認交付：有任務沒通過驗收或交付物沒勾齊。",
+      "DELIVERABLE_NOT_FOUND": "交付物不存在。",
+      "DELIVERABLE_TITLE_REQUIRED": "請填寫交付物名稱。",
+      "FILE_NOT_FOUND": "關聯的檔案不在本專案的資料裡。",
+      "DEADLINE_AFTER_PROJECT_END": "新的截止時間不能晚於專案截止時間。",
+      "DEADLINE_UNCHANGED": "新日期和原來的一樣。",
+      "VERIFICATION_UNAVAILABLE": "驗收服務暫不可用，請稍後重試。",
+      "MEMBER_NOT_FOUND": "這位同學不在本組。",
+      "MEMBER_INVALID": "請選擇要移出的其他成員。",
+      "LEADER_MUST_TRANSFER": "組長需要先把組長交給別人才能退出。",
+      "HANDOVER_REQUIRED": "有未完成任務還沒有指定接手人。",
+      "HANDOVER_INVALID": "接手人必須是本組的其他成員。",
+      "HANDOVER_OUTDATED": "有新的未完成任務還沒有指定接手人，請申請人補充後再審批。",
+      "HANDOVER_TARGET_LEFT": "有接手人已經不在本組，成員和任務都沒有改動。",
+      "MEMBER_ALREADY_LEFT": "這位同學已經不在本組。",
+      "MEMBERSHIP_CHANGE_PENDING": "這位同學已經有一條待處理的申請。",
+      "MEMBERSHIP_CHANGE_NOT_FOUND": "申請不存在。",
+      "MEMBERSHIP_CHANGE_CLOSED": "這條申請已經處理過了。",
+      "COURSE_TEACHER_REQUIRED": "只有本課程老師可以執行此操作。"
     }
   }
 }
