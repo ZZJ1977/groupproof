@@ -20,7 +20,7 @@ from app.api.auth import get_current_user
 from app.api.responses import SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
-from app.modules.a import storage
+from app.modules.a import feishu, storage
 
 router = APIRouter(tags=["a"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -122,3 +122,62 @@ def complete_upload(receipt_id: UUID, request: Request, session: Database, user:
         ),
         request,
     )
+
+
+# ------------------------------------------------------------------ A6 飞书只读同步
+
+
+class BindFeishuChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chat_id: str = Field(min_length=1, max_length=200)
+
+
+class FeishuChatLinkDTO(BaseModel):
+    project_id: UUID
+    chat_id: str
+
+
+class FeishuSyncDTO(BaseModel):
+    chats: int
+    created: int
+    updated: int
+    deleted: int
+    seen: int
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/feishu/chats",
+    response_model=SuccessResponse[FeishuChatLinkDTO],
+    status_code=201,
+    dependencies=[Depends(_private)],
+)
+def bind_feishu_chat(
+    project_id: UUID,
+    payload: BindFeishuChatRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    link = feishu.link_chat(session, user, project_id, payload.chat_id)
+    session.commit()
+    return success(FeishuChatLinkDTO(project_id=project_id, chat_id=link.chat_id), request)
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/feishu/sync",
+    response_model=SuccessResponse[FeishuSyncDTO],
+    dependencies=[Depends(_private)],
+)
+def sync_feishu(project_id: UUID, request: Request, session: Database, user: CurrentUser):
+    reader = feishu.get_feishu_reader()
+    try:
+        totals = feishu.sync_project(session, user, project_id, reader)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        if isinstance(reader, feishu.FeishuClient):
+            reader.close()
+    session.commit()
+    return success(FeishuSyncDTO(**totals), request)
