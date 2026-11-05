@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.models.core import LockVersionMixin, TimestampMixin
 
 DocumentJSON = JSON().with_variant(JSONB(), "postgresql")
 
@@ -371,3 +372,32 @@ class ReportSnapshot(Base):
         ),
         Index("ix_report_snapshots_contribution_snapshot_id", "contribution_snapshot_id"),
     )
+
+
+class Risk(TimestampMixin, LockVersionMixin, Base):
+    __tablename__ = "risks"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    task_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id"))
+    milestone_id: Mapped[UUID | None] = mapped_column(ForeignKey("milestones.id"))
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    level: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        CheckConstraint("level IN ('low','medium','high')", name="ck_risks_level"),
+        CheckConstraint("status IN ('open','mitigating','closed')", name="ck_risks_status"),
+        CheckConstraint("task_id IS NOT NULL OR milestone_id IS NOT NULL", name="ck_risks_target"),
+    )
+
+
+class RiskEvent(Base):
+    __tablename__ = "risk_events"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    risk_id: Mapped[UUID] = mapped_column(ForeignKey("risks.id"), nullable=False, index=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
