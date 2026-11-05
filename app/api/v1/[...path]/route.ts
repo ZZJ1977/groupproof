@@ -21,6 +21,9 @@ const FORWARDED_REQUEST_HEADERS = [
   "content-type",
   "accept",
   "accept-language",
+  // 真实客户端 IP：后端限流与审计依赖它（后端需用 FORWARDED_ALLOW_IPS 信任本代理）
+  "x-forwarded-for",
+  "x-real-ip",
 ];
 
 async function proxy(request: NextRequest, pathSegments: string[]) {

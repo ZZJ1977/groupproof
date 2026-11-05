@@ -140,6 +140,8 @@ class Session(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+    # 本会话最近一次真实认证（密码/Google）的时间；会话轮换时保留，用于“近期认证”判断
+    authenticated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )  # 闲置期限（按 scope 滚动）
@@ -178,7 +180,8 @@ class EmailChallenge(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    send_status: Mapped[str] = mapped_column(String(16), default="accepted")  # accepted|failed
+    # accepted|captured（capture 模式未真实投递）|failed
+    send_status: Mapped[str] = mapped_column(String(16), default="accepted")
     resend_available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
@@ -247,6 +250,13 @@ class OAuthTransaction(Base):
     nonce: Mapped[str] = mapped_column(String(128), nullable=False)
     code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
     return_to: Mapped[str | None] = mapped_column(String(512))
+    # 事务用途：login=登录；link=已登录用户在账户安全中关联 Google（此时 user_id 必填）
+    purpose: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'login'"), default="login"
+    )
+    user_id: Mapped[Any | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
