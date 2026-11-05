@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from app.modules.b.courses_router import router as courses_router
 from app.modules.b.groups_router import router as groups_router
 from app.modules.b.projects_router import router as projects_router
+from app.modules.b.requirements_router import router as requirements_router
 
 router = APIRouter(tags=["b"])
 
@@ -25,3 +26,4 @@ router.include_router(ready_router)
 router.include_router(courses_router, prefix="/api/v1")
 router.include_router(groups_router, prefix="/api/v1")
 router.include_router(projects_router, prefix="/api/v1")
+router.include_router(requirements_router, prefix="/api/v1")

@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2, FileText, Lock, Upload } from "lucide-react";
+import { ArrowRight, FileText, Lock, Upload } from "lucide-react";
 import { EmptyState, Feedback, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
 import { BApiError, newIdempotencyKey } from "@/lib/api/b-client";
 import { bGroupsApi } from "@/lib/api/b-groups";
 import { bProjectsApi, type BMaterial, type BProjectDraft, type BProjectSetup } from "@/lib/api/b-projects";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
+import { BaselineStep, ConflictsStep, MaterialsContinue, RequirementsStep } from "@/features/b/RequirementsSteps";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
 
 type Notice = { tone: "success" | "error" | "warning" | "info"; text: string } | undefined;
@@ -93,7 +94,7 @@ export function NewProjectApiPage({ courseId }: { courseId: string }) {
   </div>;
 }
 
-const entryAction = { setup: { label: "去初始化", path: "setup" }, baseline: { label: "查看基线", path: "requirements" }, readonly: { label: "查看项目", path: "setup" } } as const;
+const entryAction = { setup: { label: "去初始化", path: "setup" }, baseline: { label: "查看基线", path: "setup" }, readonly: { label: "查看项目", path: "setup" } } as const;
 const setupLabel: Record<string, string> = { not_initialized: "未初始化", draft: "初始化中", pending_confirmation: "等待组员确认", frozen: "基线已冻结" };
 
 /** Page 07 (B3-02): entry by project state plus live server-side stats. */
@@ -136,25 +137,32 @@ const extractLabel: Record<BMaterial["extract_status"], { tone: "green" | "amber
   ready: { tone: "green", text: "正文已就绪" }, pending: { tone: "amber", text: "正文提取中" }, failed: { tone: "red", text: "正文提取失败" }, unavailable: { tone: "gray", text: "正文暂不可用" },
 };
 
-/** Page 08 steps 1–2 (B3-03/B3-04): basic info and materials; later steps arrive with B-4. */
+/** Page 08 (B3-03 ~ B3-08): basic info, materials, requirements, conflicts, baseline. */
 export function ProjectSetupApiPage({ projectId }: { projectId: string }) {
   const { userId } = useWorkspace();
+  const cache = useQueryClient();
   const setup = useQuery({ queryKey: ["b-project-setup", userId, projectId], queryFn: () => bProjectsApi.setup(projectId), ...queryPolicy });
   const [step, setStep] = useState<number | null>(null);
   if (setup.isPending) return <Loading />;
   if (setup.isError) return <LoadError error={setup.error} />;
   const data = setup.data;
-  // Reopening the page continues where the group left off.
-  const current = step ?? (data.setup_step >= 2 ? 1 : 0);
+  // Reopening the page continues where the group left off; a frozen project opens on its baseline.
+  const reached = data.setup_status === "frozen" || data.setup_status === "pending_confirmation" ? 5 : Math.min(Math.max(data.setup_step, 1), 5);
+  const current = step ?? reached - 1;
+  const next = (index: number) => () => { void cache.invalidateQueries({ queryKey: ["b-project-setup", userId, projectId] }); setStep(index); };
   return <div>
     <PageHeader title="项目初始化" description={`${data.name} · ${setupLabel[data.setup_status] ?? data.setup_status}`} actions={<Link href={`/projects/${projectId}`} className={secondary}>项目总览</Link>} />
     <div className="mx-auto mt-5 max-w-[860px] space-y-4">
       <ol className="flex flex-wrap gap-2 text-xs" aria-label="初始化步骤">{setupSteps.map((title, index) => <li key={title} className="flex-1">
-        <button type="button" disabled={index > 1} onClick={() => setStep(index)} aria-current={index === current ? "step" : undefined} title={index > 1 ? "下一阶段开放" : undefined}
-          className={`w-full rounded border px-3 py-2 text-left ${index === current ? "border-blue-500 bg-blue-50 font-semibold text-blue-700" : index > 1 ? "cursor-not-allowed border-slate-100 text-slate-300" : "border-slate-200 text-slate-600"}`}>{index + 1}. {title}</button>
+        <button type="button" disabled={index >= reached} onClick={() => setStep(index)} aria-current={index === current ? "step" : undefined} title={index >= reached ? "请先完成前面的步骤" : undefined}
+          className={`w-full rounded border px-3 py-2 text-left ${index === current ? "border-blue-500 bg-blue-50 font-semibold text-blue-700" : index >= reached ? "cursor-not-allowed border-slate-100 text-slate-300" : "border-slate-200 text-slate-600"}`}>{index + 1}. {title}</button>
       </li>)}</ol>
-      {!data.can_edit && <Feedback tone="info">{data.setup_status === "frozen" ? "需求基线已冻结，初始化信息只能查看。" : "你可以查看初始化信息，但不能修改。"}</Feedback>}
-      {current === 0 ? <BasicInfoStep projectId={projectId} data={data} onSaved={() => setStep(1)} /> : <MaterialsStep projectId={projectId} data={data} />}
+      {!data.can_edit && current < 2 && <Feedback tone="info">{data.setup_status === "frozen" ? "需求基线已冻结，初始化信息只能查看。" : data.setup_status === "pending_confirmation" ? "基线正在等待组员确认，暂时不能修改。" : "你可以查看初始化信息，但不能修改。"}</Feedback>}
+      {current === 0 && <BasicInfoStep projectId={projectId} data={data} onSaved={() => setStep(1)} />}
+      {current === 1 && <><MaterialsStep projectId={projectId} data={data} />{data.can_edit && <MaterialsContinue projectId={projectId} onDone={next(2)} />}</>}
+      {current === 2 && <RequirementsStep projectId={projectId} onDone={next(3)} />}
+      {current === 3 && <ConflictsStep projectId={projectId} onDone={next(4)} />}
+      {current === 4 && <BaselineStep projectId={projectId} />}
     </div>
   </div>;
 }
@@ -235,6 +243,5 @@ function MaterialsStep({ projectId, data }: { projectId: string; data: BProjectS
         <p className="mt-2 text-xs text-slate-500">{addFile.isPending ? "正在上传…" : "文件正文由平台提取；提取服务未接通时会显示“正文暂不可用”，不会用假正文代替。"}</p>
       </Panel>
     </>}
-    <p className="flex items-center gap-1 text-xs text-slate-500"><CheckCircle2 size={13} />需求分析、冲突处理和基线确认将在下一阶段开放。</p>
   </div>;
 }

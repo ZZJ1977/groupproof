@@ -651,7 +651,30 @@
       "FILE_TOO_LARGE": "The file is too large.",
       "FILE_TYPE_NOT_ALLOWED": "This file type is not supported.",
       "UPLOAD_REJECTED": "The file failed checks and was rejected.",
-      "VALIDATION_ERROR": "Some fields are invalid. Check and try again."
+      "VALIDATION_ERROR": "Some fields are invalid. Check and try again.",
+      "BASELINE_IN_CONFIRMATION": "The baseline is waiting for confirmations; it cannot change until they finish.",
+      "NO_ANALYZABLE_MATERIALS": "No material text to analyse yet. Add a text material or enter requirements by hand.",
+      "ANALYSIS_RUNNING": "An analysis is already running. Please wait.",
+      "ANALYSIS_NOT_FOUND": "Analysis not found.",
+      "AI_UNAVAILABLE": "AI is unavailable; enter requirements by hand.",
+      "MODULE_NOT_FOUND": "Module not found.",
+      "MODULE_NAME_TAKEN": "A module with this name already exists.",
+      "MODULE_NAME_REQUIRED": "Enter a module name.",
+      "MODULE_NOT_EMPTY": "The module still has requirements or tasks; move them first.",
+      "OWNER_NOT_MEMBER": "The owner must be a project member.",
+      "REQUIREMENT_NOT_FOUND": "Requirement not found.",
+      "REQUIREMENT_TITLE_REQUIRED": "Enter a requirement title.",
+      "CONFLICT_NOT_FOUND": "Conflict not found.",
+      "CONFLICT_CLOSED": "This conflict has already been resolved.",
+      "MERGED_TITLE_REQUIRED": "Enter the merged requirement title.",
+      "REQUIREMENTS_REQUIRED": "Add at least one requirement to continue.",
+      "CONFLICTS_UNRESOLVED": "Some conflicts are unresolved; resolve them to continue.",
+      "CHECK_ITEM_NOT_FOUND": "No such checklist item.",
+      "CHECKLIST_INCOMPLETE": "Some checklist items are not met yet.",
+      "BASELINE_NOT_FOUND": "Baseline not found.",
+      "BASELINE_CLOSED": "This baseline version is already frozen or returned.",
+      "NOT_YOUR_CONFIRMATION": "You can only confirm for yourself.",
+      "PROJECT_LEADER_REQUIRED": "Only the group leader can do this."
     }
   }
 }

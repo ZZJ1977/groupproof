@@ -6,6 +6,7 @@ from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -279,4 +280,120 @@ class BProjectMaterial(Base):
         ),
         UniqueConstraint("project_id", "receipt_id", name="uq_b_project_materials_receipt"),
         Index("ix_b_project_materials_project", "project_id", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------- B-4 analysis and baseline
+
+
+class BAnalysisRun(Base):
+    """B3-05 one requirements analysis (A7-03) over the project's materials.
+
+    ``processing`` while it runs; at most one per project at a time.
+    ``unavailable`` means the AI service could not be used (page offers manual entry).
+    """
+
+    __tablename__ = "b_analysis_runs"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'processing'"))
+    material_ids: Mapped[list] = mapped_column(DocumentJSON)
+    summary: Mapped[dict | None] = mapped_column(DocumentJSON)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(String(300))
+    is_placeholder: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'succeeded', 'failed', 'unavailable')",
+            name="ck_b_analysis_runs_status",
+        ),
+        Index(
+            "uq_b_analysis_runs_processing",
+            "project_id",
+            unique=True,
+            postgresql_where=text("status = 'processing'"),
+            sqlite_where=text("status = 'processing'"),
+        ),
+        Index("ix_b_analysis_runs_project", "project_id", "created_at"),
+    )
+
+
+class BRequirementMeta(Base):
+    """Where a requirement came from, so re-analysis replaces only untouched AI items.
+
+    ``excluded`` = dropped by a conflict decision; kept for history, left out of
+    the baseline snapshot. ``ai_key`` fingerprints the AI suggestion so an edited
+    copy is not re-added by the next analysis.
+    """
+
+    __tablename__ = "b_requirement_meta"
+
+    requirement_id: Mapped[UUID] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    origin: Mapped[str] = mapped_column(String(8))
+    edited_by_human: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    excluded: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    ai_key: Mapped[str | None] = mapped_column(String(64))
+    analysis_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("b_analysis_runs.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        CheckConstraint("origin IN ('ai', 'manual')", name="ck_b_requirement_meta_origin"),
+        Index("ix_b_requirement_meta_project", "project_id", "origin"),
+    )
+
+
+class BModuleMeta(Base):
+    """Origin of a functional module (AI suggestion or added by a member)."""
+
+    __tablename__ = "b_module_meta"
+
+    module_id: Mapped[UUID] = mapped_column(
+        ForeignKey("functional_modules.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    origin: Mapped[str] = mapped_column(String(8))
+    edited_by_human: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+    __table_args__ = (
+        CheckConstraint("origin IN ('ai', 'manual')", name="ck_b_module_meta_origin"),
+    )
+
+
+class BBaselineScope(Base):
+    """B3-07 project scope (in / out), written before the baseline is submitted."""
+
+    __tablename__ = "b_baseline_scopes"
+
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    in_scope: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    out_of_scope: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class BBaselineChecklistItem(Base):
+    """B3-07 manual review ticks (the rule-based items are computed, not stored)."""
+
+    __tablename__ = "b_baseline_checklist_items"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    item_key: Mapped[str] = mapped_column(String(40))
+    checked_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "item_key", name="uq_b_baseline_checklist_items_key"),
     )

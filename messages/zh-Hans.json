@@ -651,7 +651,30 @@
       "FILE_TOO_LARGE": "文件太大。",
       "FILE_TYPE_NOT_ALLOWED": "不支持这种文件类型。",
       "UPLOAD_REJECTED": "文件未通过检查，已被拒绝。",
-      "VALIDATION_ERROR": "填写的内容不符合要求，请检查后重试。"
+      "VALIDATION_ERROR": "填写的内容不符合要求，请检查后重试。",
+      "BASELINE_IN_CONFIRMATION": "基线正在等待组员确认，确认结束前不能修改。",
+      "NO_ANALYZABLE_MATERIALS": "还没有可分析的资料正文，请先添加文本资料或手动录入需求。",
+      "ANALYSIS_RUNNING": "分析正在进行中，请稍候。",
+      "ANALYSIS_NOT_FOUND": "分析记录不存在。",
+      "AI_UNAVAILABLE": "AI 暂不可用，请改为手动录入。",
+      "MODULE_NOT_FOUND": "模块不存在。",
+      "MODULE_NAME_TAKEN": "已有同名模块。",
+      "MODULE_NAME_REQUIRED": "请填写模块名称。",
+      "MODULE_NOT_EMPTY": "模块下还有需求或任务，请先移走再删除。",
+      "OWNER_NOT_MEMBER": "负责人必须是本项目成员。",
+      "REQUIREMENT_NOT_FOUND": "需求不存在。",
+      "REQUIREMENT_TITLE_REQUIRED": "请填写需求标题。",
+      "CONFLICT_NOT_FOUND": "冲突不存在。",
+      "CONFLICT_CLOSED": "这个冲突已经处理过了。",
+      "MERGED_TITLE_REQUIRED": "合并时请填写合并后的需求标题。",
+      "REQUIREMENTS_REQUIRED": "至少需要一条需求才能继续。",
+      "CONFLICTS_UNRESOLVED": "还有冲突没有处理，处理完才能继续。",
+      "CHECK_ITEM_NOT_FOUND": "没有这个检查项。",
+      "CHECKLIST_INCOMPLETE": "审核清单还有未满足的项。",
+      "BASELINE_NOT_FOUND": "基线不存在。",
+      "BASELINE_CLOSED": "这一版基线已经冻结或被退回。",
+      "NOT_YOUR_CONFIRMATION": "只能确认你自己的那一条。",
+      "PROJECT_LEADER_REQUIRED": "只有组长可以执行此操作。"
     }
   }
 }
