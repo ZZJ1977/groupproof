@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -193,4 +194,89 @@ class BLeaderChangeConfirmation(Base):
         CheckConstraint(
             "decision IN ('confirm', 'reject')", name="ck_b_leader_change_confirmations_decision"
         ),
+    )
+
+
+class BCourseProjectTemplate(Base):
+    """Per-course milestone template copied into each new project (B3-01).
+
+    ``milestones`` is a list of ``{title, description, deadline}``. Courses had
+    no stored template before; teachers maintain it through B's endpoint.
+    """
+
+    __tablename__ = "b_course_project_templates"
+
+    course_id: Mapped[UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), primary_key=True
+    )
+    milestones: Mapped[list] = mapped_column(DocumentJSON)
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class BProjectDraft(Base):
+    """Server-side wizard draft for page 35, one per group (survives browsers)."""
+
+    __tablename__ = "b_project_drafts"
+
+    group_id: Mapped[UUID] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    payload: Mapped[dict] = mapped_column(DocumentJSON)
+    step: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (CheckConstraint("step BETWEEN 0 AND 10", name="ck_b_project_drafts_step"),)
+
+
+class BProjectSchedule(Base):
+    """B3-03 planned start date (the planned end is ``projects.final_deadline``).
+
+    Kept in a B table so the shared ``projects`` table keeps its columns.
+    """
+
+    __tablename__ = "b_project_schedules"
+
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    start_date: Mapped[date] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BProjectMaterial(Base):
+    """B3-04 project materials: pasted text, or an A4-04 upload whose text comes
+    from A4-05 (``extract_status`` mirrors ``MaterialTextPort``)."""
+
+    __tablename__ = "b_project_materials"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))
+    title: Mapped[str] = mapped_column(String(255))
+    text_content: Mapped[str | None] = mapped_column(Text)
+    receipt_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("a_upload_receipts.id", ondelete="RESTRICT")
+    )
+    extract_status: Mapped[str] = mapped_column(String(16))
+    extract_reason: Mapped[str | None] = mapped_column(String(300))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('text', 'file')", name="ck_b_project_materials_kind"),
+        CheckConstraint(
+            "extract_status IN ('ready', 'pending', 'failed', 'unavailable')",
+            name="ck_b_project_materials_extract",
+        ),
+        CheckConstraint(
+            "(kind = 'text' AND text_content IS NOT NULL AND receipt_id IS NULL) "
+            "OR (kind = 'file' AND receipt_id IS NOT NULL)",
+            name="ck_b_project_materials_source",
+        ),
+        UniqueConstraint("project_id", "receipt_id", name="uq_b_project_materials_receipt"),
+        Index("ix_b_project_materials_project", "project_id", "created_at"),
     )

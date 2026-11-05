@@ -99,6 +99,7 @@ class TaskVerificationStatus:
 | `permissions.require_*` / `can()`（A3-05） | A | 在 `origin/A_task`，尚未合入 main |
 | `notify()`（A4-01）、`record_audit()`（A4-02）、`create_action_item()` / `close_action_items_by_source()`（A4-03） | A | 同上 |
 | 上传回执 `receipt_id`（A4-04） | A | 同上 |
+| `progress_projection`（C 根任务加权进度，B3-02 总览复用） | C | 已在 main |
 | `extract_requirements`（A7-03）、`suggest_tasks`（A7-04） | A | 同上（固定假结果版） |
 | `governance_course_service.resolve_course_invite` | C | 已在 main |
 | `POST /tasks/{id}/start`、`PATCH /tasks/{id}/progress`（C2-01） | C | 已在 main |
