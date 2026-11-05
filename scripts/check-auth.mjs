@@ -26,7 +26,8 @@ const visibleText = loginHtml.replace(/<script[\s\S]*?<\/script>/g, "");
 assert(!visibleText.includes("完善个人资料"), "登录页不得保留“完善个人资料”入口");
 assert(!visibleText.includes("验证邮箱"), "登录页不得保留“验证邮箱”入口");
 assert(!loginHtml.includes("/onboarding/"), "登录页不得保留旧 onboarding 链接");
-assert(visibleText.includes("使用 Google 登录"), "登录页应保留 Google 登录入口");
+// Google 入口由 /api/v1/auth/capabilities 决定（开关开启且凭据齐全才显示），服务端渲染的 HTML 里只有占位骨架，
+// 因此这里不再断言按钮文字；可见性由后端 test_capabilities_* 与浏览器端用例覆盖。
 // 账号密码登录窗口与注册入口（2026-10-08 新增需求）
 assert(visibleText.includes("已注册账户登录"), "登录页应包含已注册账户登录窗口");
 assert(visibleText.includes("注册账号"), "登录页应提供账号密码注册入口");

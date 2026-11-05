@@ -37,3 +37,4 @@ docs/development-stages/stage-reports/*临时密令.md
 
 # Isolated authenticated UI test build
 .next-e2e/
+.next-c-integration/
