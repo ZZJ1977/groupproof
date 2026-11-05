@@ -694,7 +694,28 @@
       "TASK_HAS_RECORDS": "This task already has execution or evidence records and cannot be deleted.",
       "NO_REQUIREMENTS": "The baseline has no requirements, so no task suggestions can be made.",
       "SUGGESTION_NOT_FOUND": "Suggestion not found.",
-      "SUGGESTION_HANDLED": "This suggestion has already been handled."
+      "SUGGESTION_HANDLED": "This suggestion has already been handled.",
+      "MILESTONE_NOT_FOUND": "Milestone not found.",
+      "MILESTONE_COMPLETED": "This stage has been delivered and can no longer be changed.",
+      "MILESTONE_NOT_READY": "Cannot confirm delivery yet: some tasks are not verified or deliverables are unchecked.",
+      "DELIVERABLE_NOT_FOUND": "Deliverable not found.",
+      "DELIVERABLE_TITLE_REQUIRED": "Enter a name for the deliverable.",
+      "FILE_NOT_FOUND": "The linked file is not in this project's files.",
+      "DEADLINE_AFTER_PROJECT_END": "The new deadline cannot be later than the project deadline.",
+      "DEADLINE_UNCHANGED": "The new date is the same as the current one.",
+      "VERIFICATION_UNAVAILABLE": "The verification service is unavailable. Try again later.",
+      "MEMBER_NOT_FOUND": "This student is not in the group.",
+      "MEMBER_INVALID": "Choose another member to remove.",
+      "LEADER_MUST_TRANSFER": "The leader must hand over leadership before leaving.",
+      "HANDOVER_REQUIRED": "Some unfinished tasks have no one to take them over.",
+      "HANDOVER_INVALID": "The receiver must be another member of this group.",
+      "HANDOVER_OUTDATED": "New unfinished tasks need a receiver; ask the requester to update the request.",
+      "HANDOVER_TARGET_LEFT": "A receiver has left the group; nothing was changed.",
+      "MEMBER_ALREADY_LEFT": "This student has already left the group.",
+      "MEMBERSHIP_CHANGE_PENDING": "This student already has a pending request.",
+      "MEMBERSHIP_CHANGE_NOT_FOUND": "Request not found.",
+      "MEMBERSHIP_CHANGE_CLOSED": "This request has already been handled.",
+      "COURSE_TEACHER_REQUIRED": "Only a teacher of this course can do this."
     }
   }
 }

@@ -11,6 +11,7 @@ import { bGroupsApi, type BInvitation } from "@/lib/api/b-groups";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { GroupMembershipChanges, RemoveMemberPanel } from "@/features/b/MembershipApiPages";
 
 type Notice = { tone: "success" | "error" | "warning"; text: string } | undefined;
 
@@ -99,9 +100,10 @@ export function GroupDetailApiPage({ courseId, groupId }: { courseId: string; gr
   if (detail.isPending) return <Loading />;
   if (detail.isError) return <div role="alert"><Feedback tone="error">{errorText(detail.error)}</Feedback></div>;
   const group = detail.data;
+  const isLeader = group.members.some((member) => member.id === userId && member.role === "leader");
   return <div>
     <PageHeader title={group.name} description={`${group.direction ?? "未填写方向"} · ${group.member_count}/${group.max_group_size} 人${group.formation_open ? "" : " · 组队已截止"}`}
-      actions={<div className="flex gap-2"><Link href={`/courses/${courseId}/groups`} className={secondary}>全部小组</Link>{isMember && <Link href={`/courses/${courseId}/groups/${groupId}/change-leader`} className={secondary}><Crown size={15} />更换组长</Link>}{group.project_id ? <Link href={`/projects/${group.project_id}`} className={button}>进入项目</Link> : isMember ? <Link href={`/courses/${courseId}/projects/new`} className={button}>创建项目</Link> : null}</div>} />
+      actions={<div className="flex gap-2"><Link href={`/courses/${courseId}/groups`} className={secondary}>全部小组</Link>{isMember && <Link href={`/courses/${courseId}/groups/${groupId}/change-leader`} className={secondary}><Crown size={15} />更换组长</Link>}{isMember && !isLeader && <Link href={`/courses/${courseId}/groups/${groupId}/leave`} className={secondary}>退出小组</Link>}{group.project_id ? <Link href={`/projects/${group.project_id}`} className={button}>进入项目</Link> : isMember ? <Link href={`/courses/${courseId}/projects/new`} className={button}>创建项目</Link> : null}</div>} />
     <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Panel title="小组成员"><ul className="divide-y divide-slate-100">{group.members.map((member) => <li key={member.id} className="flex items-center justify-between py-3 text-sm"><span>{member.name ?? "未命名"}</span>{member.role === "leader" ? <StatusBadge tone="blue" label="组长" /> : <span className="text-xs text-slate-400">成员</span>}</li>)}</ul></Panel>
       <div className="space-y-4">
@@ -113,6 +115,8 @@ export function GroupDetailApiPage({ courseId, groupId }: { courseId: string; gr
           <ul className="mt-3 max-h-64 divide-y divide-slate-100 overflow-auto">{(candidates.data ?? []).map((candidate) => <li key={candidate.id} className="flex items-center justify-between gap-2 py-2 text-sm"><span>{candidate.name ?? "未命名"} <span className="text-xs text-slate-400">{candidate.student_number ?? ""}</span></span><button type="button" className={secondary} disabled={invite.isPending} onClick={() => invite.mutate(candidate.id)}><UserPlus size={14} />邀请</button></li>)}</ul>
           {candidates.data?.length === 0 && <p className="mt-2 text-xs text-slate-500">没有可邀请的同学。</p>}
         </Panel>)}
+        {isLeader && group.members.length > 1 && <RemoveMemberPanel groupId={groupId} members={group.members} />}
+        {isMember && <GroupMembershipChanges groupId={groupId} />}
         {group.invitations.length > 0 && <Panel title="等待处理的邀请"><ul className="divide-y divide-slate-100">{group.invitations.map((row) => <li key={row.id} className="flex justify-between py-2 text-sm"><span>{row.invitee?.name ?? "同学"}</span><span className="text-xs text-amber-700">{row.status === "pending" ? "等待对方确认" : "等待老师批准"}</span></li>)}</ul></Panel>}
       </div>
     </div>

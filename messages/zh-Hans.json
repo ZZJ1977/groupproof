@@ -694,7 +694,28 @@
       "TASK_HAS_RECORDS": "这个任务已有执行或证据记录，不能删除。",
       "NO_REQUIREMENTS": "基线里没有需求，无法生成任务建议。",
       "SUGGESTION_NOT_FOUND": "建议不存在。",
-      "SUGGESTION_HANDLED": "这条建议已经处理过了。"
+      "SUGGESTION_HANDLED": "这条建议已经处理过了。",
+      "MILESTONE_NOT_FOUND": "里程碑不存在。",
+      "MILESTONE_COMPLETED": "这个阶段已经确认交付，不能再修改。",
+      "MILESTONE_NOT_READY": "还不能确认交付：有任务没通过验收或交付物没勾齐。",
+      "DELIVERABLE_NOT_FOUND": "交付物不存在。",
+      "DELIVERABLE_TITLE_REQUIRED": "请填写交付物名称。",
+      "FILE_NOT_FOUND": "关联的文件不在本项目的资料里。",
+      "DEADLINE_AFTER_PROJECT_END": "新的截止时间不能晚于项目截止时间。",
+      "DEADLINE_UNCHANGED": "新日期和原来的一样。",
+      "VERIFICATION_UNAVAILABLE": "验收服务暂不可用，请稍后重试。",
+      "MEMBER_NOT_FOUND": "这位同学不在本组。",
+      "MEMBER_INVALID": "请选择要移出的其他成员。",
+      "LEADER_MUST_TRANSFER": "组长需要先把组长交给别人才能退出。",
+      "HANDOVER_REQUIRED": "有未完成任务还没有指定接手人。",
+      "HANDOVER_INVALID": "接手人必须是本组的其他成员。",
+      "HANDOVER_OUTDATED": "有新的未完成任务还没有指定接手人，请申请人补充后再审批。",
+      "HANDOVER_TARGET_LEFT": "有接手人已经不在本组，成员和任务都没有改动。",
+      "MEMBER_ALREADY_LEFT": "这位同学已经不在本组。",
+      "MEMBERSHIP_CHANGE_PENDING": "这位同学已经有一条待处理的申请。",
+      "MEMBERSHIP_CHANGE_NOT_FOUND": "申请不存在。",
+      "MEMBERSHIP_CHANGE_CLOSED": "这条申请已经处理过了。",
+      "COURSE_TEACHER_REQUIRED": "只有本课程老师可以执行此操作。"
     }
   }
 }
