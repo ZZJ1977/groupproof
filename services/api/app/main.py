@@ -20,8 +20,8 @@ from app.db.session import engine
 from app.modules.a.router import router as a_router
 from app.modules.b.router import router as b_router
 from app.modules.c.router import router as c_router
-from app.modules.d.router import router as d_router
 from app.modules.d.router import risk_router as d_risk_router
+from app.modules.d.router import router as d_router
 from app.modules.tasks.router import router as tasks_router
 
 app = FastAPI(
