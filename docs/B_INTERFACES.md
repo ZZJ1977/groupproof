@@ -135,7 +135,7 @@ class TaskVerificationStatus:
 | 约定 | 说明 |
 | --- | --- |
 | 里程碑进度 | `GET /api/v1/projects/{id}/milestones`、`.../milestones/{mid}` 每次读取时按关联任务用 C 的 `progress_projection` + `weighted_progress` 汇总，不存表；关联的子任务已经在关联的父任务下面时只算一次。任务树数据有问题时退回每个任务自己的进度。 |
-| 风险 | `risk` 字段留给 D，D 没有数据时返回 `null`，页面显示“风险：暂无数据”。D 提供数据时请约定字段（页面目前读 `label` 或 `level`）。 |
+| 风险 | B 只读 D 的 `risks` 表（D 迁移 `0017_d_risks`），不写。一个里程碑的风险 = 记在这个里程碑上的，加上记在它关联任务上的；只算 `open`、`mitigating`，`closed` 不算。返回 `risk: {level, open_count, items:[{id, title, level, status, due_at, owner, task}]}`，`level` 取最高一级（high > medium > low），没有未关闭风险时为 `null`、`open_count` 为 0，页面显示“暂无风险”。数据库里还没有 `risks` 表时整个 `risk` 为 `null`，页面显示“风险：暂无数据”。D 以后如果改了表的字段名或状态值，请告诉 B。 |
 | 交付物文件 | `b_milestone_deliverables.file_id` 指向 C 的 `c_logical_files.id`，**不加外键**（加了外键会让 C 的 0010 迁移降级测试失败）；B 写入时检查文件属于本项目。链接用 C 文件页的 `?file=` 参数：`/projects/{id}/files?file={file_id}`。 |
 | 阶段交付确认 | `POST .../milestones/{mid}/complete` 调 `VerificationPort.task_verification_status`，只有 `passed` 算验收完成；D 不可用时返回 503 `VERIFICATION_UNAVAILABLE`，不允许跳过。没有关联任务时不调用 D。缺项时返回 409 `MILESTONE_NOT_READY`，`details = {tasks: [{id, code, title, state}], deliverables: [{id, title}]}`。 |
 | 成员离开时的任务 | 移出/退出生效时，B 在同一个事务里：先锁小组下的项目行（和 C、B 计划写入同样的顺序），再锁小组；结束 `group_members`、`project_members`；把离开的人在 `task_assignees` 里的记录标 `unassigned_at`，给接手人加一条 `responsible`；`tasks.lock_version + 1`。C 读负责人时请只看 `unassigned_at is null` 的记录。 |

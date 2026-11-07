@@ -2,11 +2,19 @@ import { bRequest } from "@/lib/api/b-client";
 import type { BPerson } from "@/lib/api/b-courses";
 
 export type BFileRef = { id: string; name: string; href: string };
+export type BRiskLevel = "high" | "medium" | "low";
+export type BMilestoneRiskItem = {
+  id: string; title: string; level: BRiskLevel; status: "open" | "mitigating"; due_at: string | null; owner: BPerson | null;
+  /** The linked task the risk is recorded on; null when it is on the milestone itself. */
+  task: { id: string; code: string | null; title: string } | null;
+};
+/** Open and mitigating risks read from D; `level` is the highest one, null when none is open. */
+export type BMilestoneRisk = { level: BRiskLevel | null; open_count: number; items: BMilestoneRiskItem[] };
 export type BMilestone = {
   id: string; title: string; description: string | null; deadline: string | null; status: string; overdue: boolean;
   progress_percent: number | null; task_count: number; completed_task_count: number; deliverables_done: number; deliverables_total: number;
-  /** D's risk assessment; null until D provides one. */
-  risk: Record<string, unknown> | null; lock_version: number; href: string;
+  /** From D's risks; null when D's data is not available yet. */
+  risk: BMilestoneRisk | null; lock_version: number; href: string;
 };
 export type BDeliverable = {
   id: string; title: string; done: boolean; done_by: BPerson | null; done_at: string | null; file: BFileRef | null; lock_version: number;

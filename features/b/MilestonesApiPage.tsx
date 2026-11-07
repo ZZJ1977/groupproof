@@ -23,9 +23,30 @@ function Progress({ value }: { value: number | null }) {
   return <div className="flex items-center gap-2"><div className="h-2 flex-1 rounded bg-slate-100" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} aria-label="进度"><div className="h-2 rounded bg-[var(--gp-action)]" style={{ width: `${value}%` }} /></div><span className="w-10 text-right text-xs font-semibold">{value}%</span></div>;
 }
 
+const riskLevel: Record<string, { label: string; tone: "red" | "amber" | "gray" }> = { high: { label: "高风险", tone: "red" }, medium: { label: "中风险", tone: "amber" }, low: { label: "低风险", tone: "gray" } };
+const riskStatus: Record<string, string> = { open: "未处理", mitigating: "处理中" };
+
 /** D owns risk; until D sends data the slot says so instead of guessing. */
 function Risk({ risk }: { risk: BMilestone["risk"] }) {
-  return <p data-testid="milestone-risk" className="text-xs text-slate-500">{risk ? `风险：${String(risk.label ?? risk.level ?? "有提示")}` : "风险：暂无数据（由验收模块提供）"}</p>;
+  if (!risk) return <p data-testid="milestone-risk" className="text-xs text-slate-500">风险：暂无数据（由验收模块提供）</p>;
+  if (!risk.level || risk.open_count === 0) return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-500">风险：<StatusBadge tone="green" label="暂无风险" /></p>;
+  const level = riskLevel[risk.level] ?? riskLevel.low;
+  return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-600">风险：<StatusBadge tone={level.tone} label={level.label} /><span>{risk.open_count} 项未关闭</span></p>;
+}
+
+/** Page 19: the open risks behind the summary, each with where it is recorded. */
+function RiskList({ projectId, risk }: { projectId: string; risk: NonNullable<BMilestone["risk"]> }) {
+  if (risk.items.length === 0) return <p className="text-sm text-slate-500">这个里程碑和它的关联任务没有未关闭的风险。</p>;
+  return <ul className="divide-y divide-slate-100">{risk.items.map((r) => {
+    const level = riskLevel[r.level] ?? riskLevel.low;
+    return <li key={r.id} data-testid="milestone-risk-item" className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+      <StatusBadge tone={level.tone} label={level.label} />
+      <span className="font-medium">{r.title}</span>
+      <span className="text-xs text-slate-500">{riskStatus[r.status] ?? r.status}</span>
+      <span className="text-xs text-slate-500">{r.task ? <>任务 <Link className="gp-link" href={`/projects/${projectId}/tasks/${r.task.id}`}>{r.task.code ? `${r.task.code} ${r.task.title}` : r.task.title}</Link></> : "里程碑本身"}</span>
+      <span className="ml-auto text-xs text-slate-400">负责人 {r.owner?.name ?? "—"} · 处理期限 {dateOnly(r.due_at)}</span>
+    </li>;
+  })}</ul>;
 }
 
 function Badge({ m }: { m: BMilestone }) {
@@ -115,6 +136,7 @@ export function MilestoneDetailApiPage({ projectId, milestoneId }: { projectId: 
       <Panel title="进度">
         <div className="space-y-2"><div className="flex items-center justify-between"><Badge m={m} /><span className="text-xs text-slate-500">任务 {m.completed_task_count}/{m.task_count} 完成</span></div><Progress value={m.progress_percent} /><Risk risk={m.risk} /></div>
       </Panel>
+      {m.risk && <Panel title="风险"><RiskList projectId={projectId} risk={m.risk} /></Panel>}
       <Panel title="关联任务">
         {m.tasks.length === 0 ? <EmptyState title="没有关联任务" description="在任务计划里给任务选择这个里程碑。" /> : <table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="py-2">编号</th><th>任务</th><th>负责人</th><th>状态</th><th className="text-right">进度</th></tr></thead>
           <tbody>{m.tasks.map((t) => <tr key={t.id} data-testid="milestone-task" className="border-t border-slate-100"><td className="py-2 text-xs text-slate-500">{t.code ?? "—"}</td><td><Link className="gp-link" href={t.href}>{t.title}</Link></td><td className="text-xs">{t.assignees.map((a) => a.name ?? "组员").join("、") || "—"}</td><td className="text-xs">{taskStatus[t.status] ?? t.status}</td><td className="text-right text-xs">{t.progress_percent}%</td></tr>)}</tbody></table>}
