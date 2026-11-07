@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db.models import Milestone, Project, Task
@@ -117,6 +117,93 @@ def test_progress_follows_linked_tasks_and_risk_stays_null(world_api, b_engine):
     outsider = api.client.get(m(world, milestone), headers={"X-B-Test-User": str(other.leader_id)})
     assert outsider.status_code == 404
     assert error(api.get(m(world, uuid4()))) == "MILESTONE_NOT_FOUND"
+
+
+# D's risks table, as created by D's migration 0017_d_risks. IF NOT EXISTS so the
+# test keeps working once D's model is part of the shared metadata.
+D_RISKS_DDL = """
+CREATE TABLE IF NOT EXISTS risks (
+    id uuid PRIMARY KEY,
+    project_id uuid NOT NULL REFERENCES projects(id),
+    task_id uuid REFERENCES tasks(id),
+    milestone_id uuid REFERENCES milestones(id),
+    owner_id uuid NOT NULL REFERENCES users(id),
+    title varchar(240) NOT NULL,
+    description text NOT NULL,
+    level varchar(16) NOT NULL CHECK (level IN ('low','medium','high')),
+    status varchar(16) NOT NULL CHECK (status IN ('open','mitigating','closed')),
+    due_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    lock_version integer NOT NULL DEFAULT 0,
+    CHECK (task_id IS NOT NULL OR milestone_id IS NOT NULL)
+)
+"""
+
+
+def add_risk(
+    engine, world, owner, title, level, *, status="open", task=None, milestone=None, due=None
+):
+    with Session(engine) as session:
+        session.execute(
+            text(
+                "INSERT INTO risks (id, project_id, task_id, milestone_id, owner_id, title,"
+                " description, level, status, due_at) VALUES (:id, :p, :t, :m, :o, :title,"
+                " '', :level, :status, :due)"
+            ),
+            {
+                "id": uuid4(),
+                "p": world.project_id,
+                "t": task,
+                "m": milestone,
+                "o": owner,
+                "title": title,
+                "level": level,
+                "status": status,
+                "due": due,
+            },
+        )
+        session.commit()
+
+
+def test_milestones_show_ds_open_risks_on_the_milestone_and_its_tasks(world_api, b_engine):  # noqa: F811
+    api, world, other, modules = world_api
+    milestone, a, b = two_tasks(api, world, modules, b_engine)
+    quiet = add_milestone(b_engine, world, title="终期答辩")
+    with b_engine.begin() as connection:
+        connection.execute(text(D_RISKS_DDL))
+    rows = {r["id"]: r["risk"] for r in api.get(p(world, "/milestones")).json()["data"]["items"]}
+    # D's table exists but has nothing open: "no risk", not "no data".
+    assert rows[milestone] == {"level": None, "open_count": 0, "items": []}
+    soon = datetime.now(UTC).replace(microsecond=0) + timedelta(days=3)
+    member = world.student_ids[1]
+    add_risk(b_engine, world, member, "接口文档没定", "medium", task=a["id"], due=soon)
+    add_risk(
+        b_engine,
+        world,
+        world.leader_id,
+        "演示环境未申请",
+        "high",
+        milestone=milestone,
+        status="mitigating",
+    )
+    add_risk(b_engine, world, member, "注册页已解决", "high", task=b["id"], status="closed")
+    add_risk(b_engine, world, member, "只关联别的里程碑", "low", milestone=quiet)
+    page = api.get(p(world, "/milestones")).json()["data"]
+    rows = {r["id"]: r["risk"] for r in page["items"]}
+    risk = rows[milestone]
+    assert (risk["level"], risk["open_count"]) == ("high", 2)
+    assert [i["title"] for i in risk["items"]] == ["演示环境未申请", "接口文档没定"]
+    on_task = risk["items"][1]
+    assert on_task["task"] == {"id": a["id"], "code": "T-001", "title": "登录页"}
+    assert on_task["owner"]["id"] == str(member) and on_task["status"] == "open"
+    assert datetime.fromisoformat(on_task["due_at"]) == soon
+    assert risk["items"][0]["task"] is None and risk["items"][0]["status"] == "mitigating"
+    assert (rows[quiet]["level"], rows[quiet]["open_count"]) == ("low", 1)
+    assert detail(api, world, quiet)["risk"] == rows[quiet]  # no linked tasks at all
+    # The detail page reads the same summary; teachers see it too.
+    assert detail(api, world, milestone)["risk"] == risk
+    assert detail(api, world, milestone, world.teacher_id)["risk"] == risk
 
 
 # ---------------------------------------------------------------- B7-02

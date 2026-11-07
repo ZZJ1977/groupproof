@@ -73,6 +73,30 @@ class MilestoneTaskDTO(BaseModel):
     href: str
 
 
+class RiskTaskDTO(BaseModel):
+    id: UUID
+    code: str | None
+    title: str
+
+
+class MilestoneRiskItemDTO(BaseModel):
+    id: UUID
+    title: str
+    level: str
+    status: str
+    due_at: datetime | None
+    owner: PersonDTO | None
+    # The linked task the risk is recorded on; null when it is on the milestone itself.
+    task: RiskTaskDTO | None
+
+
+class MilestoneRiskDTO(BaseModel):
+    # Highest level among the open risks (high > medium > low); null when none is open.
+    level: str | None
+    open_count: int
+    items: list[MilestoneRiskItemDTO]
+
+
 class MilestoneDTO(BaseModel):
     id: UUID
     title: str
@@ -85,8 +109,9 @@ class MilestoneDTO(BaseModel):
     completed_task_count: int
     deliverables_done: int
     deliverables_total: int
-    # D's risk assessment; null until D provides one (never invented here).
-    risk: dict | None
+    # Read from D's ``risks`` table: open and mitigating risks on the milestone or
+    # on its linked tasks. null when D's table is not there yet (never invented).
+    risk: MilestoneRiskDTO | None
     lock_version: int
     href: str
 

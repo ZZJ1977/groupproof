@@ -5,7 +5,9 @@
 * Completion asks D whether every linked task is verified (``VerificationPort``);
   when D is unavailable the request fails with ``VERIFICATION_UNAVAILABLE``:
   "unknown" is never treated as "verified".
-* ``risk`` is D's; B returns ``null`` until D provides it.
+* ``risk`` is read from D's ``risks`` table (open and mitigating risks recorded
+  on the milestone or on one of its linked tasks). B only reads it; when the
+  table is not there yet the field is ``null`` and the page says "no data".
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import Uuid, bindparam, func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
@@ -35,15 +37,25 @@ from app.modules.b.milestones_schemas import (
     MilestoneDetailDTO,
     MilestoneDTO,
     MilestoneListDTO,
+    MilestoneRiskDTO,
+    MilestoneRiskItemDTO,
     MilestoneTaskDTO,
     Reschedule,
+    RiskTaskDTO,
 )
 from app.modules.b.models import (
     BMilestoneDateChange,
     BMilestoneDeliverable,
     BMilestoneDeliverableEvent,
 )
-from app.modules.b.planning_service import _facts, _lock_project, _members, _people, task_code
+from app.modules.b.planning_service import (
+    Facts,
+    _facts,
+    _lock_project,
+    _members,
+    _people,
+    task_code,
+)
 from app.modules.b.ports import VerificationPort
 from app.modules.c.files_models import LogicalFile
 from app.modules.c.task_execution import progress_projection, weighted_progress
@@ -110,12 +122,91 @@ def _deliverable_counts(session: Session, milestone_ids: list[UUID]) -> dict[UUI
     return {mid: (done, total) for mid, total, done in rows}
 
 
+_LEVELS = {"high": 3, "medium": 2, "low": 1}
+_RISKS = text(
+    """
+    SELECT id, task_id, milestone_id, owner_id, title, level, status, due_at
+    FROM risks
+    WHERE project_id = :project_id
+      AND status IN ('open', 'mitigating')
+      AND (milestone_id IN :milestone_ids OR task_id IN :task_ids)
+    """
+).bindparams(
+    bindparam("project_id", type_=Uuid),
+    bindparam("milestone_ids", type_=Uuid, expanding=True),
+    bindparam("task_ids", type_=Uuid, expanding=True),
+)
+
+
+def _risks(
+    session: Session,
+    project_id: UUID,
+    linked: dict[UUID, list[UUID]],
+    milestone_ids: list[UUID],
+    codes: dict[UUID, RiskTaskDTO],
+) -> dict[UUID, MilestoneRiskDTO] | None:
+    """D's open risks per milestone, or None when D's table does not exist yet.
+
+    A risk counts for a milestone when it is recorded on the milestone itself or
+    on one of the milestone's linked tasks; closed risks are left out.
+    """
+    if session.scalar(text("SELECT to_regclass('risks') IS NOT NULL")) is not True:
+        return None
+    result = {mid: MilestoneRiskDTO(level=None, open_count=0, items=[]) for mid in milestone_ids}
+    if not milestone_ids:
+        return result
+    task_ids = sorted({t for mid in milestone_ids for t in linked.get(mid, [])})
+    rows = session.execute(
+        _RISKS,
+        {"project_id": project_id, "milestone_ids": milestone_ids, "task_ids": task_ids},
+    ).all()
+    people = _people(session, {r.owner_id for r in rows if r.owner_id})
+    by_task: dict[UUID, set[UUID]] = {}
+    for mid in milestone_ids:
+        for t in linked.get(mid, []):
+            by_task.setdefault(t, set()).add(mid)
+    for r in rows:
+        targets = set(by_task.get(r.task_id, set()))
+        if r.milestone_id in result:
+            targets.add(r.milestone_id)
+        item = MilestoneRiskItemDTO(
+            id=r.id,
+            title=r.title,
+            level=r.level,
+            status=r.status,
+            due_at=r.due_at,
+            owner=people.get(r.owner_id),
+            task=codes.get(r.task_id) if r.task_id else None,
+        )
+        for mid in targets:
+            result[mid].items.append(item)
+    for summary in result.values():
+        summary.items.sort(
+            key=lambda i: (-_LEVELS.get(i.level, 0), i.due_at is None, i.due_at, i.title)
+        )
+        summary.open_count = len(summary.items)
+        summary.level = summary.items[0].level if summary.items else None
+    return result
+
+
+def _risk_tasks(facts: Facts, by_id: dict[UUID, Task]) -> dict[UUID, RiskTaskDTO]:
+    return {
+        t: RiskTaskDTO(
+            id=t,
+            code=task_code(facts.meta[t].seq) if t in facts.meta else None,
+            title=task.title,
+        )
+        for t, task in by_id.items()
+    }
+
+
 def _brief(
     m: Milestone,
     task_ids: list[UUID],
     by_id: dict[UUID, Task],
     values: dict[UUID, int],
     counts: tuple[int, int],
+    risks: dict[UUID, MilestoneRiskDTO] | None,
 ) -> MilestoneDTO:
     tasks = [by_id[t] for t in task_ids if t in by_id]
     # Count each linked task once: a linked child already inside a linked parent
@@ -141,7 +232,7 @@ def _brief(
         completed_task_count=sum(1 for t in tasks if t.status == "completed"),
         deliverables_done=counts[0],
         deliverables_total=counts[1],
-        risk=None,
+        risk=risks.get(m.id) if risks is not None else None,
         lock_version=m.lock_version,
         href=f"/projects/{m.project_id}/milestones/{m.id}",
     )
@@ -165,9 +256,11 @@ def list_milestones(session: Session, user: User, project_id: UUID) -> Milestone
     values = _values(facts.tasks)
     ids = [m.id for m in rows]
     linked, counts = _linked(session, ids), _deliverable_counts(session, ids)
+    risks = _risks(session, project_id, linked, ids, _risk_tasks(facts, by_id))
     return MilestoneListDTO(
         items=[
-            _brief(m, linked.get(m.id, []), by_id, values, counts.get(m.id, (0, 0))) for m in rows
+            _brief(m, linked.get(m.id, []), by_id, values, counts.get(m.id, (0, 0)), risks)
+            for m in rows
         ],
         can_lead=relation.leader and not relation.read_only,
     )
@@ -189,9 +282,11 @@ def milestone_detail(
     facts = _facts(session, project_id)
     by_id = {t.id: t for t in facts.tasks}
     values = _values(facts.tasks)
-    task_ids = _linked(session, [m.id]).get(m.id, [])
+    linked = _linked(session, [m.id])
+    task_ids = linked.get(m.id, [])
+    risks = _risks(session, project_id, linked, [m.id], _risk_tasks(facts, by_id))
     brief = _brief(
-        m, task_ids, by_id, values, _deliverable_counts(session, [m.id]).get(m.id, (0, 0))
+        m, task_ids, by_id, values, _deliverable_counts(session, [m.id]).get(m.id, (0, 0)), risks
     )
     deliverables = list(
         session.scalars(

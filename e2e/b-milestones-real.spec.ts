@@ -8,11 +8,11 @@ const ok = (route: Route, data: unknown, status = 200) => route.fulfill({ status
 const fail = (route: Route, status: number, code: string, details: unknown = {}) => route.fulfill({ status, json: { error: { code, message: code, details }, meta } });
 const file = { id: "f1", name: "中期报告.pdf", href: `/projects/${project}/files?file=f1` };
 
-function milestone(state: { progress: number; done: boolean; history: unknown[]; status?: string; deadline?: string; changes?: unknown[]; lead?: boolean }) {
+function milestone(state: { progress: number; done: boolean; history: unknown[]; status?: string; deadline?: string; changes?: unknown[]; lead?: boolean; risk?: unknown }) {
   return {
     id: ms, title: "中期检查", description: null, deadline: state.deadline ?? "2026-12-01T15:59:00Z", status: state.status ?? "in_progress", overdue: false,
     progress_percent: state.progress, task_count: 2, completed_task_count: state.progress === 100 ? 2 : 1, deliverables_done: state.done ? 1 : 0, deliverables_total: 1,
-    risk: null, lock_version: 0, href: `/projects/${project}/milestones/${ms}`, can_lead: state.lead ?? true, files: [file],
+    risk: state.risk ?? null, lock_version: 0, href: `/projects/${project}/milestones/${ms}`, can_lead: state.lead ?? true, files: [file],
     tasks: [
       { id: "t1", code: "T-001", title: "登录页", status: "completed", progress_percent: 100, weight: 60, assignees: [{ id: "u1", name: "张三" }], href: `/projects/${project}/tasks/t1` },
       { id: "t2", code: "T-002", title: "注册页", status: state.progress === 100 ? "completed" : "in_progress", progress_percent: state.progress === 100 ? 100 : 0, weight: 40, assignees: [], href: `/projects/${project}/tasks/t2` },
@@ -38,6 +38,35 @@ test("B7-01 进度来自关联任务，风险在 D 没数据时只显示占位",
   await page.reload();
   await expect(card.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   await expect(card).toContainText("任务 2/2 完成");
+});
+
+test("B7-01 有 D 的风险数据时，列表显示最高等级和数量，详情逐条列出", async ({ page }) => {
+  const risk = {
+    level: "high", open_count: 2, items: [
+      { id: "r1", title: "演示环境未申请", level: "high", status: "mitigating", due_at: null, owner: { id: "u1", name: "张三" }, task: null },
+      { id: "r2", title: "接口文档没定", level: "medium", status: "open", due_at: "2026-11-20T15:59:00Z", owner: { id: "u2", name: "李四" }, task: { id: "t1", code: "T-001", title: "登录页" } },
+    ],
+  };
+  const quiet = { ...milestone({ progress: 0, done: false, history: [] }), id: "m-quiet", title: "终期答辩", risk: { level: null, open_count: 0, items: [] } };
+  await page.route(`**/api/v1/projects/${project}/milestones`, (route) => {
+    const { tasks, deliverables, date_changes, files, can_lead, ...brief } = milestone({ progress: 60, done: false, history: [], risk });
+    void tasks; void deliverables; void date_changes; void files; void can_lead;
+    const { tasks: _t, deliverables: _d, date_changes: _c, files: _f, can_lead: _l, ...quietBrief } = quiet;
+    void _t; void _d; void _c; void _f; void _l;
+    return ok(route, { items: [brief, quietBrief], can_lead: true });
+  });
+  await page.route(`**/api/v1/projects/${project}/milestones/${ms}`, (route) => ok(route, milestone({ progress: 60, done: false, history: [], risk })));
+  await page.goto(`/projects/${project}/milestones`);
+  const cards = page.getByTestId("milestone-card");
+  await expect(cards.nth(0).getByTestId("milestone-risk")).toHaveText("风险：高风险2 项未关闭");
+  await expect(cards.nth(1).getByTestId("milestone-risk")).toHaveText("风险：暂无风险");
+  await cards.nth(0).getByRole("link", { name: "中期检查" }).click();
+  const items = page.getByTestId("milestone-risk-item");
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText("高风险演示环境未申请处理中里程碑本身");
+  await expect(items.nth(1)).toContainText("中风险接口文档没定未处理");
+  await expect(items.nth(1).getByRole("link", { name: "T-001 登录页" })).toHaveAttribute("href", `/projects/${project}/tasks/t1`);
+  await expect(items.nth(1)).toContainText("负责人 李四 · 处理期限 2026-11-20");
 });
 
 test("B7-02 组长勾选交付物并关联文件，刷新还在，能看到谁勾的；非组长不能勾", async ({ page }) => {
