@@ -4,6 +4,7 @@ Authlib==1.8.0
 argon2-cffi==25.1.0
 bcrypt==5.0.0
 celery[redis]==5.4.0
+packaging==26.3
 httpx==0.28.1
 psycopg[binary]==3.2.3
 pydantic-settings==2.12.0
