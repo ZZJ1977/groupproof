@@ -1,7 +1,7 @@
 """B-6 task planning: task numbers and versions, AI suggestions, confirmations.
 
-Revision ID: 0023
-Revises: 0022
+Revision ID: 0024
+Revises: 0023
 
 - b_task_meta / b_project_counters.task_seq: T-001 numbers and content versions;
 - b_task_versions: every saved definition of a task;
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0023"
-down_revision: str | None = "0022"
+revision: str = "0024"
+down_revision: str | None = "0023"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -1,7 +1,7 @@
 """B-8 milestones and member removal/leaving with task handover.
 
-Revision ID: 0024
-Revises: 0023
+Revision ID: 0025
+Revises: 0024
 
 - b_milestone_deliverables / b_milestone_deliverable_events: B7-02 deliverables
   ticked by the leader, every tick and untick recorded; ``file_id`` points at
@@ -17,8 +17,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0024"
-down_revision: str | None = "0023"
+revision: str = "0025"
+down_revision: str | None = "0024"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
