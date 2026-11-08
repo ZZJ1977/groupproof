@@ -1,6 +1,6 @@
 """A 的公共服务数据表：操作记录、通知、待办、上传凭证。
 
-表名统一以 ``a_`` 开头，迁移见 ``migrations/versions/0017_a_shared_services.py``。
+表名统一以 ``a_`` 开头，迁移见 ``migrations/versions/0018_a_shared_services.py``。
 """
 
 from __future__ import annotations

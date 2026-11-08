@@ -6,7 +6,9 @@ from fastapi import Response
 from app import main
 
 
-@pytest.mark.parametrize("revision, status", [("0024", 200), ("0015", 503), (None, 503)])
+@pytest.mark.parametrize(
+    "revision, status", [("0025", 200), ("0024", 503), ("0017", 503), ("0015", 503), (None, 503)]
+)
 def test_readiness_requires_current_migrations(monkeypatch, revision, status):
     engine = MagicMock()
     result = engine.connect.return_value.__enter__.return_value.execute.return_value
