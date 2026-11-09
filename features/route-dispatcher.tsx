@@ -50,6 +50,10 @@ function AccessDenied({ message }: { message?: string }) {
   return <div className="mx-auto mt-20 max-w-[530px] text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-[8px] bg-[#eaf2ff] text-[#246bfa]"><LockKeyhole size={25} /></span><h1 className="mt-5 text-[22px] font-semibold">{t("FORBIDDEN")}</h1><p className="mt-2 text-[13px] text-[#75849a]">{message ?? t("NOT_FOUND")}</p></div>;
 }
 
+function VerificationNotConnected() {
+  return <>{useTranslations("pages.shared")("verificationNotConnected")}</>;
+}
+
 /** 业务页分发：仅在服务端确认 active + full 会话后挂载；无任何切换演示角色的恢复入口。 */
 export function RouteDispatcher() {
   const pathname = usePathname();
@@ -75,7 +79,7 @@ export function RouteDispatcher() {
     else if ([21, 22].includes(screen) && projectId) realContent = <ActivityApiPage projectId={projectId} sourceType={screen === 21 ? "github" : "feishu"} />;
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
-    else if ([16, 17].includes(screen)) realContent = <div role="status" className="gp-empty">验收服务暂未接入，请返回任务页面查看已保存的提交。</div>;
+    else if ([16, 17].includes(screen)) realContent = <div role="status" className="gp-empty"><VerificationNotConnected /></div>;
   }
   // B pages: each stage replaces this placeholder with its real page; real mode never shows demo data.
   if (isBScreen(screen) && apiMode("bworkspace") === "real") {
