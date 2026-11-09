@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 
 export const projectApi = createCClient();
@@ -22,20 +23,18 @@ export const pageNumber = (value: string | null) => {
 export const accessFailure = (error: unknown): error is CApiError => error instanceof CApiError && [401, 403].includes(error.status);
 export const versionFailure = (error: unknown) => error instanceof CApiError && error.status === 409;
 
-export function apiErrorText(error: unknown) {
+type PageT = ReturnType<typeof useTranslations>;
+
+export function apiErrorText(error: unknown, t: PageT) {
   if (error instanceof CApiError) {
-    if (error.status === 401) return "当前登录身份无法读取此服务，请重新登录或重试。";
-    if (error.status === 403) return "当前访问权限已失效，项目数据已隐藏。";
-    if (error.status === 404) return "这条记录不存在，或已不在当前项目中。";
-    if (error.status === 409) return "记录已变化，请刷新并核对当前状态；输入已保留。";
-    if (error.status === 422) return "提交内容不符合当前要求，请检查选择项和操作原因。";
-    if (error.status === 503) return "服务暂不可用，暂不能确认结果。请稍后重试。";
+    if ([401, 403, 404, 409, 422, 503].includes(error.status)) return t(`err${error.status}`);
   }
-  return "请求未成功，输入已保留。请重试。";
+  return t("errDefault");
 }
 
-export function ApiFailure({ error, retry, label = "重试" }: { error: unknown; retry?: () => void; label?: string }) {
-  return <div role="alert" className="my-3 rounded-md border border-red-200 p-3"><p>{apiErrorText(error)}</p>{retry && <button className={`${apiButton} mt-2`} type="button" onClick={retry}>{label}</button>}</div>;
+export function ApiFailure({ error, retry, label }: { error: unknown; retry?: () => void; label?: string }) {
+  const t = useTranslations("pages.shared");
+  return <div role="alert" className="my-3 rounded-md border border-red-200 p-3"><p>{apiErrorText(error, t)}</p>{retry && <button className={`${apiButton} mt-2`} type="button" onClick={retry}>{label ?? t("retry")}</button>}</div>;
 }
 
 /** Keep the key across uncertain failures; reset only after a confirmed write. */
@@ -61,5 +60,6 @@ export function safeHttps(value: string | null | undefined, github = false): str
 }
 
 export function ApiPager({ page, pageSize, total, change }: { page: number; pageSize: number; total: number; change: (page: number) => void }) {
-  return <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span>共 {total} 条 · 第 {page} 页</span><div className="flex gap-2"><button className={apiButton} type="button" disabled={page <= 1} onClick={() => change(page - 1)}>上一页</button><button className={apiButton} type="button" disabled={page * pageSize >= total} onClick={() => change(page + 1)}>下一页</button></div></div>;
+  const t = useTranslations("pages.shared");
+  return <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span>{t("pagerTotal", { total, page })}</span><div className="flex gap-2"><button className={apiButton} type="button" disabled={page <= 1} onClick={() => change(page - 1)}>{t("prev")}</button><button className={apiButton} type="button" disabled={page * pageSize >= total} onClick={() => change(page + 1)}>{t("next")}</button></div></div>;
 }
