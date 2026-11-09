@@ -13,6 +13,7 @@ import type { FeishuRecord, GithubActivity, MockData } from "@/types/domain";
 import { activityHistory, activityVersion, canManageActivity, decideFeishuRecord, feishuActivityFilters, githubActivityFilters, githubTaskSuggestions, linkGithubActivity, queryFeishuActivities, queryGithubActivities, type FeishuDecisionInput } from "./activity-records";
 import { GithubActivityLink } from "./github-activity-link";
 import { useUrlQuery } from "./use-url-query";
+import { tr } from "@/lib/i18n/tr";
 
 const field = "w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-50";
 const button = "inline-flex min-h-9 items-center justify-center rounded border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -67,11 +68,11 @@ function AnchoredRecord({ records, visibleIds, data }: { records: (GithubActivit
 
 function RecordHistory({ record, data }: { record: GithubActivity | FeishuRecord; data: MockData }) {
   const history = activityHistory(record);
-  return history.length ? <details className="mt-1 text-xs text-slate-500"><summary>处理历史（{history.length}）</summary>{history.map((entry) => <p className="mt-1" key={entry.idempotencyKey}>{member(data, entry.actorId)} · {entry.at.slice(0, 10)} · {({ link: "调整关联", adopt: "采纳为候选", ignore: "忽略", restore: "恢复" })[entry.action]}：{entry.reason}</p>)}</details> : null;
+  return history.length ? <details className="mt-1 text-xs text-slate-500"><summary>{tr("处理历史（{0}）", { 0: history.length })}</summary>{history.map((entry) => <p className="mt-1" key={entry.idempotencyKey}>{member(data, entry.actorId)} · {entry.at.slice(0, 10)} · {({ link: "调整关联", adopt: "采纳为候选", ignore: "忽略", restore: "恢复" })[entry.action]}：{entry.reason}</p>)}</details> : null;
 }
 function Pagination({ result, update, name }: { result: { page: number; totalPages: number; total: number }; update: (page: string) => void; name: string }) {
-  return <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4 text-sm" aria-label={`${name}分页`}>
-    <span>第 {result.page} / {result.totalPages} 页 · {result.total} 条</span>
+  return <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4 text-sm" aria-label={tr("{0}分页", { 0: name })}>
+    <span>{tr("第 {0} / {1} 页 · {2} 条", { 0: result.page, 1: result.totalPages, 2: result.total })}</span>
     <div className="flex gap-2"><button className={button} onClick={() => update(String(result.page - 1))} disabled={result.page <= 1}>上一页</button><button className={button} onClick={() => update(String(result.page + 1))} disabled={result.page >= result.totalPages}>下一页</button></div>
   </nav>;
 }
@@ -95,7 +96,7 @@ export function GithubRecordPanels({ projectId }: { projectId: string }) {
   const setFilter = (key: string, value: string) => updateQuery({ [key]: value === "all" ? null : value, page: null });
   const open = (record: GithubActivity) => {
     if (saving || selection?.recordId === record.id) return;
-    if (reason.trim() && !window.confirm("放弃尚未保存的任务关联修改？")) return;
+    if (reason.trim() && !window.confirm(tr("放弃尚未保存的任务关联修改？"))) return;
     setSelection({ recordId: record.id, expectedVersion: activityVersion(record), idempotencyKey: makeId("github-link") });
     setTaskId(record.taskId ?? ""); setReason(""); setNotice("");
   };
@@ -127,12 +128,12 @@ export function GithubRecordPanels({ projectId }: { projectId: string }) {
     {selected && selection && <Panel title="调整 GitHub 任务关联">
       <p className="mb-3 text-sm font-medium">{selected.title}</p>
       <label className="block text-sm">关联 GitHub 任务<select className={`${field} mt-1`} aria-label="关联 GitHub 任务" value={taskId} disabled={saving || !writable} onChange={(event) => setTaskId(event.target.value)}><option value="">不关联任务</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
-      <div className="my-3 text-xs text-slate-500">{suggestions.length ? <><p>从活动标题中的明确任务编号找到以下建议，请核对后选择：</p>{suggestions.map((task) => <button className={`${button} mr-2 mt-2`} key={task.id} disabled={saving || !writable} onClick={() => setTaskId(task.id)}>按编号选择：{task.title}</button>)}</> : "标题没有唯一对应的项目任务编号，请手动选择。"}</div>
+      <div className="my-3 text-xs text-slate-500">{suggestions.length ? <><p>从活动标题中的明确任务编号找到以下建议，请核对后选择：</p>{suggestions.map((task) => <button className={`${button} mr-2 mt-2`} key={task.id} disabled={saving || !writable} onClick={() => setTaskId(task.id)}>{tr("按编号选择：{0}", { 0: task.title })}</button>)}</> : "标题没有唯一对应的项目任务编号，请手动选择。"}</div>
       <label className="block text-sm">关联原因<textarea className={`${field} mt-1 min-h-20`} aria-label="GitHub 关联原因" value={reason} maxLength={2000} disabled={saving || !writable} onChange={(event) => setReason(event.target.value)} /></label>
       {activityVersion(selected) !== selection.expectedVersion && <button className={`${button} mt-2`} disabled={saving} onClick={() => setSelection({ ...selection, expectedVersion: activityVersion(selected), idempotencyKey: makeId("github-link") })}>已核对当前版本，保留输入</button>}
-      <div className="mt-3 flex gap-2"><button className={button} disabled={saving} onClick={() => { if (!reason.trim() || window.confirm("放弃尚未保存的任务关联修改？")) { setSelection(null); setReason(""); } }}>取消关联修改</button><button className={primary} disabled={saving || !writable || !reason.trim() || activityVersion(selected) !== selection.expectedVersion || taskId === (selected.taskId ?? "")} onClick={() => void save()}>保存任务关联</button></div>
+      <div className="mt-3 flex gap-2"><button className={button} disabled={saving} onClick={() => { if (!reason.trim() || window.confirm(tr("放弃尚未保存的任务关联修改？"))) { setSelection(null); setReason(""); } }}>取消关联修改</button><button className={primary} disabled={saving || !writable || !reason.trim() || activityVersion(selected) !== selection.expectedVersion || taskId === (selected.taskId ?? "")} onClick={() => void save()}>保存任务关联</button></div>
     </Panel>}
-    <Panel title="任务关联映射"><p className="text-sm text-slate-500">当前项目共有 {records.filter((record) => record.type !== "sync" && record.taskId).length} 条已关联活动。使用“关联任务筛选”查看完整映射，修改保留处理历史。</p><Link className={`${link} mt-2 inline-block`} href={`/projects/${encodeURIComponent(projectId)}/tasks?view=list`}>查看项目任务</Link></Panel>
+    <Panel title="任务关联映射"><p className="text-sm text-slate-500">{tr("当前项目共有 {0} 条已关联活动。使用“关联任务筛选”查看完整映射，修改保留处理历史。", { 0: records.filter((record) => record.type !== "sync" && record.taskId).length })}</p><Link className={`${link} mt-2 inline-block`} href={`/projects/${encodeURIComponent(projectId)}/tasks?view=list`}>查看项目任务</Link></Panel>
   </>;
 }
 
@@ -154,7 +155,7 @@ export function FeishuRecordPanel({ projectId }: { projectId: string }) {
   const setFilter = (key: string, value: string) => updateQuery({ [key]: value === "all" ? null : value, page: null });
   const open = (record: FeishuRecord, action: FeishuDecisionInput["action"]) => {
     if (saving || (selection?.recordId === record.id && selection.action === action)) return;
-    if (reason.trim() && !window.confirm("放弃尚未保存的飞书记录处理？")) return;
+    if (reason.trim() && !window.confirm(tr("放弃尚未保存的飞书记录处理？"))) return;
     setSelection({ recordId: record.id, action, expectedVersion: activityVersion(record), idempotencyKey: makeId("feishu-decision"), evidenceId: makeId("evidence") });
     setTaskId(eligibleTasks.some((task) => task.id === record.taskId) ? record.taskId! : ""); setCriterionIds([]); setReason(""); setNotice("");
   };
@@ -172,7 +173,7 @@ export function FeishuRecordPanel({ projectId }: { projectId: string }) {
     <Boundary local={local} />
     <AnchoredRecord records={records} visibleIds={result.items.map((item) => item.id)} data={data} />
     {notice && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm">{notice}</p>}
-    <Panel title={`协作记录（${result.total} 条）`} noPadding>
+    <Panel title={tr("协作记录（{0} 条）", { 0: result.total })} noPadding>
       <div className="flex flex-wrap gap-2 border-b border-slate-100 p-4">
         <input className={`${field} max-w-64`} aria-label="搜索飞书记录" placeholder="搜索内容、群组或作者" value={filters.q} onChange={(event) => setFilter("q", event.target.value)} />
         <select className={`${field} w-auto`} aria-label="飞书记录作者" value={filters.author} onChange={(event) => setFilter("author", event.target.value)}><option value="all">全部作者</option>{filters.author !== "all" && !authors.includes(filters.author) && <option value={filters.author}>不可用的作者</option>}{authors.map((userId) => <option key={userId} value={userId}>{member(data, userId)}</option>)}</select>
@@ -190,7 +191,7 @@ export function FeishuRecordPanel({ projectId }: { projectId: string }) {
       {selection.action === "adopt" && <><p className="mb-3 text-xs text-slate-500">选择任务与验收标准后保存当前记录快照；正式采纳仍需在证据中心确认。</p><label className="block text-sm">飞书候选关联任务<select className={`${field} mt-1`} aria-label="飞书候选关联任务" value={taskId} disabled={saving || !writable} onChange={(event) => { setTaskId(event.target.value); setCriterionIds([]); }}><option value="">选择进行中或待提交的任务</option>{eligibleTasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label><div className="my-3 space-y-2">{criteria.map((criterion, index) => <label key={criterion.id} className="flex gap-2 text-sm"><input type="checkbox" checked={criterionIds.includes(criterion.id)} disabled={saving || !writable} onChange={(event) => setCriterionIds((old) => event.target.checked ? [...old, criterion.id] : old.filter((value) => value !== criterion.id))} /><span>AC-{index + 1} · {criterion.text}</span></label>)}</div></>}
       <label className="block text-sm">记录处理原因<textarea className={`${field} mt-1 min-h-20`} aria-label="记录处理原因" value={reason} maxLength={2000} disabled={saving || !writable} onChange={(event) => setReason(event.target.value)} /></label>
       {activityVersion(selected) !== selection.expectedVersion && <button className={`${button} mt-2`} disabled={saving} onClick={() => setSelection({ ...selection, expectedVersion: activityVersion(selected), idempotencyKey: makeId("feishu-decision"), evidenceId: makeId("evidence") })}>已核对当前版本，保留输入</button>}
-      <div className="mt-3 flex gap-2"><button className={button} disabled={saving} onClick={() => { if (!reason.trim() || window.confirm("放弃尚未保存的飞书记录处理？")) { setSelection(null); setReason(""); } }}>取消记录处理</button><button className={primary} disabled={saving || !writable || !reason.trim() || activityVersion(selected) !== selection.expectedVersion || (selection.action === "adopt" && (!taskId || !criterionIds.length))} onClick={() => void save()}>{selection.action === "adopt" ? "确认采纳记录" : selection.action === "ignore" ? "确认忽略" : "确认恢复"}</button></div>
+      <div className="mt-3 flex gap-2"><button className={button} disabled={saving} onClick={() => { if (!reason.trim() || window.confirm(tr("放弃尚未保存的飞书记录处理？"))) { setSelection(null); setReason(""); } }}>取消记录处理</button><button className={primary} disabled={saving || !writable || !reason.trim() || activityVersion(selected) !== selection.expectedVersion || (selection.action === "adopt" && (!taskId || !criterionIds.length))} onClick={() => void save()}>{selection.action === "adopt" ? "确认采纳记录" : selection.action === "ignore" ? "确认忽略" : "确认恢复"}</button></div>
     </Panel>}
   </>;
 }

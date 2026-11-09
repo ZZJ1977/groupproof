@@ -4,6 +4,7 @@ import { DomainError, type Command } from "@/lib/commands/core";
 import type { FeishuRecord, GithubActivity, MockData } from "@/types/domain";
 import { buildCandidateEvidence, draftFromFeishu, type SourcedEvidence } from "./evidence-source";
 import { evidenceDecisionBlockReason } from "./evidence-decisions";
+import { tr } from "@/lib/i18n/tr";
 
 const pageSize = 10;
 type QueryReader = Pick<URLSearchParams, "get">;
@@ -177,7 +178,7 @@ export const decideFeishuRecord: Command<FeishuDecisionInput, ManagedActivity<Fe
     return { data: {
       ...data, feishu: data.feishu.map((item) => item.id === record.id ? updated : item),
       evidence: candidate ? [...data.evidence, candidate] : data.evidence,
-      logs: [...data.logs, operationLog(context.actorId, context.logId, context.now, record.id, `飞书记录${input.action === "adopt" ? "采纳为候选" : input.action === "ignore" ? "忽略" : "恢复待确认"}`, input.reason)],
+      logs: [...data.logs, operationLog(context.actorId, context.logId, context.now, record.id, tr("飞书记录{0}", { 0: input.action === "adopt" ? "采纳为候选" : input.action === "ignore" ? "忽略" : "恢复待确认" }), input.reason)],
     }, result: updated };
   },
 };

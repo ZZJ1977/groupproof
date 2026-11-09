@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { MockData, Project } from "@/types/domain";
 import { can } from "../access/policy.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /** 归档/定稿对象拒绝业务写入（阶段 11）；迁移的写命令统一调用 */
 export function assertProjectWritable(project: { id: string; lifecycle: Project["lifecycle"] }): void {
@@ -52,7 +53,7 @@ export function applyArchive(
         result: "success",
         ip: "mock",
         createdAt: context.now,
-        detail: `归档版本 v${project.version}`,
+        detail: tr("归档版本 v{0}", { 0: project.version }),
       }],
     },
     result: archived,
@@ -109,7 +110,7 @@ export const updateProjectSettings: Command<UpdateProjectSettingsInput, Project>
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `v${project.version} → v${next.version}；名称 ${project.name} → ${next.name}；可见范围 ${project.visibility ?? "members"} → ${next.visibility}`,
+          detail: tr("v{0} → v{1}；名称 {2} → {3}；可见范围 {4} → {5}", { 0: project.version, 1: next.version, 2: project.name, 3: next.name, 4: project.visibility ?? "members", 5: next.visibility }),
         }],
       },
       result: next,
@@ -239,7 +240,7 @@ export const reopenProject: Command<ReopenProjectInput, Project> = {
       id: newProjectId,
       sourceProjectId: source.id,
       name: source.name,
-      description: `${source.description}\n修订 ${input.revisionLabel}：${input.reason}`,
+      description: tr("{0}\n修订 {1}：{2}", { 0: source.description, 1: input.revisionLabel, 2: input.reason }),
       lifecycle: "active",
       setupStatus: "pending_confirmation",
       setupStep: 6,
@@ -271,7 +272,7 @@ export const reopenProject: Command<ReopenProjectInput, Project> = {
       memberRoster: [...source.memberIds],
       confirmations: [],
       basedOnRevisionId: source.activeBaselineRevisionId,
-      reason: `重新开启（${input.revisionLabel}）：${input.reason}`,
+      reason: tr("重新开启（{0}）：{1}", { 0: input.revisionLabel, 1: input.reason }),
     };
     const planDraft = input.retainTasksAndEvidence ? {
       id: `plan-${newProjectId}-draft`,
@@ -313,7 +314,7 @@ export const reopenProject: Command<ReopenProjectInput, Project> = {
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `源 ${source.id} v${source.version}（${source.lifecycle}）；修订 ${input.revisionLabel}；原因：${input.reason}；${input.retainTasksAndEvidence ? "保留任务与证据历史（验收标为待复核）" : "仅复制需求基线与设置"}`,
+          detail: tr("源 {0} v{1}（{2}）；修订 {3}；原因：{4}；{5}", { 0: source.id, 1: source.version, 2: source.lifecycle, 3: input.revisionLabel, 4: input.reason, 5: input.retainTasksAndEvidence ? "保留任务与证据历史（验收标为待复核）" : "仅复制需求基线与设置" }),
         }],
       },
       result: project,

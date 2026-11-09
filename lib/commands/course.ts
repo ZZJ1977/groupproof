@@ -3,6 +3,7 @@ import type { AssistantGrant, Course, CourseRulePayload, CourseRuleRevision, Del
 import { can } from "../access/policy.ts";
 import { draftCourseRule, publishedCourseRule } from "../versioning.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 课程规则与模板、助教授权命令（阶段 04）。
@@ -294,8 +295,8 @@ export const publishCourseRules: Command<PublishCourseRulesInput, CourseRuleRevi
         projectId: group.projectId,
         groupId: group.id,
         type: `rule-review:${published.id}`,
-        title: `复核 ${course.name} 课程规则 v${published.number}`,
-        description: `规则版本 v${published.number} 已发布（${draft.reason}），请检查对小组项目的影响。`,
+        title: tr("复核 {0} 课程规则 v{1}", { 0: course.name, 1: published.number }),
+        description: tr("规则版本 v{0} 已发布（{1}），请检查对小组项目的影响。", { 0: published.number, 1: draft.reason }),
         status: "pending" as const,
         dueAt: course.projectDeadline,
         href: `/courses/${course.id}/rule-changes`,
@@ -316,7 +317,7 @@ export const publishCourseRules: Command<PublishCourseRulesInput, CourseRuleRevi
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `发布规则 v${published.number}（${published.id}）；${draft.reason}`,
+          detail: tr("发布规则 v{0}（{1}）；{2}", { 0: published.number, 1: published.id, 2: draft.reason }),
         }],
       },
       result: published,
@@ -371,7 +372,7 @@ export const setAssistantPermissions: Command<SetAssistantPermissionsInput, Cour
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: input.permissions.length ? `授予 ${input.permissions.join("、")}` : "撤销全部操作授权，保留课程归属（只读）",
+          detail: input.permissions.length ? tr("授予 {0}", { 0: input.permissions.join("、") }) : "撤销全部操作授权，保留课程归属（只读）",
         }],
       },
       result: next,

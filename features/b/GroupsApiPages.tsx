@@ -12,6 +12,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
 import { GroupMembershipChanges, RemoveMemberPanel } from "@/features/b/MembershipApiPages";
+import { tr } from "@/lib/i18n/tr";
 
 type Notice = { tone: "success" | "error" | "warning"; text: string } | undefined;
 
@@ -53,17 +54,17 @@ export function GroupsApiPage({ courseId }: { courseId: string }) {
   });
   const respond = useMutation({
     mutationFn: ({ invitation, accept }: { invitation: BInvitation; accept: boolean }) => bGroupsApi.respond(invitation, accept),
-    onSuccess: (row) => { setNotice({ tone: "success", text: row.status === "accepted" ? `已加入「${row.group_name}」` : "已拒绝邀请" }); refresh(); },
+    onSuccess: (row) => { setNotice({ tone: "success", text: row.status === "accepted" ? tr("已加入「{0}」", { 0: row.group_name }) : "已拒绝邀请" }); refresh(); },
     onError: (error) => { setNotice({ tone: "error", text: errorText(error) }); refresh(); },
   });
   const data = groups.data;
   const courseInvites = (invitations.data ?? []).filter((item) => item.course_id === courseId && item.status === "pending");
   return <div>
-    <PageHeader title="课程小组" description={data ? `组队截止 ${dateOnly(data.formation_deadline)}${data.formation_open ? "" : "（已截止）"}` : "查看小组、创建或加入小组。"}
+    <PageHeader title="课程小组" description={data ? tr("组队截止 {0}{1}", { 0: dateOnly(data.formation_deadline), 1: data.formation_open ? "" : "（已截止）" }) : "查看小组、创建或加入小组。"}
       actions={data && !data.my_group_id && data.formation_open ? <button type="button" className={button} onClick={() => setCreating(true)}><Users size={15} />创建小组</button> : data?.my_group_id ? <Link className={button} href={`/courses/${courseId}/groups/${data.my_group_id}`}>我的小组 <ArrowRight size={15} /></Link> : undefined} />
     <div className="mt-5 space-y-4">
       {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-      {courseInvites.length > 0 && <Panel title="我收到的组队邀请"><ul className="divide-y divide-slate-100">{courseInvites.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span>{item.inviter?.name ?? "同学"} 邀请你加入「{item.group_name}」</span><span className="flex gap-2"><button type="button" className={secondary} disabled={respond.isPending} onClick={() => respond.mutate({ invitation: item, accept: false })}>拒绝</button><button type="button" className={button} disabled={respond.isPending} onClick={() => respond.mutate({ invitation: item, accept: true })}>接受</button></span></li>)}</ul></Panel>}
+      {courseInvites.length > 0 && <Panel title="我收到的组队邀请"><ul className="divide-y divide-slate-100">{courseInvites.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span>{tr("{0} 邀请你加入「{1}」", { 0: item.inviter?.name ?? "同学", 1: item.group_name })}</span><span className="flex gap-2"><button type="button" className={secondary} disabled={respond.isPending} onClick={() => respond.mutate({ invitation: item, accept: false })}>拒绝</button><button type="button" className={button} disabled={respond.isPending} onClick={() => respond.mutate({ invitation: item, accept: true })}>接受</button></span></li>)}</ul></Panel>}
       {creating && <Panel title="创建小组"><form onSubmit={(event) => { event.preventDefault(); create.mutate(); }} className="space-y-3">
         <div><label className={label} htmlFor="b-group-name">小组名称</label><input id="b-group-name" className={input} value={name} maxLength={160} onChange={(event) => setName(event.target.value)} required /></div>
         <div><label className={label} htmlFor="b-group-direction">项目方向（可选）</label><input id="b-group-direction" className={input} value={direction} maxLength={200} onChange={(event) => setDirection(event.target.value)} /></div>
@@ -72,7 +73,7 @@ export function GroupsApiPage({ courseId }: { courseId: string }) {
       </form></Panel>}
       {groups.isPending ? <Loading text="正在加载小组…" /> : groups.isError ? <div role="alert"><Feedback tone="error">{errorText(groups.error)}</Feedback></div>
         : data && data.items.length ? <div className="grid gap-3 md:grid-cols-2">{data.items.map((group) => <Panel key={group.id}>
-          <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900">{group.name}</h2><p className="mt-1 text-xs text-slate-500">{group.direction ?? "未填写方向"} · 组长 {group.leader?.name ?? "—"}</p></div><StatusBadge tone={group.full ? "gray" : "green"} label={`${group.member_count}/${group.max_group_size} 人`} /></div>
+          <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900">{group.name}</h2><p className="mt-1 text-xs text-slate-500">{tr("{0} · 组长 {1}", { 0: group.direction ?? "未填写方向", 1: group.leader?.name ?? "—" })}</p></div><StatusBadge tone={group.full ? "gray" : "green"} label={tr("{0}/{1} 人", { 0: group.member_count, 1: group.max_group_size })} /></div>
           <div className="mt-4 flex justify-end gap-2">
             <Link className={secondary} href={`/courses/${courseId}/groups/${group.id}`}>查看</Link>
             {!data.my_group_id && <button type="button" className={button} disabled={join.isPending || group.full || !data.formation_open} title={group.full ? "小组人数已满" : !data.formation_open ? "组队已截止" : undefined} onClick={() => join.mutate(group.id)}>加入</button>}
@@ -94,7 +95,7 @@ export function GroupDetailApiPage({ courseId, groupId }: { courseId: string; gr
   const candidates = useQuery({ queryKey: ["b-candidates", userId, courseId, search], queryFn: () => bGroupsApi.candidates(courseId, search), enabled: isMember && !detail.data?.full, ...queryPolicy });
   const invite = useMutation({
     mutationFn: (inviteeId: string) => bGroupsApi.invite(groupId, inviteeId),
-    onSuccess: (row) => { setNotice(row.status === "pending" ? { tone: "success", text: `已邀请 ${row.invitee?.name ?? "同学"}，等待对方确认` } : { tone: "warning", text: `组队已截止，邀请 ${row.invitee?.name ?? "同学"} 需要老师批准，已提交给老师` }); refresh(); },
+    onSuccess: (row) => { setNotice(row.status === "pending" ? { tone: "success", text: tr("已邀请 {0}，等待对方确认", { 0: row.invitee?.name ?? "同学" }) } : { tone: "warning", text: tr("组队已截止，邀请 {0} 需要老师批准，已提交给老师", { 0: row.invitee?.name ?? "同学" }) }); refresh(); },
     onError: (error) => { setNotice({ tone: "error", text: errorText(error) }); refresh(); },
   });
   if (detail.isPending) return <Loading />;
@@ -102,7 +103,7 @@ export function GroupDetailApiPage({ courseId, groupId }: { courseId: string; gr
   const group = detail.data;
   const isLeader = group.members.some((member) => member.id === userId && member.role === "leader");
   return <div>
-    <PageHeader title={group.name} description={`${group.direction ?? "未填写方向"} · ${group.member_count}/${group.max_group_size} 人${group.formation_open ? "" : " · 组队已截止"}`}
+    <PageHeader title={group.name} description={tr("{0} · {1}/{2} 人{3}", { 0: group.direction ?? "未填写方向", 1: group.member_count, 2: group.max_group_size, 3: group.formation_open ? "" : " · 组队已截止" })}
       actions={<div className="flex gap-2"><Link href={`/courses/${courseId}/groups`} className={secondary}>全部小组</Link>{isMember && <Link href={`/courses/${courseId}/groups/${groupId}/change-leader`} className={secondary}><Crown size={15} />更换组长</Link>}{isMember && !isLeader && <Link href={`/courses/${courseId}/groups/${groupId}/leave`} className={secondary}>退出小组</Link>}{group.project_id ? <Link href={`/projects/${group.project_id}`} className={button}>进入项目</Link> : isMember ? <Link href={`/courses/${courseId}/projects/new`} className={button}>创建项目</Link> : null}</div>} />
     <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Panel title="小组成员"><ul className="divide-y divide-slate-100">{group.members.map((member) => <li key={member.id} className="flex items-center justify-between py-3 text-sm"><span>{member.name ?? "未命名"}</span>{member.role === "leader" ? <StatusBadge tone="blue" label="组长" /> : <span className="text-xs text-slate-400">成员</span>}</li>)}</ul></Panel>
@@ -148,12 +149,12 @@ export function ChangeLeaderApiPage({ courseId, groupId }: { courseId: string; g
   const mustConfirm = Boolean(change?.waiting_for.some((person) => person.id === userId));
   const others = group.members.filter((member) => member.role !== "leader");
   return <div>
-    <PageHeader title="更换组长" description={`${group.name} · 当前组长 ${group.members.find((m) => m.role === "leader")?.name ?? "—"}`} actions={<Link href={`/courses/${courseId}/groups/${groupId}`} className={secondary}>返回小组</Link>} />
+    <PageHeader title="更换组长" description={tr("{0} · 当前组长 {1}", { 0: group.name, 1: group.members.find((m) => m.role === "leader")?.name ?? "—" })} actions={<Link href={`/courses/${courseId}/groups/${groupId}`} className={secondary}>返回小组</Link>} />
     <div className="mx-auto mt-5 max-w-[720px] space-y-4">
       {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
       {change ? <Panel title="正在确认的组长变更">
-        <div className="space-y-2 text-sm"><p>发起人：{change.requested_by?.name ?? "—"}</p><p>新组长：<strong>{change.candidate?.name ?? "—"}</strong></p><p>原因：{change.reason}</p>
-          <p className="text-slate-500">还需确认：{change.waiting_for.map((p) => p.name ?? "组员").join("、") || "无"}</p></div>
+        <div className="space-y-2 text-sm"><p>{tr("发起人：{0}", { 0: change.requested_by?.name ?? "—" })}</p><p>新组长：<strong>{change.candidate?.name ?? "—"}</strong></p><p>{tr("原因：{0}", { 0: change.reason })}</p>
+          <p className="text-slate-500">{tr("还需确认：{0}", { 0: change.waiting_for.map((p) => p.name ?? "组员").join("、") || "无" })}</p></div>
         {mustConfirm && <div className="mt-4 flex justify-end gap-2"><button type="button" className={secondary} disabled={confirm.isPending} onClick={() => confirm.mutate({ id: change.id, decision: "reject" })}>不同意</button><button type="button" className={button} disabled={confirm.isPending} onClick={() => confirm.mutate({ id: change.id, decision: "confirm" })}>同意</button></div>}
         <p className="mt-3 text-xs text-slate-500">所有组员同意后组长才会更换；任何一人不同意，本次变更结束。</p>
       </Panel> : <Panel title="发起组长变更"><form className="space-y-3" onSubmit={(event) => { event.preventDefault(); start.mutate(); }}>
@@ -161,7 +162,7 @@ export function ChangeLeaderApiPage({ courseId, groupId }: { courseId: string; g
         <div><label className={label} htmlFor="b-leader-reason">原因（必填）</label><textarea id="b-leader-reason" className={input} rows={3} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} required /></div>
         <div className="flex justify-end"><button type="submit" className={button} disabled={start.isPending || !candidate || !reason.trim()}>发起，请组员确认</button></div>
       </form></Panel>}
-      {group.leader_change && group.leader_change.status !== "pending" && <p className="text-xs text-slate-500">上一次变更：{group.leader_change.status === "approved" ? "已完成" : "未通过"}（{dateOnly(group.leader_change.completed_at)}）</p>}
+      {group.leader_change && group.leader_change.status !== "pending" && <p className="text-xs text-slate-500">{tr("上一次变更：{0}（{1}）", { 0: group.leader_change.status === "approved" ? "已完成" : "未通过", 1: dateOnly(group.leader_change.completed_at) })}</p>}
     </div>
   </div>;
 }
@@ -177,7 +178,7 @@ export function GroupInvitationsApiPanel({ courseId }: { courseId: string }) {
   const rows = useQuery({ queryKey: key, queryFn: () => bGroupsApi.awaitingTeacher(courseId), ...queryPolicy });
   const decide = useMutation({
     mutationFn: ({ row, decision }: { row: BInvitation; decision: "approve" | "reject" }) => bGroupsApi.decideInvitation(row, decision, reasons[row.id]?.trim() || undefined),
-    onSuccess: (row) => { setNotice({ tone: "success", text: row.status === "approved" ? `已批准 ${row.invitee?.name ?? ""} 加入「${row.group_name}」` : "已驳回" }); void cache.invalidateQueries({ queryKey: key }); },
+    onSuccess: (row) => { setNotice({ tone: "success", text: row.status === "approved" ? tr("已批准 {0} 加入「{1}」", { 0: row.invitee?.name ?? "", 1: row.group_name }) : "已驳回" }); void cache.invalidateQueries({ queryKey: key }); },
     onError: (error) => { setNotice({ tone: "error", text: errorText(error) }); void cache.invalidateQueries({ queryKey: key }); },
   });
   return <Panel title="截止后的组队邀请">
@@ -185,7 +186,7 @@ export function GroupInvitationsApiPanel({ courseId }: { courseId: string }) {
     {rows.isPending ? <Loading /> : rows.isError ? <div role="alert"><Feedback tone="error">{errorText(rows.error)}</Feedback></div>
       : rows.data.length === 0 ? <EmptyState title="暂无需要审批的组队邀请" />
       : <ul className="divide-y divide-slate-100">{rows.data.map((row) => <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
-        <span>「{row.group_name}」邀请 {row.invitee?.name ?? "同学"}（邀请人 {row.inviter?.name ?? "—"}）</span>
+        <span>{tr("「{0}」邀请 {1}（邀请人 {2}）", { 0: row.group_name, 1: row.invitee?.name ?? "同学", 2: row.inviter?.name ?? "—" })}</span>
         <span className="flex flex-wrap gap-2"><label className="sr-only" htmlFor={`inv-reason-${row.id}`}>驳回原因</label><input id={`inv-reason-${row.id}`} className="rounded border border-slate-200 px-2 py-1.5 text-sm" placeholder="驳回原因（驳回时必填）" value={reasons[row.id] ?? ""} onChange={(event) => setReasons({ ...reasons, [row.id]: event.target.value })} />
           <button type="button" className={secondary} disabled={decide.isPending || !reasons[row.id]?.trim()} onClick={() => decide.mutate({ row, decision: "reject" })}>驳回</button>
           <button type="button" className={button} disabled={decide.isPending} onClick={() => decide.mutate({ row, decision: "approve" })}>批准</button></span>

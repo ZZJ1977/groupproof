@@ -131,6 +131,14 @@ npm run test:e2e
 CHECK_HTTP=1 npm run check:routes
 ~~~
 
+## 界面多语言（简体 / 繁体 / English）
+
+- 页面可以直接用简体中文写界面文字。`tsconfig.json` 的 `jsxImportSource` 指向 `lib/i18n`，渲染时会按当前语言把整段中文换成 `lib/i18n/catalog/en.ts` 或 `zh-Hant.ts` 里的译文（children，以及 DOM 元素的 placeholder / title / aria-label / alt）。
+- 带变量的句子不要写成模板字符串或 `文字{变量}文字` 的 JSX 拼接，改用 `tr("组队截止 {0}", { 0: date })`（`@/lib/i18n/tr`），否则无法整句翻译。`window.confirm` 等非渲染出口也要包 `tr()`。
+- 新增或修改中文文案后，在两个目录文件里补上对应词条，并运行 `npm run check:ui-catalog`；缺词条会列出文件和行号。
+- 账号、登录等使用 next-intl 键值（`messages/*.json`）的页面保持原方式，`npm run check:i18n` 继续检查这部分。
+- 演示数据（`mocks/seed.ts` 的人名、课程名、任务名）属于内容，不翻译。
+
 ## 本地生产启动
 
 普通 Next.js 生产服务器：

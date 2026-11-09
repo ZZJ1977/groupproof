@@ -11,6 +11,7 @@ import { bRequirementsApi, type BConflict, type BPriority, type BRequirement, ty
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { tr } from "@/lib/i18n/tr";
 
 type Notice = { tone: "success" | "error" | "warning" | "info"; text: string } | undefined;
 const priorityLabel: Record<BPriority, string> = { high: "高", medium: "中", low: "低" };
@@ -58,7 +59,7 @@ function RunStatus({ board }: { board: BRequirementsBoard }) {
   if (run.status === "unavailable") return <Feedback tone="warning">AI 暂不可用，请在下面手动录入模块和需求，流程可以照常走完。</Feedback>;
   if (run.status === "failed") return <Feedback tone="error">{run.error_message ?? "分析失败，请重试或手动录入需求。"}</Feedback>;
   const s = run.summary ?? {};
-  return <Feedback tone="success">分析完成：新增 {s.requirements_added ?? 0} 条需求、{s.conflicts_added ?? 0} 个冲突；保留人工新增或修改的 {s.requirements_kept ?? 0} 条。{run.is_placeholder ? "（当前是示例结果，接入真实 AI 后会替换）" : ""}</Feedback>;
+  return <Feedback tone="success">{tr("分析完成：新增 {0} 条需求、{1} 个冲突；保留人工新增或修改的 {2} 条。{3}", { 0: s.requirements_added ?? 0, 1: s.conflicts_added ?? 0, 2: s.requirements_kept ?? 0, 3: run.is_placeholder ? "（当前是示例结果，接入真实 AI 后会替换）" : "" })}</Feedback>;
 }
 
 function RequirementRow({ projectId, row, board, onSaved }: { projectId: string; row: BRequirement; board: BRequirementsBoard; onSaved: () => void }) {
@@ -85,13 +86,13 @@ function RequirementRow({ projectId, row, board, onSaved }: { projectId: string;
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div className="min-w-0"><p className={`font-medium text-slate-900 ${row.excluded ? "line-through" : ""}`}>{row.title}</p>{row.description && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">{row.description}</p>}</div>
       <span className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge tone="gray" label={`优先级 ${priorityLabel[row.priority]}`} />
+        <StatusBadge tone="gray" label={tr("优先级 {0}", { 0: priorityLabel[row.priority] })} />
         {row.origin === "ai" ? <StatusBadge tone="blue" label={row.edited_by_human ? "AI · 已人工修改" : "AI 草案"} /> : <StatusBadge tone="green" label="手工录入" />}
         {row.excluded && <StatusBadge tone="amber" label="冲突处理后未采用" />}
-        {board.editable && !row.excluded && <button type="button" className={secondary} aria-label={`编辑需求 ${row.title}`} onClick={() => setEditing(true)}><PenLine size={13} />编辑</button>}
+        {board.editable && !row.excluded && <button type="button" className={secondary} aria-label={tr("编辑需求 {0}", { 0: row.title })} onClick={() => setEditing(true)}><PenLine size={13} />编辑</button>}
       </span>
     </div>
-    {row.sources.length > 0 && <ul className="mt-1.5 space-y-1">{row.sources.map((s, i) => <li key={i} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-500">出处：{s.material_title ?? "资料"} · 第 {s.segment_id?.replace(/^p/, "") ?? "?"} 段 —— “{s.quote}”</li>)}</ul>}
+    {row.sources.length > 0 && <ul className="mt-1.5 space-y-1">{row.sources.map((s, i) => <li key={i} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-500">{tr("出处：{0} · 第 {1} 段 —— “{2}”", { 0: s.material_title ?? "资料", 1: s.segment_id?.replace(/^p/, "") ?? "?", 2: s.quote })}</li>)}</ul>}
   </li>;
 }
 
@@ -120,7 +121,7 @@ export function RequirementsStep({ projectId, onDone }: { projectId: string; onD
       {board.latest_run && board.editable && <p className="mt-2 text-xs text-slate-500">重新分析只替换没人动过的 AI 草案；人工新增或修改过的需求会原样保留。</p>}
     </Panel>
     {board.modules.length === 0 ? <Panel><EmptyState title="还没有模块和需求" description={board.editable ? "可以先分析资料，也可以直接手动添加。" : undefined} /></Panel>
-      : board.modules.map((module) => <Panel key={module.id} title={`${module.name}（${module.requirement_count} 条）`}>
+      : board.modules.map((module) => <Panel key={module.id} title={tr("{0}（{1} 条）", { 0: module.name, 1: module.requirement_count })}>
         <ul className="divide-y divide-slate-100">{board.requirements.filter((r) => r.module_id === module.id).map((row) => <RequirementRow key={`${row.id}:${row.lock_version}`} projectId={projectId} row={row} board={board} onSaved={refresh} />)}</ul>
         {module.requirement_count === 0 && <p className="text-xs text-slate-500">这个模块还没有需求。</p>}
       </Panel>)}
@@ -158,7 +159,7 @@ function ConflictCard({ projectId, conflict, editable, onSaved }: { projectId: s
   return <Panel title={conflict.status === "open" ? "待处理的冲突" : "已处理的冲突"}>
     {conflict.description && <p className="mb-3 text-sm text-slate-700">{conflict.description}</p>}
     <div className="grid gap-2 md:grid-cols-2">{side("需求 A", conflict.left)}{side("需求 B", conflict.right)}</div>
-    {conflict.resolution ? <p className="mt-3 text-sm text-slate-600"><CheckCircle2 size={14} className="mr-1 inline text-green-600" />{({ keep_left: "保留 A", keep_right: "保留 B", merge: "合并为一条" } as const)[conflict.resolution.decision]} · 理由：{conflict.resolution.reason}（{conflict.resolution.resolved_by?.name ?? "组员"}）</p>
+    {conflict.resolution ? <p className="mt-3 text-sm text-slate-600"><CheckCircle2 size={14} className="mr-1 inline text-green-600" />{tr("{0} · 理由：{1}（{2}）", { 0: ({ keep_left: "保留 A", keep_right: "保留 B", merge: "合并为一条" } as const)[conflict.resolution.decision], 1: conflict.resolution.reason, 2: conflict.resolution.resolved_by?.name ?? "组员" })}</p>
       : editable && <form className="mt-3 space-y-2" onSubmit={(e) => { e.preventDefault(); resolve.mutate(); }}>
         {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
         <fieldset className="flex flex-wrap gap-4 text-sm"><legend className={label}>怎么处理</legend>
@@ -181,7 +182,7 @@ export function ConflictsStep({ projectId, onDone }: { projectId: string; onDone
   return <div className="space-y-4">
     {board.conflicts.length === 0 ? <Panel><EmptyState title="没有发现冲突" description="可以直接进入基线确认。" /></Panel>
       : board.conflicts.map((conflict) => <ConflictCard key={conflict.id} projectId={projectId} conflict={conflict} editable={board.editable} onSaved={refresh} />)}
-    {board.open_conflicts > 0 && <p className="text-right text-xs text-amber-700">还有 {board.open_conflicts} 个冲突没有处理，处理完才能继续。</p>}
+    {board.open_conflicts > 0 && <p className="text-right text-xs text-amber-700">{tr("还有 {0} 个冲突没有处理，处理完才能继续。", { 0: board.open_conflicts })}</p>}
     {board.editable && <Advance projectId={projectId} from={4} onDone={onDone} />}
   </div>;
 }
@@ -216,8 +217,8 @@ export function BaselineStep({ projectId }: { projectId: string }) {
 
   if (current?.status === "frozen") return <div className="space-y-4">
     {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-    <Panel title={`需求基线 v${current.version_no} 已冻结`}>
-      <p className="flex items-center gap-1.5 text-sm text-slate-600"><Snowflake size={15} />冻结于 {current.frozen_at?.slice(0, 10)}，共 {current.snapshot.requirements?.length ?? 0} 条需求、{current.snapshot.modules?.length ?? 0} 个模块。之后修改需求要走变更流程。</p>
+    <Panel title={tr("需求基线 v{0} 已冻结", { 0: current.version_no })}>
+      <p className="flex items-center gap-1.5 text-sm text-slate-600"><Snowflake size={15} />{tr("冻结于 {0}，共 {1} 条需求、{2} 个模块。之后修改需求要走变更流程。", { 0: current.frozen_at?.slice(0, 10), 1: current.snapshot.requirements?.length ?? 0, 2: current.snapshot.modules?.length ?? 0 })}</p>
       <ul className="mt-3 divide-y divide-slate-100 text-sm">{current.confirmations.map((c) => <li key={c.user.id} className="flex justify-between py-1.5"><span>{c.user.name ?? "组员"}</span><span className="text-xs text-slate-500">{c.status === "confirmed" ? "已确认" : "未确认"}</span></li>)}</ul>
       <div className="mt-3"><Link className={secondary} href={`/projects/${projectId}`}>返回项目总览</Link></div>
     </Panel>
@@ -227,8 +228,8 @@ export function BaselineStep({ projectId }: { projectId: string }) {
     const mine = current.confirmations.find((c) => c.user.id === userId);
     return <div className="space-y-4">
       {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-      <Panel title={`需求基线 v${current.version_no} 等待确认`}>
-        <p className="text-sm text-slate-600">还需确认：{current.waiting_for.map((p) => p.name ?? "组员").join("、") || "无"}</p>
+      <Panel title={tr("需求基线 v{0} 等待确认", { 0: current.version_no })}>
+        <p className="text-sm text-slate-600">{tr("还需确认：{0}", { 0: current.waiting_for.map((p) => p.name ?? "组员").join("、") || "无" })}</p>
         <ul className="mt-3 divide-y divide-slate-100 text-sm">{current.confirmations.map((c) => <li key={c.user.id} className="flex justify-between py-1.5"><span>{c.user.name ?? "组员"}</span><StatusBadge tone={c.status === "confirmed" ? "green" : c.status === "rejected" ? "red" : "amber"} label={c.status === "confirmed" ? "已确认" : c.status === "rejected" ? "已退回" : "待确认"} /></li>)}</ul>
         {mine?.status === "pending" && <div className="mt-4 space-y-2">
           <label className={label} htmlFor="b-baseline-comment">意见（退回时必填）</label>
@@ -248,7 +249,7 @@ export function BaselineStep({ projectId }: { projectId: string }) {
   const scopeForm = scope ?? { in_scope: checklist.in_scope, out_of_scope: checklist.out_of_scope };
   return <div className="space-y-4">
     {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-    {current?.status === "archived" && <Feedback tone="warning">上一版基线 v{current.version_no} 被退回：{current.confirmations.find((c) => c.status === "rejected")?.comment ?? ""}</Feedback>}
+    {current?.status === "archived" && <Feedback tone="warning">{tr("上一版基线 v{0} 被退回：{1}", { 0: current.version_no, 1: current.confirmations.find((c) => c.status === "rejected")?.comment ?? "" })}</Feedback>}
     <Panel title="项目范围">
       <fieldset disabled={!board.editable} className="space-y-2">
         <div><label className={label} htmlFor="b-scope-in">本项目要做什么（必填）</label><textarea id="b-scope-in" className={input} rows={3} maxLength={5000} value={scopeForm.in_scope} onChange={(e) => setScope({ ...scopeForm, in_scope: e.target.value })} /></div>
@@ -259,7 +260,7 @@ export function BaselineStep({ projectId }: { projectId: string }) {
     <Panel title="模块负责人">
       {board.modules.length === 0 ? <p className="text-sm text-slate-500">还没有模块，请回到需求分析添加。</p> : <ul className="divide-y divide-slate-100">{board.modules.map((m) => <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
         <span>{m.name}</span>
-        <span><label className="sr-only" htmlFor={`owner-${m.id}`}>{m.name} 负责人</label><select id={`owner-${m.id}`} className="rounded border border-slate-200 px-2 py-1.5 text-sm" disabled={!board.editable || setOwner.isPending} value={m.owner?.id ?? ""} onChange={(e) => setOwner.mutate({ moduleId: m.id, ownerId: e.target.value })}><option value="">未指定</option>{project.members.map((p) => <option key={p.id} value={p.id}>{p.name ?? "组员"}</option>)}</select></span>
+        <span><label className="sr-only" htmlFor={`owner-${m.id}`}>{tr("{0} 负责人", { 0: m.name })}</label><select id={`owner-${m.id}`} className="rounded border border-slate-200 px-2 py-1.5 text-sm" disabled={!board.editable || setOwner.isPending} value={m.owner?.id ?? ""} onChange={(e) => setOwner.mutate({ moduleId: m.id, ownerId: e.target.value })}><option value="">未指定</option>{project.members.map((p) => <option key={p.id} value={p.id}>{p.name ?? "组员"}</option>)}</select></span>
       </li>)}</ul>}
     </Panel>
     <Panel title="审核清单">

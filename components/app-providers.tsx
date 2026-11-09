@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { normalizeLocale, type Locale } from "@/i18n/config";
 import { setFormatLocale } from "@/lib/utils";
+import { setUiLocale } from "@/lib/i18n/tr";
 import { authClient, type SessionDTO } from "@/lib/api/auth-client";
 
 type AppContextValue = {
@@ -36,6 +37,7 @@ export function AppProviders({
   const router = useRouter();
   const [localeSwitchError, setLocaleSwitchError] = useState<string | null>(null);
   setFormatLocale(locale);
+  setUiLocale(normalizeLocale(locale) ?? "zh-Hans");
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } } }),
   );

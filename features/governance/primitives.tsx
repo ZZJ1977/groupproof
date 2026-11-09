@@ -6,6 +6,7 @@ import { Info, Search } from "lucide-react";
 import { PageHeader, Panel, ProgressBar } from "@/components/common";
 import type { MockData, Role, SystemLog } from "@/types/domain";
 import styles from "./governance.module.css";
+import { tr } from "@/lib/i18n/tr";
 
 export function Header({
   title,
@@ -61,7 +62,7 @@ export function Badge({ children, tone = "gray" }: {
 export function Progress({ value, label = true }: { value: number; label?: boolean }) {
   const safe = Math.max(0, Math.min(100, Math.round(value)));
   return (
-    <div className={styles.progressCell} aria-label={`进度 ${safe}%`}>
+    <div className={styles.progressCell} aria-label={tr("进度 {0}%", { 0: safe })}>
       {label ? <strong>{safe}%</strong> : null}
       <ProgressBar value={safe} className={styles.progressTrack} />
     </div>

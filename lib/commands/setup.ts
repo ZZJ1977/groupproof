@@ -4,6 +4,7 @@ import { can } from "../access/policy.ts";
 import { appliedCourseRule } from "../versioning.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
 import { assertProjectWritable } from "./project.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 项目初始化六步编排（阶段 07）。
@@ -82,7 +83,7 @@ export const saveSetupDraft: Command<SaveSetupDraftInput, SetupDraft> = {
     const limit = rule?.snapshot.projectDeadline ?? (project.courseId ? data.courses.find((item) => item.id === project.courseId)?.projectDeadline : undefined);
     if (limit && input.form.finalDeadline > limit) {
       throw new DomainError("VALIDATION_ERROR", "课程硬约束：项目截止日期不能晚于课程要求", {
-        fieldErrors: { "form.finalDeadline": [`不晚于 ${limit}`] },
+        fieldErrors: { "form.finalDeadline": [tr("不晚于 {0}", { 0: limit })] },
       });
     }
     const current = data.setupDrafts.find((item) => item.projectId === project.id);
@@ -109,7 +110,7 @@ export const saveSetupDraft: Command<SaveSetupDraftInput, SetupDraft> = {
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `步骤 ${draft.step}；资料 ${draft.selectedFileIds.length} 份；粘贴来源 ${draft.pastedSources.length} 条`,
+          detail: tr("步骤 {0}；资料 {1} 份；粘贴来源 {2} 条", { 0: draft.step, 1: draft.selectedFileIds.length, 2: draft.pastedSources.length }),
         }],
       },
       result: draft,
@@ -171,7 +172,7 @@ export const advanceSetupStep: Command<AdvanceSetupStepInput, SetupDraft> = {
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `步骤 ${step} → ${input.toStep}`,
+          detail: tr("步骤 {0} → {1}", { 0: step, 1: input.toStep }),
         }],
       },
       result: next,
@@ -191,14 +192,14 @@ function analyzeSources(data: MockData, draft: SetupDraft) {
   const sources = [
     ...draft.selectedFileIds
       .filter((id) => data.files.some((item) => item.id === id))
-      .map((id) => ({ key: id, title: data.files.find((item) => item.id === id)?.name ?? id, text: `资料 ${id} 的要点` })),
+      .map((id) => ({ key: id, title: data.files.find((item) => item.id === id)?.name ?? id, text: tr("资料 {0} 的要点", { 0: id }) })),
     ...draft.pastedSources.map((item) => ({ key: item.id, title: item.title, text: item.text })),
   ];
   const usable = sources.filter((item) => item.text.trim().length >= 10);
   const requirements = usable.map((item, index) => ({
     id: `req-setup-${item.key}`,
     projectId: draft.projectId,
-    title: item.title.slice(0, 40) || `分析需求 ${index + 1}`,
+    title: item.title.slice(0, 40) || tr("分析需求 {0}", { 0: index + 1 }),
     description: item.text.slice(0, 160),
     priority: "medium" as const,
     status: "draft" as const,
@@ -311,7 +312,7 @@ export const runMockRequirementAnalysis: Command<RunMockRequirementAnalysisInput
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `生成需求 ${requirements.length} 条、模块 ${modules.length} 个、冲突 ${conflicts.length} 项；写入基线草稿 ${revision.id} v${revision.contentVersion}`,
+          detail: tr("生成需求 {0} 条、模块 {1} 个、冲突 {2} 项；写入基线草稿 {3} v{4}", { 0: requirements.length, 1: modules.length, 2: conflicts.length, 3: revision.id, 4: revision.contentVersion }),
         }],
       },
       result: next,

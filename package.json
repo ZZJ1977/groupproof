@@ -36,6 +36,7 @@
     "check:browser": "tsx scripts/check-browser.mjs",
     "check:auth": "node scripts/check-auth.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:ui-catalog": "node scripts/check-ui-catalog.mjs",
     "server:dev": "bash server/scripts/start-dev.sh",
     "server:test": "cd server && ./.venv/bin/python -m pytest tests/ -q",
     "server:readiness": "curl -fsS http://localhost:8000/readyz",

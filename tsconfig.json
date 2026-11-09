@@ -27,15 +27,17 @@
       "@/*": [
         "./*"
       ]
-    }
+    },
+    "jsxImportSource": "@/lib/i18n"
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".next-dev/types/**/*.ts",
+    ".next-e2e/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-e2e/types/**/*.ts"
+    ".next-build-check/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

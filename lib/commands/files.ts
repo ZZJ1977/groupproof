@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { FileRecord, MockData } from "@/types/domain";
 import { can } from "../access/policy.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 项目资料与文件版本（阶段 10）。
@@ -30,8 +31,8 @@ export function validateUploadSize(sizeBytes: number): void {
 export function validateUploadName(name: string): string {
   const extension = name.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.includes(extension as (typeof ALLOWED_EXTENSIONS)[number])) {
-    throw new DomainError("VALIDATION_ERROR", `不支持的文件格式：${extension || "未知"}`, {
-      fieldErrors: { name: [`支持的格式：${ALLOWED_EXTENSIONS.join("、")}`] },
+    throw new DomainError("VALIDATION_ERROR", tr("不支持的文件格式：{0}", { 0: extension || "未知" }), {
+      fieldErrors: { name: [tr("支持的格式：{0}", { 0: ALLOWED_EXTENSIONS.join("、") })] },
     });
   }
   return extension;
@@ -125,7 +126,7 @@ function applyUpload(
         result: "success",
         ip: "mock",
         createdAt: context.now,
-        detail: `${project.id} / ${record.name} v${record.version}（${record.size}，${record.mimeType}）；模拟上传，未存储真实字节`,
+        detail: tr("{0} / {1} v{2}（{3}，{4}）；模拟上传，未存储真实字节", { 0: project.id, 1: record.name, 2: record.version, 3: record.size, 4: record.mimeType }),
       }],
     },
     result: record,
@@ -190,7 +191,7 @@ function mockContent(data: MockData, actorId: string, fileId: string, action: st
   return {
     fileId,
     kind: "mock",
-    message: `演示环境：${action}为模拟操作（${file.name} v${file.version}，${file.size}${file.mimeType ? `，${file.mimeType}` : ""}）。未存储真实文件字节；真实服务将返回受授权的内容或短时下载链接。`,
+    message: tr("演示环境：{0}为模拟操作（{1} v{2}，{3}{4}）。未存储真实文件字节；真实服务将返回受授权的内容或短时下载链接。", { 0: action, 1: file.name, 2: file.version, 3: file.size, 4: file.mimeType ? `，${file.mimeType}` : "" }),
   };
 }
 

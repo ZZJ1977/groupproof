@@ -9,6 +9,7 @@ import type {
 } from "@/types/domain";
 import { can } from "../access/policy.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 课程规则变更处理（阶段 09）。
@@ -72,8 +73,8 @@ export function compareCourseRuleSnapshots(
   const fromFiles = from.snapshot.requiredFiles;
   const toFiles = to.snapshot.requiredFiles;
   const materialChanges = [
-    ...toFiles.filter((item) => !fromFiles.includes(item)).map((item) => `新增必交材料：${item}`),
-    ...fromFiles.filter((item) => !toFiles.includes(item)).map((item) => `移除必交材料：${item}`),
+    ...toFiles.filter((item) => !fromFiles.includes(item)).map((item) => tr("新增必交材料：{0}", { 0: item })),
+    ...fromFiles.filter((item) => !toFiles.includes(item)).map((item) => tr("移除必交材料：{0}", { 0: item })),
   ];
 
   const deadlineChange = from.snapshot.projectDeadline !== to.snapshot.projectDeadline
@@ -119,7 +120,7 @@ export function getRuleChangeImpact(data: MockData, projectId: string, toRevisio
 export function summarizeImpact(impact: RuleChangeImpact): string {
   const parts = impact.changedFields.map((item) => `${item.field}: ${JSON.stringify(item.before)} → ${JSON.stringify(item.after)}`);
   if (impact.materialChanges.length) parts.push(...impact.materialChanges);
-  if (impact.conflictingMilestoneIds.length) parts.push(`超期里程碑 ${impact.conflictingMilestoneIds.join("、")}`);
+  if (impact.conflictingMilestoneIds.length) parts.push(tr("超期里程碑 {0}", { 0: impact.conflictingMilestoneIds.join("、") }));
   return parts.join("；") || "无字段变化";
 }
 
@@ -198,8 +199,8 @@ export const applyCourseRuleChange: Command<ApplyCourseRuleChangeInput, RuleChan
         projectId: project.id,
         groupId: project.groupId,
         type: `rule-material:${review.id}`,
-        title: `补充必交材料：${name}`,
-        description: `规则版本 v${to.number} 新增必交材料 ${name}，请在资料页上传并关联。`,
+        title: tr("补充必交材料：{0}", { 0: name }),
+        description: tr("规则版本 v{0} 新增必交材料 {1}，请在资料页上传并关联。", { 0: to.number, 1: name }),
         status: "pending",
         dueAt: to.snapshot.projectDeadline,
         href: `/projects/${project.id}/files`,
@@ -215,7 +216,7 @@ export const applyCourseRuleChange: Command<ApplyCourseRuleChangeInput, RuleChan
         groupId: project.groupId,
         type: `rule-milestone:${review.id}`,
         title: "复核超期里程碑",
-        description: `以下里程碑截止晚于新项目截止 ${to.snapshot.projectDeadline}：${impact.conflictingMilestoneIds.join("、")}。需通过里程碑调整处理，不自动顺延。`,
+        description: tr("以下里程碑截止晚于新项目截止 {0}：{1}。需通过里程碑调整处理，不自动顺延。", { 0: to.snapshot.projectDeadline, 1: impact.conflictingMilestoneIds.join("、") }),
         status: "pending",
         dueAt: to.snapshot.projectDeadline,
         href: `/projects/${project.id}/milestones`,
@@ -231,7 +232,7 @@ export const applyCourseRuleChange: Command<ApplyCourseRuleChangeInput, RuleChan
         groupId: project.groupId,
         type: `rule-plan:${review.id}`,
         title: "复核任务计划",
-        description: `规则版本 v${to.number} 影响计划约束，请通过任务规划命令调整并重新发布。`,
+        description: tr("规则版本 v{0} 影响计划约束，请通过任务规划命令调整并重新发布。", { 0: to.number }),
         status: "pending",
         dueAt: to.snapshot.projectDeadline,
         href: `/projects/${project.id}/planning`,
@@ -245,7 +246,7 @@ export const applyCourseRuleChange: Command<ApplyCourseRuleChangeInput, RuleChan
       projects: data.projects.map((item) => (item.id === project.id ? nextProject : item)),
       ruleChangeReviews: [...data.ruleChangeReviews, review],
       actionItems: [...actionItems, ...additions],
-      logs: [...data.logs, logEntry(context, "确认适用课程规则", project.id, `适用 ${to.id}（v${to.number}）；${review.impact}`)],
+      logs: [...data.logs, logEntry(context, "确认适用课程规则", project.id, tr("适用 {0}（v{1}）；{2}", { 0: to.id, 1: to.number, 2: review.impact }))],
     };
     if (impact.baselineReviewRequired && !nextData.baselineRevisions.some((item) => item.projectId === project.id && item.status !== "published")) {
       const draft = {
@@ -263,7 +264,7 @@ export const applyCourseRuleChange: Command<ApplyCourseRuleChangeInput, RuleChan
         memberRoster: [...project.memberIds],
         confirmations: [],
         basedOnRevisionId: project.activeBaselineRevisionId,
-        reason: `课程规则 ${to.id} 变更影响复核`,
+        reason: tr("课程规则 {0} 变更影响复核", { 0: to.id }),
       };
       nextData = {
         ...nextData,
@@ -276,7 +277,7 @@ export const applyCourseRuleChange: Command<ApplyCourseRuleChangeInput, RuleChan
           groupId: project.groupId,
           type: `rule-baseline:${review.id}`,
           title: "复核需求基线",
-          description: `规则版本 v${to.number} 变更需要需求复核；已创建基线变更草稿 ${draft.id}。`,
+          description: tr("规则版本 v{0} 变更需要需求复核；已创建基线变更草稿 {1}。", { 0: to.number, 1: draft.id }),
           status: "pending",
           dueAt: to.snapshot.projectDeadline,
           href: `/projects/${project.id}/requirements`,

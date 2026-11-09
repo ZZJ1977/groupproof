@@ -11,6 +11,7 @@ import { can } from "../access/policy.ts";
 import { confirmationsComplete, confirmedUserIds, confirmMember } from "../versioning.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
 import { assertProjectWritable } from "./project.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 任务规划与发布（阶段 08）。
@@ -78,10 +79,10 @@ export function validatePlan(
   for (const criterion of payload.criteria) {
     criteriaByTask.set(criterion.taskId, (criteriaByTask.get(criterion.taskId) ?? 0) + 1);
     if (!byId.has(criterion.taskId)) {
-      issues.push({ code: "dangling_criterion", taskId: criterion.taskId, field: "criteria", message: `验收标准 ${criterion.id} 引用了不存在的任务` });
+      issues.push({ code: "dangling_criterion", taskId: criterion.taskId, field: "criteria", message: tr("验收标准 {0} 引用了不存在的任务", { 0: criterion.id }) });
     }
     if (!criterion.text.trim()) {
-      issues.push({ code: "empty_criterion", taskId: criterion.taskId, field: "text", message: `验收标准 ${criterion.id} 内容为空` });
+      issues.push({ code: "empty_criterion", taskId: criterion.taskId, field: "text", message: tr("验收标准 {0} 内容为空", { 0: criterion.id }) });
     }
   }
 
@@ -90,40 +91,40 @@ export function validatePlan(
     issues.push({ code: "cross_project_ref", field: "projectId", message: "任务集合包含多个项目的引用" });
   }
   for (const task of tasks) {
-    if (seen.has(task.id)) issues.push({ code: "duplicate_id", taskId: task.id, field: "id", message: `任务 ID 重复：${task.id}` });
+    if (seen.has(task.id)) issues.push({ code: "duplicate_id", taskId: task.id, field: "id", message: tr("任务 ID 重复：{0}", { 0: task.id }) });
     seen.add(task.id);
     if (!Number.isInteger(task.weight) || task.weight < 0 || task.weight > 100) {
       issues.push({ code: "weight_not_integer", taskId: task.id, field: "weight", message: "任务权重需为 0–100 的整数" });
     }
     if (!task.responsibleIds.length) {
-      issues.push({ code: "missing_responsible", taskId: task.id, field: "responsibleIds", message: `任务 ${task.id} 没有负责人` });
+      issues.push({ code: "missing_responsible", taskId: task.id, field: "responsibleIds", message: tr("任务 {0} 没有负责人", { 0: task.id }) });
     }
     for (const memberId of task.responsibleIds) {
-      if (!members.includes(memberId)) issues.push({ code: "invalid_responsible", taskId: task.id, field: "responsibleIds", message: `负责人 ${memberId} 不是有效成员` });
+      if (!members.includes(memberId)) issues.push({ code: "invalid_responsible", taskId: task.id, field: "responsibleIds", message: tr("负责人 {0} 不是有效成员", { 0: memberId }) });
     }
     if (!(criteriaByTask.get(task.id) ?? 0)) {
-      issues.push({ code: "missing_criteria", taskId: task.id, field: "criterionIds", message: `任务 ${task.id} 没有验收标准` });
+      issues.push({ code: "missing_criteria", taskId: task.id, field: "criterionIds", message: tr("任务 {0} 没有验收标准", { 0: task.id }) });
     }
     if (baseline) {
       const moduleIds = new Set(baseline.modules.map((item) => item.id));
       const requirementIds = new Set(baseline.requirements.map((item) => item.id));
       if (task.moduleId && !moduleIds.has(task.moduleId)) {
-        issues.push({ code: "unknown_module", taskId: task.id, field: "moduleId", message: `任务 ${task.id} 引用了基线外的模块` });
+        issues.push({ code: "unknown_module", taskId: task.id, field: "moduleId", message: tr("任务 {0} 引用了基线外的模块", { 0: task.id }) });
       }
       for (const id of task.requirementIds) {
-        if (!requirementIds.has(id)) issues.push({ code: "unknown_requirement", taskId: task.id, field: "requirementIds", message: `任务 ${task.id} 引用了基线外的需求 ${id}` });
+        if (!requirementIds.has(id)) issues.push({ code: "unknown_requirement", taskId: task.id, field: "requirementIds", message: tr("任务 {0} 引用了基线外的需求 {1}", { 0: task.id, 1: id }) });
       }
     }
     if (task.parentTaskId) {
       if (!byId.has(task.parentTaskId)) {
-        issues.push({ code: "unknown_parent", taskId: task.id, field: "parentTaskId", message: `任务 ${task.id} 的父任务不存在` });
+        issues.push({ code: "unknown_parent", taskId: task.id, field: "parentTaskId", message: tr("任务 {0} 的父任务不存在", { 0: task.id }) });
       } else if (task.parentTaskId === task.id) {
-        issues.push({ code: "self_reference", taskId: task.id, field: "parentTaskId", message: `任务 ${task.id} 不能引用自身为父任务` });
+        issues.push({ code: "self_reference", taskId: task.id, field: "parentTaskId", message: tr("任务 {0} 不能引用自身为父任务", { 0: task.id }) });
       } else {
         let cursor: string | undefined = task.parentTaskId;
         const chain = new Set<string>([task.id]);
         while (cursor) {
-          if (chain.has(cursor)) { issues.push({ code: "parent_cycle", taskId: task.id, field: "parentTaskId", message: `任务 ${task.id} 的父子关系成环` }); break; }
+          if (chain.has(cursor)) { issues.push({ code: "parent_cycle", taskId: task.id, field: "parentTaskId", message: tr("任务 {0} 的父子关系成环", { 0: task.id }) }); break; }
           chain.add(cursor);
           cursor = byId.get(cursor)?.parentTaskId;
         }
@@ -131,15 +132,15 @@ export function validatePlan(
     }
     for (const depId of task.dependencyIds) {
       if (depId === task.id) {
-        issues.push({ code: "self_dependency", taskId: task.id, field: "dependencyIds", message: `任务 ${task.id} 不能依赖自身` });
+        issues.push({ code: "self_dependency", taskId: task.id, field: "dependencyIds", message: tr("任务 {0} 不能依赖自身", { 0: task.id }) });
       } else if (!byId.has(depId)) {
-        issues.push({ code: "unknown_dependency", taskId: task.id, field: "dependencyIds", message: `任务 ${task.id} 依赖了不存在的任务 ${depId}` });
+        issues.push({ code: "unknown_dependency", taskId: task.id, field: "dependencyIds", message: tr("任务 {0} 依赖了不存在的任务 {1}", { 0: task.id, 1: depId }) });
       }
     }
   }
   for (const link of payload.milestoneLinks) {
     if (!byId.has(link.taskId)) {
-      issues.push({ code: "dangling_milestone_link", taskId: link.taskId, field: "milestoneLinks", message: `里程碑关联引用了不存在的任务 ${link.taskId}` });
+      issues.push({ code: "dangling_milestone_link", taskId: link.taskId, field: "milestoneLinks", message: tr("里程碑关联引用了不存在的任务 {0}", { 0: link.taskId }) });
     }
   }
 
@@ -148,7 +149,7 @@ export function validatePlan(
   const done = new Set<string>();
   const walk = (id: string, path: string[]): boolean => {
     if (done.has(id)) return false;
-    if (visiting.has(id)) { issues.push({ code: "dependency_cycle", taskId: id, field: "dependencyIds", message: `任务依赖成环：${[...path, id].join(" → ")}` }); return true; }
+    if (visiting.has(id)) { issues.push({ code: "dependency_cycle", taskId: id, field: "dependencyIds", message: tr("任务依赖成环：{0}", { 0: [...path, id].join(" → ") }) }); return true; }
     visiting.add(id);
     for (const dep of byId.get(id)?.dependencyIds ?? []) if (byId.has(dep) && walk(dep, [...path, id])) return true;
     visiting.delete(id);
@@ -166,7 +167,7 @@ export function validatePlan(
   for (const parent of tasks) {
     const children = tasks.filter((item) => item.parentTaskId === parent.id);
     if (children.length && children.reduce((sum, item) => sum + item.weight, 0) !== parent.weight) {
-      issues.push({ code: "child_weight_total", taskId: parent.id, field: "weight", message: `${parent.id} 的子任务权重合计需等于父任务权重` });
+      issues.push({ code: "child_weight_total", taskId: parent.id, field: "weight", message: tr("{0} 的子任务权重合计需等于父任务权重", { 0: parent.id }) });
     }
   }
   return issues;
@@ -318,7 +319,7 @@ export const savePlanDraft: Command<SavePlanDraftInput, PlanRevision> = {
         ...data,
         planRevisions: data.planRevisions.map((item) => (item.id === revision.id ? next : item)),
         projects: data.projects.map((item) => item.id === project.id ? { ...item, version: item.version + 1 } : item),
-        logs: [...data.logs, logEntry(context, "任务计划草稿修改", revision.id, `内容版本 v${revision.contentVersion} → v${next.contentVersion}；任务 ${tasks.length} 个`)],
+        logs: [...data.logs, logEntry(context, "任务计划草稿修改", revision.id, tr("内容版本 v{0} → v{1}；任务 {2} 个", { 0: revision.contentVersion, 1: next.contentVersion, 2: tasks.length }))],
       },
       result: next,
     };
@@ -358,7 +359,7 @@ export const confirmAssignmentSelf: Command<ConfirmAssignmentSelfInput, PlanRevi
       data: {
         ...data,
         planRevisions: data.planRevisions.map((item) => (item.id === revision.id ? next : item)),
-        logs: next === revision ? data.logs : [...data.logs, logEntry(context, "任务分配个人确认", revision.id, `内容版本 v${revision.contentVersion}`)],
+        logs: next === revision ? data.logs : [...data.logs, logEntry(context, "任务分配个人确认", revision.id, tr("内容版本 v{0}", { 0: revision.contentVersion }))],
       },
       result: next,
     };
@@ -429,8 +430,8 @@ function publishPlanProjection(
         context,
         override ? "任务计划例外发布" : "任务计划发布",
         published.id,
-        `计划修订 ${published.number}（内容 v${published.contentVersion}）；任务 ${tasks.length} 个` +
-          (override ? `；原因：${override.reason}；未确认成员：${override.unconfirmed.join("、") || "无"}` : ""),
+        tr("计划修订 {0}（内容 v{1}）；任务 {2} 个", { 0: published.number, 1: published.contentVersion, 2: tasks.length }) +
+          (override ? tr("；原因：{0}；未确认成员：{1}", { 0: override.reason, 1: override.unconfirmed.join("、") || "无" }) : ""),
       )],
     },
     result: published,
@@ -453,7 +454,7 @@ function assertPublishable(data: MockData, project: ReturnType<typeof findProjec
   const baseline = data.baselineRevisions.find((item) => item.id === revision.baselineRevisionId);
   const issues = validatePlan(revision.payload, baseline?.payload, project.memberIds);
   if (issues.length) {
-    throw new DomainError("INVALID_STATE", `任务计划未通过结构校验：${issues[0].message}`, {
+    throw new DomainError("INVALID_STATE", tr("任务计划未通过结构校验：{0}", { 0: issues[0].message }), {
       fieldErrors: Object.fromEntries(issues.map((issue) => [`${issue.taskId ?? "plan"}.${issue.field ?? "structure"}`, [issue.message]])),
     });
   }
@@ -541,7 +542,7 @@ export const unlockPlan: Command<UnlockPlanInput, PlanRevision> = {
         ...data,
         planRevisions: [...data.planRevisions, draft],
         projects: data.projects.map((item) => (item.id === project.id ? { ...item, planConfirmed: false, planVersion: item.planVersion + 1, version: item.version + 1 } : item)),
-        logs: [...data.logs, logEntry(context, "解锁任务规划", draft.id, `基于计划 ${active.id} 创建草稿 v${draft.number}；旧历史保留`)],
+        logs: [...data.logs, logEntry(context, "解锁任务规划", draft.id, tr("基于计划 {0} 创建草稿 v{1}；旧历史保留", { 0: active.id, 1: draft.number }))],
       },
       result: draft,
     };

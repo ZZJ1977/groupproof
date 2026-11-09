@@ -15,6 +15,7 @@ import {
 } from "../versioning.ts";
 import { DomainError, type Command, type CommandContext } from "./core.ts";
 import { assertProjectWritable } from "./project.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 需求基线管理（阶段 06）。
@@ -264,7 +265,7 @@ export const saveBaselineDraft: Command<SaveBaselineDraftInput, BaselineRevision
         ...data,
         baselineRevisions: data.baselineRevisions.map((item) => (item.id === revision.id ? next : item)),
         projects: data.projects.map((item) => item.id === project.id ? { ...item, version: item.version + 1 } : item),
-        logs: [...data.logs, logEntry(context, "基线草稿修改", revision.id, `内容版本 v${revision.contentVersion} → v${next.contentVersion}；原因：${input.reason}`)],
+        logs: [...data.logs, logEntry(context, "基线草稿修改", revision.id, tr("内容版本 v{0} → v{1}；原因：{2}", { 0: revision.contentVersion, 1: next.contentVersion, 2: input.reason }))],
       },
       result: next,
     };
@@ -303,7 +304,7 @@ export const submitBaselineForConfirmation: Command<SubmitBaselineForConfirmatio
       data: {
         ...data,
         baselineRevisions: data.baselineRevisions.map((item) => (item.id === revision.id ? next : item)),
-        logs: [...data.logs, logEntry(context, "基线提交确认", revision.id, `内容版本 v${next.contentVersion}；确认名单 ${next.memberRoster.length} 人`)],
+        logs: [...data.logs, logEntry(context, "基线提交确认", revision.id, tr("内容版本 v{0}；确认名单 {1} 人", { 0: next.contentVersion, 1: next.memberRoster.length }))],
       },
       result: next,
     };
@@ -345,7 +346,7 @@ export const confirmBaselineSelf: Command<ConfirmBaselineSelfInput, BaselineRevi
         ...data,
         baselineRevisions: data.baselineRevisions.map((item) => (item.id === revision.id ? next : item)),
         projects: data.projects.map((item) => (item.id === project.id ? { ...item, confirmedBy } : item)),
-        logs: next === revision ? data.logs : [...data.logs, logEntry(context, "基线个人确认", revision.id, `内容版本 v${revision.contentVersion}`)],
+        logs: next === revision ? data.logs : [...data.logs, logEntry(context, "基线个人确认", revision.id, tr("内容版本 v{0}", { 0: revision.contentVersion }))],
       },
       result: next,
     };
@@ -420,9 +421,9 @@ function publishProjection(
         context,
         override ? "需求基线例外推进" : "需求基线发布",
         published.id,
-        `修订 ${published.number}（内容 v${published.contentVersion}）` +
-          `；影响任务 ${affectedTaskIds.size} 个` +
-          (override ? `；原因：${override.reason}；未确认成员：${override.unconfirmed.join("、") || "无"}` : ""),
+        tr("修订 {0}（内容 v{1}）", { 0: published.number, 1: published.contentVersion }) +
+          tr("；影响任务 {0} 个", { 0: affectedTaskIds.size }) +
+          (override ? tr("；原因：{0}；未确认成员：{1}", { 0: override.reason, 1: override.unconfirmed.join("、") || "无" }) : ""),
       )],
     },
     result: published,

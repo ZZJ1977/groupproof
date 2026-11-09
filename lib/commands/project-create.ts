@@ -3,6 +3,7 @@ import type { Milestone, Project } from "@/types/domain";
 import { can } from "../access/policy.ts";
 import { publishedCourseRule } from "../versioning.ts";
 import { DomainError, type Command } from "./core.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 课程项目创建命令（阶段 05）。
@@ -61,7 +62,7 @@ export const createCourseProject: Command<CreateCourseProjectInput, CreateCourse
     }
     const size = group.memberIds.length;
     if (size < rule.snapshot.minGroupSize || size > rule.snapshot.maxGroupSize) {
-      throw new DomainError("INVALID_STATE", `小组人数需在 ${rule.snapshot.minGroupSize}–${rule.snapshot.maxGroupSize} 人之间`);
+      throw new DomainError("INVALID_STATE", tr("小组人数需在 {0}–{1} 人之间", { 0: rule.snapshot.minGroupSize, 1: rule.snapshot.maxGroupSize }));
     }
 
     const projectId = `project-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -116,7 +117,7 @@ export const createCourseProject: Command<CreateCourseProjectInput, CreateCourse
           result: "success",
           ip: "mock",
           createdAt: context.now,
-          detail: `小组 ${group.name} 创建 ${project.name}；规则版本 ${rule.id}；模板 ${input.templateMode}；里程碑 ${milestones.length} 个`,
+          detail: tr("小组 {0} 创建 {1}；规则版本 {2}；模板 {3}；里程碑 {4} 个", { 0: group.name, 1: project.name, 2: rule.id, 3: input.templateMode, 4: milestones.length }),
         }],
       },
       result: { project, alreadyExists: false },

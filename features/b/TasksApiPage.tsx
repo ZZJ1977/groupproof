@@ -12,6 +12,7 @@ import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { tr } from "@/lib/i18n/tr";
 
 const c = createCClient();
 const PAGE_SIZE = 20;
@@ -76,12 +77,12 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     setBusy(true);
     try {
       await c.start(row.id, transition.expected_version);
-      setNotice({ tone: "success", text: `${row.code ?? row.title} 已改为“${statusLabel[transition.to]}”。` });
+      setNotice({ tone: "success", text: tr("{0} 已改为“{1}”。", { 0: row.code ?? row.title, 1: statusLabel[transition.to] }) });
       // Every view shares the prefix, so tree, board and list all refetch.
       await client.invalidateQueries({ queryKey: ["b-tasks", userId, projectId] });
     } catch (error) {
-      const reason = error instanceof CApiError ? cErrors[error.code] ?? `任务执行接口拒绝了这次操作（${error.code}）。` : "网络异常，请重试。";
-      setNotice({ tone: "error", text: `没有改动：${reason}` });
+      const reason = error instanceof CApiError ? cErrors[error.code] ?? tr("任务执行接口拒绝了这次操作（{0}）。", { 0: error.code }) : "网络异常，请重试。";
+      setNotice({ tone: "error", text: tr("没有改动：{0}", { 0: reason }) });
     } finally {
       setBusy(false);
       setPending(undefined);
@@ -107,7 +108,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     </Panel>
     {notice && <div className="mt-3" data-testid="tasks-notice"><Feedback tone={notice.tone}>{notice.text}</Feedback></div>}
     {pending && <div role="dialog" aria-modal="true" aria-label="确认修改状态" className="mt-3"><Panel title="确认修改状态">
-      <p className="text-sm text-slate-700">把 {pending.row.code ?? ""} {pending.row.title} 从“{statusLabel[pending.row.status]}”改为“{statusLabel[pending.transition.to]}”？{pending.transition.kind === "page" ? "将打开提交页面完成这一步。" : ""}</p>
+      <p className="text-sm text-slate-700">{tr("把 {0} {1} 从“{2}”改为“{3}”？{4}", { 0: pending.row.code ?? "", 1: pending.row.title, 2: statusLabel[pending.row.status], 3: statusLabel[pending.transition.to], 4: pending.transition.kind === "page" ? "将打开提交页面完成这一步。" : "" })}</p>
       <div className="mt-3 flex gap-2"><button type="button" className={button} disabled={busy} onClick={() => void run()}>确认</button><button type="button" className={secondary} onClick={() => setPending(undefined)}>取消</button></div>
     </Panel></div>}
     <div className="mt-3">
@@ -142,12 +143,12 @@ function TreeView({ rows, issues, collapsed, onCollapsed }: { rows: BTaskRow[]; 
   for (const r of rows) if (!r.parent_task_id || !ids.has(r.parent_task_id)) visit(r, 0, true);
   for (const r of rows) visit(r, 0, true); // tasks on a parent cycle have no root; show them at the top
   return <div className="space-y-3">
-    {issues.length > 0 && <div data-testid="tree-issues"><Feedback tone="warning"><div className="flex items-center gap-1 font-semibold"><AlertTriangle size={14} />任务数据有 {issues.length} 处问题（只读诊断，未自动修改）</div><ul className="mt-1 list-disc pl-5">{issues.map((i, n) => <li key={`${i.code}-${n}`}>{i.message}</li>)}</ul></Feedback></div>}
+    {issues.length > 0 && <div data-testid="tree-issues"><Feedback tone="warning"><div className="flex items-center gap-1 font-semibold"><AlertTriangle size={14} />{tr("任务数据有 {0} 处问题（只读诊断，未自动修改）", { 0: issues.length })}</div><ul className="mt-1 list-disc pl-5">{issues.map((i, n) => <li key={`${i.code}-${n}`}>{i.message}</li>)}</ul></Feedback></div>}
     <Panel noPadding><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
       <thead className="border-b border-slate-100 text-xs text-slate-500"><tr><th className="px-4 py-2">任务</th><th className="px-4 py-2">负责人</th><th className="px-4 py-2">权重</th><th className="px-4 py-2">状态</th><th className="px-4 py-2">进度</th></tr></thead>
       <tbody className="divide-y divide-slate-100">{out.map(({ row, depth, hasChildren }) => <tr key={row.id} data-testid="tree-row" className={row.matched ? "" : "text-slate-400"}>
         <td className="px-4 py-2" style={{ paddingLeft: 12 + depth * 22 }}>
-          {hasChildren ? <button type="button" aria-label={collapsed.includes(row.id) ? `展开 ${row.code ?? row.title}` : `收起 ${row.code ?? row.title}`} className="mr-1 align-middle text-slate-500" onClick={() => onCollapsed(collapsed.includes(row.id) ? collapsed.filter((x) => x !== row.id) : [...collapsed, row.id])}>{collapsed.includes(row.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="mr-1 inline-block w-[14px]" />}
+          {hasChildren ? <button type="button" aria-label={collapsed.includes(row.id) ? tr("展开 {0}", { 0: row.code ?? row.title }) : tr("收起 {0}", { 0: row.code ?? row.title })} className="mr-1 align-middle text-slate-500" onClick={() => onCollapsed(collapsed.includes(row.id) ? collapsed.filter((x) => x !== row.id) : [...collapsed, row.id])}>{collapsed.includes(row.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="mr-1 inline-block w-[14px]" />}
           <span className="mr-2 font-mono text-xs">{row.code ?? "—"}</span><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link>
           {flagged.has(row.id) && <span className="ml-2 rounded bg-amber-50 px-1.5 text-xs text-amber-700">数据有问题</span>}
         </td>
@@ -175,7 +176,7 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
       <Link className="font-medium text-slate-900 hover:underline" href={row.links.detail}>{row.title}</Link>
       <div className="mt-1 text-xs text-slate-500"><Assignees row={row} /> · {row.progress_percent}%</div>
       {row.blocked_reason && <div className="mt-1 text-xs text-slate-400">{row.blocked_reason}</div>}
-      {row.transitions.map((t) => <button key={t.to} type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => onMove(row, t)}>移到“{statusLabel[t.to]}”</button>)}
+      {row.transitions.map((t) => <button key={t.to} type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => onMove(row, t)}>{tr("移到“{0}”", { 0: statusLabel[t.to] })}</button>)}
     </article>)}</div>
   </section>)}</div>;
 }
@@ -202,7 +203,7 @@ function ListView({ page, current, onPage }: { page: { items: BTaskRow[]; total:
       </tr>)}</tbody>
     </table></div>
     <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
-      <span>共 {page.total} 个 · 第 {current} / {pages} 页</span>
+      <span>{tr("共 {0} 个 · 第 {1} / {2} 页", { 0: page.total, 1: current, 2: pages })}</span>
       <span className="flex gap-2"><button type="button" className={secondary} disabled={current <= 1} onClick={() => onPage(current - 1)}>上一页</button><button type="button" className={secondary} disabled={current >= pages} onClick={() => onPage(current + 1)}>下一页</button></span>
     </div>
   </Panel>;

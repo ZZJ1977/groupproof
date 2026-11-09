@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 import { statusLabel, taskCode, taskPath, taskTitle, type ProjectCore } from "./core-model";
 import type { Task } from "@/types/domain";
 import s from "./project-core.module.css";
+import { tr } from "@/lib/i18n/tr";
 
 export function Header({ eyebrow, title, subtitle, actions }: { eyebrow?: ReactNode; title: string; subtitle?: string; actions?: ReactNode }) {
   return <header className={s.header}>
@@ -23,7 +24,7 @@ export function Stat({ label, value, note, tone }: { label: string; value: React
 }
 
 export function Progress({ value }: { value: number }) {
-  return <div className={s.progress} aria-label={`完成 ${Math.round(value)}%`}><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>;
+  return <div className={s.progress} aria-label={tr("完成 {0}%", { 0: Math.round(value) })}><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>;
 }
 
 export function Status({ value }: { value: string }) {

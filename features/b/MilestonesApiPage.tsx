@@ -10,6 +10,7 @@ import { bMilestonesApi, type BDeliverable, type BMilestone, type BMilestoneDeta
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { tr } from "@/lib/i18n/tr";
 
 type Notice = { tone: "success" | "error" | "warning"; text: string; items?: string[] } | undefined;
 
@@ -31,7 +32,7 @@ function Risk({ risk }: { risk: BMilestone["risk"] }) {
   if (!risk) return <p data-testid="milestone-risk" className="text-xs text-slate-500">风险：暂无数据（由验收模块提供）</p>;
   if (!risk.level || risk.open_count === 0) return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-500">风险：<StatusBadge tone="green" label="暂无风险" /></p>;
   const level = riskLevel[risk.level] ?? riskLevel.low;
-  return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-600">风险：<StatusBadge tone={level.tone} label={level.label} /><span>{risk.open_count} 项未关闭</span></p>;
+  return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-600">风险：<StatusBadge tone={level.tone} label={level.label} /><span>{tr("{0} 项未关闭", { 0: risk.open_count })}</span></p>;
 }
 
 /** Page 19: the open risks behind the summary, each with where it is recorded. */
@@ -44,7 +45,7 @@ function RiskList({ projectId, risk }: { projectId: string; risk: NonNullable<BM
       <span className="font-medium">{r.title}</span>
       <span className="text-xs text-slate-500">{riskStatus[r.status] ?? r.status}</span>
       <span className="text-xs text-slate-500">{r.task ? <>任务 <Link className="gp-link" href={`/projects/${projectId}/tasks/${r.task.id}`}>{r.task.code ? `${r.task.code} ${r.task.title}` : r.task.title}</Link></> : "里程碑本身"}</span>
-      <span className="ml-auto text-xs text-slate-400">负责人 {r.owner?.name ?? "—"} · 处理期限 {dateOnly(r.due_at)}</span>
+      <span className="ml-auto text-xs text-slate-400">{tr("负责人 {0} · 处理期限 {1}", { 0: r.owner?.name ?? "—", 1: dateOnly(r.due_at) })}</span>
     </li>;
   })}</ul>;
 }
@@ -66,9 +67,9 @@ export function MilestonesApiPage({ projectId }: { projectId: string }) {
         : list.data.items.length === 0 ? <Panel><EmptyState title="还没有里程碑" description="里程碑在项目设置里创建后会显示在这里。" /></Panel>
         : <div className="grid gap-3 md:grid-cols-2">{list.data.items.map((m) => <Panel key={m.id}>
           <article data-testid="milestone-card" className="space-y-3">
-            <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900"><Link className="gp-link" href={m.href}>{m.title}</Link></h2><p className="mt-1 text-xs text-slate-500">截止 {dateOnly(m.deadline)}</p></div><Badge m={m} /></div>
+            <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900"><Link className="gp-link" href={m.href}>{m.title}</Link></h2><p className="mt-1 text-xs text-slate-500">{tr("截止 {0}", { 0: dateOnly(m.deadline) })}</p></div><Badge m={m} /></div>
             <Progress value={m.progress_percent} />
-            <p className="text-xs text-slate-600">任务 {m.completed_task_count}/{m.task_count} 完成 · 交付物 {m.deliverables_done}/{m.deliverables_total} 已勾选</p>
+            <p className="text-xs text-slate-600">{tr("任务 {0}/{1} 完成 · 交付物 {2}/{3} 已勾选", { 0: m.completed_task_count, 1: m.task_count, 2: m.deliverables_done, 3: m.deliverables_total })}</p>
             <Risk risk={m.risk} />
           </article>
         </Panel>)}</div>}
@@ -80,8 +81,8 @@ function missingItems(error: unknown): string[] {
   if (!(error instanceof BApiError) || error.code !== "MILESTONE_NOT_READY") return [];
   const details = error.details as unknown as BMilestoneMissing;
   return [
-    ...(details.tasks ?? []).map((t) => `任务 ${t.code ?? ""} ${t.title}：${verifyState[t.state] ?? t.state}`.replace("  ", " ")),
-    ...(details.deliverables ?? []).map((d) => `交付物「${d.title}」还没勾选`),
+    ...(details.tasks ?? []).map((t) => tr("任务 {0} {1}：{2}", { 0: t.code ?? "", 1: t.title, 2: verifyState[t.state] ?? t.state }).replace("  ", " ")),
+    ...(details.deliverables ?? []).map((d) => tr("交付物「{0}」还没勾选", { 0: d.title })),
   ];
 }
 
@@ -111,7 +112,7 @@ export function MilestoneDetailApiPage({ projectId, milestoneId }: { projectId: 
   });
   const check = useMutation({
     mutationFn: ({ item, done }: { item: BDeliverable; done: boolean }) => bMilestonesApi.check(projectId, milestoneId, item, done, done ? files[item.id] ?? item.file?.id : null),
-    onSuccess: (data, { item, done }) => { setNotice({ tone: "success", text: done ? `已勾选「${item.title}」` : `已取消勾选「${item.title}」` }); settle(data); },
+    onSuccess: (data, { item, done }) => { setNotice({ tone: "success", text: done ? tr("已勾选「{0}」", { 0: item.title }) : tr("已取消勾选「{0}」", { 0: item.title }) }); settle(data); },
     onError: fail,
   });
   const complete = useMutation({
@@ -121,7 +122,7 @@ export function MilestoneDetailApiPage({ projectId, milestoneId }: { projectId: 
   });
   const reschedule = useMutation({
     mutationFn: (m: BMilestoneDetail) => bMilestonesApi.reschedule(projectId, m, new Date(`${date}T23:59:00`).toISOString(), reason.trim()),
-    onSuccess: (data) => { setDate(""); setReason(""); setNotice({ tone: "success", text: `已改期到 ${dateOnly(data.deadline)}，已通知老师和全组` }); settle(data); },
+    onSuccess: (data) => { setDate(""); setReason(""); setNotice({ tone: "success", text: tr("已改期到 {0}，已通知老师和全组", { 0: dateOnly(data.deadline) }) }); settle(data); },
     onError: fail,
   });
   if (detail.isPending) return <div role="status" className="gp-empty">正在加载…</div>;
@@ -130,11 +131,11 @@ export function MilestoneDetailApiPage({ projectId, milestoneId }: { projectId: 
   const locked = m.status === "completed";
   const busy = add.isPending || check.isPending || complete.isPending || reschedule.isPending;
   return <div>
-    <PageHeader title={m.title} description={`截止 ${dateOnly(m.deadline)}${m.description ? ` · ${m.description}` : ""}`} actions={<Link href={`/projects/${projectId}/milestones`} className={secondary}>全部里程碑</Link>} />
+    <PageHeader title={m.title} description={tr("截止 {0}{1}", { 0: dateOnly(m.deadline), 1: m.description ? ` · ${m.description}` : "" })} actions={<Link href={`/projects/${projectId}/milestones`} className={secondary}>全部里程碑</Link>} />
     <div className="mt-5 space-y-4">
       {notice && <div data-testid="milestone-notice"><Feedback tone={notice.tone}>{notice.text}{notice.items?.length ? <ul className="mt-2 list-disc pl-5">{notice.items.map((i) => <li key={i}>{i}</li>)}</ul> : null}</Feedback></div>}
       <Panel title="进度">
-        <div className="space-y-2"><div className="flex items-center justify-between"><Badge m={m} /><span className="text-xs text-slate-500">任务 {m.completed_task_count}/{m.task_count} 完成</span></div><Progress value={m.progress_percent} /><Risk risk={m.risk} /></div>
+        <div className="space-y-2"><div className="flex items-center justify-between"><Badge m={m} /><span className="text-xs text-slate-500">{tr("任务 {0}/{1} 完成", { 0: m.completed_task_count, 1: m.task_count })}</span></div><Progress value={m.progress_percent} /><Risk risk={m.risk} /></div>
       </Panel>
       {m.risk && <Panel title="风险"><RiskList projectId={projectId} risk={m.risk} /></Panel>}
       <Panel title="关联任务">
@@ -146,7 +147,7 @@ export function MilestoneDetailApiPage({ projectId, milestoneId }: { projectId: 
         <ul className="divide-y divide-slate-100">{m.deliverables.map((d) => <li key={d.id} data-testid="deliverable" className="space-y-2 py-3 text-sm">
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2"><input type="checkbox" checked={d.done} disabled={!m.can_lead || locked || busy} title={!m.can_lead ? "只有组长可以勾选" : undefined} onChange={(e) => check.mutate({ item: d, done: e.target.checked })} /><span className={d.done ? "font-medium" : ""}>{d.title}</span></label>
-            {d.done ? <span className="text-xs text-slate-500">{d.done_by?.name ?? "组长"} 于 {when(d.done_at)} 勾选{d.file ? <> · 文件 <Link className="gp-link" href={d.file.href}>{d.file.name}</Link></> : null}</span>
+            {d.done ? <span className="text-xs text-slate-500">{tr("{0} 于 {1} 勾选", { 0: d.done_by?.name ?? "组长", 1: when(d.done_at) })}{d.file ? <> · 文件 <Link className="gp-link" href={d.file.href}>{d.file.name}</Link></> : null}</span>
               : m.can_lead && !locked && m.files.length > 0 ? <><label className="sr-only" htmlFor={`file-${d.id}`}>关联文件</label><select id={`file-${d.id}`} className="rounded border border-slate-200 px-2 py-1 text-xs" value={files[d.id] ?? ""} onChange={(e) => setFiles({ ...files, [d.id]: e.target.value })}><option value="">不关联文件</option>{m.files.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></> : null}
             {d.history.length > 0 && <button type="button" className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500" aria-expanded={history === d.id} onClick={() => setHistory(history === d.id ? null : d.id)}><History size={13} />记录</button>}
           </div>
@@ -167,7 +168,7 @@ export function MilestoneDetailApiPage({ projectId, milestoneId }: { projectId: 
         </form>
       </Panel>}
       <Panel title="改期记录">
-        {m.date_changes.length === 0 ? <p className="text-sm text-slate-500">没有改过期。</p> : <ul className="divide-y divide-slate-100">{m.date_changes.map((c, i) => <li key={i} data-testid="date-change" className="py-2 text-sm"><span className="font-medium">{dateOnly(c.old_deadline)} → {dateOnly(c.new_deadline)}</span><span className="ml-2 text-slate-600">原因：{c.reason}</span><span className="ml-2 text-xs text-slate-400">{c.changed_by?.name ?? "组长"} · {when(c.changed_at)}</span></li>)}</ul>}
+        {m.date_changes.length === 0 ? <p className="text-sm text-slate-500">没有改过期。</p> : <ul className="divide-y divide-slate-100">{m.date_changes.map((c, i) => <li key={i} data-testid="date-change" className="py-2 text-sm"><span className="font-medium">{dateOnly(c.old_deadline)} → {dateOnly(c.new_deadline)}</span><span className="ml-2 text-slate-600">{tr("原因：{0}", { 0: c.reason })}</span><span className="ml-2 text-xs text-slate-400">{c.changed_by?.name ?? "组长"} · {when(c.changed_at)}</span></li>)}</ul>}
       </Panel>
     </div>
   </div>;
