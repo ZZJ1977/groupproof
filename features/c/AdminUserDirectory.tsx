@@ -6,6 +6,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { Box, Empty, Header, Table } from "@/features/governance/primitives";
 import styles from "@/features/governance/governance.module.css";
 import { useUrlQuery } from "./use-url-query";
+import { tr } from "@/lib/i18n/tr";
 
 const client = createCClient();
 const roles = { student: "学生", teacher: "教师", ta: "助教", admin: "管理员" } as const;
@@ -14,7 +15,7 @@ function errorMessage(error: Error | null) {
   if (error instanceof CApiError) {
     if (error.status === 401) return "需要有效的管理员登录身份，当前无法读取用户目录。";
     if (error.status === 403) return "只有有效的管理员账户可以读取用户目录。";
-    return `${error.message}${error.requestId ? `（请求编号：${error.requestId}）` : ""}`;
+    return tr("{0}{1}", { 0: error.message, 1: error.requestId ? tr("（请求编号：{0}）", { 0: error.requestId }) : "" });
   }
   return "用户目录暂不可用，请重试。";
 }
@@ -53,7 +54,7 @@ export function AdminUserDirectory() {
     {list.isError && <div role="alert"><p>{errorMessage(list.error)}</p><button className={styles.button} type="button" onClick={() => void list.refetch()}>重试</button></div>}
     {result && <Box><Table><thead><tr><th>姓名</th><th>学号 / 用户名</th><th>邮箱</th><th>学院</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody>{result.items.map((item) => <tr key={item.id}><td>{item.name}</td><td>{item.student_id ?? item.username}</td><td>{item.email}</td><td>{item.college}</td><td>{roles[item.global_role]}</td><td>{statuses[item.status]}</td><td><button type="button" className={styles.button} onClick={() => updateQuery({ user: item.id })}>查看</button></td></tr>)}</tbody></Table>
       {!result.items.length && <Empty />}
-      <div className={styles.tableFooter}><span>共 {result.total} 条 · 第 {result.page} 页</span><div className={styles.actions}><button className={styles.button} type="button" disabled={page <= 1} onClick={() => updateQuery({ page: String(page - 1), user: null })}>上一页</button><button className={styles.button} type="button" disabled={page * 10 >= result.total} onClick={() => updateQuery({ page: String(page + 1), user: null })}>下一页</button></div></div>
+      <div className={styles.tableFooter}><span>{tr("共 {0} 条 · 第 {1} 页", { 0: result.total, 1: result.page })}</span><div className={styles.actions}><button className={styles.button} type="button" disabled={page <= 1} onClick={() => updateQuery({ page: String(page - 1), user: null })}>上一页</button><button className={styles.button} type="button" disabled={page * 10 >= result.total} onClick={() => updateQuery({ page: String(page + 1), user: null })}>下一页</button></div></div>
     </Box>}
     {selectedId && result && <Box title="用户详情" action={<button className={styles.button} type="button" onClick={() => updateQuery({ user: null })}>关闭</button>}><div className={styles.panelBody}>
       {detail.isFetching && <p role="status">正在读取详情…</p>}{detail.isError && <div role="alert"><p>{errorMessage(detail.error)}</p><button className={styles.button} type="button" onClick={() => void detail.refetch()}>重试详情</button></div>}

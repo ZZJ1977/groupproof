@@ -13,6 +13,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { BaselineStep, ConflictsStep, MaterialsContinue, RequirementsStep } from "@/features/b/RequirementsSteps";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { tr } from "@/lib/i18n/tr";
 
 type Notice = { tone: "success" | "error" | "warning" | "info"; text: string } | undefined;
 
@@ -66,7 +67,7 @@ export function NewProjectApiPage({ courseId }: { courseId: string }) {
   const isLeader = group.data?.leader?.id === userId;
   const set = (key: keyof BProjectDraft["payload"]) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
   return <div>
-    <PageHeader title="创建项目" description={`${group.data?.name ?? ""} · 草稿自动保存，组员都能看到`} actions={<Link href={`/courses/${courseId}/groups/${groupId}`} className={secondary}>返回小组</Link>} />
+    <PageHeader title="创建项目" description={tr("{0} · 草稿自动保存，组员都能看到", { 0: group.data?.name ?? "" })} actions={<Link href={`/courses/${courseId}/groups/${groupId}`} className={secondary}>返回小组</Link>} />
     <div className="mx-auto mt-5 max-w-[760px] space-y-4">
       <ol className="flex gap-2 text-xs" aria-label="创建步骤">{wizardSteps.map((title, index) => <li key={title} aria-current={index === step ? "step" : undefined} className={`flex-1 rounded border px-3 py-2 ${index === step ? "border-blue-500 bg-blue-50 font-semibold text-blue-700" : index < step ? "border-green-200 text-green-700" : "border-slate-200 text-slate-500"}`}>{index + 1}. {title}</li>)}</ol>
       {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
@@ -114,15 +115,15 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
         <Link className={project.entry === "readonly" ? secondary : button} href={`/projects/${projectId}/${action.path}`}>{action.label} <ArrowRight size={15} /></Link>
       </div>} />
     <div className="mt-5 grid gap-3 md:grid-cols-4">
-      <Stat label="任务" value={stats.task_count} sub={`已完成 ${stats.completed_count}`} />
+      <Stat label="任务" value={stats.task_count} sub={tr("已完成 {0}", { 0: stats.completed_count })} />
       <Stat label="总进度" value={progressText} />
       <Stat label="成员" value={stats.member_count} />
-      <Stat label="里程碑" value={stats.milestone_count} sub={project.next_milestone ? `下一个：${project.next_milestone.title}` : undefined} />
+      <Stat label="里程碑" value={stats.milestone_count} sub={project.next_milestone ? tr("下一个：{0}", { 0: project.next_milestone.title }) : undefined} />
     </div>
     {stats.progress_status === "available" && <ProgressBar className="mt-3" value={stats.progress ?? 0} />}
     <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel title="项目状态"><dl className="space-y-2 text-sm">
-        <div className="flex gap-3"><dt className="w-24 text-slate-500">初始化</dt><dd>{setupLabel[project.setup_status] ?? project.setup_status}（第 {project.setup_step} 步）</dd></div>
+        <div className="flex gap-3"><dt className="w-24 text-slate-500">初始化</dt><dd>{tr("{0}（第 {1} 步）", { 0: setupLabel[project.setup_status] ?? project.setup_status, 1: project.setup_step })}</dd></div>
         <div className="flex gap-3"><dt className="w-24 text-slate-500">截止日期</dt><dd>{dateOnly(project.final_deadline)}</dd></div>
         {project.next_milestone && <div className="flex gap-3"><dt className="w-24 text-slate-500">下一个里程碑</dt><dd>{project.next_milestone.title} · {dateOnly(project.next_milestone.deadline)}</dd></div>}
         {!project.can_edit && <p className="flex items-center gap-1 pt-2 text-xs text-slate-500"><Lock size={13} />你可以查看，但不能修改这个项目。</p>}
@@ -190,7 +191,7 @@ function BasicInfoStep({ projectId, data, onSaved }: { projectId: string; data: 
       <div className="grid gap-3 sm:grid-cols-2">
         <div><label className={label} htmlFor="b-setup-start">开始日期</label><input id="b-setup-start" type="date" aria-invalid={field === "start_date"} className={`${input} ${invalid("start_date")}`} value={form.start_date} onChange={set("start_date")} required /></div>
         <div><label className={label} htmlFor="b-setup-end">结束日期</label><input id="b-setup-end" type="date" aria-invalid={field === "end_date"} aria-describedby="b-setup-end-hint" className={`${input} ${invalid("end_date")}`} value={form.end_date} onChange={set("end_date")} required />
-          <p id="b-setup-end-hint" className="mt-1 text-xs text-slate-500">不晚于课程截止日期 {dateOnly(data.course_deadline)}</p></div>
+          <p id="b-setup-end-hint" className="mt-1 text-xs text-slate-500">{tr("不晚于课程截止日期 {0}", { 0: dateOnly(data.course_deadline) })}</p></div>
       </div>
       <div><label className={label} htmlFor="b-setup-description">项目简介</label><textarea id="b-setup-description" className={input} rows={4} maxLength={5000} value={form.description} onChange={set("description")} /></div>
     </fieldset>
@@ -214,18 +215,18 @@ function MaterialsStep({ projectId, data }: { projectId: string; data: BProjectS
   });
   const addFile = useMutation({
     mutationFn: (file: File) => bProjectsApi.addFile(projectId, file),
-    onSuccess: (row) => { setNotice({ tone: row.extract_status === "ready" ? "success" : "warning", text: row.extract_status === "ready" ? `已添加「${row.title}」` : `已添加「${row.title}」，${extractLabel[row.extract_status].text}${row.extract_reason ? `：${row.extract_reason}` : ""}` }); refresh(); },
+    onSuccess: (row) => { setNotice({ tone: row.extract_status === "ready" ? "success" : "warning", text: row.extract_status === "ready" ? tr("已添加「{0}」", { 0: row.title }) : tr("已添加「{0}」，{1}{2}", { 0: row.title, 1: extractLabel[row.extract_status].text, 2: row.extract_reason ? `：${row.extract_reason}` : "" }) }); refresh(); },
     onError: (error) => setNotice({ tone: "error", text: errorText(error) }),
   });
   const detail = useQuery({ queryKey: ["b-material", userId, projectId, openId], queryFn: () => bProjectsApi.material(projectId, openId!), enabled: Boolean(openId), ...queryPolicy });
   return <div className="space-y-4">
     {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-    <Panel title={`已添加的资料（${data.materials.length}）`}>
+    <Panel title={tr("已添加的资料（{0}）", { 0: data.materials.length })}>
       {data.materials.length === 0 ? <EmptyState title="还没有资料" description="粘贴课程要求、需求说明等文本，或上传文件。" /> : <ul className="divide-y divide-slate-100">{data.materials.map((row) => <li key={row.id} className="py-3 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2">{row.kind === "file" ? <Upload size={14} /> : <FileText size={14} />}<strong>{row.title}</strong><span className="text-xs text-slate-400">{row.created_by?.name ?? ""} · {dateOnly(row.created_at)}</span></span>
           <span className="flex items-center gap-2"><StatusBadge tone={extractLabel[row.extract_status].tone} label={extractLabel[row.extract_status].text} />
-            {row.extract_status === "ready" && <button type="button" className={secondary} onClick={() => setOpenId(openId === row.id ? null : row.id)}>{openId === row.id ? "收起正文" : `查看正文（${row.text_length} 字）`}</button>}</span>
+            {row.extract_status === "ready" && <button type="button" className={secondary} onClick={() => setOpenId(openId === row.id ? null : row.id)}>{openId === row.id ? "收起正文" : tr("查看正文（{0} 字）", { 0: row.text_length })}</button>}</span>
         </div>
         {row.extract_status !== "ready" && row.extract_reason && <p className="mt-1 text-xs text-slate-500">{row.extract_reason}</p>}
         {openId === row.id && <div className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-700" data-testid="b-material-text">{detail.isPending ? "正在加载正文…" : detail.isError ? errorText(detail.error) : detail.data?.text}</div>}

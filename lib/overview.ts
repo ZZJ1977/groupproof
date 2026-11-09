@@ -9,6 +9,7 @@ import type {
 import { can } from "./access/policy.ts";
 import { activeBaseline, activePlan, appliedCourseRule, draftPlan } from "./versioning.ts";
 import { DomainError } from "./commands/core.ts";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 项目总览与统计（阶段 12）。
@@ -120,7 +121,7 @@ export function getProjectOverview(data: MockData, actorId: string, projectId: s
     actionItems: data.actionItems.filter((item) => item.projectId === projectId && item.status === "pending"),
     activity: [
       ...data.github.filter((item) => item.projectId === projectId).map((item) => ({ id: item.id, title: item.title, kind: "GitHub", at: item.timestamp })),
-      ...data.evidence.filter((item) => item.projectId === projectId).map((item) => ({ id: item.id, title: `提交了 ${item.title}`, kind: "证据", at: item.createdAt })),
+      ...data.evidence.filter((item) => item.projectId === projectId).map((item) => ({ id: item.id, title: tr("提交了 {0}", { 0: item.title }), kind: "证据", at: item.createdAt })),
       ...data.logs.filter((item) => item.target === projectId || item.target.startsWith(projectId)).map((item) => ({ id: item.id, title: item.action, kind: "日志", at: item.createdAt })),
     ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5),
     isStaff,

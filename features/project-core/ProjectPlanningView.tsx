@@ -12,6 +12,7 @@ import { useCommands } from "@/lib/commands/use-commands";
 import { SaveState } from "@/components/common";
 import { Empty, Header, Panel, Status, TaskLink } from "./CoreUI";
 import s from "./project-core.module.css";
+import { tr } from "@/lib/i18n/tr";
 
 const priorityOptions: { value: Priority; label: string }[] = [{ value: "high", label: "高" }, { value: "medium", label: "中" }, { value: "low", label: "低" }];
 
@@ -70,7 +71,7 @@ export function ProjectPlanning({ core }: { core: ProjectCore }) {
     if (!baseline) { setFeedback("请先发布需求基线，再创建任务计划草稿。"); return undefined; }
     const outcome = await commands.createPlanDraft({ projectId: project.id, baselineRevisionId: baseline.id, expectedVersion: project.version });
     if (!outcome.ok) { setFeedback(outcome.error.message); return undefined; }
-    setFeedback(`计划草稿 v${outcome.result.number} 已创建（基线 ${baseline.id}）。`);
+    setFeedback(tr("计划草稿 v{0} 已创建（基线 {1}）。", { 0: outcome.result.number, 1: baseline.id }));
     return outcome.result;
   };
 
@@ -119,7 +120,7 @@ export function ProjectPlanning({ core }: { core: ProjectCore }) {
     });
     if (!outcome.ok) return setFeedback(outcome.error.message);
     setSelectedId(taskId); setEditing(false);
-    setFeedback(`任务草稿已保存（内容 v${outcome.result.contentVersion}）；旧责任确认已失效。`);
+    setFeedback(tr("任务草稿已保存（内容 v{0}）；旧责任确认已失效。", { 0: outcome.result.contentVersion }));
   };
 
   const regenerateSuggestions = async () => {
@@ -154,13 +155,13 @@ export function ProjectPlanning({ core }: { core: ProjectCore }) {
       revisionId: draft.id,
       payload: {
         tasks: [...draft.payload.tasks, ...additions],
-        criteria: [...draft.payload.criteria, ...additions.map((item) => ({ id: item.criterionIds[0], taskId: item.id, text: `${item.title} 的实现结果符合项目需求`, version: 1, humanConfirmedBy: [] }))],
+        criteria: [...draft.payload.criteria, ...additions.map((item) => ({ id: item.criterionIds[0], taskId: item.id, text: tr("{0} 的实现结果符合项目需求", { 0: item.title }), version: 1, humanConfirmedBy: [] }))],
         milestoneLinks: [...draft.payload.milestoneLinks, ...additions.map((item) => ({ taskId: item.id, milestoneIds: [] }))],
       },
       expectedVersion: project.version,
     });
     if (!outcome.ok) return setFeedback(outcome.error.message);
-    setFeedback(`已为 ${missing.length} 条未拆解需求生成任务建议（待人工编辑）。`);
+    setFeedback(tr("已为 {0} 条未拆解需求生成任务建议（待人工编辑）。", { 0: missing.length }));
   };
 
   const confirmSelf = async () => {
@@ -181,14 +182,14 @@ export function ProjectPlanning({ core }: { core: ProjectCore }) {
 
   const unlock = async () => {
     const outcome = await commands.unlockPlan({ projectId: project.id, expectedVersion: project.version });
-    setFeedback(outcome.ok ? `已解锁规划并创建草稿 v${outcome.result.number}；旧历史保留。` : outcome.error.message);
+    setFeedback(outcome.ok ? tr("已解锁规划并创建草稿 v{0}；旧历史保留。", { 0: outcome.result.number }) : outcome.error.message);
   };
 
   return <div className={s.page}>
-    <Header eyebrow={<Link className={s.link} href={projectPath(project.id)}>返回项目</Link>} title="任务规划" subtitle="共享任务草稿先由团队编辑，再确认责任分配与整体计划。" actions={<><span className={s.badge}>{planRev ? `修订 ${planRev.number} · ${planRev.status === "published" ? "已发布" : "草稿"}` : "未建立计划"}</span>{core.canLead && <button className={s.buttonGhost} type="button" disabled={busy} onClick={() => void unlock()}>解锁修改</button>}{core.canEdit && <button className={s.buttonSoft} type="button" disabled={busy} onClick={() => void regenerateSuggestions()}><RefreshCcw size={14} />重新生成建议</button>}</>} />
+    <Header eyebrow={<Link className={s.link} href={projectPath(project.id)}>返回项目</Link>} title="任务规划" subtitle="共享任务草稿先由团队编辑，再确认责任分配与整体计划。" actions={<><span className={s.badge}>{planRev ? tr("修订 {0} · {1}", { 0: planRev.number, 1: planRev.status === "published" ? "已发布" : "草稿" }) : "未建立计划"}</span>{core.canLead && <button className={s.buttonGhost} type="button" disabled={busy} onClick={() => void unlock()}>解锁修改</button>}{core.canEdit && <button className={s.buttonSoft} type="button" disabled={busy} onClick={() => void regenerateSuggestions()}><RefreshCcw size={14} />重新生成建议</button>}</>} />
     {project.setupStatus !== "frozen" && <div className={`${s.notice} ${s.noticeWarn}`}><Info size={15} />请先完成需求基线的团队确认，才能修改或确认正式任务计划。<Link href={`${projectPath(project.id)}/setup`} className={s.link}>前往初始化</Link></div>}
     {feedback && <div className={s.notice} role="status"><Info size={15} />{feedback}</div>}
-    {issues.length > 0 && <div className={`${s.notice} ${s.noticeWarn}`}><Info size={15} />计划校验发现 {issues.length} 个问题：{issues.slice(0, 3).map((item) => item.message).join("；")}{issues.length > 3 ? "…" : ""}</div>}
+    {issues.length > 0 && <div className={`${s.notice} ${s.noticeWarn}`}><Info size={15} />{tr("计划校验发现 {0} 个问题：{1}{2}", { 0: issues.length, 1: issues.slice(0, 3).map((item) => item.message).join("；"), 2: issues.length > 3 ? "…" : "" })}</div>}
     <div className={s.stats}><div className={s.stat}><div className={s.statLabel}>任务</div><div className={s.statValue}>{tasks.filter((item) => !item.parentTaskId).length}</div><div className={s.statNote}>顶层任务</div></div><div className={s.stat}><div className={s.statLabel}>子任务</div><div className={s.statValue}>{tasks.length - tasks.filter((item) => !item.parentTaskId).length}</div><div className={s.statNote}>递归层级结构</div></div><div className={s.stat}><div className={s.statLabel}>待分配</div><div className={`${s.statValue} ${tasks.some((item) => !item.responsibleIds.length) ? s.orange : s.green}`}>{tasks.filter((item) => !item.responsibleIds.length).length}</div><div className={s.statNote}>需要成员自领或组长分配</div></div><div className={s.stat}><div className={s.statLabel}>顶层权重合计</div><div className={`${s.statValue} ${tasks.filter((item) => !item.parentTaskId).reduce((sum, item) => sum + item.weight, 0) === 100 ? s.green : s.red}`}>{tasks.filter((item) => !item.parentTaskId).reduce((sum, item) => sum + item.weight, 0)}%</div><div className={s.statNote}>发布前应为 100%</div></div></div>
     <div className={s.grid}>
       <Panel title="共享任务草稿" action={core.canEdit && <button className={s.buttonSoft} type="button" onClick={startCreate}><Plus size={14} />新建任务</button>}>
@@ -210,14 +211,14 @@ export function ProjectPlanning({ core }: { core: ProjectCore }) {
           </div>
         </Panel>}
         <Panel title="确认进度">
-          <div className={s.detailPair}><span>计划修订</span><span>{planRev ? `修订 ${planRev.number} · 内容 v${planRev.contentVersion}` : "未建立快照"}</span></div>
+          <div className={s.detailPair}><span>计划修订</span><span>{planRev ? tr("修订 {0} · 内容 v{1}", { 0: planRev.number, 1: planRev.contentVersion }) : "未建立快照"}</span></div>
           <div className={s.detailPair}><span>整体计划确认</span><span>{project.planConfirmed ? "已确认" : "待确认"}</span></div>
           <div className={s.detailPair}><span>责任确认</span><span>{planRev ? `${confirmed.length}/${planRev.memberRoster.length}` : "—"}</span></div>
-          {planRev && <div className={s.mt}>{planRev.memberRoster.map((id) => { const record = planRev.confirmations.find((item) => item.userId === id && item.contentVersion === planRev.contentVersion); return <div className={s.listRow} key={id}><span>{personName(core, id)}</span><span className={s.muted}>{record ? `已确认 · ${new Date(record.confirmedAt).toLocaleString("zh-CN")}` : planRev.legacy?.confirmedUserIds.includes(id) ? "历史确认（未记录时间）" : "待确认"}</span></div>; })}</div>}
+          {planRev && <div className={s.mt}>{planRev.memberRoster.map((id) => { const record = planRev.confirmations.find((item) => item.userId === id && item.contentVersion === planRev.contentVersion); return <div className={s.listRow} key={id}><span>{personName(core, id)}</span><span className={s.muted}>{record ? tr("已确认 · {0}", { 0: new Date(record.confirmedAt).toLocaleString("zh-CN") }) : planRev.legacy?.confirmedUserIds.includes(id) ? "历史确认（未记录时间）" : "待确认"}</span></div>; })}</div>}
           <div className={s.mt}><span className={s.fieldLabel}>发布条件</span><div className={s.checks}>
-            <span className={s.check}>{allConfirmed ? "已满足" : "未满足"}：全员责任确认</span>
-            <span className={s.check}>{issues.length === 0 ? "已满足" : "未满足"}：结构校验无问题</span>
-            <span className={s.check}>{baseline && planRev ? (planRev.baselineRevisionId === baseline.id ? "已满足" : "未满足") : "未满足"}：计划基于生效基线</span>
+            <span className={s.check}>{tr("{0}：全员责任确认", { 0: allConfirmed ? "已满足" : "未满足" })}</span>
+            <span className={s.check}>{tr("{0}：结构校验无问题", { 0: issues.length === 0 ? "已满足" : "未满足" })}</span>
+            <span className={s.check}>{tr("{0}：计划基于生效基线", { 0: baseline && planRev ? (planRev.baselineRevisionId === baseline.id ? "已满足" : "未满足") : "未满足" })}</span>
           </div></div>
           <div className={s.actions} style={{ justifyContent: "flex-start", marginTop: 15 }}>
             {core.canEdit && <button className={s.buttonGhost} type="button" disabled={busy || !planRev || planRev.status === "published" || confirmed.includes(core.data.currentUserId)} onClick={() => void confirmSelf()}><Check size={14} />确认我的分配</button>}

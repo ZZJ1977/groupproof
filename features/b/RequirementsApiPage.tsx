@@ -12,6 +12,7 @@ import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { tr } from "@/lib/i18n/tr";
 
 type Notice = { tone: "success" | "error" | "warning" | "info"; text: string } | undefined;
 
@@ -69,7 +70,7 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
               </tr>)}</tbody>
             </table></div>
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
-              <span>共 {list.data.total} 条 · 第 {filters.page} / {pages} 页</span>
+              <span>{tr("共 {0} 条 · 第 {1} / {2} 页", { 0: list.data.total, 1: filters.page, 2: pages })}</span>
               <span className="flex gap-2"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>上一页</button><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>下一页</button></span>
             </div>
           </Panel>}
@@ -108,7 +109,7 @@ function DetailTab({ projectId, data }: { projectId: string; data: BRequirementD
     mutationFn: () => bManageApi.update(projectId, row, { module_id: row.module_id, title: form.title.trim(), description: form.description.trim() || undefined, priority: form.priority, reason: form.reason.trim() || undefined }),
     onSuccess: () => {
       setEditing(false);
-      setNotice({ tone: "success", text: impact.data?.criteria_count ? `已保存为新版本，${impact.data.criteria_count} 条验收标准已标记“需要重新检查”` : "已保存为新版本" });
+      setNotice({ tone: "success", text: impact.data?.criteria_count ? tr("已保存为新版本，{0} 条验收标准已标记“需要重新检查”", { 0: impact.data.criteria_count }) : "已保存为新版本" });
       for (const key of ["b-req-list", "b-req-detail", "b-req-versions", "b-req-trace", "b-req-impact"]) void cache.invalidateQueries({ queryKey: [key, userId, projectId] });
     },
     onError: (error) => { setNotice({ tone: "error", text: errorText(error) }); if (error instanceof BApiError && error.code === "VERSION_CONFLICT") void cache.invalidateQueries({ queryKey: ["b-req-detail", userId, projectId, row.id] }); },
@@ -122,7 +123,7 @@ function DetailTab({ projectId, data }: { projectId: string; data: BRequirementD
       <div className="flex gap-3"><dt className="w-16 text-slate-500">版本</dt><dd>v{data.version_no}</dd></div>
       <div className="flex gap-3"><dt className="w-16 text-slate-500">说明</dt><dd className="whitespace-pre-wrap">{row.description || "—"}</dd></div>
     </dl>
-    {row.sources.length > 0 && <ul className="space-y-1">{row.sources.map((s, i) => <li key={i} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-500">出处：{s.material_title ?? "资料"} —— “{s.quote}”</li>)}</ul>}
+    {row.sources.length > 0 && <ul className="space-y-1">{row.sources.map((s, i) => <li key={i} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-500">{tr("出处：{0} —— “{1}”", { 0: s.material_title ?? "资料", 1: s.quote })}</li>)}</ul>}
     {data.can_edit && !row.excluded && <button type="button" className={secondary} onClick={() => setEditing(true)}><PenLine size={14} />{data.reason_required ? "提出修改" : "编辑"}</button>}
     {data.baseline_frozen && <p className="text-xs text-slate-500">需求基线已冻结，修改需要写明原因，并会生成新版本。</p>}
   </div>;
@@ -134,7 +135,7 @@ function DetailTab({ projectId, data }: { projectId: string; data: BRequirementD
     {data.reason_required && <div><label className={label} htmlFor="req-edit-reason">修改原因（必填）</label><textarea id="req-edit-reason" className={input} rows={2} maxLength={2000} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div>}
     <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" data-testid="b-impact">
       <p className="mb-1 flex items-center gap-1 font-semibold"><AlertTriangle size={13} />保存后会影响</p>
-      {impact.isPending ? "正在查找关联的任务…" : impact.isError ? errorText(impact.error) : impact.data.tasks.length === 0 ? "没有关联的任务。" : <ul className="list-disc pl-4">{impact.data.tasks.map((t) => <li key={t.id}>{t.title}（{t.criteria.length} 条验收标准将标记“需要重新检查”）</li>)}</ul>}
+      {impact.isPending ? "正在查找关联的任务…" : impact.isError ? errorText(impact.error) : impact.data.tasks.length === 0 ? "没有关联的任务。" : <ul className="list-disc pl-4">{impact.data.tasks.map((t) => <li key={t.id}>{tr("{0}（{1} 条验收标准将标记“需要重新检查”）", { 0: t.title, 1: t.criteria.length })}</li>)}</ul>}
     </div>
     <div className="flex justify-end gap-2"><button type="button" className={secondary} onClick={() => setEditing(false)}>取消</button><button type="submit" className={button} disabled={save.isPending || !form.title.trim() || (data.reason_required && !form.reason.trim())}>保存为新版本</button></div>
   </form>;
@@ -154,7 +155,7 @@ function VersionsTab({ projectId, requirementId }: { projectId: string; requirem
     <p className="text-xs text-slate-500">勾选两个版本查看差异。</p>
     <ul className="divide-y divide-slate-100">{[...data.versions].reverse().map((v) => <li key={v.version_no} className="flex items-start gap-2 py-2">
       <input id={`ver-${v.version_no}`} type="checkbox" className="mt-1" checked={picked.includes(v.version_no)} onChange={() => toggle(v.version_no)} />
-      <label htmlFor={`ver-${v.version_no}`} className="min-w-0 flex-1"><span className="font-medium">v{v.version_no}</span> · {v.snapshot.title} <span className="text-xs text-slate-400">{v.created_by?.name ?? ""} {dateOnly(v.created_at)}</span>{v.reason && <span className="block text-xs text-slate-500">原因：{v.reason}</span>}</label>
+      <label htmlFor={`ver-${v.version_no}`} className="min-w-0 flex-1"><span className="font-medium">v{v.version_no}</span> · {v.snapshot.title} <span className="text-xs text-slate-400">{v.created_by?.name ?? ""} {dateOnly(v.created_at)}</span>{v.reason && <span className="block text-xs text-slate-500">{tr("原因：{0}", { 0: v.reason })}</span>}</label>
     </li>)}</ul>
     {data.compare && <div className="rounded border border-slate-200" data-testid="b-version-diff">
       <p className="flex items-center gap-1 border-b border-slate-100 px-3 py-2 text-xs font-semibold"><GitCompare size={13} />v{data.compare.from} → v{data.compare.to}</p>
@@ -185,8 +186,8 @@ function TraceTab({ projectId, requirementId }: { projectId: string; requirement
     {data.tasks.length === 0 ? <p className="text-xs text-slate-500">还没有任务关联这条需求。</p> : <ul className="space-y-3">{data.tasks.map((task) => <li key={task.id} className="rounded border border-slate-200 p-3">
       <p>任务：<Link className="gp-link" href={task.href}>{task.title}</Link></p>
       <ul className="mt-2 space-y-2 pl-3">{task.criteria.map((c) => <li key={c.id} className="border-l-2 border-slate-200 pl-3">
-        <p>验收标准 {c.key}：{c.text} {c.needs_recheck && <StatusBadge tone="amber" label="需要重新检查" />}</p>
-        <p className="mt-1 text-xs">证据：{data.evidence_status === "unavailable" ? <Unavailable text={`暂不可用${data.evidence_reason ? `（${data.evidence_reason}）` : ""}`} /> : c.evidence.length === 0 ? <Unavailable text="还没有证据" /> : c.evidence.map((e) => <Link key={e.id} className="gp-link mr-2" href={e.href}>{e.title}</Link>)}</p>
+        <p>{tr("验收标准 {0}：{1} ", { 0: c.key, 1: c.text })}{c.needs_recheck && <StatusBadge tone="amber" label="需要重新检查" />}</p>
+        <p className="mt-1 text-xs">证据：{data.evidence_status === "unavailable" ? <Unavailable text={tr("暂不可用{0}", { 0: data.evidence_reason ? `（${data.evidence_reason}）` : "" })} /> : c.evidence.length === 0 ? <Unavailable text="还没有证据" /> : c.evidence.map((e) => <Link key={e.id} className="gp-link mr-2" href={e.href}>{e.title}</Link>)}</p>
       </li>)}</ul>
       <p className="mt-2 text-xs">验收结果：{task.verification.status === "unavailable" ? <Unavailable text="暂不可用（验收服务未接入）" /> : <Link className="gp-link" href={task.verification.href}>{task.verification.state ?? "查看"}</Link>}</p>
     </li>)}</ul>}

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { can } from "@/lib/access/policy";
 import { DomainError, type Command } from "@/lib/commands/core";
 import type { FileRecord, MockData } from "@/types/domain";
+import { tr } from "@/lib/i18n/tr";
 
 export interface CourseFileChange {
   action: "upload" | "replace" | "publish";
@@ -128,7 +129,7 @@ export const changeCourseFile: Command<CourseFileInput, CourseFileRecord> = {
         logs: [...data.logs, { id: context.logId, actorId: context.actorId,
           action: input.action === "publish" ? "发布课程资料版本" : input.action === "replace" ? "替换课程资料草稿" : "新增课程资料草稿",
           target: result.id, result: "success", ip: "mock", createdAt: context.now,
-          detail: `${course.id} / ${result.name} v${result.version}；${input.reason}；仅本地演示元数据，未存储文件字节或发送通知；冻结引用保持原版本`,
+          detail: tr("{0} / {1} v{2}；{3}；仅本地演示元数据，未存储文件字节或发送通知；冻结引用保持原版本", { 0: course.id, 1: result.name, 2: result.version, 3: input.reason }),
         }],
       }, result,
     };
