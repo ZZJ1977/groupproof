@@ -98,12 +98,12 @@ def notes(engine, key):
 # ---------------------------------------------------------------- B7-01
 
 
-def test_progress_follows_linked_tasks_and_risk_stays_null(world_api, b_engine):  # noqa: F811
+def test_progress_follows_linked_tasks(world_api, b_engine):  # noqa: F811
     api, world, other, modules = world_api
     milestone, a, b = two_tasks(api, world, modules, b_engine)
     page = api.get(p(world, "/milestones")).json()["data"]
     row = page["items"][0]
-    assert (row["progress_percent"], row["task_count"], row["risk"]) == (0, 2, None)
+    assert (row["progress_percent"], row["task_count"]) == (0, 2)
     assert page["can_lead"] is True
     set_task(b_engine, a["id"], status="completed", progress_percent=100)
     row = detail(api, world, milestone)
@@ -117,28 +117,6 @@ def test_progress_follows_linked_tasks_and_risk_stays_null(world_api, b_engine):
     outsider = api.client.get(m(world, milestone), headers={"X-B-Test-User": str(other.leader_id)})
     assert outsider.status_code == 404
     assert error(api.get(m(world, uuid4()))) == "MILESTONE_NOT_FOUND"
-
-
-# D's risks table, as created by D's migration 0017_d_risks. IF NOT EXISTS so the
-# test keeps working once D's model is part of the shared metadata.
-D_RISKS_DDL = """
-CREATE TABLE IF NOT EXISTS risks (
-    id uuid PRIMARY KEY,
-    project_id uuid NOT NULL REFERENCES projects(id),
-    task_id uuid REFERENCES tasks(id),
-    milestone_id uuid REFERENCES milestones(id),
-    owner_id uuid NOT NULL REFERENCES users(id),
-    title varchar(240) NOT NULL,
-    description text NOT NULL,
-    level varchar(16) NOT NULL CHECK (level IN ('low','medium','high')),
-    status varchar(16) NOT NULL CHECK (status IN ('open','mitigating','closed')),
-    due_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    lock_version integer NOT NULL DEFAULT 0,
-    CHECK (task_id IS NOT NULL OR milestone_id IS NOT NULL)
-)
-"""
 
 
 def add_risk(
@@ -166,12 +144,19 @@ def add_risk(
         session.commit()
 
 
+def test_risk_is_null_when_ds_table_is_missing(world_api, b_engine):  # noqa: F811
+    api, world, other, modules = world_api
+    add_milestone(b_engine, world)
+    # A database that has not run D's 0017 yet: no data, never an invented "no risk".
+    with b_engine.begin() as connection:
+        connection.execute(text("DROP TABLE risk_events, risks"))
+    assert api.get(p(world, "/milestones")).json()["data"]["items"][0]["risk"] is None
+
+
 def test_milestones_show_ds_open_risks_on_the_milestone_and_its_tasks(world_api, b_engine):  # noqa: F811
     api, world, other, modules = world_api
     milestone, a, b = two_tasks(api, world, modules, b_engine)
     quiet = add_milestone(b_engine, world, title="终期答辩")
-    with b_engine.begin() as connection:
-        connection.execute(text(D_RISKS_DDL))
     rows = {r["id"]: r["risk"] for r in api.get(p(world, "/milestones")).json()["data"]["items"]}
     # D's table exists but has nothing open: "no risk", not "no data".
     assert rows[milestone] == {"level": None, "open_count": 0, "items": []}
