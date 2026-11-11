@@ -1482,6 +1482,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/risks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Risks */
+        get: operations["list_risks_api_v1_projects__project_id__risks_get"];
+        put?: never;
+        /** Create Risk */
+        post: operations["create_risk_api_v1_projects__project_id__risks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/risks/{risk_id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition Risk */
+        post: operations["transition_risk_api_v1_projects__project_id__risks__risk_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/tasks/{task_id}/note": {
         parameters: {
             query?: never;
@@ -2173,7 +2208,7 @@ export interface components {
         /** AuthAuditLogDTO */
         AuthAuditLogDTO: {
             /** Action */
-            action: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.cancelled" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | "unrecognized";
+            action: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.account_exists" | "auth.google.cancelled" | "auth.google.failed" | "auth.google.linked" | "auth.google.unlinked" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | "unrecognized";
             /** Actor Id */
             actor_id: string | "system" | null;
             /** Changed Fields */
@@ -2757,6 +2792,24 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+            /** Title */
+            title: string;
+        };
+        /** CreateRisk */
+        CreateRisk: {
+            /** Description */
+            description: string;
+            /** Level */
+            level: string;
+            /** Milestone Id */
+            milestone_id?: string | null;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Task Id */
+            task_id?: string | null;
             /** Title */
             title: string;
         };
@@ -3973,6 +4026,15 @@ export interface components {
             expectedVersion: number;
             /** Reason */
             reason?: string | null;
+        };
+        /** RiskTransition */
+        RiskTransition: {
+            /** Action */
+            action: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note: string;
         };
         /** SaveTaskNote */
         SaveTaskNote: {
@@ -5294,7 +5356,7 @@ export interface operations {
     auth_audit_collection_api_v1_admin_auth_audit_logs_get: {
         parameters: {
             query?: {
-                action?: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.cancelled" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | null;
+                action?: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.account_exists" | "auth.google.cancelled" | "auth.google.failed" | "auth.google.linked" | "auth.google.unlinked" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | null;
                 actor_id?: string | "system" | null;
                 page?: number;
                 page_size?: number;
@@ -10085,6 +10147,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_risks_api_v1_projects__project_id__risks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_risk_api_v1_projects__project_id__risks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRisk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transition_risk_api_v1_projects__project_id__risks__risk_id__transitions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                risk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskTransition"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

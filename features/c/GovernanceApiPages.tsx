@@ -20,7 +20,9 @@ const auditRoles = { student: "学生", leader: "组长", teacher: "教师", ta:
 const targetTypes = { user: "用户", course: "课程", project: "项目", task: "任务", evidence: "证据", system: "系统" } as const;
 const authActions = {
   "admin.bootstrapped": "初始化管理员", "auth.acceptance_test_entry": "验收测试入口", "auth.email_registered": "邮箱注册完成",
-  "auth.google.cancelled": "取消 Google 登录", "auth.login": "登录", "auth.logout": "退出登录", "auth.password_change": "修改密码",
+  "auth.google.account_exists": "Google 登录邮箱与已有账号冲突", "auth.google.cancelled": "取消 Google 登录",
+  "auth.google.failed": "Google 登录或绑定失败", "auth.google.linked": "绑定 Google 账号", "auth.google.unlinked": "解除 Google 账号绑定",
+  "auth.login": "登录", "auth.logout": "退出登录", "auth.password_change": "修改密码",
   "auth.password_login": "密码登录", "auth.password_login.rate_limited": "密码登录触发限流", "auth.password_register.closed_path": "已关闭的密码注册入口",
   "auth.registered": "账号注册", "auth.session_refresh": "刷新会话", "email_challenge.consume_failed": "邮箱验证码校验失败",
   "email_challenge.rate_limited": "邮箱验证触发限流", "email_challenge.send_failed": "验证码发送失败", "email_challenge.sent": "验证码已发送",

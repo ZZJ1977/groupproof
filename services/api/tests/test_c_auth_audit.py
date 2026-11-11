@@ -120,6 +120,39 @@ def test_real_a_disable_service_event_is_readable_through_real_admin_cookie(http
     assert set(db.scalars(select(AuthAuditEvent.id))) == audit_before
 
 
+def test_google_actions_filter_separately_and_only_return_safe_fields(db, scope):
+    member = scope.users["member"]
+    events = {
+        "auth.google.failed": ("failure", ["reason:link_session_mismatch"]),
+        "auth.google.account_exists": ("failure", ["reason:verified_email_conflict"]),
+        "auth.google.linked": ("success", ["auth_identities"]),
+        "auth.google.unlinked": ("success", ["auth_identities"]),
+    }
+    for action, (result, fields) in events.items():
+        audit.record(
+            db,
+            action,
+            actor_id=member.id if result == "success" else None,
+            result=result,
+            changed_fields=fields,
+        )
+    db.flush()
+    for action, (result, _) in events.items():
+        page = listing(db, scope, action=action, result=result)
+        assert page.total == len(page.items) == 1
+        row = page.items[0]
+        assert row.action == action and row.result == result
+        assert row.changed_fields == (["auth_identities"] if result == "success" else [])
+        assert row.metadata_redacted == (result == "failure")
+        assert row == get_auth_audit_log(db, scope.users["admin"], row.id)
+        assert (
+            listing(
+                db, scope, action=action, result="failure" if result == "success" else "success"
+            ).total
+            == 0
+        )
+
+
 def test_sql_filters_all_combine_with_exclusive_until_and_timezone(db, scope):
     actor, target = scope.users["author"], scope.users["member"]
     wanted = record(db, actor_id=actor.id, target_id=target.id, action="auth.password_login")
