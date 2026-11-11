@@ -113,6 +113,64 @@ test("C5-04 student reads only published material and has no publication control
   await expect(page.getByText(/保留原课程发布记录/)).toBeVisible();
 });
 
+test("C5-03/C5-04 a concurrent append requires review and reuses the verified upload on retry", async ({ page }) => {
+  const { state } = await setup(page);
+  const { stage, payload, receipt } = await storageRoutes(page, "course", courseId);
+  const appends: { key: string; version: number }[] = [];
+  await page.route(`**/api/v1/courses/${courseId}/files/${fileId}/versions`, (route) => {
+    const request = route.request();
+    const input = request.postDataJSON() as Schema["AppendCourseFileVersion"];
+    expect(input.receipt_id).toBe(receipt);
+    expect(input.reason).toBe("保留上传说明");
+    appends.push({ key: request.headers()["idempotency-key"], version: input.expected_version });
+    if (input.expected_version !== state.file.lock_version) return failure(route, 409);
+    return appends.length === 2 ? failure(route, 503) : success(route, state.file);
+  });
+  await page.goto(path); await openDetail(page);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("保留上传说明");
+  state.file.lock_version = 3;
+  state.file.latest_version_no = 3;
+  state.file.versions.unshift({ ...state.file.versions[0], id: "00000000-0000-0000-0000-000000000507", version_no: 3, original_name: "课程说明-v3.pdf" });
+  await page.getByRole("button", { name: "上传并保存草稿", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("文件已有变动");
+  await page.getByRole("button", { name: "核对最新文件版本", exact: true }).click();
+  await expect(page.getByText(/当前最新版本为 v3（课程说明-v3.pdf）/)).toBeVisible();
+  await expect(page.getByLabel("版本说明", { exact: true })).toHaveValue("保留上传说明");
+  expect(appends).toHaveLength(1);
+  const confirm = page.getByRole("button", { name: "确认追加草稿版本", exact: true });
+  await confirm.click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("上传服务暂不可用");
+  await confirm.click();
+  await expect(page.getByText("课程资料草稿版本已保存。", { exact: true })).toBeVisible();
+  expect(appends.map((entry) => entry.version)).toEqual([2, 3, 3]);
+  expect(appends[0].key).toBeTruthy();
+  expect(appends[1].key).not.toBe(appends[0].key);
+  expect(appends[2]).toEqual(appends[1]);
+  expect(stage).toMatchObject({ issued: 1, put: 1, checked: 1 });
+});
+
+test("C5-03/C5-04 permission loss during version review closes the upload without another append", async ({ page }) => {
+  await setup(page);
+  const { stage, payload } = await storageRoutes(page, "course", courseId);
+  let writes = 0;
+  await page.route(`**/api/v1/courses/${courseId}/files/${fileId}/versions`, (route) => {
+    writes++;
+    return failure(route, 409);
+  });
+  await page.goto(path); await openDetail(page);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("等候版本核对");
+  await page.getByRole("button", { name: "上传并保存草稿", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("文件已有变动");
+  await page.route(`**/api/v1/courses/${courseId}/files/${fileId}`, (route) => failure(route, 403));
+  await page.getByRole("button", { name: "核对最新文件版本", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("原有资料已隐藏");
+  await expect(page.getByLabel("选择文件", { exact: true })).toHaveCount(0);
+  expect(writes).toBe(1);
+  expect(stage).toMatchObject({ issued: 1, put: 1, checked: 1 });
+});
+
 test("C5-04 failed publication retains reason and retry key while duplicate clicks send once", async ({ page }) => {
   const { state, publications } = await setup(page); state.publishFailure = 503;
   await page.goto(path); await openDetail(page);
