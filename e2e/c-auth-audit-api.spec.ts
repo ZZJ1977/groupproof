@@ -51,21 +51,23 @@ test("C7 authentication combined filters, paging, reload and Back preserve URL s
   await page.route(/\/api\/v1\/admin\/auth-audit-logs(?:\?.*)?$/, (route) => {
     const url = new URL(route.request().url()); queries.push(url);
     const current = Number(url.searchParams.get("page") ?? 1);
-    return ok(route, collection([{ ...row, id: `${logId}-${current}` }], current, 11));
+    return ok(route, collection([{ ...row, action: "auth.google.linked", id: `${logId}-${current}` }], current, 11));
   });
   await page.goto("/admin/logs?source=auth");
-  await page.getByRole("combobox", { name: "认证事件", exact: true }).selectOption("auth.password_login");
+  const actions = page.getByRole("combobox", { name: "认证事件", exact: true });
+  await actions.selectOption({ label: "绑定 Google 账号" });
   await page.getByRole("combobox", { name: "认证结果", exact: true }).selectOption("success");
   await page.getByLabel("认证开始时间", { exact: true }).fill("2026-10-01T08:00");
   await page.getByLabel("认证结束时间", { exact: true }).fill("2026-10-16T08:00");
   await page.getByRole("combobox", { name: "认证操作人", exact: true }).selectOption(actorId);
   await expect.poll(() => queries.at(-1)?.searchParams.get("actor_id")).toBe(actorId);
-  await expect(page.getByRole("combobox", { name: "认证事件", exact: true })).toHaveValue("auth.password_login");
+  await expect(actions).toHaveValue("auth.google.linked");
   await page.getByRole("combobox", { name: "目标账号", exact: true }).selectOption(targetId);
   await expect.poll(() => queries.at(-1)?.searchParams.get("target_user_id")).toBe(targetId);
   await expect(page.getByLabel("认证开始时间", { exact: true })).toHaveValue("2026-10-01T08:00");
   await page.getByRole("button", { name: "查询认证日志", exact: true }).click();
-  await expect.poll(() => queries.at(-1)?.searchParams.get("action")).toBe("auth.password_login");
+  await expect.poll(() => queries.at(-1)?.searchParams.get("action")).toBe("auth.google.linked");
+  await expect(page.getByRole("cell", { name: "绑定 Google 账号", exact: true })).toBeVisible();
   expect(queries.at(-1)?.searchParams.get("result")).toBe("success");
   expect(queries.at(-1)?.searchParams.get("since")).toMatch(/T.*Z$/);
   expect(queries.at(-1)?.searchParams.get("until")).toMatch(/T.*Z$/);
@@ -73,7 +75,7 @@ test("C7 authentication combined filters, paging, reload and Back preserve URL s
   await expect(page).toHaveURL(/auth_page=2/);
   await page.reload();
   await expect(page.getByText("共 11 条 · 第 2 页", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "认证事件", exact: true })).toHaveValue("auth.password_login");
+  await expect(actions).toHaveValue("auth.google.linked");
   expect(queries.at(-1)?.searchParams.get("actor_id")).toBe(actorId);
   expect(queries.at(-1)?.searchParams.get("target_user_id")).toBe(targetId);
   await page.goBack(); await expect(page.getByText("共 11 条 · 第 1 页", { exact: true })).toBeVisible();
