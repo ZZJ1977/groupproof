@@ -387,17 +387,51 @@ for (const target of ["course", "access"] as const) {
   });
 }
 
-test("C7 user lookup permission loss hides a previously selected name and email", async ({ page }) => {
+test("C7 an audit directory denial clears the selected user, records and open detail", async ({ page }) => {
   let allowed = true;
   await page.route(/\/api\/v1\/admin\/users(?:\?.*)?$/, (route) => route.fulfill(allowed ? { json: envelope({ items: [teacher], total: 1, page: 1, page_size: 10 }) } : { status: 403, json: failure("ADMIN_REQUIRED") }));
   await page.route(`**/api/v1/admin/users/${teacherId}`, (route) => route.fulfill({ json: envelope(teacher) }));
-  await page.route(/\/api\/v1\/admin\/audit-logs(?:\?.*)?$/, (route) => route.fulfill({ json: envelope({ items: [], total: 0, page: 1, page_size: 10 }) }));
+  await page.route(/\/api\/v1\/admin\/audit-logs(?:\?.*)?$/, (route) => route.fulfill({ json: envelope({ items: [audit], total: 1, page: 1, page_size: 10 }) }));
+  await page.route(`**/api/v1/admin/audit-logs/${logId}`, (route) => route.fulfill({ json: envelope(audit) }));
   await page.goto("/admin/logs");
   const picker = page.getByRole("combobox", { name: "操作人", exact: true });
   await picker.selectOption(teacherId);
   await expect(picker).toHaveValue(teacherId);
+  await page.getByRole("button", { name: "查看日志" }).click();
+  await expect(page.getByRole("heading", { name: "日志详情" })).toBeVisible();
   allowed = false; await page.getByLabel("操作人搜索", { exact: true }).fill("重新查询");
   await expect(page.locator("main").getByRole("alert")).toContainText("无权");
-  await expect(picker.locator("option")).toHaveCount(1);
-  await expect(picker.locator("option")).not.toContainText(teacher.email ?? "");
+  await expect(picker).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText(audit.reason);
+  await expect(page).not.toHaveURL(/log=/);
+  allowed = true;
+  await page.getByRole("button", { name: "重新验证管理权限" }).click();
+  await expect(page.getByRole("button", { name: "查看日志" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "日志详情" })).toHaveCount(0);
+});
+
+test("C7 an audit detail denial clears its parent list", async ({ page }) => {
+  await users(page);
+  await page.route(/\/api\/v1\/admin\/audit-logs(?:\?.*)?$/, (route) => route.fulfill({ json: envelope({ items: [audit], total: 1, page: 1, page_size: 10 }) }));
+  await page.route(`**/api/v1/admin/audit-logs/${logId}`, (route) => route.fulfill({ status: 403, json: failure("ADMIN_REQUIRED") }));
+  await page.goto("/admin/logs");
+  await expect(page.locator("main")).toContainText(audit.reason);
+  await page.getByRole("button", { name: "查看日志" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("无权");
+  await expect(page.locator("main")).not.toContainText(audit.reason);
+  await expect(page).not.toHaveURL(/log=/);
+});
+
+test("C7 a revoked user lookup removes previously visible AI costs", async ({ page }) => {
+  let allowed = true;
+  await page.route(/\/api\/v1\/admin\/users(?:\?.*)?$/, (route) => route.fulfill(allowed ? { json: envelope({ items: [teacher], total: 1, page: 1, page_size: 10 }) } : { status: 403, json: failure("ADMIN_REQUIRED") }));
+  await page.route("**/api/v1/admin/ai-usage**", (route) => route.fulfill({ json: envelope(usage) }));
+  await page.goto("/admin/ai-usage");
+  await expect(page.getByRole("heading", { name: "用量汇总" })).toBeVisible();
+  allowed = false;
+  await page.getByLabel("使用者搜索", { exact: true }).fill("核对");
+  await expect(page.locator("main").getByRole("alert")).toContainText("无权");
+  await expect(page.getByRole("heading", { name: "用量汇总" })).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText("0.030000");
+  await expect(page.getByRole("combobox", { name: "使用者" })).toHaveCount(0);
 });

@@ -1,10 +1,10 @@
 # C5 project file service
 
 This delivery implements the C-owned project file lifecycle in the canonical
-`services/api` application. The default A storage port returns **503**. It does
-not upload bytes, manufacture receipts, issue fake links, or claim notification
-delivery. Course-file publication remains a separate integration task; the
-existing C5-04 frontend is still an explicitly labelled metadata demonstration.
+`services/api` application. The page requests a signed upload from A, sends the
+selected bytes, waits for A to verify the upload, and registers the completed
+receipt with C. An unconfigured storage port returns **503**. The separate
+[course-file service](C_COURSE_FILES.md) handles teacher uploads and publication.
 
 ## Ownership and assembly
 
@@ -44,6 +44,11 @@ and `reason`. Appending accepts `receipt_id`, the logical file's current
 `expected_version`, and `reason`. Extra keys, including browser hashes, object
 paths, actor IDs or URLs, are rejected. `expected_version` refers to the C
 logical file's `lock_version`, **not** a B project/plan version.
+
+While the upload form is open, retrying an uncertain registration reuses the
+verified receipt and idempotency key. If another member changed the file, the
+form reads the current version number and filename for review. Confirming the
+append uses the new lock version and keeps the original upload and reason.
 
 Example registration body:
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { components } from "@/packages/domain/api.generated";
@@ -11,7 +11,7 @@ type Context = components["schemas"]["CProjectContextDTO"];
 type Source = "manual" | "task_note" | "discussion" | "file" | "screenshot" | "github" | "feishu";
 const sourceNames: Record<Source, string> = { manual: "手工说明或链接", task_note: "当前任务说明", discussion: "重要讨论", file: "已有项目文件", screenshot: "已有项目截图", github: "GitHub 来源", feishu: "飞书来源" };
 
-export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, onDenied, visible = true }: { context: Context; userId: string; fixedTaskId?: string; onSaved: () => void; onDenied: (error: unknown) => void; visible?: boolean }) {
+export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, onDenied, onDirtyChange, visible = true }: { context: Context; userId: string; fixedTaskId?: string; onSaved: () => void; onDenied: (error: unknown) => void; onDirtyChange?: (dirty: boolean) => void; visible?: boolean }) {
   const projectId = context.project.id;
   const [taskId, setTaskId] = useState(fixedTaskId ?? "");
   const [kind, setKind] = useState<Source>("manual");
@@ -21,6 +21,8 @@ export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, on
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
   const [criteria, setCriteria] = useState<string[]>([]);
+  const dirty = Boolean(title || body || sourceId || url || criteria.length);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);

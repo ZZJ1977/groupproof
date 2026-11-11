@@ -30,7 +30,7 @@ async function request<T>(path: string, body?: unknown, actorId?: string): Promi
 
 export const cIdentityClient = {
   users: (query: URLSearchParams) => request<IdentityAdminPage<IdentityAdminUser>>(`/users?${query}`),
-  disable: (user: IdentityAdminUser, reason: string, actorId: string) => request(`/users/${encodeURIComponent(user.id)}/disable`, { expectedVersion: user.version, reason }, actorId),
+  disable: (user: IdentityAdminUser, reason: string, actorId: string) => request<{ id: string; status: "disabled"; version: number; inboxNotified?: boolean }>(`/users/${encodeURIComponent(user.id)}/disable`, { expectedVersion: user.version, reason }, actorId),
   applications: (page: number, status: TeacherApplicationStatus = "pending") => request<IdentityAdminPage<IdentityTeacherApplication>>(`/teacher-applications?${new URLSearchParams({ page: String(page), status })}`),
   review: (row: IdentityTeacherApplication, decision: "approve" | "reject", reason: string, actorId: string) => request(`/teacher-applications/${encodeURIComponent(row.id)}/review`, {
     expectedVersion: row.applicationVersion, decision, reason,

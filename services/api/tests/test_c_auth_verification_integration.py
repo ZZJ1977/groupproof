@@ -30,6 +30,7 @@ from app.modules.c.course_files_permissions import course_access
 from app.modules.c.execution_router import router as execution_router
 from app.modules.c.governance_common import current_actor
 from app.modules.c.governance_course_service import require_teacher
+from app.modules.c.notification_delivery import get_notification_writer
 from app.modules.c.permissions import get_project_access
 from app.modules.c.school_email import has_verified_school_email, school_email_binding_verified
 from app.modules.c.task_execution import SqlExecutionRepository, TaskExecutionService
@@ -269,6 +270,7 @@ def test_identity_directory_filters_use_real_status_columns_and_combine(http, db
 
 
 def test_version_zero_disable_is_real_atomic_admin_action(http, db, scope):
+    http.client.app.dependency_overrides[get_notification_writer] = lambda: None
     target = scope.users["member"]
     target_session = http.sign_in(target)
     http.sign_in(scope.users["admin"])
@@ -278,7 +280,12 @@ def test_version_zero_disable_is_real_atomic_admin_action(http, db, scope):
         json={"expectedVersion": 0, "reason": "Requested account suspension"},
     )
     assert response.status_code == 200, response.text
-    assert response.json()["data"] == {"id": str(target.id), "status": "disabled", "version": 1}
+    assert response.json()["data"] == {
+        "id": str(target.id),
+        "status": "disabled",
+        "version": 1,
+        "inboxNotified": False,
+    }
     assert db.get(User, target.id).status == "disabled"
     db.refresh(target_session.record)
     assert target_session.record.revoked_at is not None
@@ -294,6 +301,87 @@ def test_version_zero_disable_is_real_atomic_admin_action(http, db, scope):
             )
         )
         == 1
+    )
+
+
+def test_disable_only_notifies_after_authorization_and_once_per_account_version(http, db, scope):
+    admin = scope.users["admin"]
+    target = scope.users["member"]
+    calls = []
+
+    def notify(session, **payload):
+        assert session is db
+        calls.append(payload)
+
+    http.client.app.dependency_overrides[get_notification_writer] = lambda: notify
+    command = {"expectedVersion": target.version, "reason": "Requested suspension"}
+    path = f"/api/v1/c-admin/users/{target.id}/disable"
+    http.sign_in(scope.users["author"])
+    assert http.client.post(path, json=command).status_code == 403
+    http.sign_in(admin)
+    assert (
+        http.client.post(f"/api/v1/c-admin/users/{admin.id}/disable", json=command).status_code
+        == 403
+    )
+    assert (
+        http.client.post(path, json={**command, "expectedVersion": target.version + 1}).status_code
+        == 409
+    )
+    assert calls == []
+    response = http.client.post(path, json=command)
+    assert response.status_code == 200
+    assert response.json()["data"]["inboxNotified"] is True
+    assert http.client.post(path, json=command).status_code == 409
+    assert calls == [
+        {
+            "recipient": target.id,
+            "category": "system",
+            "title": "账号已停用",
+            "description": command["reason"],
+            "dedupe_key": f"c:account-disabled:{target.id}:{response.json()['data']['version']}",
+        }
+    ]
+
+
+def test_notification_failure_rolls_back_suspension_audit_and_session_revocation(http, db, scope):
+    target = scope.users["member"]
+    target_session = http.sign_in(target)
+    http.sign_in(scope.users["admin"])
+    starting_version = target.version
+
+    # Use the production identity dependency's rollback behavior with the fixture's session.
+    def transaction():
+        try:
+            yield db
+        except Exception:
+            db.rollback()
+            raise
+
+    def fail(session, **_):
+        session.flush()
+        raise AppError("SERVICE_UNAVAILABLE", 503)
+
+    http.client.app.dependency_overrides[get_db] = transaction
+    http.client.app.dependency_overrides[get_notification_writer] = lambda: fail
+    result = http.client.post(
+        f"/api/v1/c-admin/users/{target.id}/disable",
+        json={"expectedVersion": starting_version, "reason": "Retry after inbox recovers"},
+    )
+    assert result.status_code == 503
+    db.refresh(target)
+    db.refresh(target_session.record)
+    assert target.status == "active" and target.version == starting_version
+    assert target_session.record.revoked_at is None
+    assert (
+        db.scalar(
+            select(func.count())
+            .select_from(AuthAuditEvent)
+            .where(
+                AuthAuditEvent.event_type == "user.disabled",
+                AuthAuditEvent.target_user_id == str(target.id),
+            )
+        )
+        == 0
     )
 
 

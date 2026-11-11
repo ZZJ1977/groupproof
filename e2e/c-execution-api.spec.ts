@@ -41,6 +41,56 @@ async function setup(page: Page, readContext: () => Schema["CProjectContextDTO"]
   await page.route(`**/api/v1/tasks/${tid}/execution`, (route) => success(route, execution));
 }
 
+test("C4 task evidence opens the associated commit and PR from the task-scoped activity page", async ({ page }) => {
+  await setup(page);
+  const commitUrl = "https://github.com/sample/group/commit/128aee";
+  const pullUrl = "https://github.com/sample/group/pull/17";
+  const record: Schema["ActivityDTO"] = {
+    record_id: id(810), project_id: pid, source_type: "github", source_id: id(811),
+    source_identity: "commit-128aee", source_revision: "1", status: "candidate", task_id: tid,
+    evidence_id: null, lock_version: 1, title: "修复任务记录", summary: "", author_id: aid,
+    author_name: "成员甲", occurred_at: stamp, kind: "commit", group_id: null,
+    source_url: commitUrl, availability: "available", source_changed: false, suggested_task_ids: [],
+  };
+  let requests = 0;
+  await page.route(`**${base}/activities/github?**`, (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get("task_id")).toBe(tid);
+    requests++;
+    return success(route, { items: [record,
+      { ...record, source_id: id(812), title: "合并任务修复", kind: "pull_request", source_url: pullUrl },
+      { ...record, source_id: id(813), title: "不可用链接", source_url: "https://other.example/commit/123" },
+      { ...record, source_id: id(814), title: "已删除活动", availability: "deleted" },
+    ], page: 1, page_size: 10, total: 4 });
+  });
+  await page.goto(`/projects/${pid}/tasks/${tid}`);
+  const tab = page.getByRole("button", { name: "任务证据", exact: true });
+  await expect(tab).toBeVisible();
+  expect(requests).toBe(0);
+  await tab.click();
+  await expect(page.getByRole("link", { name: record.title })).toHaveAttribute("href", commitUrl);
+  const pr = page.getByRole("link", { name: "合并任务修复" });
+  await expect(pr).toHaveAttribute("href", pullUrl);
+  await expect(pr).toHaveAttribute("target", "_blank");
+  await expect(page.getByRole("link", { name: /不可用链接|已删除活动/ })).toHaveCount(0);
+});
+
+test("C4 task evidence conceals foreign activity rows and handles lost access", async ({ page }) => {
+  await setup(page);
+  let denied = false;
+  await page.route(`**${base}/activities/github?**`, (route) => denied ? failure(route, 403) : success(route, {
+    items: [{ project_id: pid, task_id: id(999), source_type: "github", title: "另一个任务的提交" }],
+    page: 1, page_size: 10, total: 1,
+  }));
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=evidence`);
+  await expect(page.getByText("无法核对这些记录的任务归属。")).toBeVisible();
+  await expect(page.getByText("另一个任务的提交")).toHaveCount(0);
+  denied = true;
+  await page.reload();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。")).toBeVisible();
+  await expect(page.getByText("任务：真实接口任务")).toHaveCount(0);
+});
+
 test("C2 criteria fetch B's active rechecks on demand and refresh after B becomes available", async ({ page }) => {
   await setup(page);
   let requests = 0;
@@ -194,9 +244,64 @@ test("C2 note retries keep the input/key and submission preparation stays out of
   await expect(page.getByRole("link", { name: /验收/ })).toHaveCount(0);
 });
 
+test("C2 completeness check saves the draft before opening page 16 and restores it on return", async ({ page }) => {
+  await setup(page);
+  let saved = structuredClone(note), state = structuredClone(execution);
+  await page.route(`**${base}/tasks/${tid}/note?**`, (route) => success(route, saved));
+  await page.route(`**/api/v1/tasks/${tid}/execution`, (route) => success(route, state));
+  const writes: { body: unknown; key?: string }[] = [];
+  await page.route(`**/api/v1/tasks/${tid}/prepare-submission`, (route) => {
+    const input: Schema["PrepareSubmissionRequest"] = route.request().postDataJSON();
+    writes.push({ body: input, key: route.request().headers()["idempotency-key"] });
+    if (writes.length === 1) return failure(route, 503);
+    if (writes.length === 2) return success(route, { execution: { ...state, task_id: id(999), status: "pending_submission" }, note: null });
+    expect(input.expected_version).toBe(2);
+    expect(input.note?.body).toBe("完整性检查前的草稿");
+    saved = { ...saved, current_version_no: 2, lock_version: 2, versions: [
+      { ...saved.versions[0], id: id(419), version_no: 2, body: input.note!.body }, ...saved.versions,
+    ] };
+    state = { ...state, status: "pending_submission", version: 3 };
+    return success(route, { execution: state, note: saved });
+  });
+  const submitPath = `/projects/${pid}/tasks/${tid}/submit`;
+  await page.goto(submitPath);
+  await page.getByRole("button", { name: "编辑任务说明", exact: true }).click();
+  const body = page.getByRole("textbox", { name: "说明正文", exact: true });
+  await body.fill("完整性检查前的草稿");
+  const candidateTitle = page.getByRole("textbox", { name: "证据标题", exact: true });
+  await candidateTitle.fill("仍在编辑的候选证据");
+  const check = page.getByRole("button", { name: "检查完整性", exact: true });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await check.click();
+  expect(writes).toHaveLength(0);
+  await expect(candidateTitle).toHaveValue("仍在编辑的候选证据");
+  await candidateTitle.fill("");
+  await check.click();
+  await expect(page.getByText("服务暂不可用，暂不能确认结果。请稍后重试。", { exact: true })).toBeVisible();
+  await expect(body).toHaveValue("完整性检查前的草稿");
+  await check.click();
+  await expect(page.getByText("请求未成功，输入已保留。请重试。", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${submitPath}$`));
+  await check.click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${tid}/evidence-check$`));
+  await expect(page.getByText(/验收服务暂未接入/)).toBeVisible();
+  expect(writes).toHaveLength(3);
+  expect(writes[0].key).toBeTruthy();
+  expect(writes[1]).toEqual(writes[0]);
+  expect(writes[2]).toEqual(writes[0]);
+  await page.getByRole("link", { name: "返回提交草稿" }).click();
+  await expect(page).toHaveURL(new RegExp(`${submitPath}$`));
+  await page.getByRole("button", { name: "编辑任务说明", exact: true }).click();
+  await expect(body).toHaveValue("完整性检查前的草稿");
+});
+
 test("C3 manual candidate validates URL, captures selected criteria, and adopts/withdraws without changing snapshots", async ({ page }) => {
   await setup(page);
   let item = structuredClone(evidence), added = false;
+  item.source_url = "https://example.test/source";
+  item.source_snapshots[0].content.source = {
+    title: item.title, body: item.description, provenance: "user_submitted_manual_content", source_url: item.source_url,
+  };
   await page.route(`**${base}/evidence?**`, (route) => success(route, { ...emptyEvidence, items: added ? [item] : [], total: added ? 1 : 0 }));
   await page.route(`**${base}/evidence/${eid}`, (route) => success(route, item));
   let creates = 0;
@@ -229,6 +334,7 @@ test("C3 manual candidate validates URL, captures selected criteria, and adopts/
   await expect(page.getByText("证据已撤回，历史和快照仍保留。", { exact: true })).toBeVisible();
   await page.locator("summary").filter({ hasText: "快照 v1" }).click();
   await expect(page.getByText("契约验证候选\n真实来源的候选说明", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "打开提交时的网址" })).toHaveAttribute("href", item.source_url);
 });
 
 test("C3 another author cannot decide; revoked context clears evidence and never shows local seed", async ({ page }) => {
