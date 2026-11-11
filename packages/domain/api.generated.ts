@@ -2871,7 +2871,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "task_progress" | "task_note_saved" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
+            event_type: "task_progress" | "task_note_saved" | "file_version_uploaded" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
             /** Href */
             href: string;
             /** Id */
@@ -2885,7 +2885,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "task" | "evidence" | "discussion";
+            object_type: "task" | "evidence" | "discussion" | "file";
             /**
              * Occurred At
              * Format: date-time

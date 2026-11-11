@@ -40,7 +40,8 @@ optional `project_id`, inclusive UTC `date_from`/`date_to`, and page/page_size
 are rejected. Pagination is server-side; order is event time descending, event
 type ascending and event UUID ascending, including deterministic timestamp ties.
 
-- Development: real progress events and saved task-note versions.
+- Development: task progress events, saved task-note versions and registered
+  project file versions attributed to the uploader.
 - Evidence: submitted/adopted/withdrawn/source-changed decision records.
 - Discussion: original discussions and appended replies.
 
@@ -48,8 +49,9 @@ Only the signed-in actor's events with an existing, currently accessible target
 are returned. Leaving a project removes its old activity from this query. Event
 timestamps are immutable creation times; a colleague's later edit does not become
 the actor's activity. Titles are the current target titles. Links use real target
-IDs; discussion links select the discussion, and evidence links open its task's
-evidence tab. A target page still needs its own canonical data implementation.
+IDs. Progress, note, file and reply links open the exact history entry, version
+or reply. Evidence links select the decision in the evidence detail. Each target
+checks current project access again when opened.
 
 The view explicitly excludes external GitHub/Feishu ingestion and discussion
 importance-only events. It does not claim to be a complete external activity log.

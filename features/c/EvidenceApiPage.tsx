@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
@@ -29,11 +29,13 @@ const checkableSources = new Set<Evidence["source_type"]>(["discussion", "file",
 function SourceSnapshotContent({ snapshot, sourceType, projectId }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"]; projectId: string }) {
   // Canonical snapshots wrap the immutable source payload; never dump IDs or provider metadata.
   const source = snapshotRecord(snapshot.content.source);
+  const originalUrl = sourceType === "manual" && typeof source.source_url === "string" ? safeHttps(source.source_url) : null;
   const fileVersionId = typeof source.version_id === "string" && isUuid(source.version_id) ? source.version_id : null;
   const text = ["title", "body", "summary", "description"].map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
   const replies = sourceType === "discussion" && Array.isArray(source.replies) ? source.replies.map(snapshotRecord).map((reply) => reply.body).filter((body): body is string => typeof body === "string") : [];
   return <>
     {snapshot.content.availability === "deleted" && <p className="my-2">此快照记录了来源已删除。</p>}
+    {originalUrl && <a className="gp-link" href={originalUrl} target="_blank" rel="noopener noreferrer">打开提交时的网址</a>}
     {sourceType === "task_note" && typeof source.version_no === "number" && <p className="my-2 text-sm">任务说明 v{source.version_no}</p>}
     {sourceType === "discussion" && source.is_important === false && <p className="my-2">此快照中的讨论已取消重要标记。</p>}
     {sourceType === "screenshot" && source.provenance === "registered_project_file" && typeof source.mime_type === "string" && !["image/png", "image/jpeg"].includes(source.mime_type) && <p>原截图已被其他文件类型替换（{source.mime_type}）。</p>}
@@ -56,6 +58,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const status = query.get("status"), source = query.get("source");
   const filters: EvidenceQuery = { page: pageNumber(query.get("page")), page_size: 10, task_id: query.get("task") || undefined, author_id: query.get("author") || undefined, criterion_id: query.get("criterion") || undefined, q: query.get("q") || undefined, status: status && Object.hasOwn(states, status) ? status as keyof typeof states : undefined, source_type: source && Object.hasOwn(sources, source) ? source as keyof typeof sources : undefined };
   const selectedId = query.get("evidence");
+  const decisionId = query.get("decision");
   const enabled = isUuid(projectId);
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
   const list = useQuery({ queryKey: ["c-evidence", userId, projectId, filters], queryFn: () => projectApi.evidence(projectId, filters), enabled, ...queryPolicy });
@@ -72,6 +75,11 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const rows = access && list.isSuccess && !list.isFetching ? list.data : undefined;
   const item = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
+  const referencedDecision = item?.decisions.find((decision) => decision.id === decisionId);
+  const decisionRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (referencedDecision) decisionRef.current?.focus();
+  }, [referencedDecision]);
   const authors = access?.evidence_authors ?? [];
   const canDecide = (entry: Evidence) => Boolean(access?.permissions.can_capture_evidence && (access.actor.id === entry.author_id || access.actor.is_leader || access.actor.is_teacher));
   const taskTitle = (id: string) => access?.tasks.find((task) => task.id === id)?.title ?? "关联任务";
@@ -118,19 +126,19 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}{context.isFetching && <p role="status">正在验证项目权限…</p>}
       {access && <>
-        <form key={JSON.stringify(filters)} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "status", "source", "task", "author", "criterion"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, page: null, evidence: null }); setCommand(null); }}>
+        <form key={JSON.stringify(filters)} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "status", "source", "task", "author", "criterion"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, page: null, evidence: null, decision: null }); setCommand(null); }}>
           <label>证据搜索<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} /></label>
           <label>证据状态<select className={`${apiInput} block`} name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>{Object.entries(states).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>证据来源<select className={`${apiInput} block`} name="source" defaultValue={filters.source_type ?? ""}><option value="">全部来源</option>{Object.entries(sources).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>证据所属任务<select className={`${apiInput} block`} name="task" defaultValue={filters.task_id ?? ""}><option value="">全部任务</option>{access.tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
           <label>证据作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{filters.author_id && !authors.some((author) => author.id === filters.author_id) && <option value={filters.author_id}>当前 URL 作者筛选（待核对）</option>}{authors.map((author) => <option key={author.id} value={author.id}>{author.title}</option>)}</select></label>
           <label>验收标准<select className={`${apiInput} block`} name="criterion" defaultValue={filters.criterion_id ?? ""}><option value="">全部标准</option>{access.tasks.flatMap((task) => task.criteria.map((criterion) => <option key={criterion.id} value={criterion.id}>{task.title} · {criterion.text}</option>))}</select></label>
-          <button className={apiButton}>查询证据</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, source: null, task: null, author: null, criterion: null, page: null, evidence: null }); setCommand(null); }}>重置</button>
+          <button className={apiButton}>查询证据</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, source: null, task: null, author: null, criterion: null, page: null, evidence: null, decision: null }); setCommand(null); }}>重置</button>
         </form>
         {access.permissions.can_capture_evidence && <button className={`${apiButton} mb-4`} onClick={() => setCreating(!creating)}>{creating ? "关闭新增表单" : "添加候选证据"}</button>}
         {list.isFetching && <p role="status">正在读取证据…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
-        {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p><p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id }); setCommand(null); setError(null); }}>查看证据历史</button></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null }); setCommand(null); }} /></Panel>}
-        {selectedId && <Panel title="证据详情与不可变快照" action={<button className={apiButton} onClick={() => { updateQuery({ evidence: null }); setCommand(null); }}>关闭详情</button>}>
+        {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p><p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id, decision: null }); setCommand(null); setError(null); }}>查看证据历史</button></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null, decision: null }); setCommand(null); }} /></Panel>}
+        {selectedId && <Panel title="证据详情与不可变快照" action={<button className={apiButton} onClick={() => { updateQuery({ evidence: null, decision: null }); setCommand(null); }}>关闭详情</button>}>
           {detail.isFetching && <p role="status">正在读取证据历史…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
           {item && <><h2 className="font-semibold">{item.title}</h2><p className="my-3 whitespace-pre-wrap">{item.description}</p>{safeHttps(item.source_url, item.source_type === "github") && <a className="gp-link" href={safeHttps(item.source_url, item.source_type === "github")!} target="_blank" rel="noopener noreferrer">查看证据来源</a>}
             {item.source_changed && <p className="my-3 text-amber-800">来源已变化，原快照保留；该证据当前不计入有效证据。</p>}
@@ -138,7 +146,12 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
             <h3 className="mb-2 mt-4 font-semibold">对应标准</h3>{item.criterion_ids.map((id) => <p key={id}>{access.tasks.flatMap((task) => task.criteria).find((criterion) => criterion.id === id)?.text ?? "历史关联标准"}</p>)}
             {canDecide(item) && <div className="my-3 flex gap-2">{["candidate", "pending_confirmation"].includes(item.status) && !item.source_changed && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "adopt", expected: item.lock_version, reason: "" }); setError(null); }}>采纳为正式证据</button>}{["candidate", "pending_confirmation", "formal"].includes(item.status) && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "withdraw", expected: item.lock_version, reason: "" }); setError(null); }}>撤回证据</button>}</div>}
             <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} projectId={projectId} /></details>)}
-            <h3 className="mt-4 font-semibold">决定历史</h3>{item.decisions.map((decision) => <p key={decision.id} className="my-2 text-sm">{decisions[decision.decision]} · {decision.reason} · {formatDate(decision.created_at)}</p>)}</>}
+            <h3 className="mt-4 font-semibold">决定历史</h3>
+            {decisionId && !referencedDecision && <p role="status">这条证据中找不到指定的决定。</p>}
+            {item.decisions.map((decision) => <p key={decision.id} ref={decision === referencedDecision ? decisionRef : undefined}
+              tabIndex={decision === referencedDecision ? -1 : undefined}
+              className={`my-2 text-sm ${decision === referencedDecision ? "rounded border border-blue-400 p-2" : ""}`}>
+              {decisions[decision.decision]} · {decision.reason} · {formatDate(decision.created_at)}</p>)}</>}
         </Panel>}
         {command && command.id === selectedId && item && canDecide(item) && <Panel title={command.action === "checkSource" ? "确认检查来源" : command.action === "adopt" ? "确认采纳" : "确认撤回"}><p className="mb-3 text-sm">{command.action === "checkSource" ? "检查将对比原始来源与保存的快照；确认变化后会保留历史并标记该证据不再有效。外部来源服务未接通时无法完成检查。" : command.action === "adopt" ? "采纳不会自动形成验收结论。" : "撤回会使证据不再计入有效证据，历史仍保留。"}</p><label htmlFor="evidence-reason">{command.action === "checkSource" ? "来源检查原因" : "证据决定原因"}</label><textarea id="evidence-reason" className={`${apiInput} block w-full`} value={command.reason} maxLength={4000} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy || command.expected !== item.lock_version || versionFailure(error)} onClick={() => void save()}>{command.action === "checkSource" ? "确认检查来源" : "确认决定"}</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{(versionFailure(error) || command.expected !== item.lock_version) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对证据</button>}</div></Panel>}
         {error && <ApiFailure error={error} />}{notice && <p role="status" className="my-3">{notice}</p>}
