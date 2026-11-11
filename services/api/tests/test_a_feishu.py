@@ -403,3 +403,12 @@ def test_list_available_chats_without_credentials_is_503(db, scope):
     with pytest.raises(ApiError) as exc:
         feishu.list_available_chats(db, scope.users["leader"], scope.project.id, None)
     assert exc.value.status_code == 503
+
+
+def test_members_can_see_linked_chats_outsiders_cannot(db, scope):
+    feishu.link_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    links = feishu.list_linked_chats(db, scope.users["member"], scope.project.id)
+    assert [link.chat_id for link in links] == [CHAT]
+    with pytest.raises(ApiError) as exc:
+        feishu.list_linked_chats(db, scope.users["outsider"], scope.project.id)
+    assert exc.value.status_code == 404

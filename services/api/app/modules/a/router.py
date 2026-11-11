@@ -264,3 +264,23 @@ def list_feishu_available_chats(
         if isinstance(reader, feishu.FeishuClient):
             reader.close()
     return success([FeishuAvailableChatDTO(chat_id=c.chat_id, name=c.name) for c in chats], request)
+
+
+class LinkedFeishuChatDTO(BaseModel):
+    chat_id: str
+    linked_at: datetime
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/feishu/chats",
+    response_model=SuccessResponse[list[LinkedFeishuChatDTO]],
+    dependencies=[Depends(_private)],
+)
+def list_linked_feishu_chats(
+    project_id: UUID, request: Request, session: Database, user: CurrentUser
+):
+    links = feishu.list_linked_chats(session, user, project_id)
+    return success(
+        [LinkedFeishuChatDTO(chat_id=link.chat_id, linked_at=link.linked_at) for link in links],
+        request,
+    )

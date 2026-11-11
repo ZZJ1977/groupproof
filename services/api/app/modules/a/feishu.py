@@ -474,3 +474,15 @@ def _check_feishu(session: Session, project_id: UUID, actor_id: UUID, source_typ
 
 def feishu_activity_port(session_factory) -> DatabaseFeishuActivityPort:
     return DatabaseFeishuActivityPort(session_factory)
+
+
+def list_linked_chats(session: Session, actor: User, project_id: UUID) -> list[FeishuChatLink]:
+    """项目成员可以查看本项目绑定了哪些飞书群（不包含凭证）。"""
+    permissions.require_project_member(session, actor, project_id, write=False)
+    return list(
+        session.scalars(
+            select(FeishuChatLink)
+            .where(FeishuChatLink.project_id == project_id)
+            .order_by(FeishuChatLink.linked_at.asc())
+        ).all()
+    )
