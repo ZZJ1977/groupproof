@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -548,8 +549,33 @@ def check_source(
             EvidenceSourceSnapshot.evidence_id == row.id, EvidenceSourceSnapshot.version_no == 1
         )
     )
-    if original is None or original.content_json.get("source_id") != str(command.source_id):
+    if (
+        original is None
+        or not isinstance(original.content_json, dict)
+        or original.content_json.get("source_id") != str(command.source_id)
+    ):
         raise ApiError(422, "SOURCE_IDENTITY_CONFLICT", "Use the original source identifier.")
+    source_id = command.source_id
+    lookup_type = row.source_type
+    payload = original.content_json.get("source")
+    if (
+        row.source_type in {"file", "screenshot"}
+        and isinstance(payload, dict)
+        and payload.get("provenance") == "registered_project_file"
+    ):
+        # The command still identifies the original. A file replacement appends
+        # the new registered version to its history in the same transaction.
+        latest_revision = session.scalars(
+            select(EvidenceSourceSnapshot.source_revision)
+            .where(EvidenceSourceSnapshot.evidence_id == row.id)
+            .order_by(EvidenceSourceSnapshot.version_no.desc())
+            .limit(1)
+        ).one()
+        source_id = UUID(latest_revision)
+        # An image can be superseded by a document. Check the replacement as a
+        # file; the original evidence and its immutable image keep their kind.
+        if row.source_changed:
+            lookup_type = "file"
     if row.source_type == "discussion":
         from app.modules.c.discussion_service import resolve_discussion_source
 
@@ -560,9 +586,12 @@ def check_source(
         source = source_port.resolve(
             project_id=project_id,
             actor_id=user.id,
-            source_type=row.source_type,
-            source_id=command.source_id,
+            source_type=lookup_type,
+            source_id=source_id,
         )
+        if lookup_type != row.source_type:
+            validate_source(session, source, project_id, lookup_type)
+            source = replace(source, source_type=row.source_type)
     append_source_change(session, row, user.id, source, command.reason)
     return finish_request(session, record, evidence_data(session, row))
 

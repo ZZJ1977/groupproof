@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { useWorkspace } from "@/lib/workspace";
@@ -25,7 +26,7 @@ function originalSourceId(item: Evidence): string | null {
   return typeof value === "string" && isUuid(value) ? value : null;
 }
 const checkableSources = new Set<Evidence["source_type"]>(["discussion", "file", "screenshot", "github", "feishu"]);
-function SourceSnapshotContent({ snapshot, sourceType }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"] }) {
+function SourceSnapshotContent({ snapshot, sourceType, projectId }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"]; projectId: string }) {
   // Canonical snapshots wrap the immutable source payload; never dump IDs or provider metadata.
   const source = snapshotRecord(snapshot.content.source);
   const text = ["title", "body", "summary", "description"].map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
@@ -34,7 +35,11 @@ function SourceSnapshotContent({ snapshot, sourceType }: { snapshot: Evidence["s
     {snapshot.content.availability === "deleted" && <p className="my-2">此快照记录了来源已删除。</p>}
     {sourceType === "task_note" && typeof source.version_no === "number" && <p className="my-2 text-sm">任务说明 v{source.version_no}</p>}
     {sourceType === "discussion" && source.is_important === false && <p className="my-2">此快照中的讨论已取消重要标记。</p>}
+    {sourceType === "screenshot" && source.provenance === "registered_project_file" && typeof source.mime_type === "string" && !["image/png", "image/jpeg"].includes(source.mime_type) && <p>原截图已被其他文件类型替换（{source.mime_type}）。</p>}
     <p className="whitespace-pre-wrap">{text || "该来源快照不包含可直接展示的文字。"}</p>
+    {(sourceType === "file" || sourceType === "screenshot") && source.provenance === "registered_project_file" &&
+      typeof source.file_id === "string" && isUuid(source.file_id) && typeof source.version_no === "number" &&
+      <Link className="gp-link" href={`/projects/${projectId}/files?file=${source.file_id}`}>查看原文件及版本 v{source.version_no}</Link>}
     {replies.length > 0 && <div className="mt-3"><h4 className="font-semibold">快照中的回复</h4>{replies.map((body, index) => <p key={index} className="my-2 whitespace-pre-wrap">{body}</p>)}</div>}
   </>;
 }
@@ -129,7 +134,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
             {canDecide(item) && checkableSources.has(item.source_type) && <div className="my-3">{originalSourceId(item) ? <button className={apiButton} disabled={busy} onClick={() => { key.reset(); setCommand({ id: item.id, action: "checkSource", expected: item.lock_version, reason: "", sourceId: originalSourceId(item)! }); setError(null); setNotice(""); }}>检查证据来源</button> : <p className="text-sm">原始来源标识不完整，暂不能检查来源；请刷新详情后重试。</p>}</div>}
             <h3 className="mb-2 mt-4 font-semibold">对应标准</h3>{item.criterion_ids.map((id) => <p key={id}>{access.tasks.flatMap((task) => task.criteria).find((criterion) => criterion.id === id)?.text ?? "历史关联标准"}</p>)}
             {canDecide(item) && <div className="my-3 flex gap-2">{["candidate", "pending_confirmation"].includes(item.status) && !item.source_changed && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "adopt", expected: item.lock_version, reason: "" }); setError(null); }}>采纳为正式证据</button>}{["candidate", "pending_confirmation", "formal"].includes(item.status) && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "withdraw", expected: item.lock_version, reason: "" }); setError(null); }}>撤回证据</button>}</div>}
-            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} /></details>)}
+            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} projectId={projectId} /></details>)}
             <h3 className="mt-4 font-semibold">决定历史</h3>{item.decisions.map((decision) => <p key={decision.id} className="my-2 text-sm">{decisions[decision.decision]} · {decision.reason} · {formatDate(decision.created_at)}</p>)}</>}
         </Panel>}
         {command && command.id === selectedId && item && canDecide(item) && <Panel title={command.action === "checkSource" ? "确认检查来源" : command.action === "adopt" ? "确认采纳" : "确认撤回"}><p className="mb-3 text-sm">{command.action === "checkSource" ? "检查将对比原始来源与保存的快照；确认变化后会保留历史并标记该证据不再有效。外部来源服务未接通时无法完成检查。" : command.action === "adopt" ? "采纳不会自动形成验收结论。" : "撤回会使证据不再计入有效证据，历史仍保留。"}</p><label htmlFor="evidence-reason">{command.action === "checkSource" ? "来源检查原因" : "证据决定原因"}</label><textarea id="evidence-reason" className={`${apiInput} block w-full`} value={command.reason} maxLength={4000} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy || command.expected !== item.lock_version || versionFailure(error)} onClick={() => void save()}>{command.action === "checkSource" ? "确认检查来源" : "确认决定"}</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{(versionFailure(error) || command.expected !== item.lock_version) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对证据</button>}</div></Panel>}
