@@ -51,21 +51,23 @@ test("C7 authentication combined filters, paging, reload and Back preserve URL s
   await page.route(/\/api\/v1\/admin\/auth-audit-logs(?:\?.*)?$/, (route) => {
     const url = new URL(route.request().url()); queries.push(url);
     const current = Number(url.searchParams.get("page") ?? 1);
-    return ok(route, collection([{ ...row, id: `${logId}-${current}` }], current, 11));
+    return ok(route, collection([{ ...row, action: "auth.google.linked", id: `${logId}-${current}` }], current, 11));
   });
   await page.goto("/admin/logs?source=auth");
-  await page.getByRole("combobox", { name: "认证事件", exact: true }).selectOption("auth.password_login");
+  const actions = page.getByRole("combobox", { name: "认证事件", exact: true });
+  await actions.selectOption({ label: "绑定 Google 账号" });
   await page.getByRole("combobox", { name: "认证结果", exact: true }).selectOption("success");
   await page.getByLabel("认证开始时间", { exact: true }).fill("2026-10-01T08:00");
   await page.getByLabel("认证结束时间", { exact: true }).fill("2026-10-16T08:00");
   await page.getByRole("combobox", { name: "认证操作人", exact: true }).selectOption(actorId);
   await expect.poll(() => queries.at(-1)?.searchParams.get("actor_id")).toBe(actorId);
-  await expect(page.getByRole("combobox", { name: "认证事件", exact: true })).toHaveValue("auth.password_login");
+  await expect(actions).toHaveValue("auth.google.linked");
   await page.getByRole("combobox", { name: "目标账号", exact: true }).selectOption(targetId);
   await expect.poll(() => queries.at(-1)?.searchParams.get("target_user_id")).toBe(targetId);
   await expect(page.getByLabel("认证开始时间", { exact: true })).toHaveValue("2026-10-01T08:00");
   await page.getByRole("button", { name: "查询认证日志", exact: true }).click();
-  await expect.poll(() => queries.at(-1)?.searchParams.get("action")).toBe("auth.password_login");
+  await expect.poll(() => queries.at(-1)?.searchParams.get("action")).toBe("auth.google.linked");
+  await expect(page.getByRole("cell", { name: "绑定 Google 账号", exact: true })).toBeVisible();
   expect(queries.at(-1)?.searchParams.get("result")).toBe("success");
   expect(queries.at(-1)?.searchParams.get("since")).toMatch(/T.*Z$/);
   expect(queries.at(-1)?.searchParams.get("until")).toMatch(/T.*Z$/);
@@ -73,7 +75,7 @@ test("C7 authentication combined filters, paging, reload and Back preserve URL s
   await expect(page).toHaveURL(/auth_page=2/);
   await page.reload();
   await expect(page.getByText("共 11 条 · 第 2 页", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "认证事件", exact: true })).toHaveValue("auth.password_login");
+  await expect(actions).toHaveValue("auth.google.linked");
   expect(queries.at(-1)?.searchParams.get("actor_id")).toBe(actorId);
   expect(queries.at(-1)?.searchParams.get("target_user_id")).toBe(targetId);
   await page.goBack(); await expect(page.getByText("共 11 条 · 第 1 页", { exact: true })).toBeVisible();
@@ -149,4 +151,43 @@ test("C7 authentication refresh failure hides old results and 404 detail never r
   await expect(page.getByRole("button", { name: "重试认证详情", exact: true })).toBeVisible();
   await expect(page.getByText("session", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "查看认证日志", exact: true })).toBeVisible();
+});
+
+test("C7 shared operation filters preserve opaque targets and permission loss hides the recorded changes", async ({ page }) => {
+  let allowed = true;
+  const requests: URL[] = [];
+  await users(page);
+  await page.route(/\/api\/v1\/admin\/shared-audit-events(?:\?.*)?$/, (route) => {
+    requests.push(new URL(route.request().url()));
+    const data: Schema["SharedAuditPage"] = {
+      page: 1, page_size: 10, total: 1, items: [{
+        id: targetId, occurred_at: "2026-11-10T09:00:00Z", action: "plan.frozen",
+        actor_id: null, target_type: "plan", target_id: "imported-plan-17",
+        reason: "全组确认", before: { status: "draft" }, after: { version_no: 2 }, metadata_redacted: true,
+      }],
+    };
+    return allowed ? ok(route, data) : fail(route, 403);
+  });
+  await page.goto("/admin/logs?source=shared");
+  await expect(page.getByRole("heading", { name: "共享服务操作记录", exact: true })).toBeVisible();
+  await page.getByLabel("对象类型", { exact: true }).fill("plan");
+  await page.getByRole("button", { name: "查询操作记录" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("请同时填写对象类型和标识");
+  await page.getByLabel("对象标识", { exact: true }).fill("imported-plan-17");
+  await page.getByLabel("操作前缀", { exact: true }).fill("plan.");
+  await page.getByRole("button", { name: "查询操作记录" }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("target_id")).toBe("imported-plan-17");
+  expect(requests.at(-1)?.searchParams.get("target_type")).toBe("plan");
+  expect(requests.at(-1)?.searchParams.get("action_prefix")).toBe("plan.");
+  await page.reload();
+  await expect(page.getByLabel("对象标识", { exact: true })).toHaveValue("imported-plan-17");
+  await page.getByText("查看操作详情", { exact: true }).click();
+  await expect(page.getByText("理由：全组确认", { exact: true })).toBeVisible();
+  await expect(page.locator("details pre").first()).toContainText("draft");
+  await expect(page.getByRole("cell", { name: "系统", exact: true })).toBeVisible();
+  allowed = false;
+  await page.getByRole("button", { name: "刷新操作记录" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("当前账户无权");
+  await expect(page.locator("details")).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "筛选操作人", exact: true })).toHaveCount(0);
 });

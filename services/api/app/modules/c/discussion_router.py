@@ -28,6 +28,7 @@ from app.modules.c.evidence_router import (
     commit_command,
     private_response,
 )
+from app.modules.c.notification_delivery import NotificationWriter
 
 router = APIRouter(
     tags=["c-discussions"], dependencies=[Depends(private_response)], responses=ERROR_RESPONSES
@@ -89,6 +90,7 @@ def detail(
 def create(
     project_id: UUID,
     command: CreateDiscussion,
+    writer: NotificationWriter,
     request: Request,
     session: Database,
     user: CurrentUser,
@@ -96,7 +98,10 @@ def create(
 ):
     return success(
         commit_command(
-            session, lambda: create_discussion(session, user, project_id, command, idempotency_key)
+            session,
+            lambda: create_discussion(
+                session, user, project_id, command, idempotency_key, writer=writer
+            ),
         ),
         request,
     )
@@ -139,6 +144,7 @@ def reply(
     project_id: UUID,
     discussion_id: UUID,
     command: ReplyDiscussion,
+    writer: NotificationWriter,
     request: Request,
     session: Database,
     user: CurrentUser,
@@ -147,7 +153,9 @@ def reply(
     return success(
         commit_command(
             session,
-            lambda: add_reply(session, user, project_id, discussion_id, command, idempotency_key),
+            lambda: add_reply(
+                session, user, project_id, discussion_id, command, idempotency_key, writer=writer
+            ),
         ),
         request,
     )

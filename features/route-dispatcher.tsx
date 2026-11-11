@@ -60,7 +60,9 @@ export function RouteDispatcher() {
     else if ([21, 22].includes(screen) && projectId) realContent = <ActivityApiPage projectId={projectId} sourceType={screen === 21 ? "github" : "feishu"} />;
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
-    else if ([16, 17].includes(screen)) realContent = <div role="status" className="gp-empty">验收服务暂未接入，请返回任务页面查看已保存的提交。</div>;
+    else if ([16, 17].includes(screen)) realContent = <div className="gp-empty"><p role="status">验收服务暂未接入，请返回任务页面查看已保存的提交。</p>
+      {screen === 16 && projectId && taskId && <Link className="gp-link" href={`/projects/${projectId}/tasks/${taskId}/submit`}>返回提交草稿</Link>}
+    </div>;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;

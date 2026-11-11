@@ -1,4 +1,4 @@
-"""A4 inbox port. No production adapter or synthetic notification rows.
+"""A4 inbox port. Production adapter: app.modules.a.inbox.DatabaseInboxPort.
 
 A must authorize the recipient on every call. Page counts and version describe
 one atomic inbox snapshot. Mutations must join the supplied Session transaction,
@@ -94,4 +94,7 @@ class UnavailableInboxPort:
 
 
 def get_inbox_port() -> InboxPort:
-    return UnavailableInboxPort()
+    # A4-01/A4-03：A 的数据库实现（读写都在调用方事务里，不自行提交）。
+    from app.modules.a.inbox import DatabaseInboxPort
+
+    return DatabaseInboxPort()

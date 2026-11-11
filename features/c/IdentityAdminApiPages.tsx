@@ -68,10 +68,14 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     if (!selected || !reason.trim() || locked.current || conflict || selectionChanged) return;
     locked.current = true; setPending(true); setFeedback("");
     try {
-      if (decision === "disable" && "canDisable" in selected) await cIdentityClient.disable(selected, reason.trim(), userId);
-      else if (decision !== "disable" && "applicationVersion" in selected && selected.status === "pending") await cIdentityClient.review(selected, decision, reason.trim(), userId);
+      let saved = "决定已保存。";
+      if (decision === "disable" && "canDisable" in selected) {
+        const receipt = await cIdentityClient.disable(selected, reason.trim(), userId);
+        if (receipt.inboxNotified === true) saved = "账号已停用，停用原因已写入该账号的站内收件箱。";
+        if (receipt.inboxNotified === false) saved = "账号已停用，站内通知服务尚未接入。";
+      } else if (decision !== "disable" && "applicationVersion" in selected && selected.status === "pending") await cIdentityClient.review(selected, decision, reason.trim(), userId);
       else return;
-      setSelectedId(null); setReason(""); setFeedback("决定已保存。"); await result.refetch();
+      setSelectedId(null); setReason(""); setFeedback(saved); await result.refetch();
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         setSelectedId(null); setAcknowledgedVersion(null); setReason(""); setConflict(false);

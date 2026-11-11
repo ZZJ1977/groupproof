@@ -58,27 +58,33 @@ class AuditRecord(ReadContract):
     @classmethod
     def safe_metadata_only(cls, value):
         # A must project metadata, not arbitrary source rows or protected content.
-        allowed = {
-            "status",
-            "role",
-            "global_role",
-            "college",
-            "semester",
-            "owner_id",
-            "project_id",
-            "lock_version",
-            "is_important",
-            "source_type",
-            "version_no",
-            "email_verified",
-            "expires_at",
-            "resource_type",
-            "resource_id",
-            "operation",
-        }
-        if set(value) - allowed or any(isinstance(item, dict | list) for item in value.values()):
+        if set(value) - SAFE_AUDIT_METADATA_FIELDS or any(
+            isinstance(item, dict | list) for item in value.values()
+        ):
             raise ValueError("Audit changes must contain only approved scalar metadata fields")
         return value
+
+
+SAFE_AUDIT_METADATA_FIELDS = frozenset(
+    {
+        "status",
+        "role",
+        "global_role",
+        "college",
+        "semester",
+        "owner_id",
+        "project_id",
+        "lock_version",
+        "is_important",
+        "source_type",
+        "version_no",
+        "email_verified",
+        "expires_at",
+        "resource_type",
+        "resource_id",
+        "operation",
+    }
+)
 
 
 class AuditPageDTO(ReadContract):

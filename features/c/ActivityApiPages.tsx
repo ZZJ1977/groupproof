@@ -6,7 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
-import type { ActivityQuery, ActivitySourceType } from "@/lib/api/c-client";
+import { CApiError, type ActivityQuery, type ActivitySourceType } from "@/lib/api/c-client";
+import { readProjectBindings } from "@/lib/api/c-project-bindings";
 import type { components } from "@/packages/domain/api.generated";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, ApiFailure, ApiPager, apiButton, apiInput, isUuid, pageNumber, projectApi, queryPolicy, safeHttps, useCommandKey, versionFailure } from "./c-project-api";
@@ -33,6 +34,12 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const selectedId = query.get("record");
   const enabled = isUuid(projectId);
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
+  const bindings = useQuery({
+    queryKey: ["c-project-bindings", userId, projectId, sourceType],
+    queryFn: ({ signal }) => readProjectBindings(projectId, sourceType, signal),
+    enabled: enabled && context.isSuccess && context.data.actor.is_member,
+    ...queryPolicy,
+  });
   const list = useQuery({ queryKey: ["c-project-activities", userId, projectId, sourceType, filters], queryFn: () => projectApi.activities(projectId, sourceType, filters), enabled, ...queryPolicy });
   const selectedEnabled = enabled && Boolean(selectedId && isUuid(selectedId)) && context.isSuccess && !context.isFetching;
   const detail = useQuery({ queryKey: ["c-project-activity", userId, projectId, sourceType, selectedId], queryFn: () => projectApi.activity(projectId, sourceType, selectedId!), enabled: selectedEnabled, ...queryPolicy });
@@ -44,11 +51,16 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const [blocked, setBlocked] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const commandKey = useCommandKey();
-  const denial = blocked || [context.error, list.error, detail.error, history.error].find(accessFailure);
+  const hiddenProject = bindings.error instanceof CApiError && bindings.error.code === "PROJECT_NOT_FOUND" ? bindings.error : null;
+  const denial = blocked || hiddenProject || [context.error, list.error, detail.error, history.error, bindings.error].find(accessFailure);
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const rows = access && list.isSuccess && !list.isFetching ? list.data : undefined;
-  // These are observed page values, not a fabricated directory or an unbounded source scan.
-  const groups = [...new Set(rows?.items.flatMap((item) => item.group_id ? [item.group_id] : []) ?? [])];
+  const connected = access?.actor.is_member && bindings.isSuccess && !bindings.isFetching ? bindings.data : undefined;
+  // Retained records remain filterable after a group is unlinked. Only A's list indicates a current binding.
+  const groups = [...new Set([
+    ...(connected?.kind === "feishu" ? connected.items.map((group) => group.chat_id) : []),
+    ...(rows?.items.flatMap((item) => item.group_id ? [item.group_id] : []) ?? []),
+  ])];
   const kinds = [...new Set(rows?.items.map((item) => item.kind) ?? [])];
   const authors = [...new Map(rows?.items.flatMap((item) => item.author_id ? [[item.author_id, item.author_name || "来源未提供作者名称"] as const] : []) ?? []).entries()];
   const record = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
@@ -62,7 +74,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     if (accessFailure(error)) { setBlocked(error); setCommand(null); }
   }
   async function refresh() {
-    const results = await Promise.all([context.refetch(), list.refetch(), ...(selectedId ? [detail.refetch(), history.refetch()] : [])]);
+    const results = await Promise.all([context.refetch(), list.refetch(), ...(context.data?.actor.is_member ? [bindings.refetch()] : []), ...(selectedId ? [detail.refetch(), history.refetch()] : [])]);
     const failed = results.find((result) => accessFailure(result.error));
     if (failed) { setBlocked(failed.error); setCommand(null); }
     else if (results[0].isSuccess) setBlocked(null);
@@ -104,10 +116,20 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   if (!enabled) return <EmptyState title="项目地址无效" description="请从已授权项目入口打开活动页。" />;
   return <>
     <PageHeader title={sourceType === "github" ? "GitHub 开发活动" : "飞书协作记录"} description={access?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新活动</button>} />
-    <p className="mb-4 text-sm text-slate-600">这里只读取已授权的来源记录。外部账号连接与同步由账户服务提供，当前页面不能发起连接或制造同步结果。</p>
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isFetching && <p role="status">正在验证项目权限…</p>}{context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}
       {access && <>
+        {access.actor.is_member && <section className="mb-4 text-sm" aria-label="项目绑定状态">
+          {bindings.isFetching && <p role="status">正在读取绑定状态…</p>}
+          {bindings.isError && <p>暂时无法读取绑定状态。 <button type="button" className={apiButton} onClick={() => void bindings.refetch()}>重试绑定查询</button></p>}
+          {connected?.kind === "feishu" && <p>{connected.items.length ? `已绑定 ${connected.items.length} 个飞书群` : "此项目尚未绑定飞书群。"}
+            {access.actor.is_leader && <Link className="gp-link ml-3" href={`/feishu/${projectId}`}>管理飞书群绑定</Link>}</p>}
+          {connected?.kind === "github" && (connected.items.length ? <ul>{connected.items.map((repo) => <li key={repo.owner + "/" + repo.repo}>
+            <a className="gp-link" href={`https://github.com/${repo.owner}/${repo.repo}`} target="_blank" rel="noopener noreferrer">{repo.owner}/{repo.repo}</a>
+            <span className="ml-2">默认分支 {repo.default_branch} · {repo.last_synced_at ? "文本文件上次同步 " + formatDate(repo.last_synced_at) : "尚未同步文本文件"}</span>
+          </li>)}</ul> : <p>此项目尚未绑定 GitHub 仓库。</p>)}
+          {connected?.kind === "github" && access.actor.is_leader && <Link className="gp-link" href={`/github/${projectId}`}>管理 GitHub 仓库绑定</Link>}
+        </section>}
         {!access.permissions.can_manage_activity && <p className="mb-3 text-sm">当前活动记录只读。</p>}
         <form key={`${filters.q}:${filters.status}:${filters.task_id}:${filters.author_id}:${filters.since}:${filters.until}:${filters.group_id}:${filters.kind}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(["q", "status", "task", "author", "date_from", "date_to", "kind"].map((field) => [field, String(form.get(field) ?? "").trim() || null])); updateQuery({ ...fields, group_id: sourceType === "feishu" ? String(form.get("group_id") ?? "") || null : null, group: null, page: null, record: null }); setCommand(null); }}>
           <label>搜索记录<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} /></label>
@@ -118,7 +140,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           <label>记录作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{filters.author_id && !authors.some(([id]) => id === filters.author_id) && <option value={filters.author_id}>当前 URL 作者筛选（待来源核对）</option>}{authors.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></label>
           <label>开始日期<input className={`${apiInput} block`} type="date" name="date_from" defaultValue={query.get("date_from") ?? ""} /></label><label>结束日期<input className={`${apiInput} block`} type="date" name="date_to" defaultValue={query.get("date_to") ?? ""} /></label>
           <button className={apiButton} type="submit">查询活动</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, task: null, author: null, date_from: null, date_to: null, group_id: null, group: null, kind: null, page: null, record: null }); setCommand(null); }}>重置</button>
-        </form><p className="mb-3 text-xs text-slate-500">日期按 UTC 自然日筛选。{sourceType === "feishu" ? "群组、类型和作者选项来自本页已授权来源；清除筛选或翻页可查看其他来源选项。" : "类型和作者选项来自本页已授权来源。"}关联建议需要人工确认；采纳仅生成候选证据。</p>
+        </form><p className="mb-3 text-xs text-slate-500">日期按 UTC 自然日筛选。{sourceType === "feishu" && "群组选项包括已读取的绑定群和本页历史记录中的群。"}类型和作者选项来自本页记录。</p>
         {list.isFetching && <p role="status">正在读取活动…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
         {rows && <Panel><div className="space-y-3">{rows.items.map((item) => <article key={item.source_id} className="border-b border-slate-100 pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.title}</strong><span>{statuses[item.status]}</span></div><p className="my-2 whitespace-pre-wrap text-sm">{item.summary}</p><p className="mb-2 text-xs text-slate-500">{item.author_name || "来源未提供作者名称"} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</p><button className={apiButton} onClick={() => selectRecord(item.source_id)}>查看记录</button></article>)}</div>{!rows.items.length && <EmptyState title="没有符合条件的来源记录" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), record: null }); setCommand(null); }} /></Panel>}
         {selectedId && <Panel title="记录详情与历史" action={<button className={apiButton} onClick={() => { updateQuery({ record: null }); setCommand(null); }}>关闭详情</button>}>

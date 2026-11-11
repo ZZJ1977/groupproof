@@ -14,11 +14,85 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.modules.c.discussion_models import DiscussionReply, DiscussionSourceSnapshot
-from app.modules.c.discussion_service import list_replies
+from app.modules.c.discussion_schemas import ReplyDiscussion
+from app.modules.c.discussion_service import add_reply, list_replies
 from app.modules.c.models import IntegrationOutbox
+from app.modules.c.notification_delivery import get_notification_writer
 
 pg_scope = postgres_tests.pg_scope
 race = postgres_tests.race
+
+
+@pytest.fixture()
+def inbox_pg_scope():
+    # Import A's models before the shared private-schema fixture creates its tables.
+    if get_notification_writer() is None:
+        pytest.skip("A4 notification provider is not installed")
+    yield from pg_scope.__wrapped__()
+
+
+def test_concurrent_replies_deliver_mentions_and_author_notifications_once(inbox_pg_scope):
+    from app.modules.a.models import Notification
+
+    engine, scope = inbox_pg_scope
+    writer = get_notification_writer()
+    with Session(engine) as session:
+        thread = discussion_tests.create(session, scope)
+        session.commit()
+    thread_id = UUID(thread["id"])
+    author_id, teacher_id = (scope.users[name].id for name in ("author", "teacher"))
+
+    def reply(session, actor, body, mentions, key):
+        return add_reply(
+            session,
+            scope.users[actor],
+            scope.project.id,
+            thread_id,
+            ReplyDiscussion(
+                expected_version=thread["lock_version"], body=body, mention_user_ids=mentions
+            ),
+            key,
+            writer=writer,
+        )["reply"]
+
+    def mention(session):
+        return reply(session, "member", "Review the draft.", [teacher_id], "mention")
+
+    def respond(session):
+        return reply(session, "leader", "I reviewed the tests.", [], "respond")
+
+    # An interrupted transaction rolls back both operations before the client retries.
+    with Session(engine) as session:
+        mention(session)
+        assert session.scalar(select(func.count()).select_from(Notification)) == 2
+        session.rollback()
+        assert session.scalar(select(func.count()).select_from(Notification)) == 0
+        assert session.scalar(select(func.count()).select_from(DiscussionReply)) == 0
+
+    sent = race(engine, [mention, respond])
+    assert all(isinstance(row, dict) for row in sent), sent
+    assert race(engine, [mention, respond]) == sent
+    mention_id, response_id = (row["id"] for row in sent)
+    with Session(engine) as session:
+        replies = list_replies(session, scope.users["teacher"], scope.project.id, thread_id)
+        assert {row["id"] for row in replies["items"]} == {mention_id, response_id}
+        delivered = session.scalars(select(Notification)).all()
+        assert len(delivered) == 3
+        assert {(row.dedupe_key, row.recipient_id, row.description) for row in delivered} == {
+            (f"c:discussion:{mention_id}:{teacher_id}", teacher_id, "你在讨论中被提及。"),
+            (f"c:discussion:{mention_id}:{author_id}", author_id, "你的讨论有新回复。"),
+            (f"c:discussion:{response_id}:{author_id}", author_id, "你的讨论有新回复。"),
+        }
+        assert all(
+            row.target_json
+            == {
+                "kind": "discussion",
+                "id": str(thread_id),
+                "project_id": str(scope.project.id),
+                "course_id": None,
+            }
+            for row in delivered
+        )
 
 
 def test_two_concurrent_replies_with_same_parent_version_both_persist(pg_scope):

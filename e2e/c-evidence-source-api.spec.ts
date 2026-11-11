@@ -33,6 +33,78 @@ async function begin(page: Page) {
   await page.getByRole("button", { name: "检查证据来源", exact: true }).click();
 }
 
+test("C1-04 a personal activity link focuses the exact evidence decision after refresh", async ({ page }) => {
+  const decisionId = id(925);
+  await setup(page, () => ({
+    ...evidence,
+    decisions: [
+      { id: id(926), actor_id: aid, decision: "submitted", resulting_status: "candidate", reason: "提交说明", created_at: stamp },
+      { id: decisionId, actor_id: aid, decision: "adopted", resulting_status: "formal", reason: "完成复核", created_at: stamp },
+    ],
+  }));
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}&decision=${decisionId}`);
+  const target = page.getByText(/采纳正式 · 完成复核/);
+  await expect(target).toBeFocused();
+  await page.reload();
+  await expect(target).toBeFocused();
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}&decision=${id(999)}`);
+  await expect(page.getByText("这条证据中找不到指定的决定。")).toBeVisible();
+  await page.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await expect(page).not.toHaveURL(/decision=/);
+  await page.route(`**${base}/evidence/${eid}`, (route) => failure(route, 403));
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}&decision=${decisionId}`);
+  await expect(page.locator("main").getByRole("alert")).toContainText("当前访问权限已失效");
+  await expect(target).toHaveCount(0);
+});
+
+test("C3 follows a saved screenshot to its exact historical file version and supports older snapshots", async ({ page }) => {
+  const fileId = id(920), latestId = id(921);
+  const source = { provenance: "registered_project_file", file_id: fileId };
+  const item: Schema["EvidenceDetailDTO"] = {
+    ...evidence, source_type: "screenshot", source_url: null,
+    source_snapshots: [
+      { ...evidence.source_snapshots[0], content: { source } },
+      { ...evidence.source_snapshots[1], content: { source: { ...source, version_id: sid, version_no: 1 } } },
+    ],
+  };
+  const revision: Schema["FileVersionDTO"] = {
+    id: sid, file_id: fileId, version_no: 1, original_name: "before.png", extension: "png",
+    mime_type: "image/png", size_bytes: 512, content_hash: "a".repeat(64), uploaded_by: aid, status: "superseded", created_at: stamp,
+  };
+  const file: Schema["FileDetailDTO"] = {
+    id: fileId, project_id: pid, name: "项目截图", category: "images", latest_version_no: 2,
+    official_version_no: 2, lock_version: 2, created_by: aid, created_at: stamp, updated_at: stamp, decisions: [],
+    versions: [{ ...revision, id: latestId, version_no: 2, original_name: "after.png", status: "current" }, revision],
+  };
+  let allowed = true;
+  await setup(page, () => item);
+  await page.route(`**${base}/files?**`, (route) => success(route, { items: [], total: 0, page: 1, page_size: 10 }));
+  await page.route(`**${base}/files/${fileId}`, (route) => allowed ? success(route, file) : failure(route, 403));
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}`);
+  await page.getByText(/^快照 v2/).click();
+  const originalFileLink = page.getByRole("link", { name: "查看原文件", exact: true });
+  await expect(originalFileLink).toHaveAttribute("href", `/projects/${pid}/files?file=${fileId}`);
+  await originalFileLink.click();
+  await expect(page.getByRole("heading", { name: "项目截图" })).toBeVisible();
+  await expect(page.getByRole("article", { name: /证据引用的版本/ })).toHaveCount(0);
+  await page.goBack();
+  await page.getByText(/^快照 v1/).click();
+  await page.getByRole("link", { name: "查看证据引用的文件版本 v1" }).click();
+  await expect(page).toHaveURL(new RegExp(`file=${fileId}&version=${sid}$`));
+  const referenced = page.getByRole("article", { name: "证据引用的版本 v1" });
+  await expect(referenced).toBeFocused();
+  await expect(referenced).toContainText("before.png");
+  await page.reload();
+  await expect(referenced).toBeFocused();
+  await page.goto(`/projects/${pid}/files?file=${fileId}&version=${id(922)}`);
+  await expect(page.getByText("此文件中找不到证据引用的版本。")).toBeVisible();
+  await expect(referenced).toHaveCount(0);
+  allowed = false;
+  await page.goto(`/projects/${pid}/files?file=${fileId}&version=${sid}`);
+  await expect(page.locator("main").getByRole("alert")).toContainText("当前访问权限已失效，项目数据已隐藏。");
+  await expect(page.getByText("before.png")).toHaveCount(0);
+});
+
 test("C3 source check uses the original snapshot, explicit reason and CAS; changed sources retain history", async ({ page }) => {
   let current = structuredClone(evidence);
   await setup(page, () => current);

@@ -121,8 +121,16 @@ test("Admin disable revokes an existing Google session and denies subsequent C r
     await expect(adminPage.getByRole("button", { name: "查看", exact: true })).toHaveCount(1);
     await adminPage.getByRole("button", { name: "查看", exact: true }).click();
     await adminPage.getByLabel("处理原因", { exact: true }).fill("真实联调核实停用会撤销已有会话");
+    const disabled = adminPage.waitForResponse(`**/api/v1/c-admin/users/${fixture.users.member.id}/disable`);
     await adminPage.getByRole("button", { name: "确认停用", exact: true }).click();
-    await expect(adminPage.getByText("决定已保存。", { exact: true })).toBeVisible();
+    const receipt = await disabled;
+    expect(receipt.status()).toBe(200);
+    const { data } = await receipt.json();
+    expect(data).toMatchObject({ id: fixture.users.member.id, status: "disabled", inboxNotified: expect.any(Boolean) });
+    const confirmation = data.inboxNotified
+      ? "账号已停用，停用原因已写入该账号的站内收件箱。"
+      : "账号已停用，站内通知服务尚未接入。";
+    await expect(adminPage.getByText(confirmation, { exact: true })).toBeVisible();
     const read = await page.request.get(`/api/v1/tasks/${fixture.task}/execution`);
     expect(read.status()).toBe(401);
     const write = await page.request.post(`/api/v1/tasks/${fixture.task}/start`, {

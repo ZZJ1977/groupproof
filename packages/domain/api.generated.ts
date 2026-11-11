@@ -74,6 +74,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Personal Project */
+        post: operations["create_personal_project_api_v1_a_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/feishu/available-chats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Feishu Available Chats */
+        get: operations["list_feishu_available_chats_api_v1_a_projects__project_id__feishu_available_chats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/feishu/chats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Linked Feishu Chats */
+        get: operations["list_linked_feishu_chats_api_v1_a_projects__project_id__feishu_chats_get"];
+        put?: never;
+        /** Bind Feishu Chat */
+        post: operations["bind_feishu_chat_api_v1_a_projects__project_id__feishu_chats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/feishu/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Feishu */
+        post: operations["sync_feishu_api_v1_a_projects__project_id__feishu_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/github/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze Github Code
+         * @description 分析已同步的代码是否实现了给定需求。结果只是建议，需要人确认。
+         */
+        post: operations["analyze_github_code_api_v1_a_projects__project_id__github_analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/github/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Github Repos */
+        get: operations["list_github_repos_api_v1_a_projects__project_id__github_repos_get"];
+        put?: never;
+        /** Bind Github Repo */
+        post: operations["bind_github_repo_api_v1_a_projects__project_id__github_repos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/github/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Github */
+        post: operations["sync_github_api_v1_a_projects__project_id__github_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/leader": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transfer Leader */
+        post: operations["transfer_leader_api_v1_a_projects__project_id__leader_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/access-requests": {
         parameters: {
             query?: never;
@@ -256,6 +397,23 @@ export interface paths {
         put?: never;
         /** Course Transition */
         post: operations["course_transition_api_v1_admin_courses__course_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/shared-audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shared Audit Collection */
+        get: operations["shared_audit_collection_api_v1_admin_shared_audit_events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1482,6 +1640,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/risks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Risks */
+        get: operations["list_risks_api_v1_projects__project_id__risks_get"];
+        put?: never;
+        /** Create Risk */
+        post: operations["create_risk_api_v1_projects__project_id__risks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/risks/{risk_id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition Risk */
+        post: operations["transition_risk_api_v1_projects__project_id__risks__risk_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/tasks/{task_id}/note": {
         parameters: {
             query?: never;
@@ -1511,6 +1704,40 @@ export interface paths {
         get: operations["progress_history_api_v1_projects__project_id__tasks__task_id__progress_history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Upload */
+        post: operations["create_upload_api_v1_storage_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/uploads/{receipt_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Upload */
+        post: operations["complete_upload_api_v1_storage_uploads__receipt_id__complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2079,6 +2306,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AnalyzeCodeRequest */
+        AnalyzeCodeRequest: {
+            /** Requirements */
+            requirements: components["schemas"]["ImplRequirement"][];
+        };
         /** AppendCourseFileVersion */
         AppendCourseFileVersion: {
             /** Expected Version */
@@ -2173,7 +2405,7 @@ export interface components {
         /** AuthAuditLogDTO */
         AuthAuditLogDTO: {
             /** Action */
-            action: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.cancelled" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | "unrecognized";
+            action: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.account_exists" | "auth.google.cancelled" | "auth.google.failed" | "auth.google.linked" | "auth.google.unlinked" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | "unrecognized";
             /** Actor Id */
             actor_id: string | "system" | null;
             /** Changed Fields */
@@ -2229,6 +2461,16 @@ export interface components {
             source: "auth_audit_events";
             /** Total */
             total: number;
+        };
+        /** BindFeishuChatRequest */
+        BindFeishuChatRequest: {
+            /** Chat Id */
+            chat_id: string;
+        };
+        /** BindGithubRepoRequest */
+        BindGithubRepoRequest: {
+            /** Repo Url */
+            repo_url: string;
         };
         /** CContextActorDTO */
         CContextActorDTO: {
@@ -2314,6 +2556,13 @@ export interface components {
              * Format: uuid
              */
             source_id: string;
+        };
+        /** CodeEvidence */
+        CodeEvidence: {
+            /** Path */
+            path: string;
+            /** Quote */
+            quote: string;
         };
         /** CourseDetailDTO */
         CourseDetailDTO: {
@@ -2760,6 +3009,50 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CreatePersonalProjectRequest */
+        CreatePersonalProjectRequest: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** CreateRisk */
+        CreateRisk: {
+            /** Description */
+            description: string;
+            /** Level */
+            level: string;
+            /** Milestone Id */
+            milestone_id?: string | null;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Task Id */
+            task_id?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** CreateUploadRequest */
+        CreateUploadRequest: {
+            /** Filename */
+            filename: string;
+            /** Mime Type */
+            mime_type: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "project" | "course";
+            /**
+             * Scope Id
+             * Format: uuid
+             */
+            scope_id: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** CSelectorDTO */
         CSelectorDTO: {
             /**
@@ -2801,7 +3094,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "task_progress" | "task_note_saved" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
+            event_type: "task_progress" | "task_note_saved" | "file_version_uploaded" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
             /** Href */
             href: string;
             /** Id */
@@ -2815,7 +3108,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "task" | "evidence" | "discussion";
+            object_type: "task" | "evidence" | "discussion" | "file";
             /**
              * Occurred At
              * Format: date-time
@@ -3361,6 +3654,36 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** FeishuAvailableChatDTO */
+        FeishuAvailableChatDTO: {
+            /** Chat Id */
+            chat_id: string;
+            /** Name */
+            name: string;
+        };
+        /** FeishuChatLinkDTO */
+        FeishuChatLinkDTO: {
+            /** Chat Id */
+            chat_id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** FeishuSyncDTO */
+        FeishuSyncDTO: {
+            /** Chats */
+            chats: number;
+            /** Created */
+            created: number;
+            /** Deleted */
+            deleted: number;
+            /** Seen */
+            seen: number;
+            /** Updated */
+            updated: number;
+        };
         /** FileDecisionDTO */
         FileDecisionDTO: {
             /**
@@ -3545,6 +3868,35 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** GithubRepoDTO */
+        GithubRepoDTO: {
+            /** Default Branch */
+            default_branch: string;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            /**
+             * Linked At
+             * Format: date-time
+             */
+            linked_at: string;
+            /** Owner */
+            owner: string;
+            /** Repo */
+            repo: string;
+        };
+        /** GithubSyncDTO */
+        GithubSyncDTO: {
+            /** Fetched */
+            fetched: number;
+            /** Files */
+            files: number;
+            /** Removed */
+            removed: number;
+            /** Repos */
+            repos: number;
+            /** Skipped */
+            skipped: number;
+        };
         /** GovernanceHistoryDTO */
         GovernanceHistoryDTO: {
             /** Action */
@@ -3582,6 +3934,52 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImplementationAnalysisResult */
+        ImplementationAnalysisResult: {
+            /** Findings */
+            findings: components["schemas"]["ImplementationFinding"][];
+            /** Is Placeholder */
+            is_placeholder: boolean;
+            /**
+             * Needs Human Review
+             * @default true
+             * @constant
+             */
+            needs_human_review: true;
+            /** Provider */
+            provider: string;
+        };
+        /** ImplementationFinding */
+        ImplementationFinding: {
+            /** Confidence */
+            confidence: number;
+            /** Evidence */
+            evidence: components["schemas"]["CodeEvidence"][];
+            /** Missing */
+            missing: string[];
+            /** Reasons */
+            reasons: string[];
+            /**
+             * Requirement Id
+             * Format: uuid
+             */
+            requirement_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "implemented" | "partial" | "not_found" | "unclear";
+        };
+        /** ImplRequirement */
+        ImplRequirement: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Text */
+            text: string;
+        };
         /** InboxTarget */
         InboxTarget: {
             /** Course Id */
@@ -3600,6 +3998,16 @@ export interface components {
             project_id?: string | null;
         };
         JsonValue: unknown;
+        /** LinkedFeishuChatDTO */
+        LinkedFeishuChatDTO: {
+            /** Chat Id */
+            chat_id: string;
+            /**
+             * Linked At
+             * Format: date-time
+             */
+            linked_at: string;
+        };
         /** LogicalFileDTO */
         LogicalFileDTO: {
             /**
@@ -3810,6 +4218,21 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** PersonalProjectDTO */
+        PersonalProjectDTO: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "personal";
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
         /** PreferencesPatch */
         PreferencesPatch: {
             /** Preferredlocale */
@@ -3974,6 +4397,15 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** RiskTransition */
+        RiskTransition: {
+            /** Action */
+            action: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note: string;
+        };
         /** SaveTaskNote */
         SaveTaskNote: {
             /** Body */
@@ -3989,6 +4421,50 @@ export interface components {
             expectedVersion: number;
             /** Schoolemail */
             schoolEmail: string;
+        };
+        /** SharedAuditPage */
+        SharedAuditPage: {
+            /** Items */
+            items: components["schemas"]["SharedAuditRow"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** SharedAuditRow */
+        SharedAuditRow: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string | null;
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Metadata Redacted */
+            metadata_redacted: boolean;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason: string | null;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
         };
         /** SignedCourseFileLinkDTO */
         SignedCourseFileLinkDTO: {
@@ -4140,6 +4616,14 @@ export interface components {
             data: components["schemas"]["DailyHomeDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[dict] */
+        SuccessResponse_dict_: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[DiscussionDTO] */
         SuccessResponse_DiscussionDTO_: {
             data: components["schemas"]["DiscussionDTO"];
@@ -4175,6 +4659,16 @@ export interface components {
             data: components["schemas"]["EvidencePageDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[FeishuChatLinkDTO] */
+        SuccessResponse_FeishuChatLinkDTO_: {
+            data: components["schemas"]["FeishuChatLinkDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[FeishuSyncDTO] */
+        SuccessResponse_FeishuSyncDTO_: {
+            data: components["schemas"]["FeishuSyncDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[FileDetailDTO] */
         SuccessResponse_FileDetailDTO_: {
             data: components["schemas"]["FileDetailDTO"];
@@ -4183,6 +4677,39 @@ export interface components {
         /** SuccessResponse[FilePageDTO] */
         SuccessResponse_FilePageDTO_: {
             data: components["schemas"]["FilePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GithubRepoDTO] */
+        SuccessResponse_GithubRepoDTO_: {
+            data: components["schemas"]["GithubRepoDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GithubSyncDTO] */
+        SuccessResponse_GithubSyncDTO_: {
+            data: components["schemas"]["GithubSyncDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[ImplementationAnalysisResult] */
+        SuccessResponse_ImplementationAnalysisResult_: {
+            data: components["schemas"]["ImplementationAnalysisResult"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[list[FeishuAvailableChatDTO]] */
+        SuccessResponse_list_FeishuAvailableChatDTO__: {
+            /** Data */
+            data: components["schemas"]["FeishuAvailableChatDTO"][];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[list[GithubRepoDTO]] */
+        SuccessResponse_list_GithubRepoDTO__: {
+            /** Data */
+            data: components["schemas"]["GithubRepoDTO"][];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[list[LinkedFeishuChatDTO]] */
+        SuccessResponse_list_LinkedFeishuChatDTO__: {
+            /** Data */
+            data: components["schemas"]["LinkedFeishuChatDTO"][];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[LogicalFileDTO] */
@@ -4200,6 +4727,11 @@ export interface components {
             data: components["schemas"]["NotificationReadReceipt"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[PersonalProjectDTO] */
+        SuccessResponse_PersonalProjectDTO_: {
+            data: components["schemas"]["PersonalProjectDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[PrepareSubmissionView] */
         SuccessResponse_PrepareSubmissionView_: {
             data: components["schemas"]["PrepareSubmissionView"];
@@ -4213,6 +4745,11 @@ export interface components {
         /** SuccessResponse[ProjectExample] */
         SuccessResponse_ProjectExample_: {
             data: components["schemas"]["ProjectExample"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[SharedAuditPage] */
+        SuccessResponse_SharedAuditPage_: {
+            data: components["schemas"]["SharedAuditPage"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[SignedCourseFileLinkDTO] */
@@ -4243,6 +4780,16 @@ export interface components {
         /** SuccessResponse[Union[TaskNoteDTO, NoneType]] */
         SuccessResponse_Union_TaskNoteDTO__NoneType__: {
             data: components["schemas"]["TaskNoteDTO"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[UploadReceiptDTO] */
+        SuccessResponse_UploadReceiptDTO_: {
+            data: components["schemas"]["UploadReceiptDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[UploadTicketDTO] */
+        SuccessResponse_UploadTicketDTO_: {
+            data: components["schemas"]["UploadTicketDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[UsageSummaryDTO] */
@@ -4405,6 +4952,14 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** TransferLeadershipRequest */
+        TransferLeadershipRequest: {
+            /**
+             * New Leader Id
+             * Format: uuid
+             */
+            new_leader_id: string;
+        };
         /** TransitionCourse */
         TransitionCourse: {
             /**
@@ -4425,6 +4980,56 @@ export interface components {
             progress: number;
             /** Reason */
             reason: string;
+        };
+        /** UploadReceiptDTO */
+        UploadReceiptDTO: {
+            /** Content Hash */
+            content_hash: string | null;
+            /** Filename */
+            filename: string;
+            /** Mime Type */
+            mime_type: string | null;
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "project" | "course";
+            /**
+             * Scope Id
+             * Format: uuid
+             */
+            scope_id: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "completed" | "rejected";
+        };
+        /** UploadTicketDTO */
+        UploadTicketDTO: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Method */
+            method: string;
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /** Upload Url */
+            upload_url: string;
         };
         /** UsageBreakdownDTO */
         UsageBreakdownDTO: {
@@ -4791,6 +5396,354 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_personal_project_api_v1_a_projects_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePersonalProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_PersonalProjectDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_feishu_available_chats_api_v1_a_projects__project_id__feishu_available_chats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_FeishuAvailableChatDTO__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_linked_feishu_chats_api_v1_a_projects__project_id__feishu_chats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_LinkedFeishuChatDTO__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bind_feishu_chat_api_v1_a_projects__project_id__feishu_chats_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindFeishuChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_FeishuChatLinkDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_feishu_api_v1_a_projects__project_id__feishu_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_FeishuSyncDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_github_code_api_v1_a_projects__project_id__github_analyze_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyzeCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ImplementationAnalysisResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_github_repos_api_v1_a_projects__project_id__github_repos_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_GithubRepoDTO__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bind_github_repo_api_v1_a_projects__project_id__github_repos_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindGithubRepoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubRepoDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_github_api_v1_a_projects__project_id__github_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubSyncDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transfer_leader_api_v1_a_projects__project_id__leader_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferLeadershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_dict_"];
                 };
             };
             /** @description Validation Error */
@@ -5294,7 +6247,7 @@ export interface operations {
     auth_audit_collection_api_v1_admin_auth_audit_logs_get: {
         parameters: {
             query?: {
-                action?: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.cancelled" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | null;
+                action?: ("admin.bootstrapped" | "auth.acceptance_test_entry" | "auth.email_registered" | "auth.google.account_exists" | "auth.google.cancelled" | "auth.google.failed" | "auth.google.linked" | "auth.google.unlinked" | "auth.login" | "auth.logout" | "auth.password_change" | "auth.password_login" | "auth.password_login.rate_limited" | "auth.password_register.closed_path" | "auth.registered" | "auth.session_refresh" | "email_challenge.consume_failed" | "email_challenge.rate_limited" | "email_challenge.send_failed" | "email_challenge.sent" | "login_email.verified" | "password_recovery.notice_failed" | "password_recovery.requested_ineligible" | "password_recovery.reset" | "password_recovery.sent" | "pre_registration.code_verified" | "pre_registration.created" | "preferences.updated" | "profile.updated" | "role.granted_student" | "school_email.change_authorized" | "school_email.change_requested" | "school_email.verified" | "teacher.role_revoked_basis_changed" | "teacher_application.approved" | "teacher_application.rejected" | "teacher_application.resubmitted" | "teacher_application.submitted" | "user.disabled") | null;
                 actor_id?: string | "system" | null;
                 page?: number;
                 page_size?: number;
@@ -5720,6 +6673,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_CourseDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    shared_audit_collection_api_v1_admin_shared_audit_events_get: {
+        parameters: {
+            query?: {
+                action_prefix?: string | null;
+                actor_id?: string | null;
+                page?: number;
+                page_size?: number;
+                since?: string | null;
+                target_id?: string | null;
+                target_type?: string | null;
+                until?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_SharedAuditPage_"];
                 };
             };
             /** @description Verified A authentication is required. */
@@ -10089,6 +11127,114 @@ export interface operations {
             };
         };
     };
+    list_risks_api_v1_projects__project_id__risks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_risk_api_v1_projects__project_id__risks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRisk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transition_risk_api_v1_projects__project_id__risks__risk_id__transitions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                risk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskTransition"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_note_api_v1_projects__project_id__tasks__task_id__note_get: {
         parameters: {
             query?: {
@@ -10333,6 +11479,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_upload_api_v1_storage_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_UploadTicketDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_upload_api_v1_storage_uploads__receipt_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                receipt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_UploadReceiptDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

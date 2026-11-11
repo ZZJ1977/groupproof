@@ -13,7 +13,12 @@ import { useUrlQuery } from "./use-url-query";
 const client = createCClient();
 const buttonClass = "rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50";
 const inputClass = "rounded-md border border-slate-300 px-3 py-2 text-sm";
-const categoryLabels = { all: "全部", development: "任务执行", evidence: "证据", discussion: "讨论" } as const;
+const categoryLabels = { all: "全部", development: "开发", evidence: "证据", discussion: "讨论" } as const;
+const activityLabels = {
+  task_progress: "更新任务进度或状态", task_note_saved: "保存实现说明", file_version_uploaded: "登记项目文件版本",
+  evidence_submitted: "提交候选证据", evidence_adopted: "采纳证据", evidence_withdrawn: "撤回证据",
+  evidence_source_changed: "证据来源变化", discussion_created: "发布讨论", discussion_replied: "回复讨论",
+};
 
 function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
   const message = error instanceof CApiError && error.status === 401
@@ -82,8 +87,8 @@ export function ActivityApiPage() {
   const result = useQuery({ queryKey: ["c-personal-activity", userId, filters], queryFn: () => client.personalActivity(filters), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
-    <PageHeader title={t("title")} description="只显示你产生且目前仍有权限查看的任务、证据和讨论记录。" />
-    <p className="mb-4 text-sm text-slate-600">任务执行包含进度和实现说明；GitHub、飞书动态尚未接入。日期按 UTC 自然日筛选。</p>
+    <PageHeader title={t("title")} description="查看自己在当前可访问项目中的任务、文件版本、证据和讨论记录。" />
+    <p className="mb-4 text-sm text-slate-600">日期按 UTC 自然日筛选。此列表尚未提供个人 GitHub 和飞书记录。</p>
     <div className="gp-tabs mb-4" aria-label="动态分类">{Object.entries(categoryLabels).map(([value, label]) => <button className={`gp-tab ${category === value ? "active" : ""}`} type="button" key={value} aria-pressed={category === value} onClick={() => updateQuery({ category: value === "all" ? null : value, page: null })}>{label}</button>)}</div>
     <form key={query.toString()} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault(); const input = new FormData(event.currentTarget);
@@ -103,7 +108,7 @@ export function ActivityApiPage() {
         const prefix = `/projects/${item.project_id}/`;
         const href = item.href.startsWith(prefix) && !/[\\\u0000-\u001f]/.test(item.href) ? item.href : null;
         return <article key={item.id} className="border-b border-slate-100 pb-3">
-          <p className="mb-1 text-xs text-slate-500">{categoryLabels[item.category]} · {item.project_name}</p>
+          <p className="mb-1 text-xs text-slate-500">{activityLabels[item.event_type] ?? categoryLabels[item.category]} · {item.project_name}</p>
           {href ? <Link className="gp-link" href={href}>{item.title}</Link> : <span>{item.title}</span>}
           <p className="mt-1 text-xs text-slate-500"><time dateTime={item.occurred_at}>{formatDate(item.occurred_at, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></p>
         </article>;

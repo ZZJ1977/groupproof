@@ -110,7 +110,10 @@ def invalid_receipt() -> ApiError:
 
 
 def get_course_storage_port() -> CourseStoragePort:
-    return UnavailableCourseStoragePort()
+    # A4-04：配置了 Supabase 时使用 A 的适配器，否则保持不可用（不假装上传成功）。
+    from app.modules.a.storage import course_storage_port
+
+    return course_storage_port() or UnavailableCourseStoragePort()
 
 
 def resolve_receipt(

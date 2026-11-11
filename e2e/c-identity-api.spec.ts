@@ -20,7 +20,7 @@ test("C7-01/02 identity filters survive refresh and disabling uses current versi
     expect(route.request().headers()["x-csrf-token"]).toBe("identity-fixture-csrf");
     expect(route.request().postDataJSON()).toEqual({ expectedVersion: 3, reason: "已核对停用原因" });
     disabled = true;
-    return route.fulfill({ json: { id: target.id, status: "disabled", version: 4 } });
+    return route.fulfill({ json: { id: target.id, status: "disabled", version: 4, inboxNotified: true } });
   });
   await page.goto("/admin/users");
   await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
@@ -33,7 +33,7 @@ test("C7-01/02 identity filters survive refresh and disabling uses current versi
   await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeDisabled();
   await page.getByLabel("处理原因", { exact: true }).fill("已核对停用原因");
   await page.getByRole("button", { name: "确认停用", exact: true }).click();
-  await expect(page.getByText("决定已保存。", { exact: true })).toBeVisible();
+  await expect(page.getByText("账号已停用，停用原因已写入该账号的站内收件箱。", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
   await page.getByRole("button", { name: "查看", exact: true }).click();
   await page.getByLabel("处理原因", { exact: true }).fill("再次点击");
@@ -85,7 +85,7 @@ test("C7-01 a background version change requires explicit refresh and preserves 
     writes++;
     expect(route.request().postDataJSON()).toEqual({ expectedVersion: 4, reason: "保留正在核对的理由" });
     row = { ...row, status: "disabled", canDisable: false, version: 5 };
-    return route.fulfill({ json: { id: row.id, status: row.status, version: row.version } });
+    return route.fulfill({ json: { id: row.id, status: row.status, version: row.version, inboxNotified: false } });
   });
   await page.goto("/admin/users");
   await page.getByRole("button", { name: "查看", exact: true }).click();
@@ -102,7 +102,7 @@ test("C7-01 a background version change requires explicit refresh and preserves 
   await expect(page.getByLabel("处理原因", { exact: true })).toHaveValue("保留正在核对的理由");
   await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "确认停用", exact: true }).click();
-  await expect(page.getByText("决定已保存。", { exact: true })).toBeVisible();
+  await expect(page.getByText("账号已停用，站内通知服务尚未接入。", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
 });
 
