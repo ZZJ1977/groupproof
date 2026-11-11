@@ -26,18 +26,30 @@ function originalSourceId(item: Evidence): string | null {
   return typeof value === "string" && isUuid(value) ? value : null;
 }
 const checkableSources = new Set<Evidence["source_type"]>(["discussion", "file", "screenshot", "github", "feishu"]);
-function SourceSnapshotContent({ snapshot, sourceType, projectId }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"]; projectId: string }) {
+function SourceSnapshotContent({ snapshot, sourceType, projectId, taskId }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"]; projectId: string; taskId: string }) {
   // Canonical snapshots wrap the immutable source payload; never dump IDs or provider metadata.
   const source = snapshotRecord(snapshot.content.source);
+  const available = snapshot.content.availability !== "deleted";
+  const noteVersionId = snapshot.source_revision;
+  const discussionId = snapshot.source_identity;
   const originalUrl = sourceType === "manual" && typeof source.source_url === "string" ? safeHttps(source.source_url) : null;
   const fileVersionId = typeof source.version_id === "string" && isUuid(source.version_id) ? source.version_id : null;
-  const text = ["title", "body", "summary", "description"].map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
+  const textFields = sourceType === "feishu" && typeof source.text === "string" && source.text
+    ? ["title", "text"] : ["title", "body", "summary", "description"];
+  const text = textFields.map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
   const replies = sourceType === "discussion" && Array.isArray(source.replies) ? source.replies.map(snapshotRecord).map((reply) => reply.body).filter((body): body is string => typeof body === "string") : [];
   return <>
     {snapshot.content.availability === "deleted" && <p className="my-2">此快照记录了来源已删除。</p>}
     {originalUrl && <a className="gp-link" href={originalUrl} target="_blank" rel="noopener noreferrer">打开提交时的网址</a>}
     {sourceType === "task_note" && typeof source.version_no === "number" && <p className="my-2 text-sm">任务说明 v{source.version_no}</p>}
+    {available && sourceType === "task_note" && isUuid(taskId) && isUuid(noteVersionId) &&
+      (source.note_version_id == null || source.note_version_id === noteVersionId) &&
+      <Link className="gp-link" href={`/projects/${projectId}/tasks/${taskId}?tab=history&note=${noteVersionId}#note-${noteVersionId}`}>查看此版本的任务说明</Link>}
+    {available && sourceType === "discussion" && isUuid(discussionId) &&
+      (source.id == null || source.id === discussionId) && (source.project_id == null || source.project_id === projectId) &&
+      <Link className="gp-link" href={`/projects/${projectId}/discussions?discussion=${discussionId}`}>查看原讨论串</Link>}
     {sourceType === "discussion" && source.is_important === false && <p className="my-2">此快照中的讨论已取消重要标记。</p>}
+    {sourceType === "feishu" && source.preview_only === true && <p className="my-2">来源仅返回消息摘要。完整程度以各版本保存的快照为准。</p>}
     {sourceType === "screenshot" && source.provenance === "registered_project_file" && typeof source.mime_type === "string" && !["image/png", "image/jpeg"].includes(source.mime_type) && <p>原截图已被其他文件类型替换（{source.mime_type}）。</p>}
     <p className="whitespace-pre-wrap">{text || "该来源快照不包含可直接展示的文字。"}</p>
     {(sourceType === "file" || sourceType === "screenshot") && source.provenance === "registered_project_file" &&
@@ -74,7 +86,9 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const denial = blocked || [context.error, list.error, detail.error].find(accessFailure);
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const rows = access && list.isSuccess && !list.isFetching ? list.data : undefined;
-  const item = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
+  const received = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
+  const item = received && received.project_id === projectId && received.id === selectedId ? received : undefined;
+  const activitySourceId = item && (item.source_type === "github" || item.source_type === "feishu") ? originalSourceId(item) : null;
   const referencedDecision = item?.decisions.find((decision) => decision.id === decisionId);
   const decisionRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -140,12 +154,14 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
         {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p><p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id, decision: null }); setCommand(null); setError(null); }}>查看证据历史</button></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null, decision: null }); setCommand(null); }} /></Panel>}
         {selectedId && <Panel title="证据详情与不可变快照" action={<button className={apiButton} onClick={() => { updateQuery({ evidence: null, decision: null }); setCommand(null); }}>关闭详情</button>}>
           {detail.isFetching && <p role="status">正在读取证据历史…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
+          {received && !item && <p role="alert">无法核对这条证据的项目或记录编号。</p>}
           {item && <><h2 className="font-semibold">{item.title}</h2><p className="my-3 whitespace-pre-wrap">{item.description}</p>{safeHttps(item.source_url, item.source_type === "github") && <a className="gp-link" href={safeHttps(item.source_url, item.source_type === "github")!} target="_blank" rel="noopener noreferrer">查看证据来源</a>}
+            {activitySourceId && <Link className="gp-link block" href={`/projects/${projectId}/${item.source_type === "github" ? "github" : "collaboration"}?record=${activitySourceId}`}>查看项目中的{sources[item.source_type]}记录</Link>}
             {item.source_changed && <p className="my-3 text-amber-800">来源已变化，原快照保留；该证据当前不计入有效证据。</p>}
             {canDecide(item) && checkableSources.has(item.source_type) && <div className="my-3">{originalSourceId(item) ? <button className={apiButton} disabled={busy} onClick={() => { key.reset(); setCommand({ id: item.id, action: "checkSource", expected: item.lock_version, reason: "", sourceId: originalSourceId(item)! }); setError(null); setNotice(""); }}>检查证据来源</button> : <p className="text-sm">原始来源标识不完整，暂不能检查来源；请刷新详情后重试。</p>}</div>}
             <h3 className="mb-2 mt-4 font-semibold">对应标准</h3>{item.criterion_ids.map((id) => <p key={id}>{access.tasks.flatMap((task) => task.criteria).find((criterion) => criterion.id === id)?.text ?? "历史关联标准"}</p>)}
             {canDecide(item) && <div className="my-3 flex gap-2">{["candidate", "pending_confirmation"].includes(item.status) && !item.source_changed && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "adopt", expected: item.lock_version, reason: "" }); setError(null); }}>采纳为正式证据</button>}{["candidate", "pending_confirmation", "formal"].includes(item.status) && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "withdraw", expected: item.lock_version, reason: "" }); setError(null); }}>撤回证据</button>}</div>}
-            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} projectId={projectId} /></details>)}
+            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} projectId={projectId} taskId={item.task_id} /></details>)}
             <h3 className="mt-4 font-semibold">决定历史</h3>
             {decisionId && !referencedDecision && <p role="status">这条证据中找不到指定的决定。</p>}
             {item.decisions.map((decision) => <p key={decision.id} ref={decision === referencedDecision ? decisionRef : undefined}
