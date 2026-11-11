@@ -14,11 +14,22 @@ from app.modules.c.governance_read_schemas import (
     UsageSummaryDTO,
 )
 from app.modules.c.governance_read_service import audit_detail, audit_list, usage_summary
+from app.modules.c.shared_audit import SharedAuditFilters, SharedAuditPage, shared_audit_page
 
 router = APIRouter(
     tags=["c-governance-reads"], dependencies=[Depends(private_response)], responses=ERROR_RESPONSES
 )
 ReadSources = Annotated[GovernanceReadPort, Depends(get_governance_read_port)]
+
+
+@router.get("/admin/shared-audit-events", response_model=SuccessResponse[SharedAuditPage])
+def shared_audit_collection(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    filters: Annotated[SharedAuditFilters, Query()],
+):
+    return success(shared_audit_page(session, user, filters), request)
 
 
 @router.get("/admin/audit-logs", response_model=SuccessResponse[AuditPageDTO])

@@ -7,6 +7,9 @@ import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { EvidenceCapturePanel } from "./EvidenceCapturePanel";
+import { readCriterionRechecks } from "@/lib/api/c-criterion-rechecks";
+import { CApiError } from "@/lib/api/c-client";
+import { TaskCriteriaPanel } from "./TaskCriteriaPanel";
 import { DiscussionsApiPage } from "./DiscussionsApiPage";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, apiButton, ApiFailure, apiInput, ApiPager, isUuid, pageNumber, projectApi, queryPolicy, taskNoteQuery, useCommandKey, versionFailure } from "./c-project-api";
@@ -28,6 +31,13 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
   const execution = useQuery({ queryKey: ["c-execution", userId, projectId, taskId], queryFn: () => projectApi.execution(taskId), enabled, ...queryPolicy });
   const taskExists = context.isSuccess && !context.isFetching && context.data.tasks.some((task) => task.id === taskId);
+  const showRechecks = taskExists && !submission && tab === "criteria";
+  const rechecks = useQuery({
+    queryKey: ["c-criterion-rechecks", userId, projectId, taskId],
+    queryFn: ({ signal }) => readCriterionRechecks(projectId, taskId, signal),
+    enabled: showRechecks,
+    ...queryPolicy,
+  });
   const note = useQuery({ ...taskNoteQuery(userId, projectId, taskId), enabled: taskExists });
   const evidence = useQuery({ queryKey: ["c-task-evidence", userId, projectId, taskId, pageNumber(query.get("evidence_page"))], queryFn: () => projectApi.evidence(projectId, { task_id: taskId, page: pageNumber(query.get("evidence_page")), page_size: 10 }), enabled: taskExists && (submission || tab === "evidence"), ...queryPolicy });
   const history = useQuery({ queryKey: ["c-progress-history", userId, projectId, taskId, pageNumber(query.get("history_page")), progressFocus], queryFn: () => projectApi.progressHistory(projectId, taskId, pageNumber(query.get("history_page")), 10, progressFocus ?? undefined), enabled: taskExists && tab === "history" && !submission, ...queryPolicy });
@@ -40,7 +50,11 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const [progress, setProgress] = useState<{ value: number; reason: string; expected: number } | null>(null);
   const [draft, setDraft] = useState<NoteDraft | null>(null);
   const [prepareVersion, setPrepareVersion] = useState<number | null>(null);
-  const denial = blocked || [context.error, execution.error, note.error, evidence.error, history.error].find(accessFailure);
+  // B returns PROJECT_NOT_FOUND for a hidden or removed project. An unmounted
+  // optional route returns a generic 404 and affects only the recheck panel.
+  const hiddenProject = rechecks.error instanceof CApiError && rechecks.error.status === 404 &&
+    rechecks.error.code === "PROJECT_NOT_FOUND" ? rechecks.error : null;
+  const denial = blocked || hiddenProject || [context.error, execution.error, note.error, evidence.error, history.error, rechecks.error].find(accessFailure);
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const task = access?.tasks.find((item) => item.id === taskId);
   const state = task && execution.isSuccess && !execution.isFetching && execution.data.project_id === projectId && execution.data.task_id === taskId ? execution.data : undefined;
@@ -59,7 +73,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   }, [focusTarget]);
   function deny(next: unknown) { setBlocked(next); setProgress(null); setDraft(null); setPrepareVersion(null); }
   async function refresh() {
-    const results = await Promise.all([context.refetch(), execution.refetch(), ...(taskExists ? [note.refetch()] : []), ...(taskExists && (submission || tab === "evidence") ? [evidence.refetch()] : []), ...(taskExists && !submission && tab === "history" ? [history.refetch()] : [])]);
+    const results = await Promise.all([context.refetch(), execution.refetch(), ...(taskExists ? [note.refetch()] : []), ...(taskExists && (submission || tab === "evidence") ? [evidence.refetch()] : []), ...(taskExists && !submission && tab === "history" ? [history.refetch()] : []), ...(showRechecks ? [rechecks.refetch()] : [])]);
     const denied = results.find((result) => accessFailure(result.error));
     if (denied) deny(denied.error); else if (results[0].isSuccess) setBlocked(null);
   }
@@ -108,7 +122,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
         {!submission && <div className="my-4 flex flex-wrap gap-2">{Object.entries(tabs).map(([value, label]) => <button className={apiButton} key={value} aria-pressed={tab === value} onClick={() => updateQuery({ tab: value })}>{label}</button>)}</div>}
         {progress && state.can_update_progress && <Panel title="更新任务进度"><label>任务进度<input className={`${apiInput} block`} type="number" min={0} max={100} step={1} value={progress.value} disabled={busy} onChange={(event) => setProgress({ ...progress, value: Number(event.target.value) })} /></label><label htmlFor="progress-reason">进度变更原因</label><textarea id="progress-reason" className={`${apiInput} block w-full`} maxLength={2000} disabled={busy} value={progress.reason} onChange={(event) => setProgress({ ...progress, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void perform("progress")}>保存进度</button><button className={apiButton} disabled={busy} onClick={() => setProgress(null)}>取消</button></div></Panel>}
         {!submission && tab === "overview" && <Panel title="执行概览"><h3 className="font-semibold">任务描述</h3><p className="my-2 whitespace-pre-wrap">{task.description || "未填写任务描述。"}</p><p>项目进度：{state.project_progress === null ? "暂无可计算进度" : `${state.project_progress}%`}</p><p className="my-2">负责人：{state.responsible_ids.map((id) => access.members.find((member) => member.id === id)?.title ?? "项目负责人").join("、") || "未指派"}</p><h3 className="mt-3 font-semibold">前置任务</h3>{state.dependencies.map((dependency) => <p key={dependency.task_id}>{access.tasks.find((item) => item.id === dependency.task_id)?.title ?? "前置任务"} · {dependency.satisfied ? "已满足" : "尚未满足"}</p>)}{!state.dependencies.length && <p>没有前置任务。</p>}<p className="mt-3 text-sm">验收详情和结论服务尚未接入。</p></Panel>}
-        {!submission && tab === "criteria" && <Panel title="当前验收标准">{task.criteria.map((criterion) => <p className="my-2" key={criterion.id}>{criterion.text}</p>)}{!task.criteria.length && <p>暂无验收标准。</p>}</Panel>}
+        {!submission && tab === "criteria" && <TaskCriteriaPanel criteria={task.criteria} requirements={access.requirements} rechecks={rechecks} />}
         {!submission && tab === "verification" && <Panel title="任务验收"><p>验收查询和结论服务尚未接入，当前无法读取验收检查、通过或退回结果。</p><p className="mt-3 text-sm">已保存的任务进度、说明和正式证据不会被当作验收通过结果。</p></Panel>}
         {(submission || tab === "evidence") && <Panel title="任务已有证据">{evidence.isFetching && <p role="status">正在读取证据…</p>}{evidence.isError && <ApiFailure error={evidence.error} retry={() => void evidence.refetch()} />}{evidence.isSuccess && !evidence.isFetching && <>{evidence.data.items.map((item) => <p className="my-2" key={item.id}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${item.id}`}>{item.title}</Link> · {item.effective ? "有效正式证据" : "当前不计入有效证据"}</p>)}{!evidence.data.items.length && <p>暂无证据。</p>}<ApiPager page={evidence.data.page} pageSize={evidence.data.page_size} total={evidence.data.total} change={(page) => updateQuery({ evidence_page: String(page) })} /></>}</Panel>}
         {(submission || tab === "history") && <Panel title="任务说明版本">{note.isFetching && <p role="status">正在读取说明…</p>}{note.isError && <ApiFailure error={note.error} retry={() => void note.refetch()} />}{noteReady && <>{savedNote?.versions.map((version) => <details id={`note-${version.id}`} tabIndex={-1} open={noteFocus === version.id || undefined} className={`my-3 ${noteFocus === version.id ? "rounded border border-blue-400 p-3" : ""}`} key={version.id}><summary>v{version.version_no} · {version.title} · {formatDate(version.created_at)}</summary><p className="whitespace-pre-wrap">{version.body}</p></details>)}{!savedNote && <p>尚未保存任务说明。</p>}{noteFocus && !savedNote?.versions.some((version) => version.id === noteFocus) && <p role="status">所定位的说明版本不存在或已不可读取。</p>}{submission && canNote && !draft && <button className={apiButton} onClick={() => { const current = savedNote?.versions.find((version) => version.version_no === savedNote.current_version_no); setDraft({ title: current?.title ?? task.title, body: current?.body ?? "", expected: savedNote?.lock_version ?? 0 }); setError(null); }}>编辑任务说明</button>}</>}</Panel>}
