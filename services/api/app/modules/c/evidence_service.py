@@ -264,17 +264,21 @@ def create_evidence(
     )
     evidence_id = uuid4()
     if command.source_type == "manual":
+        source_url = str(command.source_url) if command.source_url else None
+        content = {
+            "title": command.title,
+            "body": command.description,
+            "provenance": "user_submitted_manual_content",
+        }
+        if source_url is not None:
+            content["source_url"] = source_url
         source = VerifiedSource(
             project_id,
             "manual",
             str(evidence_id),
             "1",
-            {
-                "title": command.title,
-                "body": command.description,
-                "provenance": "user_submitted_manual_content",
-            },
-            str(command.source_url) if command.source_url else None,
+            content,
+            source_url,
         )
     elif command.source_type == "task_note":
         source = note_source(session, project_id, command.task_id, command.source_id)

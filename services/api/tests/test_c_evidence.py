@@ -274,6 +274,30 @@ def count(db, model):
     return db.scalar(select(func.count()).select_from(model))
 
 
+def test_manual_link_is_captured_in_original_snapshot_and_hash(db, scope):
+    first_url = "https://example.org/work/1"
+    second_url = "https://example.org/work/2"
+    snapshots = []
+    for url in (first_url, second_url):
+        result = candidate(db, scope, source_url=url)
+        saved = evidence_data(db, db.get(Evidence, UUID(result["id"])), history=True)
+        snapshot = saved["source_snapshots"][0]
+        assert saved["source_url"] == snapshot["content"]["source"]["source_url"] == url
+        assert snapshot["content"]["source"]["provenance"] == "user_submitted_manual_content"
+        snapshots.append(snapshot)
+    assert snapshots[0]["content_hash"] != snapshots[1]["content_hash"]
+    with pytest.raises(ApiError) as denied:
+        create_evidence(
+            db,
+            scope.users["outsider"],
+            scope.project.id,
+            command(scope, source_url=first_url),
+            "outsider-link",
+            UnavailableSourcePort(),
+        )
+    assert denied.value.status_code == 403 and count(db, EvidenceSourceSnapshot) == 2
+
+
 def test_candidate_adopt_withdraw_preserves_history_and_atomic_events(db, scope):
     created = candidate(db, scope)
     assert created["status"] == "candidate"

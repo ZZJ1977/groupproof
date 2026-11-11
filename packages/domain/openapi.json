@@ -2935,6 +2935,7 @@
             "enum": [
               "task_progress",
               "task_note_saved",
+              "file_version_uploaded",
               "evidence_submitted",
               "evidence_adopted",
               "evidence_withdrawn",
@@ -2962,7 +2963,8 @@
             "enum": [
               "task",
               "evidence",
-              "discussion"
+              "discussion",
+              "file"
             ],
             "title": "Object Type",
             "type": "string"
