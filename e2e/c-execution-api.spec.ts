@@ -38,6 +38,7 @@ async function setup(page: Page, readContext: () => Schema["CProjectContextDTO"]
   await page.route(`**${base}/c-context`, (route) => success(route, readContext()));
   await page.route(`**${base}/evidence?**`, (route) => success(route, emptyEvidence));
   await page.route(`**${base}/tasks/${tid}/note?**`, (route) => success(route, note));
+  await page.route(`**${base}/plan/tasks/${tid}/versions`, (route) => success(route, []));
   await page.route(`**/api/v1/tasks/${tid}/execution`, (route) => success(route, execution));
 }
 
@@ -180,6 +181,51 @@ test("C2 a concealed B project hides previously loaded task details", async ({ p
   await page.getByRole("button", { name: "验收标准", exact: true }).click();
   await expect(page.getByText("这条记录不存在，或已不在当前项目中。", { exact: true })).toBeVisible();
   await expect(page.getByText("请求符合契约", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "更新进度" })).toHaveCount(0);
+});
+
+test("C2 history reads B's saved task plan and historical criteria on demand", async ({ page }) => {
+  await setup(page);
+  const version = { version_no: 2, created_at: stamp, created_by: { id: aid, name: "成员甲" },
+    snapshot: { title: "修订后的契约测试", description: "此次保存的任务范围", criteria: [{ id: cid, text: "修订后的校验标准" }] } };
+  let requests = 0;
+  await page.route(`**${base}/plan/tasks/${tid}/versions`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    requests++;
+    return success(route, [version, { ...version, version_no: 1, created_by: null,
+      snapshot: { title: "初始契约计划", description: "最初的实现范围", criteria: [{ id: cid, text: "旧版验收标准" }] } }]);
+  });
+  await page.route(`**${base}/tasks/${tid}/progress-history?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
+  await page.goto(`/projects/${pid}/tasks/${tid}`);
+  const tab = page.getByRole("button", { name: "执行历史", exact: true });
+  await expect(tab).toBeVisible();
+  expect(requests).toBe(0);
+  await tab.click();
+  await page.locator("summary").filter({ hasText: "v1 · 初始契约计划" }).click();
+  await expect(page.getByText("旧版验收标准", { exact: true })).toBeVisible();
+  await expect(page.getByText("最初的实现范围", { exact: true })).toBeVisible();
+  await page.locator("summary").filter({ hasText: "v2 · 修订后的契约测试" }).click();
+  await expect(page.getByText("修订后的校验标准", { exact: true })).toBeVisible();
+  await expect(page.getByText("保存人：成员甲", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "执行历史", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("summary").filter({ hasText: "v2 · 修订后的契约测试" })).toBeVisible();
+});
+
+test("C2 plan history distinguishes missing integration from a concealed task", async ({ page }) => {
+  await setup(page);
+  let concealed = false;
+  await page.route(`**${base}/plan/tasks/${tid}/versions`, (route) => concealed ? route.fulfill({
+    status: 404, json: { error: { code: "TASK_NOT_FOUND", message: "任务不存在。" }, meta: { request_id: "b-task" } },
+  }) : failure(route, 404));
+  await page.route(`**${base}/tasks/${tid}/progress-history?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=history`);
+  await expect(page.getByText("暂时无法读取任务计划版本。")).toBeVisible();
+  await expect(page.locator("summary").filter({ hasText: "已有说明" })).toBeVisible();
+  concealed = true;
+  await page.getByRole("button", { name: "重试计划版本" }).click();
+  await expect(page.getByText("这条记录不存在，或已不在当前项目中。")).toBeVisible();
+  await expect(page.locator("summary").filter({ hasText: "已有说明" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "更新进度" })).toHaveCount(0);
 });
 
@@ -532,6 +578,26 @@ for (const sourceType of ["task_note", "discussion"] as const) {
     }
     await expect(page.getByText("该来源快照不包含可直接展示的文字。", { exact: true })).toHaveCount(0);
     await expect(page.getByText(sourceId, { exact: true })).toHaveCount(0);
+    if (sourceType === "task_note") {
+      const version = note.versions[0].id;
+      const history = `/projects/${pid}/tasks/${tid}?tab=history&note=`;
+      await expect(original.getByRole("link", { name: "查看此版本的任务说明" })).toHaveAttribute("href", `${history}${version}#note-${version}`);
+      await expect(current.getByRole("link", { name: "查看此版本的任务说明" })).toHaveAttribute("href", `${history}${id(454)}#note-${id(454)}`);
+      await page.route(`**${base}/tasks/${tid}/progress-history?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
+      await original.getByRole("link", { name: "查看此版本的任务说明" }).click();
+      await expect(page.locator(`#note-${version}`)).toBeFocused();
+    } else {
+      await expect(current.getByRole("link", { name: "查看原讨论串" })).toHaveAttribute("href", `/projects/${pid}/discussions?discussion=${did}`);
+      await page.route(`**${base}/discussions?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
+      await page.route(`**${base}/discussions/${did}`, (route) => success(route, discussion));
+      await page.route(`**${base}/discussions/${did}/replies?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0, discussion_lock_version: 1 }));
+      await original.getByRole("link", { name: "查看原讨论串" }).click();
+      await expect(page.getByText(discussion.body, { exact: true })).toBeVisible();
+    }
+    await page.route(`**${base}/c-context`, (route) => failure(route, 403));
+    await page.reload();
+    await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
+    await expect(page.getByText(sourceType === "task_note" ? note.versions[0].body : discussion.body, { exact: true })).toHaveCount(0);
   });
 }
 
