@@ -262,6 +262,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/shared-audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shared Audit Collection */
+        get: operations["shared_audit_collection_api_v1_admin_shared_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/teacher-applications": {
         parameters: {
             query?: never;
@@ -4052,6 +4069,50 @@ export interface components {
             /** Schoolemail */
             schoolEmail: string;
         };
+        /** SharedAuditPage */
+        SharedAuditPage: {
+            /** Items */
+            items: components["schemas"]["SharedAuditRow"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** SharedAuditRow */
+        SharedAuditRow: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string | null;
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Metadata Redacted */
+            metadata_redacted: boolean;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason: string | null;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+        };
         /** SignedCourseFileLinkDTO */
         SignedCourseFileLinkDTO: {
             /**
@@ -4275,6 +4336,11 @@ export interface components {
         /** SuccessResponse[ProjectExample] */
         SuccessResponse_ProjectExample_: {
             data: components["schemas"]["ProjectExample"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[SharedAuditPage] */
+        SuccessResponse_SharedAuditPage_: {
+            data: components["schemas"]["SharedAuditPage"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[SignedCourseFileLinkDTO] */
@@ -5782,6 +5848,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_CourseDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    shared_audit_collection_api_v1_admin_shared_audit_events_get: {
+        parameters: {
+            query?: {
+                action_prefix?: string | null;
+                actor_id?: string | null;
+                page?: number;
+                page_size?: number;
+                since?: string | null;
+                target_id?: string | null;
+                target_type?: string | null;
+                until?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_SharedAuditPage_"];
                 };
             };
             /** @description Verified A authentication is required. */
