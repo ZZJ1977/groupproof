@@ -92,6 +92,11 @@ jobs:
       - name: Check route mapping
         run: npm run check:routes
 
+      - name: Check generated API client is up to date
+        run: |
+          npm run api:generate
+          git diff --exit-code packages/domain/api.generated.ts
+
       - name: Build production bundle
         run: npm run build
 
