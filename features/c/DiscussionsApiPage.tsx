@@ -15,7 +15,7 @@ const links = [{ key: "task_id", field: "tasks", label: "关联任务" }, { key:
 type Context = components["schemas"]["CProjectContextDTO"];
 
 function MentionPicker({ context, value, change, disabled }: { context: Context; value: string[]; change: (value: string[]) => void; disabled: boolean }) {
-  return <fieldset className="my-3"><legend>提及可访问本项目的人员（可选）</legend><div className="flex flex-wrap gap-4">{(context.mention_targets ?? []).map((member) => <label key={member.id} className="flex items-center gap-1"><input type="checkbox" checked={value.includes(member.id)} disabled={disabled} onChange={(event) => change(event.target.checked ? [...value, member.id] : value.filter((id) => id !== member.id))} />{member.title}</label>)}</div><p className="mt-2 text-xs text-slate-500">包含当前成员及所属教师、助教；提及会随内容保存，通知投递尚待通知服务接入。</p></fieldset>;
+  return <fieldset className="my-3"><legend>提及可访问本项目的人员（可选）</legend><div className="flex flex-wrap gap-4">{(context.mention_targets ?? []).map((member) => <label key={member.id} className="flex items-center gap-1"><input type="checkbox" checked={value.includes(member.id)} disabled={disabled} onChange={(event) => change(event.target.checked ? [...value, member.id] : value.filter((id) => id !== member.id))} />{member.title}</label>)}</div><p className="mt-2 text-xs text-slate-500">可以提及项目成员和所属课程的教师、助教。</p></fieldset>;
 }
 export function DiscussionsApiPage({ projectId, taskId, visible = true }: { projectId: string; taskId?: string; visible?: boolean }) {
   const { userId } = useWorkspace();
@@ -83,7 +83,7 @@ function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectI
         await projectApi.markImportant(projectId, important.id, input, key({ projectId, id: important.id, action, input })); setImportant(null);
       }
       key.reset();
-      setNotice("讨论变更已保存；通知投递不在本次完成范围内。"); await refresh();
+      setNotice("讨论变更已保存。"); await refresh();
     } catch (next) { setError(next); if (accessFailure(next)) deny(next); }
     finally { busyRef.current = false; setBusy(false); }
   }
