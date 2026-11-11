@@ -41,6 +41,84 @@ async function setup(page: Page, readContext: () => Schema["CProjectContextDTO"]
   await page.route(`**/api/v1/tasks/${tid}/execution`, (route) => success(route, execution));
 }
 
+test("C2 criteria fetch B's active rechecks on demand and refresh after B becomes available", async ({ page }) => {
+  await setup(page);
+  let requests = 0;
+  await page.route(`**${base}/criteria-rechecks?**`, (route) => {
+    expect(route.request().method()).toBe("GET");
+    expect(new URL(route.request().url()).searchParams.get("task_id")).toBe(tid);
+    requests++;
+    if (requests === 1) return failure(route, 404);
+    return success(route, [{
+      task_id: tid, criterion_id: cid, requirement_id: id(411), requirement_version_no: 3,
+      reason: "接口返回字段发生变更", flagged_at: stamp, verification_notified: false,
+    }]);
+  });
+  await page.goto(`/projects/${pid}/tasks/${tid}`);
+  const tab = page.getByRole("button", { name: "验收标准", exact: true });
+  await expect(tab).toBeVisible();
+  expect(requests).toBe(0);
+  await tab.click();
+  await expect(page.getByText("请求符合契约", { exact: true })).toBeVisible();
+  await expect(page.getByText("暂时无法读取验收标准的复核状态。")).toBeVisible();
+  await page.getByRole("button", { name: "重试复核记录" }).click();
+  const criterion = page.getByRole("listitem").filter({ hasText: "请求符合契约" });
+  await expect(criterion.getByText("需要重新检查", { exact: true })).toBeVisible();
+  await expect(criterion.getByText("接口需求 · 需求版本 3")).toBeVisible();
+  await expect(criterion.getByText("接口返回字段发生变更")).toBeVisible();
+  await expect(criterion.getByText("待通知验收方", { exact: true })).toBeVisible();
+});
+
+test("C2 criteria reject a mismatched task response and hide task data on denied access", async ({ page }) => {
+  await setup(page);
+  let denied = false;
+  await page.route(`**${base}/criteria-rechecks?**`, (route) => denied ? failure(route, 403) : success(route, [{
+    task_id: id(999), criterion_id: cid, requirement_id: id(411), requirement_version_no: 3,
+    reason: "其他任务的修改", flagged_at: stamp, verification_notified: true,
+  }]));
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=criteria`);
+  await expect(page.getByText("暂时无法读取验收标准的复核状态。")).toBeVisible();
+  await expect(page.getByText("其他任务的修改")).toHaveCount(0);
+  denied = true;
+  await page.getByRole("button", { name: "重试复核记录" }).click();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。")).toBeVisible();
+  await expect(page.getByText("请求符合契约", { exact: true })).toHaveCount(0);
+});
+
+test("C2 screenshot evidence selects an image version and clears it on source switch", async ({ page }) => {
+  await setup(page);
+  const imageVersion = id(840);
+  const file = { id: imageVersion, file_id: id(841), project_id: pid, name: "界面截图", original_name: "登录.png",
+    version_no: 2, status: "draft", mime_type: "image/png", size_bytes: 100, content_hash: "a".repeat(64),
+    extension: "png", uploaded_by: aid, created_at: stamp, category: "images", lock_version: 1 };
+  await page.route(`**${base}/files?**`, (route) => success(route, {
+    items: [file, { ...file, id: id(842), name: "项目说明", mime_type: "application/pdf", extension: "pdf" }],
+    page: 1, page_size: 10, total: 2,
+  }));
+  const writes: Schema["CreateEvidence"][] = [];
+  await page.route(`**${base}/evidence`, (route) => {
+    writes.push(route.request().postDataJSON());
+    return success(route, { ...evidence, source_type: "screenshot" });
+  });
+  await page.goto(`/projects/${pid}/tasks/${tid}/submit`);
+  const kind = page.getByRole("combobox", { name: "来源类型" });
+  await kind.selectOption("screenshot");
+  const picker = page.getByRole("combobox", { name: "来源记录" });
+  await picker.selectOption(imageVersion);
+  await expect(picker.getByRole("option", { name: "项目说明 · v2" })).toHaveCount(0);
+  await kind.selectOption("file");
+  await expect(picker).toHaveValue("");
+  await kind.selectOption("screenshot");
+  await picker.selectOption(imageVersion);
+  await page.getByRole("textbox", { name: "证据标题" }).fill("登录截图");
+  await page.getByRole("textbox", { name: "证据说明" }).fill("展示已验证的登录结果");
+  await page.getByRole("checkbox", { name: "请求符合契约" }).check();
+  await page.getByRole("button", { name: "保存候选证据" }).click();
+  await expect(page.getByText("候选证据已保存，需经采纳后才是正式证据。", { exact: true })).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ task_id: tid, source_type: "screenshot", source_id: imageVersion, criterion_ids: [cid] });
+});
+
 test("C2 start/progress use server permissions and CAS; 100 percent retains in-progress and history URL", async ({ page }) => {
   await setup(page);
   let state = { ...execution, status: "not_started" as Schema["TaskExecutionView"]["status"], progress: 0, version: 0, can_start: true, can_update_progress: false };
