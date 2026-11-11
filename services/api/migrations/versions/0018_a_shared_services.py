@@ -1,7 +1,7 @@
 """A shared services: audit log, notifications, action items, upload receipts.
 
-Revision ID: 0017
-Revises: 0016
+Revision ID: 0018
+Revises: 0017
 
 - a_audit_events：A4-02 操作记录，触发器禁止 UPDATE / DELETE（只能加不能改不能删）；
 - a_inboxes / a_notifications / a_inbox_replays：A4-01 站内通知与已读幂等；
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0017"
-down_revision = "0016"
+revision = "0018"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 
