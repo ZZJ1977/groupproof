@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import event, func, select
 
 from app.api.errors import ApiError
-from app.db.models import ProjectMember, SourceReference, Task
+from app.db.models import PlanVersion, ProjectMember, SourceReference, Task
 from app.modules.c import activity_service
 from app.modules.c.activity_models import ActivityRecordDecision, ActivityRecordState
 from app.modules.c.activity_ports import (
@@ -21,6 +21,7 @@ from app.modules.c.activity_ports import (
 )
 from app.modules.c.activity_schemas import AssociateActivity, DecideActivity
 from app.modules.c.activity_service import (
+    auto_associate_github_commit,
     change_activity,
     get_activity,
     get_activity_history,
@@ -355,6 +356,110 @@ def test_github_origin_enforced_even_for_trusted_adapter(db, scope, url):
             AssociateActivity(task_id=scope.task.id, expected_version=0, reason="Link"),
         )
     assert error.value.code == "SOURCE_URL_INVALID"
+
+
+def test_frozen_b_code_in_commit_body_links_once_and_preserves_manual_unlink(db, scope):
+    task = scope.task
+    task.title = "Renamed task without a code"
+    scope.plan.snapshot_json = {"tasks": [{"id": str(task.id), "code": "T-012"}]}
+    db.flush()
+    row = source(scope, kind="github", title="Fix report", summary="完成#T12，同时验证 #T-012.")
+    port = FixtureSources([row])
+    args = db, scope.users["leader"], scope.project.id
+    listing = query_activities(*args, "github", port)
+    detail = get_activity(*args, "github", row.id, port)
+    assert (
+        listing["items"][0]["suggested_task_ids"] == detail["suggested_task_ids"] == [str(task.id)]
+    )
+    assert count(db, ActivityRecordState) == 0
+
+    linked = auto_associate_github_commit(*args, row.id, port)
+    assert linked["task_id"] == str(task.id)
+    assert auto_associate_github_commit(*args, row.id, port) == linked
+    assert (
+        count(db, ActivityRecordDecision)
+        == count(db, RequestIdempotency)
+        == count(db, IntegrationOutbox)
+        == 1
+    )
+    history = get_activity_history(*args, "github", row.id)
+    assert "#T-012" in history["decisions"][0]["reason"]
+    assert history["decisions"][0]["source_snapshot"]["summary"] == row.summary
+    manually_cleared = change_activity(
+        *args,
+        "github",
+        row.id,
+        AssociateActivity(task_id=None, expected_version=1, reason="Wrong reference in commit"),
+        "manual-unlink",
+        port,
+    )
+    assert auto_associate_github_commit(*args, row.id, port) == manually_cleared
+    assert count(db, ActivityRecordDecision) == 2
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "conflicting_codes",
+        "duplicate_code",
+        "foreign_task",
+        "new_draft",
+        "invalid_tags",
+        "legacy_titles",
+        "pull_request",
+        "deleted",
+    ],
+)
+def test_github_auto_association_skips_unconfirmed_or_ambiguous_targets(db, scope, case):
+    scope.task.title = "T-012 Title"
+    entries = [{"id": str(scope.task.id), "code": "T-012"}]
+    summary = "#T12"
+    if case == "conflicting_codes":
+        summary = "#T12 and #T13"
+    elif case == "duplicate_code":
+        entries.append({"id": str(scope.other_task.id), "code": "T-012"})
+    elif case == "foreign_task":
+        entries[0]["id"] = str(scope.other_task.id)
+    elif case == "new_draft":
+        db.add(
+            PlanVersion(
+                id=uuid4(),
+                project_id=scope.project.id,
+                version_no=2,
+                created_by=scope.users["leader"].id,
+                status="draft",
+                snapshot_json={"tasks": entries},
+            )
+        )
+    elif case == "invalid_tags":
+        summary = "T-012, #12, A#T12, #T12.3, #T12a"
+    elif case == "legacy_titles":
+        entries = [str(scope.task.id)]
+    scope.plan.snapshot_json = {"tasks": entries}
+    db.flush()
+    row = source(scope, kind="github", title="Update", summary=summary)
+    if case == "pull_request":
+        row = replace(row, kind="pull_request")
+    elif case == "deleted":
+        row = replace(row, source=replace(row.source, availability="deleted"))
+    port = FixtureSources([row])
+    result = auto_associate_github_commit(db, scope.users["member"], scope.project.id, row.id, port)
+    assert result["task_id"] is None and result["lock_version"] == 0
+    assert (
+        count(db, ActivityRecordState)
+        == count(db, RequestIdempotency)
+        == count(db, IntegrationOutbox)
+        == 0
+    )
+
+
+def test_github_auto_association_denies_outsider_before_provider_read(db, scope):
+    row = source(scope, kind="github", title="Fix #T12")
+    port = FixtureSources([row])
+    with pytest.raises(ApiError) as caught:
+        auto_associate_github_commit(db, scope.users["outsider"], scope.project.id, row.id, port)
+    assert caught.value.status_code == 403 and not port.calls
+    assert count(db, ActivityRecordState) == 0
 
 
 def test_github_manual_association_clear_and_unique_explicit_suggestions(db, scope):
