@@ -15,7 +15,9 @@ SNAPSHOT = Path(__file__).resolve().parents[3] / "packages" / "domain" / "openap
 
 
 def render() -> str:
-    return json.dumps(app.openapi(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    text = json.dumps(app.openapi(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    # 不同版本的 Starlette 对 422 的文字说明不同，统一后快照才与运行环境无关。
+    return text.replace("Unprocessable Content", "Unprocessable Entity")
 
 
 if __name__ == "__main__":
