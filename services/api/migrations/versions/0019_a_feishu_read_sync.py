@@ -1,7 +1,7 @@
 """A6 飞书只读同步：项目绑定的群和群消息快照。
 
-Revision ID: 0018
-Revises: 0017
+Revision ID: 0019
+Revises: 0018
 
 - a_feishu_chat_links：项目负责人绑定的飞书群；
 - a_feishu_messages：同步下来的群消息（按 project_id + message_id 幂等）。
@@ -10,8 +10,8 @@ Revises: 0017
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0018"
-down_revision = "0017"
+revision = "0019"
+down_revision = "0018"
 branch_labels = None
 depends_on = None
 
