@@ -164,3 +164,40 @@ class RiskExplanationResult(AIResultMeta):
     summary: str
     explanation: str
     suggestions: list[str]
+
+
+# ------------------------------------------------ A7-07 代码是否实现了需求（A5 用，读取绑定仓库）
+
+
+class ImplRequirement(AIModel):
+    id: UUID
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class CodeFile(AIModel):
+    path: str = Field(min_length=1, max_length=1000)
+    text: str = Field(max_length=20000)
+
+
+class ImplementationAnalysisInput(AIModel):
+    project_id: UUID
+    requirements: list[ImplRequirement] = Field(min_length=1, max_length=50)
+    files: list[CodeFile] = Field(max_length=60)
+
+
+class CodeEvidence(AIModel):
+    path: str = Field(min_length=1, max_length=1000)
+    quote: str = Field(min_length=1, max_length=300)  # 必须是该文件里真实存在的原文
+
+
+class ImplementationFinding(AIModel):
+    requirement_id: UUID
+    status: Literal["implemented", "partial", "not_found", "unclear"]
+    confidence: float = Field(ge=0, le=1)
+    reasons: list[str]
+    evidence: list[CodeEvidence]
+    missing: list[str]
+
+
+class ImplementationAnalysisResult(AIResultMeta):
+    findings: list[ImplementationFinding]

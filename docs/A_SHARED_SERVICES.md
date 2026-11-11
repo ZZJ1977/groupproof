@@ -147,10 +147,12 @@ result = ai.explain_risk(ai.RiskExplanationInput(project_id=..., tasks=[...], ri
 | `suggest_tasks`（A7-04） | B，页面 10 | 需求列表 + 已有任务（含关联的需求 id） | 没被任务覆盖的需求 id，建议的任务和验收标准 |
 | `match_evidence`（A7-05） | D，页面 17 | 一条验收标准 + 若干证据 | 通过 / 部分通过 / 不通过 / 证据不足，置信度、理由、缺什么 |
 | `explain_risk`（A7-06） | D，风险和报告页 | 任务进度 + 风险记录 | 风险等级、一句话总结、大白话解释、建议 |
+| `analyze_implementation`（A7-07） | A5，GitHub 页 | 需求列表 + 代码文件（路径+正文） | 每条需求：已实现 / 部分 / 没找到 / 不确定，置信度、理由、缺什么；声称已实现必须带真实文件路径和逐字存在的引文，否则整份作废 |
 
 完整字段见 `app/modules/a/ai/schemas.py`。**这是草案，请 B、D 看过后在 PR 里提意见，定稿后再接真实 AI。**
 
 - 每个结果都带 `provider`、`is_placeholder` 和 `needs_human_review=true`：AI 的结果只是建议，页面必须让人确认后才写入正式数据；
 - AI 不可用时抛 `503 AI_UNAVAILABLE`（“AI 暂不可用，请改为人工处理”），页面改走人工流程，网站其他功能不受影响；
 - AI 编造了不存在的出处或 id 时，整份结果作废，同样返回 `AI_UNAVAILABLE`；
-- `AI_PROVIDER=fake`：返回固定假结果（本地 Docker Compose 默认开启，测试环境可在 Railway 变量里开启）；正式环境禁止 `fake`；留空表示 AI 不可用。真实厂商在 A7-01 第二阶段接入。
+- `AI_PROVIDER=fake`：返回固定假结果（本地 Docker Compose 默认开启，测试环境可在 Railway 变量里开启）；正式环境禁止 `fake`；留空表示 AI 不可用。`AI_PROVIDER=openrouter`：走 OpenRouter 真实模型，需要 Railway 变量 `AI_API_KEY`（密钥只放 Railway，不进聊天和代码）和 `AI_MODEL`（建议 anthropic/claude-sonnet-4.5，留空用默认）。
+- 接口：`POST /api/v1/a/projects/{id}/github/analyze`，body 为 `{requirements:[{id,text}]}`；项目成员可用，需先绑定并同步仓库；只会把与需求文字相关的文件（总量上限约 6 万字）交给 AI。

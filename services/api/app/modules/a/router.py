@@ -20,7 +20,7 @@ from app.api.auth import get_current_user
 from app.api.responses import SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
-from app.modules.a import feishu, github, github_sync, projects, storage
+from app.modules.a import ai, code_analysis, feishu, github, github_sync, projects, storage
 
 router = APIRouter(tags=["a"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -371,3 +371,25 @@ def sync_github(project_id: UUID, request: Request, session: Database, user: Cur
             client.close()
     session.commit()
     return success(GithubSyncDTO(**totals), request)
+
+
+class AnalyzeCodeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    requirements: list[ai.ImplRequirement] = Field(min_length=1, max_length=50)
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/analyze",
+    response_model=SuccessResponse[ai.ImplementationAnalysisResult],
+    dependencies=[Depends(_private)],
+)
+def analyze_github_code(
+    project_id: UUID,
+    payload: AnalyzeCodeRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    """分析已同步的代码是否实现了给定需求。结果只是建议，需要人确认。"""
+    result = code_analysis.analyze_project_code(session, user, project_id, payload.requirements)
+    return success(result, request)
