@@ -41,15 +41,15 @@ export function createCourseFilesClient(client = createApiClient()) {
         params: { path: { course_id: uuid(courseId), file_id: uuid(fileId) } },
       }));
     },
-    async registerFile(courseId: string, input: Schema["RegisterCourseFile"], key: string) {
+    async registerFile(courseId: string, input: Schema["RegisterCourseFile"], key: string, signal?: AbortSignal) {
       uuid(input.receipt_id);
-      return unwrap(await client.POST("/api/v1/courses/{course_id}/files", {
+      return unwrap(await client.POST("/api/v1/courses/{course_id}/files", { signal,
         params: { path: { course_id: uuid(courseId) }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },
-    async appendVersion(courseId: string, fileId: string, input: Schema["AppendCourseFileVersion"], key: string) {
+    async appendVersion(courseId: string, fileId: string, input: Schema["AppendCourseFileVersion"], key: string, signal?: AbortSignal) {
       uuid(input.receipt_id);
-      return unwrap(await client.POST("/api/v1/courses/{course_id}/files/{file_id}/versions", {
+      return unwrap(await client.POST("/api/v1/courses/{course_id}/files/{file_id}/versions", { signal,
         params: { path: { course_id: uuid(courseId), file_id: uuid(fileId) }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },
