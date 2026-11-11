@@ -1117,6 +1117,25 @@
         "title": "AdminUserPageDTO",
         "type": "object"
       },
+      "AnalyzeCodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/ImplRequirement"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Requirements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "requirements"
+        ],
+        "title": "AnalyzeCodeRequest",
+        "type": "object"
+      },
       "AppendCourseFileVersion": {
         "additionalProperties": false,
         "properties": {
@@ -1539,6 +1558,38 @@
         "title": "AuthAuditPageDTO",
         "type": "object"
       },
+      "BindFeishuChatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Chat Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id"
+        ],
+        "title": "BindFeishuChatRequest",
+        "type": "object"
+      },
+      "BindGithubRepoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "repo_url": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Repo Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo_url"
+        ],
+        "title": "BindGithubRepoRequest",
+        "type": "object"
+      },
       "CContextActorDTO": {
         "properties": {
           "id": {
@@ -1868,6 +1919,29 @@
           "source_id"
         ],
         "title": "CheckEvidenceSource",
+        "type": "object"
+      },
+      "CodeEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "quote": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "quote"
+        ],
+        "title": "CodeEvidence",
         "type": "object"
       },
       "CourseDTO": {
@@ -2863,6 +2937,34 @@
         "title": "CreateEvidence",
         "type": "object"
       },
+      "CreatePersonalProjectRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreatePersonalProjectRequest",
+        "type": "object"
+      },
       "CreateRisk": {
         "properties": {
           "description": {
@@ -2918,6 +3020,50 @@
           "owner_id"
         ],
         "title": "CreateRisk",
+        "type": "object"
+      },
+      "CreateUploadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "course"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "scope_id": {
+            "format": "uuid",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "scope_id",
+          "filename",
+          "mime_type",
+          "size_bytes"
+        ],
+        "title": "CreateUploadRequest",
         "type": "object"
       },
       "DailyActivityDTO": {
@@ -4299,6 +4445,76 @@
         "title": "EvidenceSnapshotDTO",
         "type": "object"
       },
+      "FeishuAvailableChatDTO": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id",
+          "name"
+        ],
+        "title": "FeishuAvailableChatDTO",
+        "type": "object"
+      },
+      "FeishuChatLinkDTO": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "chat_id"
+        ],
+        "title": "FeishuChatLinkDTO",
+        "type": "object"
+      },
+      "FeishuSyncDTO": {
+        "properties": {
+          "chats": {
+            "title": "Chats",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "seen": {
+            "title": "Seen",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chats",
+          "created",
+          "updated",
+          "deleted",
+          "seen"
+        ],
+        "title": "FeishuSyncDTO",
+        "type": "object"
+      },
       "FileDecisionDTO": {
         "properties": {
           "action": {
@@ -4655,6 +4871,81 @@
         "title": "FileVersionDTO",
         "type": "object"
       },
+      "GithubRepoDTO": {
+        "properties": {
+          "default_branch": {
+            "title": "Default Branch",
+            "type": "string"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "linked_at": {
+            "format": "date-time",
+            "title": "Linked At",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "default_branch",
+          "linked_at",
+          "last_synced_at"
+        ],
+        "title": "GithubRepoDTO",
+        "type": "object"
+      },
+      "GithubSyncDTO": {
+        "properties": {
+          "fetched": {
+            "title": "Fetched",
+            "type": "integer"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "repos": {
+            "title": "Repos",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "repos",
+          "files",
+          "fetched",
+          "removed",
+          "skipped"
+        ],
+        "title": "GithubSyncDTO",
+        "type": "object"
+      },
       "GovernanceHistoryDTO": {
         "properties": {
           "action": {
@@ -4725,6 +5016,118 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImplRequirement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "ImplRequirement",
+        "type": "object"
+      },
+      "ImplementationAnalysisResult": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ImplementationFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "is_placeholder": {
+            "title": "Is Placeholder",
+            "type": "boolean"
+          },
+          "needs_human_review": {
+            "const": true,
+            "default": true,
+            "title": "Needs Human Review",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "is_placeholder",
+          "findings"
+        ],
+        "title": "ImplementationAnalysisResult",
+        "type": "object"
+      },
+      "ImplementationFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/CodeEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "requirement_id": {
+            "format": "uuid",
+            "title": "Requirement Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "implemented",
+              "partial",
+              "not_found",
+              "unclear"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "status",
+          "confidence",
+          "reasons",
+          "evidence",
+          "missing"
+        ],
+        "title": "ImplementationFinding",
+        "type": "object"
+      },
       "InboxTarget": {
         "additionalProperties": false,
         "properties": {
@@ -4783,6 +5186,25 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LinkedFeishuChatDTO": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "linked_at": {
+            "format": "date-time",
+            "title": "Linked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_id",
+          "linked_at"
+        ],
+        "title": "LinkedFeishuChatDTO",
+        "type": "object"
+      },
       "LogicalFileDTO": {
         "properties": {
           "category": {
@@ -5307,6 +5729,31 @@
           "newPassword"
         ],
         "title": "PasswordResetIn",
+        "type": "object"
+      },
+      "PersonalProjectDTO": {
+        "properties": {
+          "kind": {
+            "const": "personal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "kind"
+        ],
+        "title": "PersonalProjectDTO",
         "type": "object"
       },
       "PreferencesPatch": {
@@ -6524,6 +6971,38 @@
         "title": "SuccessResponse[EvidencePageDTO]",
         "type": "object"
       },
+      "SuccessResponse_FeishuChatLinkDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuChatLinkDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuChatLinkDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_FeishuSyncDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuSyncDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuSyncDTO]",
+        "type": "object"
+      },
       "SuccessResponse_FileDetailDTO_": {
         "properties": {
           "data": {
@@ -6554,6 +7033,54 @@
           "meta"
         ],
         "title": "SuccessResponse[FilePageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubRepoDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubRepoDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubRepoDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubSyncDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubSyncDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubSyncDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_ImplementationAnalysisResult_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImplementationAnalysisResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[ImplementationAnalysisResult]",
         "type": "object"
       },
       "SuccessResponse_LogicalFileDTO_": {
@@ -6602,6 +7129,22 @@
           "meta"
         ],
         "title": "SuccessResponse[NotificationReadReceipt]",
+        "type": "object"
+      },
+      "SuccessResponse_PersonalProjectDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PersonalProjectDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[PersonalProjectDTO]",
         "type": "object"
       },
       "SuccessResponse_PrepareSubmissionView_": {
@@ -6771,6 +7314,38 @@
         "title": "SuccessResponse[Union[TaskNoteDTO, NoneType]]",
         "type": "object"
       },
+      "SuccessResponse_UploadReceiptDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UploadReceiptDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[UploadReceiptDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_UploadTicketDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UploadTicketDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[UploadTicketDTO]",
+        "type": "object"
+      },
       "SuccessResponse_UsageSummaryDTO_": {
         "properties": {
           "data": {
@@ -6785,6 +7360,84 @@
           "meta"
         ],
         "title": "SuccessResponse[UsageSummaryDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_dict_": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[dict]",
+        "type": "object"
+      },
+      "SuccessResponse_list_FeishuAvailableChatDTO__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuAvailableChatDTO"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[list[FeishuAvailableChatDTO]]",
+        "type": "object"
+      },
+      "SuccessResponse_list_GithubRepoDTO__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/GithubRepoDTO"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[list[GithubRepoDTO]]",
+        "type": "object"
+      },
+      "SuccessResponse_list_LinkedFeishuChatDTO__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LinkedFeishuChatDTO"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[list[LinkedFeishuChatDTO]]",
         "type": "object"
       },
       "TaskDependencyView": {
@@ -7158,6 +7811,21 @@
         "title": "TeacherDecision",
         "type": "object"
       },
+      "TransferLeadershipRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "new_leader_id": {
+            "format": "uuid",
+            "title": "New Leader Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_leader_id"
+        ],
+        "title": "TransferLeadershipRequest",
+        "type": "object"
+      },
       "TransitionCourse": {
         "additionalProperties": false,
         "properties": {
@@ -7216,6 +7884,128 @@
           "reason"
         ],
         "title": "UpdateProgressRequest",
+        "type": "object"
+      },
+      "UploadReceiptDTO": {
+        "properties": {
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "course"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "scope_id": {
+            "format": "uuid",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "completed",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "scope",
+          "scope_id",
+          "filename",
+          "status",
+          "content_hash",
+          "size_bytes",
+          "mime_type",
+          "rejection_reason"
+        ],
+        "title": "UploadReceiptDTO",
+        "type": "object"
+      },
+      "UploadTicketDTO": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "upload_url",
+          "method",
+          "expires_at"
+        ],
+        "title": "UploadTicketDTO",
         "type": "object"
       },
       "UsageBreakdownDTO": {
@@ -7554,7 +8344,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "500": {
             "content": {
@@ -7682,7 +8472,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "500": {
             "content": {
@@ -7849,6 +8639,643 @@
         "summary": "Task Events",
         "tags": [
           "tasks"
+        ]
+      }
+    },
+    "/api/v1/a/projects": {
+      "post": {
+        "operationId": "create_personal_project_api_v1_a_projects_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePersonalProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_PersonalProjectDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Personal Project",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/available-chats": {
+      "get": {
+        "operationId": "list_feishu_available_chats_api_v1_a_projects__project_id__feishu_available_chats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_list_FeishuAvailableChatDTO__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Feishu Available Chats",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/chats": {
+      "get": {
+        "operationId": "list_linked_feishu_chats_api_v1_a_projects__project_id__feishu_chats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_list_LinkedFeishuChatDTO__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Linked Feishu Chats",
+        "tags": [
+          "a"
+        ]
+      },
+      "post": {
+        "operationId": "bind_feishu_chat_api_v1_a_projects__project_id__feishu_chats_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindFeishuChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuChatLinkDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bind Feishu Chat",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/sync": {
+      "post": {
+        "operationId": "sync_feishu_api_v1_a_projects__project_id__feishu_sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuSyncDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync Feishu",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/analyze": {
+      "post": {
+        "description": "分析已同步的代码是否实现了给定需求。结果只是建议，需要人确认。",
+        "operationId": "analyze_github_code_api_v1_a_projects__project_id__github_analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ImplementationAnalysisResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Github Code",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/repos": {
+      "get": {
+        "operationId": "list_github_repos_api_v1_a_projects__project_id__github_repos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_list_GithubRepoDTO__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Github Repos",
+        "tags": [
+          "a"
+        ]
+      },
+      "post": {
+        "operationId": "bind_github_repo_api_v1_a_projects__project_id__github_repos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindGithubRepoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubRepoDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bind Github Repo",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/sync": {
+      "post": {
+        "operationId": "sync_github_api_v1_a_projects__project_id__github_sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubSyncDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync Github",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/leader": {
+      "post": {
+        "operationId": "transfer_leader_api_v1_a_projects__project_id__leader_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferLeadershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_dict_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Leader",
+        "tags": [
+          "a"
         ]
       }
     },
@@ -18160,6 +19587,126 @@
         ]
       }
     },
+    "/api/v1/storage/uploads": {
+      "post": {
+        "operationId": "create_upload_api_v1_storage_uploads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_UploadTicketDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Upload",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/storage/uploads/{receipt_id}/complete": {
+      "post": {
+        "operationId": "complete_upload_api_v1_storage_uploads__receipt_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_UploadReceiptDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Upload",
+        "tags": [
+          "a"
+        ]
+      }
+    },
     "/api/v1/tasks/{task_id}/execution": {
       "get": {
         "operationId": "get_execution_api_v1_tasks__task_id__execution_get",
@@ -18251,7 +19798,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -18383,7 +19930,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -18504,7 +20051,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -18625,7 +20172,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {

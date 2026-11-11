@@ -156,3 +156,10 @@ result = ai.explain_risk(ai.RiskExplanationInput(project_id=..., tasks=[...], ri
 - AI 编造了不存在的出处或 id 时，整份结果作废，同样返回 `AI_UNAVAILABLE`；
 - `AI_PROVIDER=fake`：返回固定假结果（本地 Docker Compose 默认开启，测试环境可在 Railway 变量里开启）；正式环境禁止 `fake`；留空表示 AI 不可用。`AI_PROVIDER=openrouter`：走 OpenRouter 真实模型，需要 Railway 变量 `AI_API_KEY`（密钥只放 Railway，不进聊天和代码）和 `AI_MODEL`（建议 anthropic/claude-sonnet-4.5，留空用默认）。
 - 接口：`POST /api/v1/a/projects/{id}/github/analyze`，body 为 `{requirements:[{id,text}]}`；项目成员可用，需先绑定并同步仓库；只会把与需求文字相关的文件（总量上限约 6 万字）交给 AI。
+
+
+## 运维与发布检查（A8）
+
+- **错误监控**：Railway 变量填 `SENTRY_DSN` 后后端自动启用 Sentry；不填就不启用。只发送错误类型、堆栈和请求路径，不发送用户信息、Cookie、请求头和正文。`SENTRY_TRACES_SAMPLE_RATE` 默认 0。
+- **正式环境不出现示例数据**：后端 `fake` AI 和演示数据导入在正式/测试环境会直接拒绝；前端在构建变量里设置 `NEXT_PUBLIC_APP_ENV=production`，所有功能强制走真实接口，忽略 mock 开关。
+- **接口客户端检查**：`packages/domain/openapi.json` 必须和后端当前接口一致（后端测试 `test_openapi_snapshot` 检查）；`api.generated.ts` 必须和快照一致（CI 里重新生成并比对）。改了接口后：在 `services/api` 运行 `PYTHONPATH=. python scripts/export_openapi.py`，再在仓库根目录运行 `npm run api:generate`，一起提交。
