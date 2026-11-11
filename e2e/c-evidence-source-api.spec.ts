@@ -33,6 +33,30 @@ async function begin(page: Page) {
   await page.getByRole("button", { name: "检查证据来源", exact: true }).click();
 }
 
+test("C1-04 a personal activity link focuses the exact evidence decision after refresh", async ({ page }) => {
+  const decisionId = id(925);
+  await setup(page, () => ({
+    ...evidence,
+    decisions: [
+      { id: id(926), actor_id: aid, decision: "submitted", resulting_status: "candidate", reason: "提交说明", created_at: stamp },
+      { id: decisionId, actor_id: aid, decision: "adopted", resulting_status: "formal", reason: "完成复核", created_at: stamp },
+    ],
+  }));
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}&decision=${decisionId}`);
+  const target = page.getByText(/采纳正式 · 完成复核/);
+  await expect(target).toBeFocused();
+  await page.reload();
+  await expect(target).toBeFocused();
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}&decision=${id(999)}`);
+  await expect(page.getByText("这条证据中找不到指定的决定。")).toBeVisible();
+  await page.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await expect(page).not.toHaveURL(/decision=/);
+  await page.route(`**${base}/evidence/${eid}`, (route) => failure(route, 403));
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}&decision=${decisionId}`);
+  await expect(page.locator("main").getByRole("alert")).toContainText("当前访问权限已失效");
+  await expect(target).toHaveCount(0);
+});
+
 test("C3 follows a saved screenshot to its exact historical file version and supports older snapshots", async ({ page }) => {
   const fileId = id(920), latestId = id(921);
   const source = { provenance: "registered_project_file", file_id: fileId };
