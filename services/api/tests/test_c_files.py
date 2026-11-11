@@ -77,6 +77,11 @@ def db():
             "c_logical_files",
             "c_file_versions",
             "c_file_decisions",
+            "source_references",
+            "evidence",
+            "evidence_criteria",
+            "evidence_decisions",
+            "evidence_source_snapshots",
         }
         metadata = MetaData()
         for table in Base.metadata.sorted_tables:
