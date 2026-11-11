@@ -13,3 +13,5 @@ SQLAlchemy==2.0.36
 uvicorn[standard]==0.34.0
 pypdf==6.17.0
 python-docx==1.2.0
+PyJWT==2.15.0
+cryptography==50.0.1
