@@ -94,13 +94,13 @@ export function createCClient(client = createApiClient()) {
     async file(projectId: string, fileId: string) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/files/{file_id}", { params: { path: { project_id: projectId, file_id: fileId } } }));
     },
-    async registerFile(projectId: string, input: Schema["RegisterFile"], key: string) {
-      return unwrap(await client.POST("/api/v1/projects/{project_id}/files", {
+    async registerFile(projectId: string, input: Schema["RegisterFile"], key: string, signal?: AbortSignal) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/files", { signal,
         params: { path: { project_id: projectId }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },
-    async appendFileVersion(projectId: string, fileId: string, input: Schema["AppendFileVersion"], key: string) {
-      return unwrap(await client.POST("/api/v1/projects/{project_id}/files/{file_id}/versions", {
+    async appendFileVersion(projectId: string, fileId: string, input: Schema["AppendFileVersion"], key: string, signal?: AbortSignal) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/files/{file_id}/versions", { signal,
         params: { path: { project_id: projectId, file_id: fileId }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },

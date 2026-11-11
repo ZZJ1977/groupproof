@@ -7,6 +7,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import type { components } from "@/packages/domain/api.generated";
 import type { ProjectFileQuery } from "@/lib/api/c-client";
+import { FileUploadForm } from "./FileUploadForm";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, ApiFailure, ApiPager, apiButton, apiInput, isUuid, pageNumber, projectApi, queryPolicy, safeHttps, useCommandKey, versionFailure } from "./c-project-api";
 
@@ -100,11 +101,12 @@ function FilesPage({ projectId, userId }: { projectId: string; userId: string })
   if (!enabled) return <EmptyState title="项目地址无效" description="请从已授权项目入口打开资料页。" />;
   return <>
     <PageHeader title="项目资料" description={freshContext?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新资料</button>} />
-    <p className="mb-4 text-sm text-slate-600">真实文件上传尚未接入，目前可查询已有资料、查看历史及申请预览或下载。新建和替换上传暂不可用。</p>
+
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isFetching && <p role="status">正在验证项目权限…</p>}
       {context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}
       {freshContext && <>
+        {freshContext.permissions.can_manage_files && (!selectedId || file) && <FileUploadForm key={selectedId ?? "new"} scope="project" scopeId={projectId} target={file} denied={fail} saved={() => { setNotice("文件草稿版本已保存。"); void refresh(); }} />}
         {!freshContext.permissions.can_manage_files && <p className="mb-3 text-sm">当前项目资料只读。</p>}
         <form key={`${category}:${sort}:${status}:${query.get("q")}:${query.get("file_type")}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); updateQuery({ category: String(form.get("category")), sort: String(form.get("sort")), q: String(form.get("q") ?? "").trim() || null, status: String(form.get("status") ?? "") || null, file_type: String(form.get("file_type") ?? "").trim() || null, page: null, file: null }); setCommand(null); setLink(null); }}>
           <label>资料分类<select className={`${apiInput} block`} name="category" defaultValue={filters.category}>{Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
