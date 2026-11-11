@@ -77,10 +77,18 @@ class FeishuMessageItem:
     content: str
 
 
+@dataclass(frozen=True)
+class FeishuChatItem:
+    chat_id: str
+    name: str
+
+
 class FeishuReader(Protocol):
     def list_chat_messages(
         self, chat_id: str, page_token: str | None
     ) -> tuple[list[FeishuMessageItem], str | None]: ...
+
+    def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]: ...
 
 
 class FeishuClient:
@@ -149,6 +157,31 @@ class FeishuClient:
             raise _unavailable("无法读取该飞书群的消息，请确认机器人已在群中且有读取权限。")
         data = body.get("data") or {}
         items = [_parse_item(raw) for raw in data.get("items") or []]
+        next_token = data.get("page_token") if data.get("has_more") else None
+        return items, next_token
+
+    def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]:
+        """列出机器人所在的群（只读），用于让用户从下拉列表里选群，而不是手动输入群 ID。"""
+        params: dict[str, Any] = {"page_size": PAGE_SIZE}
+        if page_token:
+            params["page_token"] = page_token
+        try:
+            response = self._http.get(
+                "/open-apis/im/v1/chats",
+                params=params,
+                headers={"Authorization": f"Bearer {self._access_token()}"},
+            )
+            body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unavailable() from exc
+        if response.status_code != 200 or body.get("code") != 0:
+            raise _unavailable("无法获取机器人所在的群列表，请确认应用权限已发布。")
+        data = body.get("data") or {}
+        items = [
+            FeishuChatItem(chat_id=str(raw["chat_id"]), name=str(raw.get("name") or ""))
+            for raw in data.get("items") or []
+            if raw.get("chat_id")
+        ]
         next_token = data.get("page_token") if data.get("has_more") else None
         return items, next_token
 
@@ -226,6 +259,22 @@ def link_chat(session: Session, actor: User, project_id: UUID, chat_id: str) -> 
         after={"chat_id": chat_id},
     )
     return link
+
+
+def list_available_chats(
+    session: Session, actor: User, project_id: UUID, reader: FeishuReader | None
+) -> list[FeishuChatItem]:
+    """项目负责人查看机器人所在的群，供绑定时选择。最多返回 200 个群，防止无限分页。"""
+    permissions.require_project_leader(session, actor, project_id, write=False)
+    client = _require_reader(reader)
+    chats: list[FeishuChatItem] = []
+    token: str | None = None
+    for _ in range(MAX_PAGES_PER_CHAT):
+        items, token = client.list_bot_chats(token)
+        chats.extend(items)
+        if not token or len(chats) >= 200:
+            break
+    return chats[:200]
 
 
 def sync_project(
