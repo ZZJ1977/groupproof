@@ -275,3 +275,55 @@ class FeishuMessage(Base):
         UniqueConstraint("project_id", "message_id", name="uq_a_feishu_messages_project_message"),
         Index("ix_a_feishu_messages_project_time", "project_id", "occurred_at", "id"),
     )
+
+
+class GithubRepoLink(Base):
+    """A5：项目绑定的 GitHub 仓库（通过 GitHub App 只读访问；不保存任何令牌）。"""
+
+    __tablename__ = "a_github_repo_links"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    owner: Mapped[str] = mapped_column(String(100), nullable=False)
+    repo: Mapped[str] = mapped_column(String(100), nullable=False)
+    installation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    default_branch: Mapped[str] = mapped_column(String(200), nullable=False)
+    linked_by_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "owner", "repo", name="uq_a_github_repo_links_project_repo"),
+    )
+
+
+class GithubFile(Base):
+    """A5：仓库文本文件的快照，用于分析功能是否实现。以 blob_sha 判断是否变化。"""
+
+    __tablename__ = "a_github_files"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    link_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("a_github_repo_links.id", ondelete="CASCADE"), nullable=False
+    )
+    path: Mapped[str] = mapped_column(String(1000), nullable=False)
+    blob_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("link_id", "path", name="uq_a_github_files_link_path"),
+        Index("ix_a_github_files_project", "project_id", "path"),
+    )
