@@ -29,6 +29,7 @@ from app.modules.c.discussion_schemas import (
     ReplyDiscussion,
 )
 from app.modules.c.integration_events import claim_request, content_hash, emit_event, finish_request
+from app.modules.c.models import IntegrationOutbox
 from app.modules.c.permissions import ProjectAccess, get_project_access
 from app.modules.c.source_ports import VerifiedSource
 
@@ -139,14 +140,14 @@ def notify(
     mentions: set[UUID],
     *,
     reply_id: UUID | None = None,
+    writer=None,
 ) -> None:
     for recipient_id in sorted(recipients - {actor_id}, key=str):
-        emit_event(
-            session,
+        event = IntegrationOutbox(
             project_id=row.project_id,
             aggregate_id=row.id,
             event_type="notification.requested",
-            payload={
+            payload_json={
                 "recipient_id": str(recipient_id),
                 "actor_id": str(actor_id),
                 "project_id": str(row.project_id),
@@ -160,6 +161,23 @@ def notify(
                 "delivery_status": "pending",
             },
         )
+        session.add(event)
+        if writer is not None:
+            writer(
+                session,
+                recipient=recipient_id,
+                category="project",
+                title=row.title,
+                description={
+                    "discussion_mentioned": "你在讨论中被提及。",
+                    "discussion_replied": "你的讨论有新回复。",
+                    "discussion_created": "项目有新讨论。",
+                }[event.payload_json["notification_type"]],
+                target={"kind": "discussion", "id": row.id, "project_id": row.project_id},
+                dedupe_key=f"c:discussion:{reply_id or row.id}:{recipient_id}",
+            )
+            event.delivered_at = datetime.now(UTC)
+            event.payload_json = {**event.payload_json, "delivery_status": "delivered"}
 
 
 def latest_snapshot(session: Session, discussion_id: UUID) -> DiscussionSourceSnapshot | None:
@@ -294,6 +312,8 @@ def create_discussion(
     project_id: UUID,
     command: CreateDiscussion,
     key: str,
+    *,
+    writer=None,
 ) -> dict:
     access = get_project_access(session, user, project_id, lock=True)
     require_discussion_write(access)
@@ -339,7 +359,7 @@ def create_discussion(
         },
     )
     mentions = set(command.mention_user_ids)
-    notify(session, row, user.id, members | mentions, mentions)
+    notify(session, row, user.id, members | mentions, mentions, writer=writer)
     session.flush()
     return finish_request(session, record, discussion_data(session, row))
 
@@ -366,6 +386,8 @@ def add_reply(
     discussion_id: UUID,
     command: ReplyDiscussion,
     key: str,
+    *,
+    writer=None,
 ) -> dict:
     access = get_project_access(session, user, project_id, lock=True)
     require_discussion_write(access)
@@ -404,7 +426,7 @@ def add_reply(
     _, readers = permitted_notification_users(session, access)
     mentions = set(command.mention_user_ids)
     recipients = mentions | ({row.author_id} if row.author_id in readers else set())
-    notify(session, row, user.id, recipients, mentions, reply_id=reply.id)
+    notify(session, row, user.id, recipients, mentions, reply_id=reply.id, writer=writer)
     session.flush()
     snapshot = (
         capture_source(session, row, user.id)
