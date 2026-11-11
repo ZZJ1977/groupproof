@@ -35,6 +35,7 @@ from app.modules.c.files_service import (
     register_file,
 )
 from app.modules.c.files_storage import StoragePort, get_storage_port
+from app.modules.c.notification_delivery import NotificationWriter
 
 router = APIRouter(
     tags=["c-files"], dependencies=[Depends(private_response)], responses=ERROR_RESPONSES
@@ -149,6 +150,7 @@ def designate(
     project_id: UUID,
     file_id: UUID,
     command: DesignateFileVersion,
+    writer: NotificationWriter,
     request: Request,
     session: Database,
     user: CurrentUser,
@@ -164,6 +166,7 @@ def designate(
                 file_id,
                 command,
                 idempotency_key,
+                writer=writer,
             ),
         ),
         request,

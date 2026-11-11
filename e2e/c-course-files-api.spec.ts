@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { components } from "../packages/domain/api.generated";
+import { storageRoutes } from "./c-upload-fixture";
 
 // HTTP contract fixtures only; no live storage, upload receipt or A session is fabricated.
 type Schema = components["schemas"];
@@ -55,11 +56,11 @@ async function openDetail(page: Page) {
   await expect(page.getByRole("button", { name: "申请下载 v1", exact: true })).toBeVisible();
 }
 
-test("C5-04 canonical course filters and pagination survive reload without upload inputs", async ({ page }) => {
+test("C5-04 canonical course filters and pagination survive reload alongside authorized upload controls", async ({ page }) => {
   const { state, requests } = await setup(page); state.total = 11;
   await page.goto(path);
-  await expect(page.getByText(/文件上传和替换暂不可用/)).toBeVisible();
-  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(page.getByLabel("选择文件", { exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "上传并保存草稿" })).toBeDisabled();
   await page.getByLabel("课程文件名", { exact: true }).fill("课程说明");
   await page.getByLabel("文件类型", { exact: true }).fill("pdf");
   await page.getByRole("combobox", { name: "资料分类", exact: true }).selectOption("documents");
@@ -77,10 +78,35 @@ test("C5-04 canonical course filters and pagination survive reload without uploa
   await expect(page.locator("main")).not.toContainText("receipt_id");
 });
 
+test("C5-04 rejected replacements leave course history intact and verified uploads append a draft", async ({ page }) => {
+  await setup(page);
+  const { stage, payload, receipt } = await storageRoutes(page, "course", courseId);
+  let appends = 0;
+  await page.route(`**/api/v1/courses/${courseId}/files/${fileId}/versions`, (route) => {
+    expect(route.request().postDataJSON()).toEqual({ receipt_id: receipt, expected_version: 2, reason: "补充课程要求" });
+    expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+    appends++;
+    return success(route, original);
+  });
+  await page.goto(path); await openDetail(page);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("补充课程要求");
+  stage.reject = true;
+  await page.getByRole("button", { name: "上传并保存草稿" }).click();
+  await expect(page.getByText("文件未通过检查。", { exact: true })).toBeVisible();
+  expect(appends).toBe(0);
+  await expect(page.getByRole("button", { name: "申请下载 v1" })).toBeEnabled();
+  stage.reject = false;
+  await page.getByRole("button", { name: "上传并保存草稿" }).click();
+  await expect(page.getByText("课程资料草稿版本已保存。", { exact: true })).toBeVisible();
+  expect(appends).toBe(1);
+});
+
 test("C5-04 student reads only published material and has no publication controls", async ({ page }) => {
   await setup(page, true);
   await page.goto(path); await openDetail(page);
   await expect(page.getByText(/当前课程资料只读/)).toBeVisible();
+  await expect(page.getByLabel("选择文件", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "发布 v2", exact: true })).toHaveCount(0);
   await expect(page.getByText("课程说明-v2.pdf", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "申请下载 v2", exact: true })).toHaveCount(0);

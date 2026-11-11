@@ -68,9 +68,9 @@ def http(db, scope, monkeypatch):
     issued_sessions = []
     with TestClient(app, base_url="http://localhost:3000") as client:
 
-        def sign_in(user):
+        def sign_in(user, *, student_id="ST0001"):
             user.username = f"c-auth-{user.id.hex[:12]}"
-            user.student_id = "ST0001" if user.global_role == "student" else None
+            user.student_id = student_id if user.global_role == "student" else None
             user.requested_identity = "student" if user.global_role == "student" else None
             bind(db, user)
             facts = sessions.current_facts(db, user)

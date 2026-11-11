@@ -71,9 +71,15 @@ raw storage coordinates and receipt IDs are not exposed.
 
 ## Authorization and transaction rules
 
-Current project members and assigned course teachers/TA may read. Only verified,
+The project file list, version history, preview and download require
+`project.content.read`. Current project members and the course's assigned
+teaching staff can read. A student from another group in the same course cannot
+read these files, even with the exact file and version IDs. Only verified,
 active project members may write, and both project and course must be active.
 Platform administrators and unrelated teachers get no implicit content access.
+The [project permissions matrix](development-stages/01-权限矩阵与权限判断.md)
+and the [project file handoff](development-stages/13-接口交接表.md) define this
+teaching-staff exception. Course files use their own course-scoped routes.
 Preparation of project files does not require a frozen B baseline or plan.
 Every link request repeats authorization; historical versions remain readable
 to currently authorized users. Ended/archived contexts remain read-only.

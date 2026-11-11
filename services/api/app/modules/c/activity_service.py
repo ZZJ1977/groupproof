@@ -10,7 +10,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.db.models import SourceReference, Task, User
+from app.db.models import PlanVersion, SourceReference, Task, User
 from app.modules.c.activity_models import ActivityRecordDecision, ActivityRecordState
 from app.modules.c.activity_ports import (
     ActivityKind,
@@ -139,12 +139,42 @@ def snapshot(item: ActivitySourceRecord) -> dict:
     )
 
 
-def task_suggestions(tasks: list[Task], title: str) -> list[str]:
-    """Only explicit T-1/T-1.2 title prefixes, unique within the project.
+def frozen_task_codes(plan: PlanVersion | None) -> dict[str, str | None]:
+    """B saves the stable code and canonical UUID together when freezing a plan."""
+    if plan is None or plan.status != "frozen" or not isinstance(plan.snapshot_json, dict):
+        return {}
+    entries = plan.snapshot_json.get("tasks")
+    codes: dict[str, str | None] = {}
+    if not isinstance(entries, list):
+        return codes
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get("code")
+        if not isinstance(code, str) or not re.fullmatch(r"T-(?:[0-9]{3}|[1-9][0-9]{3,})", code):
+            continue
+        # A second claimant (even one with an invalid ID) makes the code ambiguous.
+        task_id = entry.get("id")
+        codes[code] = task_id if isinstance(task_id, str) and code not in codes else None
+    return codes
 
-    The current B model has no task-code column. UUID suffixes, list positions
-    and GitHub issue numbers must never become synthetic task identifiers.
-    """
+
+def mentioned_task_codes(item: ActivitySourceRecord) -> set[str]:
+    tags = re.findall(
+        r"(?<![A-Z0-9_#])#T-?([0-9]+)(?![A-Z0-9_-]|\.[0-9])",
+        f"{item.title}\n{item.summary}",
+        flags=re.IGNORECASE | re.ASCII,
+    )
+    return {f"T-{digits.zfill(3)}" for number in tags if (digits := number.lstrip("0"))}
+
+
+def task_suggestions(tasks: list[Task], item: ActivitySourceRecord, codes: dict) -> list[str]:
+    mentioned_codes = mentioned_task_codes(item)
+    if mentioned_codes or codes:
+        matched_ids = {codes.get(code) for code in mentioned_codes}
+        return sorted(str(task.id) for task in tasks if str(task.id) in matched_ids)
+    # Legacy plans with no stable codes retain their manual-only title suggestions.
+    title = item.title
     mentioned = set(re.findall(r"(?<![A-Z0-9])T-\d+(?:\.\d+)*(?![A-Z0-9.])", title.upper()))
     by_code: dict[str, list[UUID]] = {}
     for task in tasks:
@@ -192,7 +222,7 @@ def load_states_and_latest(session, project_id, kind, source_ids):
     return {row.source_id: row for row in rows}, {item.record_id: item for item in latest}
 
 
-def activity_data(project_id, kind, item, tasks, row, latest) -> dict:
+def activity_data(project_id, kind, item, tasks, codes, row, latest) -> dict:
     if row and row.source_identity != item.source.identity:
         raise ApiError(
             409, "SOURCE_IDENTITY_CONFLICT", "An existing source identity cannot be replaced."
@@ -211,7 +241,7 @@ def activity_data(project_id, kind, item, tasks, row, latest) -> dict:
         "source_url": item.source.source_url,
         "availability": item.source.availability,
         "source_changed": bool(latest and latest.source_hash != content_hash(snapshot(item))),
-        "suggested_task_ids": task_suggestions(tasks, item.title) if kind == "github" else [],
+        "suggested_task_ids": task_suggestions(tasks, item, codes) if kind == "github" else [],
     }
 
 
@@ -233,7 +263,7 @@ def query_activities(
     group_id=None,
     record_kind=None,
 ) -> dict:
-    get_project_access(session, user, project_id)
+    access = get_project_access(session, user, project_id)
     if kind not in {"github", "feishu"} or page < 1 or not 1 <= page_size <= 100:
         raise ApiError(422, "INVALID_ACTIVITY_QUERY", "Invalid source or pagination.")
     if status not in {None, "candidate", "adopted", "ignored"} or (q is not None and len(q) > 200):
@@ -320,7 +350,12 @@ def query_activities(
         raise ApiError(
             503, "ACTIVITY_PAGE_INVALID", "The source adapter returned unstable ordering."
         )
-    tasks = list(session.scalars(select(Task).where(Task.project_id == project_id)))
+    tasks = (
+        list(session.scalars(select(Task).where(Task.project_id == project_id)))
+        if kind == "github"
+        else []
+    )
+    codes = frozen_task_codes(access.latest_plan) if kind == "github" else {}
     states, latest = load_states_and_latest(
         session, project_id, kind, [item.id for item in result.items]
     )
@@ -331,6 +366,7 @@ def query_activities(
                 kind,
                 item,
                 tasks,
+                codes,
                 states.get(item.id),
                 latest.get(states[item.id].id) if item.id in states else None,
             )
@@ -343,13 +379,25 @@ def query_activities(
 
 
 def get_activity(session, user, project_id, kind, source_id, port):
-    get_project_access(session, user, project_id)
+    access = get_project_access(session, user, project_id)
     item = port.get(project_id=project_id, actor_id=user.id, source_type=kind, source_id=source_id)
     validate_record(session, item, project_id, kind, source_id)
-    tasks = list(session.scalars(select(Task).where(Task.project_id == project_id)))
+    tasks = (
+        list(session.scalars(select(Task).where(Task.project_id == project_id)))
+        if kind == "github"
+        else []
+    )
     states, latest = load_states_and_latest(session, project_id, kind, [item.id])
     row = states.get(item.id)
-    return activity_data(project_id, kind, item, tasks, row, latest.get(row.id) if row else None)
+    return activity_data(
+        project_id,
+        kind,
+        item,
+        tasks,
+        frozen_task_codes(access.latest_plan),
+        row,
+        latest.get(row.id) if row else None,
+    )
 
 
 def get_activity_history(session, user, project_id, kind, source_id):
@@ -417,6 +465,75 @@ def change_activity(
 ) -> dict:
     access = get_project_access(session, user, project_id, lock=True)
     require_contributor(access)
+    return _apply_activity_command(
+        session,
+        user,
+        project_id,
+        kind,
+        source_id,
+        command,
+        key,
+        access,
+        lambda: port.get(
+            project_id=project_id, actor_id=user.id, source_type=kind, source_id=source_id
+        ),
+    )
+
+
+def auto_associate_github_commit(
+    session: Session, user: User, project_id: UUID, source_id: UUID, port: ActivitySourcePort
+) -> dict:
+    """A may call this after ingesting a commit, in the authorized sync transaction."""
+    access = get_project_access(session, user, project_id, lock=True)
+    require_contributor(access)
+    row = state_row(session, project_id, "github", source_id)
+    state = state_data(row, project_id, "github", source_id)
+    if row is not None:
+        # A past decision, including a manual unlink, takes precedence on every replay.
+        return state
+    item = port.get(
+        project_id=project_id, actor_id=user.id, source_type="github", source_id=source_id
+    )
+    validate_record(session, item, project_id, "github", source_id)
+    if item.kind != "commit" or item.source.availability != "available":
+        return state
+    mentions = mentioned_task_codes(item)
+    if len(mentions) != 1:
+        return state
+    code = mentions.pop()
+    target = frozen_task_codes(access.latest_plan).get(code)
+    if not target:
+        return state
+    try:
+        target_id = UUID(target)
+    except ValueError:
+        return state
+    if (
+        session.scalar(select(Task.id).where(Task.id == target_id, Task.project_id == project_id))
+        is None
+    ):
+        return state
+    command = AssociateActivity(
+        task_id=target_id,
+        expected_version=0,
+        reason=f"Commit references #{code} in frozen plan v{access.latest_plan.version_no}.",
+    )
+    return _apply_activity_command(
+        session,
+        user,
+        project_id,
+        "github",
+        source_id,
+        command,
+        f"auto-github:{source_id}",
+        access,
+        lambda: item,
+    )
+
+
+def _apply_activity_command(
+    session, user, project_id, kind, source_id, command, key, access, read_source
+):
     if kind not in {"github", "feishu"}:
         raise ApiError(422, "INVALID_ACTIVITY_SOURCE", "Unsupported activity source.")
     action = "associate" if isinstance(command, AssociateActivity) else command.action
@@ -441,7 +558,7 @@ def change_activity(
             "The activity decision has changed.",
             {"current_version": before["lock_version"]},
         )
-    item = port.get(project_id=project_id, actor_id=user.id, source_type=kind, source_id=source_id)
+    item = read_source()
     validate_record(session, item, project_id, kind, source_id)
     if item.source.availability != "available":
         raise ApiError(409, "SOURCE_UNAVAILABLE", "The source is no longer available.")

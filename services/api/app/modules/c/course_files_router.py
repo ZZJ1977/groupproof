@@ -33,6 +33,7 @@ from app.modules.c.evidence_router import (
     commit_command,
     private_response,
 )
+from app.modules.c.notification_delivery import NotificationWriter
 
 router = APIRouter(
     tags=["c-course-files"], dependencies=[Depends(private_response)], responses=ERROR_RESPONSES
@@ -146,6 +147,7 @@ def publish(
     course_id: UUID,
     file_id: UUID,
     command: PublishCourseFileVersion,
+    writer: NotificationWriter,
     request: Request,
     session: Database,
     user: CurrentUser,
@@ -161,6 +163,7 @@ def publish(
                 file_id,
                 command,
                 idempotency_key,
+                writer=writer,
             ),
         ),
         request,

@@ -134,7 +134,9 @@ def test_governance_openapi_has_typed_responses(app):
         for method, op in path.items()
         if method in {"get", "post"}
     ]
-    assert len(operations) == 12
+    shared_audit = spec["paths"]["/api/v1/admin/shared-audit-events"]
+    assert set(shared_audit) == {"get"}
+    assert len(operations) == 13
     for op in operations:
         success = op["responses"].get("201", op["responses"].get("200"))
         assert "$ref" in success["content"]["application/json"]["schema"]

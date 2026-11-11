@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { components } from "../packages/domain/api.generated";
+import { storageRoutes } from "./c-upload-fixture";
 
 // Contract fixtures only: this suite does not claim live A transport/provider access.
 type Schema = components["schemas"];
@@ -271,6 +272,47 @@ test("C4 ignored record restores with a reason, read-only context hides mutation
   await expect(page.locator("main").getByText("接口讨论文档", { exact: true })).toHaveCount(0);
 });
 
+test("C5-02 project upload verifies bytes before registration and reuses the receipt after an uncertain save", async ({ page }) => {
+  await contextRoute(page);
+  const { payload, stage, receipt } = await storageRoutes(page, "project", projectId);
+  const keys: string[] = [];
+  await page.route(`**${base}/files**`, (route) => {
+    if (route.request().method() === "GET") return success(route, fileRows(file));
+    expect(stage.checked).toBeGreaterThan(0);
+    expect(route.request().postDataJSON()).toEqual({ receipt_id: receipt, reason: "新增说明", category: "documents" });
+    keys.push(route.request().headers()["idempotency-key"]);
+    return keys.length === 1 ? failure(route, 503) : success(route, file);
+  });
+  await page.goto(`/projects/${projectId}/files`);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("新增说明");
+  const submit = page.getByRole("button", { name: "上传并保存草稿", exact: true });
+  await submit.click();
+  await expect(page.getByText("上传服务暂不可用，请稍后重试。", { exact: true })).toBeVisible();
+  await submit.click();
+  await expect(page.getByText("文件草稿版本已保存。", { exact: true })).toBeVisible();
+  expect(stage.issued).toBe(1); expect(stage.put).toBe(1);
+  expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+});
+
+test("C5-02 permissions revoked during upload prevent file registration and hide the editor", async ({ page }) => {
+  await contextRoute(page);
+  const { payload, stage } = await storageRoutes(page, "project", projectId);
+  stage.denyCompletion = true;
+  let mutations = 0;
+  await page.route(`**${base}/files**`, (route) => {
+    if (route.request().method() !== "GET") mutations++;
+    return success(route, fileRows(file));
+  });
+  await page.goto(`/projects/${projectId}/files`);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("新增说明");
+  await page.getByRole("button", { name: "上传并保存草稿" }).click();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("选择文件", { exact: true })).toHaveCount(0);
+  expect(mutations).toBe(0); expect(stage.put).toBe(1);
+});
+
 test("C5 designation preserves earlier versions and retries the same payload after failure", async ({ page }) => {
   await contextRoute(page);
   let detail = structuredClone(file);
@@ -283,8 +325,8 @@ test("C5 designation preserves earlier versions and retries the same payload aft
     return success(route, detail);
   });
   await page.goto(`/projects/${projectId}/files?file=${fileId}`);
-  await expect(page.getByText(/真实文件上传尚未接入/)).toBeVisible();
-  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(page.getByLabel("选择文件", { exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "上传并保存草稿" })).toBeDisabled();
   await page.getByRole("button", { name: "设为正式 v2", exact: true }).click();
   await page.getByRole("textbox", { name: "设为正式的原因", exact: true }).fill("确认课程要求的最终内容");
   await page.getByRole("button", { name: "确认设为正式", exact: true }).click();

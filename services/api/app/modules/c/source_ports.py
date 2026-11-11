@@ -56,8 +56,3 @@ class UnavailableSourcePort:
                 "source_type": source_type,
             },
         )
-
-
-def get_source_port() -> SourcePort:
-    """Replace through explicit application wiring when an adapter is available."""
-    return UnavailableSourcePort()
