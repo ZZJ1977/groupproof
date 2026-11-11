@@ -210,7 +210,10 @@ jobs:
         run: npm ci
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          # 运行器镜像里的软件包索引可能指向已失效的镜像域名，先刷新索引。
+          sudo apt-get update
+          npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         run: npm run test:e2e
@@ -281,6 +284,7 @@ jobs:
         run: |
           npm ci
           python -m pip install -r services/api/requirements.txt -r services/api/requirements-dev.txt
+          sudo apt-get update
           npx playwright install --with-deps chromium
       - name: Exercise real sessions, proxy, C writes and PostgreSQL
         run: npx playwright test --config playwright.c-integration.config.ts
