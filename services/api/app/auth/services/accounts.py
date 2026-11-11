@@ -310,8 +310,27 @@ def submit_teacher_application(
         changed_fields=["teacherReviewStatus"],
     )
     db.flush()
+    _notify_admins_of_application(db, app, user)
     _ = materials  # 申请材料如需附件由对象存储服务接收；此处仅记录引用级别信息
     return app
+
+
+def _notify_admins_of_application(db: DbSession, app: TeacherApplication, applicant: User) -> None:
+    """A3-03：教师提交审核后通知所有管理员（审核页 C7-03 处理）。"""
+    from app.modules.a.inbox import notify
+
+    admins = db.scalars(
+        select(User).where(User.global_role == "admin", User.status == "active")
+    ).all()
+    for admin in admins:
+        notify(
+            db,
+            recipient=admin,
+            category="system",
+            title="新的教师身份审核申请",
+            description=f"{applicant.name or applicant.email or '一位用户'} 提交了教师身份审核。",
+            dedupe_key=f"teacher-application:{app.id}:submitted",
+        )
 
 
 def review_teacher_application(
@@ -360,6 +379,20 @@ def review_teacher_application(
             changed_fields=["teacherReviewStatus"],
         )
     db.flush()
+    from app.modules.a.inbox import notify
+
+    approved = app.status == "approved"
+    notify(
+        db,
+        recipient=user,
+        category="system",
+        title="教师身份审核已通过" if approved else "教师身份审核未通过",
+        description=(
+            "现在可以创建和管理课程。" if approved else (reason or "请查看原因后重新提交。")[:2000]
+        ),
+        email=True,
+        dedupe_key=f"teacher-application:{app.id}:reviewed",
+    )
     return app
 
 

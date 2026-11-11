@@ -37,6 +37,11 @@ services:
       DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
       REDIS_URL: redis://redis:6379/0
       APP_ENV: ${APP_ENV:-development}
+      # 本地默认用 AI 固定假结果；文件存储填了 Supabase 变量才启用
+      AI_PROVIDER: ${AI_PROVIDER:-fake}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

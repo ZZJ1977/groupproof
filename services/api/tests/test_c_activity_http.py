@@ -10,7 +10,10 @@ from fastapi.testclient import TestClient
 from app.api.auth import get_current_user
 from app.api.errors import install_exception_handlers
 from app.db.session import get_session
-from app.modules.c.activity_ports import get_activity_source_port
+from app.modules.c.activity_ports import (
+    UnavailableActivitySourcePort,
+    get_activity_source_port,
+)
 from app.modules.c.activity_router import router
 
 db = activity_tests.db
@@ -107,7 +110,7 @@ def test_http_default_provider_is503_and_replay_remains_available(client, app, s
     headers = {"Idempotency-Key": "http-replay"}
     result = client.post(url + "/decisions", json=body, headers=headers)
     assert result.status_code == 200
-    del app.dependency_overrides[get_activity_source_port]
+    app.dependency_overrides[get_activity_source_port] = lambda: UnavailableActivitySourcePort()
     assert client.get(base(scope)).status_code == 503
     assert client.get(url).status_code == 503
     assert client.get(url + "/history").status_code == 200
