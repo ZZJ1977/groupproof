@@ -80,7 +80,7 @@ test("C4-03 lists bound groups with no messages and preserves historical group f
 });
 
 test("C4 shows A's GitHub binding independently of commit records and distinguishes unavailable from unbound", async ({ page }) => {
-  await contextRoute(page);
+  await contextRoute(page, { ...context, actor: { ...context.actor, is_leader: true } });
   const endpoint = `**/api/v1/a/projects/${projectId}/github/repos`;
   await page.route(endpoint, (route) => failure(route, 503));
   await page.route(`**${base}/activities/github?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
@@ -94,6 +94,10 @@ test("C4 shows A's GitHub binding independently of commit records and distinguis
   await expect(section.getByRole("link", { name: "管理 GitHub 仓库绑定" })).toHaveAttribute("href", `/github/${projectId}`);
   await expect(section).toContainText("文本文件上次同步");
   await expect(page.getByText("没有符合条件的来源记录")).toBeVisible();
+  await contextRoute(page);
+  await page.reload();
+  await expect(section.getByRole("link", { name: "ZZJ1977/groupproof" })).toBeVisible();
+  await expect(section.getByRole("link", { name: "管理 GitHub 仓库绑定" })).toHaveCount(0);
 });
 
 test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject another host", async ({ page }) => {
