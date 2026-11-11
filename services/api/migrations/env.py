@@ -9,6 +9,7 @@ from app.auth import models as auth_models  # noqa: F401 - register unified auth
 from app.db.base import Base
 from app.db.models import core  # noqa: F401 - register all model tables
 from app.db.settings import get_database_timezone, get_database_url
+from app.modules.a import models as a_models  # noqa: F401 - register A shared tables
 from app.modules.c import (
     activity_models,  # noqa: F401 - register C activity tables
     course_files_models,  # noqa: F401 - register C course file tables
