@@ -1,6 +1,5 @@
-import { fetchWithSession } from "./client";
-import { apiConfig } from "./config";
-import { CApiError } from "./c-client";
+import { apiClient } from "./client";
+import { CApiError, unwrap } from "./c-client";
 
 type Scope = "course" | "project";
 const formats: Record<string, string> = {
@@ -12,23 +11,6 @@ const formats: Record<string, string> = {
 };
 export const uploadAccept = Object.keys(formats).map((extension) => "." + extension).join(",");
 
-async function storagePost(path: string, body: unknown, signal: AbortSignal) {
-  const url = new URL(path, apiConfig.baseUrl || window.location.origin);
-  const res = await fetchWithSession(new Request(url, {
-    method: "POST", signal, credentials: "include",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  }));
-  const payload = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new CApiError(res.status, payload?.error?.code ?? "STORAGE_UNAVAILABLE",
-      payload?.error?.message ?? "上传服务暂不可用。", payload?.meta?.request_id ?? null);
-  }
-  if (!payload?.data || payload.error || typeof payload.meta?.request_id !== "string") {
-    throw new Error("上传服务返回了无效的回执，请重试。");
-  }
-  return payload.data;
-}
-
 export async function sendFile(scope: Scope, scopeId: string, file: File, signal: AbortSignal, progress: (count: number) => void) {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!file.name.includes(".") || file.name !== file.name.trim() || file.name.length > 255 ||
@@ -36,9 +18,12 @@ export async function sendFile(scope: Scope, scopeId: string, file: File, signal
     throw new Error("请选择支持格式的非空文件，最大 50 MB。");
   }
   const mime = formats[extension];
-  const ticket = await storagePost("/api/v1/storage/uploads", {
-    scope, scope_id: scopeId, filename: file.name, size_bytes: file.size, mime_type: mime,
-  }, signal);
+  const ticket = unwrap(await apiClient.POST("/api/v1/storage/uploads", {
+    body: { scope, scope_id: scopeId, filename: file.name, size_bytes: file.size, mime_type: mime }, signal,
+  }));
+  if (!ticket || typeof ticket.upload_url !== "string" || !URL.canParse(ticket.upload_url)) {
+    throw new Error("上传链接无效或已过期，请重试。");
+  }
   const expires = Date.parse(ticket.expires_at);
   const url = new URL(ticket.upload_url);
   // A constructs the signed URL on its configured Supabase host. The object
@@ -71,13 +56,15 @@ export async function sendFile(scope: Scope, scopeId: string, file: File, signal
     xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
     xhr.send(file);
   });
-  return ticket.receipt_id as string;
+  return ticket.receipt_id;
 }
 
 export async function verifyFile(scope: Scope, scopeId: string, file: File, receipt: string, signal: AbortSignal) {
-  const result = await storagePost("/api/v1/storage/uploads/" + receipt + "/complete", {}, signal);
+  const result = unwrap(await apiClient.POST("/api/v1/storage/uploads/{receipt_id}/complete", {
+    params: { path: { receipt_id: receipt } }, signal,
+  }));
   const expectedMime = formats[file.name.split(".").pop()?.toLowerCase() ?? ""];
-  if (result.receipt_id !== receipt || result.scope !== scope || result.scope_id !== scopeId.toLowerCase() ||
+  if (!result || result.receipt_id !== receipt || result.scope !== scope || result.scope_id !== scopeId.toLowerCase() ||
       result.status !== "completed" || result.filename !== file.name || result.size_bytes !== file.size ||
       result.mime_type !== expectedMime || typeof result.content_hash !== "string" || !/^[a-f0-9]{64}$/.test(result.content_hash)) {
     throw new CApiError(422, "UPLOAD_RECEIPT_INVALID", "文件未通过存储校验，请重新选择文件。", null);
