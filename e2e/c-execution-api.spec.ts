@@ -119,6 +119,20 @@ test("C2 screenshot evidence selects an image version and clears it on source sw
   expect(writes[0]).toMatchObject({ task_id: tid, source_type: "screenshot", source_id: imageVersion, criterion_ids: [cid] });
 });
 
+test("C2 a concealed B project hides previously loaded task details", async ({ page }) => {
+  await setup(page);
+  await page.route(`**${base}/criteria-rechecks?**`, (route) => route.fulfill({
+    status: 404,
+    json: { error: { code: "PROJECT_NOT_FOUND", message: "项目不存在。" }, meta: { request_id: "b-permission" } },
+  }));
+  await page.goto(`/projects/${pid}/tasks/${tid}`);
+  await expect(page.getByText(context.tasks[0].description!, { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "验收标准", exact: true }).click();
+  await expect(page.getByText("这条记录不存在，或已不在当前项目中。", { exact: true })).toBeVisible();
+  await expect(page.getByText("请求符合契约", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "更新进度" })).toHaveCount(0);
+});
+
 test("C2 start/progress use server permissions and CAS; 100 percent retains in-progress and history URL", async ({ page }) => {
   await setup(page);
   let state = { ...execution, status: "not_started" as Schema["TaskExecutionView"]["status"], progress: 0, version: 0, can_start: true, can_update_progress: false };

@@ -8,6 +8,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { EvidenceCapturePanel } from "./EvidenceCapturePanel";
 import { readCriterionRechecks } from "@/lib/api/c-criterion-rechecks";
+import { CApiError } from "@/lib/api/c-client";
 import { TaskCriteriaPanel } from "./TaskCriteriaPanel";
 import { DiscussionsApiPage } from "./DiscussionsApiPage";
 import { useUrlQuery } from "./use-url-query";
@@ -49,7 +50,11 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const [progress, setProgress] = useState<{ value: number; reason: string; expected: number } | null>(null);
   const [draft, setDraft] = useState<NoteDraft | null>(null);
   const [prepareVersion, setPrepareVersion] = useState<number | null>(null);
-  const denial = blocked || [context.error, execution.error, note.error, evidence.error, history.error, rechecks.error].find(accessFailure);
+  // B returns PROJECT_NOT_FOUND for a hidden or removed project. An unmounted
+  // optional route returns a generic 404 and affects only the recheck panel.
+  const hiddenProject = rechecks.error instanceof CApiError && rechecks.error.status === 404 &&
+    rechecks.error.code === "PROJECT_NOT_FOUND" ? rechecks.error : null;
+  const denial = blocked || hiddenProject || [context.error, execution.error, note.error, evidence.error, history.error, rechecks.error].find(accessFailure);
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const task = access?.tasks.find((item) => item.id === taskId);
   const state = task && execution.isSuccess && !execution.isFetching && execution.data.project_id === projectId && execution.data.task_id === taskId ? execution.data : undefined;

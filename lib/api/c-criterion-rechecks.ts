@@ -23,7 +23,9 @@ export async function readCriterionRechecks(projectId: string, taskId: string, s
   const response = await fetch(apiConfig.baseUrl + path, { credentials: "include", cache: "no-store", signal });
   const requestId = response.headers.get("X-Request-Id");
   if (!response.ok) {
-    throw new CApiError(response.status, "RECHECKS_UNAVAILABLE", "无法读取复核记录。", requestId);
+    const payload = await response.json().catch(() => null);
+    const code = typeof payload?.error?.code === "string" ? payload.error.code : "RECHECKS_UNAVAILABLE";
+    throw new CApiError(response.status, code, "无法读取复核记录。", requestId);
   }
   const parsed = responseSchema.safeParse(await response.json());
   if (!parsed.success || parsed.data.data.some((row) => row.task_id !== taskId)) {
