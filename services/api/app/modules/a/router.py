@@ -20,7 +20,7 @@ from app.api.auth import get_current_user
 from app.api.responses import SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
-from app.modules.a import feishu, projects, storage
+from app.modules.a import feishu, github, github_sync, projects, storage
 
 router = APIRouter(tags=["a"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -284,3 +284,90 @@ def list_linked_feishu_chats(
         [LinkedFeishuChatDTO(chat_id=link.chat_id, linked_at=link.linked_at) for link in links],
         request,
     )
+
+
+# ------------------------------------------------------------------ A5 GitHub 只读接入
+
+
+class BindGithubRepoRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repo_url: str = Field(min_length=1, max_length=300)
+
+
+class GithubRepoDTO(BaseModel):
+    owner: str
+    repo: str
+    default_branch: str
+    linked_at: datetime
+    last_synced_at: datetime | None
+
+
+class GithubSyncDTO(BaseModel):
+    repos: int
+    files: int
+    fetched: int
+    removed: int
+    skipped: int
+
+
+def _repo_dto(link) -> GithubRepoDTO:
+    return GithubRepoDTO(
+        owner=link.owner,
+        repo=link.repo,
+        default_branch=link.default_branch,
+        linked_at=link.linked_at,
+        last_synced_at=link.last_synced_at,
+    )
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/repos",
+    response_model=SuccessResponse[GithubRepoDTO],
+    status_code=201,
+    dependencies=[Depends(_private)],
+)
+def bind_github_repo(
+    project_id: UUID,
+    payload: BindGithubRepoRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    client = github.get_github_client()
+    try:
+        link = github_sync.link_repo(session, user, project_id, payload.repo_url, client)
+    finally:
+        if client is not None:
+            client.close()
+    session.commit()
+    return success(_repo_dto(link), request)
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/github/repos",
+    response_model=SuccessResponse[list[GithubRepoDTO]],
+    dependencies=[Depends(_private)],
+)
+def list_github_repos(project_id: UUID, request: Request, session: Database, user: CurrentUser):
+    links = github_sync.list_linked_repos(session, user, project_id)
+    return success([_repo_dto(link) for link in links], request)
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/sync",
+    response_model=SuccessResponse[GithubSyncDTO],
+    dependencies=[Depends(_private)],
+)
+def sync_github(project_id: UUID, request: Request, session: Database, user: CurrentUser):
+    client = github.get_github_client()
+    try:
+        totals = github_sync.sync_project_repos(session, user, project_id, client)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        if client is not None:
+            client.close()
+    session.commit()
+    return success(GithubSyncDTO(**totals), request)
