@@ -26,7 +26,7 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
 }
 
-function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Response }): T {
+export function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Response }): T {
   const envelope = record(result.response.ok ? result.data : result.error);
   const meta = record(envelope.meta);
   if (result.response.ok && Object.hasOwn(envelope, "data") && envelope.data !== undefined

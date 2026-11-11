@@ -481,6 +481,11 @@
             ],
             "title": "Record Id"
           },
+          "snapshot_complete": {
+            "default": true,
+            "title": "Snapshot Complete",
+            "type": "boolean"
+          },
           "source_changed": {
             "title": "Source Changed",
             "type": "boolean"

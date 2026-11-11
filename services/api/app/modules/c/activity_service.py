@@ -241,6 +241,7 @@ def activity_data(project_id, kind, item, tasks, codes, row, latest) -> dict:
         "source_url": item.source.source_url,
         "availability": item.source.availability,
         "source_changed": bool(latest and latest.source_hash != content_hash(snapshot(item))),
+        "snapshot_complete": item.source.snapshot_complete,
         "suggested_task_ids": task_suggestions(tasks, item, codes) if kind == "github" else [],
     }
 
@@ -336,7 +337,11 @@ def query_activities(
             or (author_id is not None and item.author_id != author_id)
             or (since is not None and item.occurred_at < since)
             or (until is not None and item.occurred_at > until)
-            or (q and q.casefold() not in (item.title + "\n" + item.summary).casefold())
+            or (
+                q
+                and not (kind == "feishu" and result.searched_full_text)
+                and q.casefold() not in (item.title + "\n" + item.summary).casefold()
+            )
             or (group_id is not None and item.group_id != group_id)
             or (record_kind is not None and item.kind != record_kind)
         ):

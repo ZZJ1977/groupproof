@@ -50,7 +50,7 @@ test("C4 task evidence opens the associated commit and PR from the task-scoped a
     source_identity: "commit-128aee", source_revision: "1", status: "candidate", task_id: tid,
     evidence_id: null, lock_version: 1, title: "修复任务记录", summary: "", author_id: aid,
     author_name: "成员甲", occurred_at: stamp, kind: "commit", group_id: null,
-    source_url: commitUrl, availability: "available", source_changed: false, suggested_task_ids: [],
+    source_url: commitUrl, availability: "available", snapshot_complete: true, source_changed: false, suggested_task_ids: [],
   };
   let requests = 0;
   await page.route(`**${base}/activities/github?**`, (route) => {

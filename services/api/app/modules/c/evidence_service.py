@@ -296,6 +296,10 @@ def create_evidence(
     validate_source(session, source, project_id, command.source_type)
     if source.availability != "available":
         raise ApiError(409, "SOURCE_UNAVAILABLE", "A deleted source cannot become new evidence.")
+    if not source.snapshot_complete:
+        raise ApiError(
+            409, "SOURCE_SNAPSHOT_INCOMPLETE", "此来源只提供摘要，需要完整正文才能添加证据。"
+        )
     row = Evidence(
         id=evidence_id,
         project_id=project_id,

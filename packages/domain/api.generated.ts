@@ -2109,6 +2109,11 @@ export interface components {
             project_id: string;
             /** Record Id */
             record_id: string | null;
+            /**
+             * Snapshot Complete
+             * @default true
+             */
+            snapshot_complete: boolean;
             /** Source Changed */
             source_changed: boolean;
             /**

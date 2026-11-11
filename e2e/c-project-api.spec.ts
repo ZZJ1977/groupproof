@@ -26,7 +26,7 @@ const activity: Schema["ActivityDTO"] = {
   status: "candidate", task_id: null, evidence_id: null, lock_version: 0,
   title: "接口讨论文档", summary: "来源服务返回的说明", author_id: actorId, author_name: "来源作者",
   occurred_at: stamp, kind: "document", source_identity: "document-1", source_revision: "r1",
-  source_url: "https://example.feishu.cn/wiki/verified", availability: "available", source_changed: false, suggested_task_ids: [taskId],
+  source_url: "https://example.feishu.cn/wiki/verified", availability: "available", source_changed: false, snapshot_complete: true, suggested_task_ids: [taskId],
 };
 const file: Schema["FileDetailDTO"] = {
   id: fileId, project_id: projectId, name: "真实需求说明", category: "documents", latest_version_no: 2,
@@ -86,6 +86,13 @@ test("C4 shows A's GitHub binding independently of commit records and distinguis
   await page.route(`**${base}/activities/github?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
   await page.goto(`/projects/${projectId}/github`);
   const section = page.getByRole("region", { name: "项目绑定状态" });
+  await expect(section).toContainText("暂时无法读取绑定状态");
+  await expect(section).not.toContainText("尚未绑定");
+  await page.route(endpoint, (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "gateway unavailable" }));
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/github/repos")),
+    section.getByRole("button", { name: "重试绑定查询" }).click(),
+  ]);
   await expect(section).toContainText("暂时无法读取绑定状态");
   await expect(section).not.toContainText("尚未绑定");
   await page.route(endpoint, (route) => success(route, [{ owner: "ZZJ1977", repo: "groupproof", default_branch: "develop", linked_at: stamp, last_synced_at: stamp }]));
@@ -234,6 +241,15 @@ test("C4 GitHub PR filter keeps its exact wire value and does not forward Feishu
   expect(requests.every((url) => !url.searchParams.has("group_id"))).toBe(true);
   expect(new URL(page.url()).searchParams.has("group_id")).toBe(false);
   await expect(page.getByRole("combobox", { name: "记录类型", exact: true }).locator("option:checked")).toHaveText("拉取请求");
+});
+
+test("C4 incomplete Feishu messages support triage while evidence capture waits for full text", async ({ page }) => {
+  await contextRoute(page);
+  await activityRoutes(page, () => ({ ...activity, snapshot_complete: false }));
+  await page.goto(`/projects/${projectId}/collaboration?record=${sourceId}`);
+  await expect(page.getByText("当前来源仅提供摘要，获得完整正文后才可采纳为候选证据。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "采纳为候选证据", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "忽略记录", exact: true })).toBeEnabled();
 });
 
 test("C4 Feishu adoption retains reason and the same retry key; only creates candidate evidence", async ({ page }) => {
