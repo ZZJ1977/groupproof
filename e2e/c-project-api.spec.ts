@@ -380,7 +380,11 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await page.route(`**${base}/files/${fileId}/designate`, (route) => {
     attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postDataJSON() });
     if (attempts.length === 1) return failure(route, 503);
-    detail = { ...detail, official_version_no: 2, lock_version: 3, versions: detail.versions.map((version) => ({ ...version, status: version.version_no === 2 ? "current" : "superseded" })) };
+    const input = route.request().postDataJSON() as Schema["DesignateFileVersion"];
+    detail = { ...detail, official_version_no: 2, lock_version: 3,
+      versions: detail.versions.map((version) => ({ ...version, status: version.version_no === 2 ? "current" : "superseded" })),
+      decisions: [...detail.decisions, { ...detail.decisions[0], id: "00000000-0000-0000-0000-000000000310",
+        version_id: input.version_id, reason: input.reason, previous_official_version_no: 1, resulting_lock_version: 3 }] };
     return success(route, detail);
   });
   await page.goto(`/projects/${projectId}/files?file=${fileId}`);
@@ -394,7 +398,12 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await page.getByRole("button", { name: "确认设为正式", exact: true }).click();
   await expect(page.getByText("v1 · 历史版本", { exact: true })).toBeVisible();
   await expect(page.getByText("v2 · 正式", { exact: true })).toBeVisible();
-  await expect(page.getByText(/保留原始发布记录/)).toBeVisible();
+  await page.reload();
+  const firstHistory = page.getByRole("list", { name: "v1 操作历史", exact: true });
+  const secondHistory = page.getByRole("list", { name: "v2 操作历史", exact: true });
+  await expect(firstHistory).toContainText("保留原始发布记录");
+  await expect(firstHistory).not.toContainText("确认课程要求的最终内容");
+  await expect(secondHistory).toContainText("设为正式 · 确认课程要求的最终内容");
   expect(attempts).toHaveLength(2); expect(attempts[0].key).toBeTruthy(); expect(attempts[1]).toEqual(attempts[0]);
   expect(attempts[0].body).toEqual({ version_id: v2Id, expected_version: 2, reason: "确认课程要求的最终内容" });
 });
