@@ -1,6 +1,7 @@
 """邮件发送适配器（注册/学校验证/密码恢复三类用途 + 三语模板）。
 
-- smtp：真实投递；支持 STARTTLS(587)、隐式 TLS/SSL(465)、none（仅隔离环境）；只有 SMTP 服务接受发送请求才返回成功。
+- smtp：真实投递；支持 STARTTLS(587)、隐式 TLS/SSL(465)、none（仅隔离环境）。
+- resend：通过 HTTPS 调用 Resend 的事务邮件 API，适用于 Railway 禁止 SMTP 出站的套餐。
 - capture：隔离开发/测试邮件捕获器（写 email_outbox 供测试读取）；APP_MODE=real 禁止。
 - 邮件发送失败只关闭依赖邮件的操作（返回 MAIL_UNAVAILABLE），不跳过验证、不伪造发送成功。
 """
@@ -8,6 +9,8 @@ from __future__ import annotations
 
 import smtplib
 from email.message import EmailMessage
+
+import httpx
 
 from ..config import get_settings
 from ..db import get_session_factory
@@ -74,6 +77,22 @@ def send_email(to_email: str, subject: str, body: str) -> None:
             db.commit()
         finally:
             db.close()
+        return
+
+    if settings.mail_mode == "resend":
+        if not settings.resend_api_key or not settings.mail_from:
+            raise MailSendError("Resend is not configured")
+        try:
+            response = httpx.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+                json={"from": settings.mail_from, "to": [to_email], "subject": subject, "text": body},
+                timeout=settings.mail_api_timeout_seconds,
+            )
+        except httpx.RequestError as exc:
+            raise MailSendError(f"Resend API request failed: {type(exc).__name__}") from exc
+        if not response.is_success:
+            raise MailSendError(f"Resend API returned HTTP {response.status_code}")
         return
 
     msg = EmailMessage()
