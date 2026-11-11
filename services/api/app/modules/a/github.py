@@ -35,6 +35,7 @@ class GithubSettings:
     app_id: str
     private_key: str
     base_url: str = GITHUB_API
+    app_slug: str = ""  # GitHub App 的公开名称（链接里的 groupproof-staging），用于生成安装链接
 
 
 def github_settings() -> GithubSettings | None:
@@ -43,7 +44,8 @@ def github_settings() -> GithubSettings | None:
     if not app_id or not key:
         return None  # 未接入：返回 503，不假装读取成功
     # Railway 变量里换行常被存成 \n 字面量，这里还原。
-    return GithubSettings(app_id=app_id, private_key=key.replace("\\n", "\n"))
+    slug = os.environ.get("GITHUB_APP_SLUG", "").strip()
+    return GithubSettings(app_id=app_id, private_key=key.replace("\\n", "\n"), app_slug=slug)
 
 
 def parse_repo_url(value: str) -> tuple[str, str]:
@@ -102,13 +104,14 @@ class GithubClient:
                 422,
                 "GITHUB_APP_NOT_INSTALLED",
                 "请先把 GroupProof 的 GitHub App 安装到该仓库所在的账号，然后再绑定。",
-                {
-                    "install_url": f"https://github.com/apps/{self._settings.app_id}/installations/new"
-                },
+                {"install_url": self._install_url()} if self._settings.app_slug else None,
             )
         if response.status_code != 200:
             raise _unavailable()
         return int(response.json()["id"])
+
+    def _install_url(self) -> str:
+        return f"https://github.com/apps/{self._settings.app_slug}/installations/new"
 
     def installation_token(self, installation_id: int) -> str:
         now = self._now()

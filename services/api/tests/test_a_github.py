@@ -29,7 +29,12 @@ def private_pem() -> str:
 
 
 def _settings(pem: str) -> github.GithubSettings:
-    return github.GithubSettings(app_id=APP_ID, private_key=pem, base_url="https://api.github.test")
+    return github.GithubSettings(
+        app_id=APP_ID,
+        private_key=pem,
+        base_url="https://api.github.test",
+        app_slug="groupproof-staging",
+    )
 
 
 def test_repo_url_forms_are_accepted_and_bad_ones_rejected():
@@ -77,7 +82,9 @@ def test_uninstalled_repo_returns_install_link(private_pem):
     with pytest.raises(ApiError) as exc:
         client.installation_for_repo("acme", "demo")
     assert exc.value.code == "GITHUB_APP_NOT_INSTALLED"
-    assert exc.value.details["install_url"].endswith("/installations/new")
+    assert exc.value.details["install_url"] == (
+        "https://github.com/apps/groupproof-staging/installations/new"
+    )
 
 
 def test_installation_token_is_cached_until_near_expiry(private_pem):
