@@ -129,25 +129,31 @@ def test_google_actions_filter_separately_and_only_return_safe_fields(db, scope)
         "auth.google.unlinked": ("success", ["auth_identities"]),
     }
     for action, (result, fields) in events.items():
-        audit.record(
-            db,
-            action,
-            actor_id=member.id if result == "success" else None,
-            result=result,
-            changed_fields=fields,
-        )
+        # A shared PostgreSQL database can already contain the same Google event.
+        for target in (member, member, scope.users["outsider"]):
+            audit.record(
+                db,
+                action,
+                actor_id=member.id if result == "success" else None,
+                target_user_id=target.id,
+                result=result,
+                changed_fields=fields,
+            )
     db.flush()
     for action, (result, _) in events.items():
-        page = listing(db, scope, action=action, result=result)
-        assert page.total == len(page.items) == 1
-        row = page.items[0]
-        assert row.action == action and row.result == result
-        assert row.changed_fields == (["auth_identities"] if result == "success" else [])
-        assert row.metadata_redacted == (result == "failure")
-        assert row == get_auth_audit_log(db, scope.users["admin"], row.id)
+        filters = dict(action=action, target_user_id=member.id, page_size=1)
+        pages = [listing(db, scope, result=result, page=n, **filters) for n in (1, 2, 3)]
+        assert all(page.total == 2 for page in pages)
+        assert [len(page.items) for page in pages] == [1, 1, 0]
+        assert pages[0].items[0].id != pages[1].items[0].id
+        for row in (pages[0].items[0], pages[1].items[0]):
+            assert row.action == action and row.result == result
+            assert row.changed_fields == (["auth_identities"] if result == "success" else [])
+            assert row.metadata_redacted == (result == "failure")
+            assert row == get_auth_audit_log(db, scope.users["admin"], row.id)
         assert (
             listing(
-                db, scope, action=action, result="failure" if result == "success" else "success"
+                db, scope, result="failure" if result == "success" else "success", **filters
             ).total
             == 0
         )
