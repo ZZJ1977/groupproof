@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import a_fixtures as fixtures
@@ -127,7 +128,9 @@ def _receipt(db, scope, *, actor, data: bytes, filename="需求.md", tampered=Fa
         content_hash=hashlib.sha256(data).hexdigest(),
         size_bytes=len(data),
         mime_type="text/markdown",
-        upload_expires_at=scope.project.created_at,
+        created_at=datetime.now(UTC),
+        upload_expires_at=datetime.now(UTC) + timedelta(hours=2),
+        completed_at=datetime.now(UTC),
     )
     db.add(row)
     db.flush()
