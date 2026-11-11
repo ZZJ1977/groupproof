@@ -344,3 +344,62 @@ def test_port_deleted_message_has_no_content(db, scope):
     deleted = [r for r in page.items if r.source.availability == "deleted"]
     assert len(deleted) == 1
     assert deleted[0].summary == "" and deleted[0].title == "[已删除的消息]"
+
+
+# ------------------------------------------------------------------ 绑定时列出机器人所在的群
+
+
+def _chats_transport(pages):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/open-apis/auth/v3/tenant_access_token/internal":
+            return httpx.Response(
+                200, json={"code": 0, "tenant_access_token": "t-1", "expire": 7200}
+            )
+        assert request.url.path == "/open-apis/im/v1/chats"
+        assert request.headers["Authorization"] == "Bearer t-1"
+        index = int(request.url.params.get("page_token", "0"))
+        items, next_index = pages[index]
+        data = {"items": items, "has_more": next_index is not None}
+        if next_index is not None:
+            data["page_token"] = str(next_index)
+        return httpx.Response(200, json={"code": 0, "data": data})
+
+    return httpx.MockTransport(handler)
+
+
+def test_client_lists_bot_chats_across_pages():
+    transport = _chats_transport(
+        [
+            ([{"chat_id": "oc_aaaa1111", "name": "组一"}], 1),
+            ([{"chat_id": "oc_bbbb2222", "name": "组二"}, {"name": "无 ID"}], None),
+        ]
+    )
+    client = feishu.FeishuClient(SETTINGS, transport=transport)
+    items, token = client.list_bot_chats(None)
+    assert [(i.chat_id, i.name) for i in items] == [("oc_aaaa1111", "组一")]
+    items, token = client.list_bot_chats(token)
+    assert [i.chat_id for i in items] == ["oc_bbbb2222"] and token is None
+
+
+class _ChatsReader:
+    def __init__(self, chats):
+        self.chats = chats
+
+    def list_bot_chats(self, page_token):
+        return self.chats, None
+
+
+def test_only_project_leader_can_list_available_chats(db, scope):
+    reader = _ChatsReader([feishu.FeishuChatItem(chat_id=CHAT, name="组一")])
+    with pytest.raises(ApiError) as exc:
+        feishu.list_available_chats(db, scope.users["member"], scope.project.id, reader)
+    assert exc.value.status_code == 403
+
+    chats = feishu.list_available_chats(db, scope.users["leader"], scope.project.id, reader)
+    assert [c.chat_id for c in chats] == [CHAT]
+
+
+def test_list_available_chats_without_credentials_is_503(db, scope):
+    with pytest.raises(ApiError) as exc:
+        feishu.list_available_chats(db, scope.users["leader"], scope.project.id, None)
+    assert exc.value.status_code == 503

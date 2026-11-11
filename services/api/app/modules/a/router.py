@@ -242,3 +242,25 @@ def transfer_leader(
     return success(
         {"project_id": str(project_id), "leader_id": str(payload.new_leader_id)}, request
     )
+
+
+class FeishuAvailableChatDTO(BaseModel):
+    chat_id: str
+    name: str
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/feishu/available-chats",
+    response_model=SuccessResponse[list[FeishuAvailableChatDTO]],
+    dependencies=[Depends(_private)],
+)
+def list_feishu_available_chats(
+    project_id: UUID, request: Request, session: Database, user: CurrentUser
+):
+    reader = feishu.get_feishu_reader()
+    try:
+        chats = feishu.list_available_chats(session, user, project_id, reader)
+    finally:
+        if isinstance(reader, feishu.FeishuClient):
+            reader.close()
+    return success([FeishuAvailableChatDTO(chat_id=c.chat_id, name=c.name) for c in chats], request)
