@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import aliased
 
+from app.modules.c.notification_delivery import NotificationWriter
 from app.modules.c.school_email import has_verified_school_email, school_email_binding_verified
 
 from ..db import get_db
@@ -114,6 +115,7 @@ def disable(
     user_id: str,
     body: DisableDecision,
     request: Request,
+    writer: NotificationWriter,
     context: AuthContext = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
@@ -141,8 +143,24 @@ def disable(
         reason=body.reason,
         expected_version=body.expectedVersion,
     )
+    if writer is not None:
+        writer(
+            db,
+            recipient=user.id,
+            category="system",
+            title="账号已停用",
+            description=body.reason,
+            dedupe_key=f"c:account-disabled:{user.id}:{user.version}",
+        )
     db.commit()
-    return response({"id": user.id, "status": user.account_status, "version": user.version})
+    return response(
+        {
+            "id": user.id,
+            "status": user.account_status,
+            "version": user.version,
+            "inboxNotified": writer is not None,
+        }
+    )
 
 
 @router.get("/teacher-applications")
