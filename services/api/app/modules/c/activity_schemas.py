@@ -64,6 +64,7 @@ class ActivityDTO(ActivityStateDTO):
     source_url: str | None
     availability: Literal["available", "deleted"]
     source_changed: bool
+    snapshot_complete: bool = True
     suggested_task_ids: list[UUID]
 
 

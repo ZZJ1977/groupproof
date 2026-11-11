@@ -48,6 +48,7 @@ class ActivitySourceQuery:
 class ActivitySourcePage:
     items: tuple[ActivitySourceRecord, ...]
     total: int
+    searched_full_text: bool = False
 
 
 class ActivitySourcePort(Protocol):
@@ -86,5 +87,6 @@ def get_activity_source_port() -> ActivitySourcePort:
     """飞书来源由 A 的只读快照提供；GitHub 来源仍然明确返回 503。"""
     from app.db.session import SessionLocal
     from app.modules.a.feishu import feishu_activity_port
+    from app.modules.c.feishu_activity import FeishuActivityPort
 
-    return feishu_activity_port(SessionLocal)
+    return FeishuActivityPort(feishu_activity_port(SessionLocal))
