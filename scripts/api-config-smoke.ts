@@ -12,5 +12,14 @@ assert.equal(resolveApiMode("workspace", { globalMocksEnabled: true }), "mock");
 assert.equal(resolveApiMode("workspace", { globalMocksEnabled: false }), "real");
 assert.equal(resolveApiMode("workspace", { globalMocksEnabled: true, overrides: { workspace: "real" } }), "real");
 assert.equal(resolveApiMode("workspace", { globalMocksEnabled: false, overrides: { workspace: "mock" } }), "mock");
+assert.equal(
+  resolveApiMode("workspace", {
+    globalMocksEnabled: true,
+    overrides: { workspace: "mock" },
+    productionLock: true,
+  }),
+  "real",
+);
+assert.equal(resolveApiMode("tasks", { globalMocksEnabled: true, productionLock: false }), "mock");
 
 console.log("API feature configuration parsing passed");

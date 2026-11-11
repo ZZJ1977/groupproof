@@ -23,6 +23,9 @@ from app.modules.c.router import router as c_router
 from app.modules.d.router import risk_router as d_risk_router
 from app.modules.d.router import router as d_router
 from app.modules.tasks.router import router as tasks_router
+from app.observability import init_sentry
+
+init_sentry()
 
 app = FastAPI(
     title="GroupProof API",
