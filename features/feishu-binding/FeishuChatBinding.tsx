@@ -8,6 +8,16 @@ type LinkedChat = { chat_id: string; linked_at: string };
 type AvailableChat = { chat_id: string; name: string };
 type SyncResult = { chats: number; created: number; updated: number; deleted: number; seen: number };
 
+const buttonStyle: React.CSSProperties = {
+  padding: "8px 16px",
+  border: "1px solid #2563eb",
+  borderRadius: 6,
+  background: "#2563eb",
+  color: "#fff",
+  cursor: "pointer",
+};
+const fieldStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff" };
+
 class RequestError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -133,7 +143,7 @@ export function FeishuChatBinding({ projectId }: { projectId: string }) {
         {linked !== null && bound && (
           <>
             <p>已绑定 {linked.length} 个群。</p>
-            <button type="button" onClick={sync} disabled={busy}>
+            <button type="button" onClick={sync} disabled={busy} style={buttonStyle}>
               立即同步
             </button>
           </>
@@ -144,7 +154,7 @@ export function FeishuChatBinding({ projectId }: { projectId: string }) {
             <p>还没有绑定飞书群。</p>
             <p style={{ color: "#666", fontSize: 14 }}>请先把机器人拉进要同步的群，再点下面的按钮。</p>
             {available === null && (
-              <button type="button" onClick={loadAvailable} disabled={busy}>
+              <button type="button" onClick={loadAvailable} disabled={busy} style={buttonStyle}>
                 选择群
               </button>
             )}
@@ -152,7 +162,7 @@ export function FeishuChatBinding({ projectId }: { projectId: string }) {
               <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
                 <label>
                   选择群：
-                  <select value={selected} onChange={(event) => setSelected(event.target.value)} disabled={busy}>
+                  <select value={selected} onChange={(event) => setSelected(event.target.value)} disabled={busy} style={fieldStyle}>
                     {available.map((chat) => (
                       <option key={chat.chat_id} value={chat.chat_id}>
                         {chat.name || "未命名的群"}
@@ -160,7 +170,7 @@ export function FeishuChatBinding({ projectId }: { projectId: string }) {
                     ))}
                   </select>
                 </label>
-                <button type="button" onClick={bind} disabled={busy || !selected}>
+                <button type="button" onClick={bind} disabled={busy || !selected} style={buttonStyle}>
                   绑定
                 </button>
               </div>

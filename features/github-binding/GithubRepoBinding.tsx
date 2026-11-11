@@ -7,6 +7,16 @@ type ErrorBody = { error?: { code?: string; message?: string; details?: { instal
 type Repo = { owner: string; repo: string; default_branch: string; linked_at: string; last_synced_at: string | null };
 type SyncResult = { repos: number; files: number; fetched: number; removed: number; skipped: number };
 
+const buttonStyle: React.CSSProperties = {
+  padding: "8px 16px",
+  border: "1px solid #2563eb",
+  borderRadius: 6,
+  background: "#2563eb",
+  color: "#fff",
+  cursor: "pointer",
+};
+const fieldStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff" };
+
 class RequestError extends Error {
   constructor(readonly status: number, message: string, readonly code?: string, readonly installUrl?: string) {
     super(message);
@@ -131,7 +141,7 @@ export function GithubRepoBinding({ projectId }: { projectId: string }) {
                 </li>
               ))}
             </ul>
-            <button type="button" onClick={sync} disabled={busy} style={{ marginTop: 12 }}>
+            <button type="button" onClick={sync} disabled={busy} style={{ ...buttonStyle, marginTop: 12 }}>
               立即同步
             </button>
           </>
@@ -146,12 +156,12 @@ export function GithubRepoBinding({ projectId }: { projectId: string }) {
                 value={repoUrl}
                 onChange={(event) => setRepoUrl(event.target.value)}
                 placeholder="https://github.com/owner/repo"
-                style={{ width: "100%", marginTop: 4 }}
+                style={{ ...fieldStyle, width: "100%", marginTop: 4 }}
                 disabled={busy}
               />
             </label>
             <p style={{ color: "#666", fontSize: 14 }}>绑定前，请先把 GroupProof 的 GitHub App 安装到该仓库所在的账号。</p>
-            <button type="button" onClick={bind} disabled={busy || !repoUrl.trim()}>
+            <button type="button" onClick={bind} disabled={busy || !repoUrl.trim()} style={buttonStyle}>
               绑定
             </button>
           </div>
@@ -163,7 +173,7 @@ export function GithubRepoBinding({ projectId }: { projectId: string }) {
             {installUrl && (
               <>
                 {" "}
-                <a href={installUrl} target="_blank" rel="noreferrer">去安装</a>
+                <a href={installUrl} target="_blank" rel="noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>去安装</a>
               </>
             )}
           </p>
