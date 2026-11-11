@@ -218,3 +218,15 @@ def test_http_foreign_file_id_is_not_found_in_other_project(client, scope, stora
             headers={"Idempotency-Key": "cross-project"},
         )
     assert response.status_code == 404 and response.json()["error"]["code"] == "FILE_NOT_FOUND"
+
+
+def test_same_course_other_group_cannot_open_project_file_by_known_ids(client, scope, storage, api):
+    original = register(client, scope, storage).json()["data"]
+    collection = base(scope)
+    detail = f"{collection}/{original['id']}"
+    link = f"{detail}/versions/{original['versions'][0]['id']}/link"
+    api.dependency_overrides[get_current_user] = lambda: scope.users["outsider"]
+    for path in (collection, detail, f"{link}?purpose=preview", f"{link}?purpose=download"):
+        response = client.get(path)
+        assert response.status_code == 403, response.text
+    assert storage.sign_calls == 0
