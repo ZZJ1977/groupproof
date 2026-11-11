@@ -1,16 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { components } from "@/packages/domain/api.generated";
 import { Panel } from "@/components/common";
 import { accessFailure, apiButton, ApiFailure, apiInput, ApiPager, projectApi, queryPolicy, safeHttps, taskNoteQuery, useCommandKey, versionFailure } from "./c-project-api";
 
 type Context = components["schemas"]["CProjectContextDTO"];
-type Source = "manual" | "task_note" | "discussion" | "file" | "github" | "feishu";
-const sourceNames: Record<Source, string> = { manual: "手工说明或链接", task_note: "当前任务说明", discussion: "重要讨论", file: "已有项目文件", github: "GitHub 来源", feishu: "飞书来源" };
+type Source = "manual" | "task_note" | "discussion" | "file" | "screenshot" | "github" | "feishu";
+const sourceNames: Record<Source, string> = { manual: "手工说明或链接", task_note: "当前任务说明", discussion: "重要讨论", file: "已有项目文件", screenshot: "已有项目截图", github: "GitHub 来源", feishu: "飞书来源" };
 
-export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, onDenied, visible = true }: { context: Context; userId: string; fixedTaskId?: string; onSaved: () => void; onDenied: (error: unknown) => void; visible?: boolean }) {
+export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, onDenied, onDirtyChange, visible = true }: { context: Context; userId: string; fixedTaskId?: string; onSaved: () => void; onDenied: (error: unknown) => void; onDirtyChange?: (dirty: boolean) => void; visible?: boolean }) {
   const projectId = context.project.id;
   const [taskId, setTaskId] = useState(fixedTaskId ?? "");
   const [kind, setKind] = useState<Source>("manual");
@@ -20,6 +21,8 @@ export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, on
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
   const [criteria, setCriteria] = useState<string[]>([]);
+  const dirty = Boolean(title || body || sourceId || url || criteria.length);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,18 +30,22 @@ export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, on
   const commandKey = useCommandKey();
   const task = context.tasks.find((item) => item.id === taskId);
   const allowed = visible && context.permissions.can_capture_evidence && task?.can_capture_evidence;
+  const fileSource = kind === "file" || kind === "screenshot";
   async function readSource<T>(request: Promise<T>): Promise<T> {
     try { return await request; } catch (next) { if (accessFailure(next)) onDenied(next); throw next; }
   }
   const noteRequest = taskNoteQuery(userId, projectId, taskId);
   const note = useQuery({ ...noteRequest, queryFn: () => readSource(noteRequest.queryFn()), enabled: kind === "task_note" && Boolean(taskId) });
   const discussions = useQuery({ queryKey: ["c-capture-discussions", userId, projectId, page], queryFn: () => readSource(projectApi.discussions(projectId, { is_important: true, page, page_size: 10 })), enabled: kind === "discussion", ...queryPolicy });
-  const files = useQuery({ queryKey: ["c-capture-files", userId, projectId, page], queryFn: () => readSource(projectApi.files(projectId, { page, page_size: 10 })), enabled: kind === "file", ...queryPolicy });
+  const files = useQuery({ queryKey: ["c-capture-files", userId, projectId, page], queryFn: () => readSource(projectApi.files(projectId, { page, page_size: 10 })), enabled: fileSource && Boolean(allowed), ...queryPolicy });
   const activity = useQuery({ queryKey: ["c-capture-activity", userId, projectId, kind, page], queryFn: () => readSource(projectApi.activities(projectId, kind === "github" ? "github" : "feishu", { page, page_size: 10 })), enabled: kind === "github" || kind === "feishu", ...queryPolicy });
-  const sourceQuery = kind === "task_note" ? note : kind === "discussion" ? discussions : kind === "file" ? files : kind !== "manual" ? activity : null;
-  const sourcePage = kind === "discussion" ? discussions.data : kind === "file" ? files.data : activity.data;
+  const sourceQuery = kind === "task_note" ? note : kind === "discussion" ? discussions : fileSource ? files : kind !== "manual" ? activity : null;
+  const sourcePage = kind === "discussion" ? discussions.data : fileSource ? files.data : activity.data;
   const sourceError = sourceQuery?.error;
-  const options = sourceQuery?.isSuccess && !sourceQuery.isFetching ? kind === "task_note" ? (note.data?.versions ?? []).filter((item) => item.version_no === note.data?.current_version_no).map((item) => ({ id: item.id, title: `${item.title} · v${item.version_no}` })) : kind === "discussion" ? (discussions.data?.items ?? []).filter((item) => item.is_important).map((item) => ({ id: item.id, title: item.title })) : kind === "file" ? (files.data?.items ?? []).map((item) => ({ id: item.id, title: `${item.name} · v${item.version_no}` })) : (activity.data?.items ?? []).filter((item) => item.availability === "available" && item.kind !== "sync").map((item) => ({ id: item.source_id, title: item.title })) : [];
+  const fileOptions = (files.data?.items ?? [])
+    .filter((item) => kind !== "screenshot" || ["image/jpeg", "image/png"].includes(item.mime_type))
+    .map((item) => ({ id: item.id, title: `${item.name} · v${item.version_no}` }));
+  const options = sourceQuery?.isSuccess && !sourceQuery.isFetching ? kind === "task_note" ? (note.data?.versions ?? []).filter((item) => item.version_no === note.data?.current_version_no).map((item) => ({ id: item.id, title: `${item.title} · v${item.version_no}` })) : kind === "discussion" ? (discussions.data?.items ?? []).filter((item) => item.is_important).map((item) => ({ id: item.id, title: item.title })) : fileSource ? fileOptions : (activity.data?.items ?? []).filter((item) => item.availability === "available" && item.kind !== "sync").map((item) => ({ id: item.source_id, title: item.title })) : [];
   // A successful source refresh can invalidate only this selection, not the draft.
   if (sourceId && sourceQuery?.isSuccess && !sourceQuery.isFetching && !options.some((item) => item.id === sourceId)) {
     setSourceId("");
@@ -73,7 +80,7 @@ export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, on
       {sourceQuery?.isFetching && <p role="status">正在读取可用来源…</p>}{sourceError && <ApiFailure error={sourceError} retry={() => void refreshSources()} label="重试来源列表" />}
       {!sourceError && !sourceQuery?.isFetching && <label className="mb-3 block">来源记录<select className={`${apiInput} block w-full`} value={sourceId} disabled={busy} onChange={(event) => setSourceId(event.target.value)}><option value="">请选择来源</option>{options.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>{!options.length && <span className="text-sm">没有可选来源。</span>}</label>}
       {kind !== "task_note" && sourcePage && !sourceError && <ApiPager page={sourcePage.page} pageSize={sourcePage.page_size} total={sourcePage.total} change={(next) => { setPage(next); setSourceId(""); }} />}
-      {["file", "github", "feishu"].includes(kind) && <p className="my-3 text-sm">来源内容需由授权服务核验；该适配尚未接通时无法保存。文件上传暂不可用。</p>}
+      {fileSource && <Link className="gp-link" href={`/projects/${projectId}/files`}>管理项目文件</Link>}
     </>}
     <fieldset className="mb-3"><legend>对应验收标准</legend>{task?.criteria.map((criterion) => <label key={criterion.id} className="my-2 flex gap-2"><input type="checkbox" disabled={busy} checked={criteria.includes(criterion.id)} onChange={(event) => setCriteria(event.target.checked ? [...criteria, criterion.id] : criteria.filter((id) => id !== criterion.id))} />{criterion.text}</label>)}</fieldset>
     {Boolean(error) && <ApiFailure error={error} />}{versionFailure(error) && sourceQuery && <button className={apiButton} disabled={busy || sourceQuery.isFetching} onClick={() => void refreshSources()}>刷新并核对来源</button>}{notice && <p role="status" className="mb-3">{notice}</p>}

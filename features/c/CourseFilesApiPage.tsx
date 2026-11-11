@@ -8,6 +8,7 @@ import { courseFilesApi, type CourseFileQuery } from "@/lib/api/c-course-files-c
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import type { components } from "@/packages/domain/api.generated";
+import { FileUploadForm } from "./FileUploadForm";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, ApiPager, apiButton, apiInput, isUuid, pageNumber, queryPolicy, safeHttps, useCommandKey, versionFailure } from "./c-project-api";
 
@@ -121,8 +122,9 @@ function CourseFilesPage({ courseId, userId }: { courseId: string; userId: strin
   if (!enabled) return <EmptyState title="课程地址无效" description="请从已授权课程入口打开资料页。" />;
   return <>
     <PageHeader title="课程资料" description="查看课程提供的资料与允许访问的版本历史。" actions={<button type="button" className={apiButton} disabled={busy || list.isFetching} onClick={() => void refresh()}>刷新课程资料</button>} />
-    <p className="mb-4 text-sm text-slate-600">文件上传和替换暂不可用。你仍可查询已保存的资料、查看历史版本及申请预览或下载。</p>
+
     {denial ? <CourseFailure error={denial} retry={() => void refresh()} /> : <>
+      {rows?.can_write && (!selectedId || file) && <FileUploadForm key={selectedId ?? "new"} scope="course" scopeId={courseId} target={file} denied={fail} saved={() => { setNotice("课程资料草稿版本已保存。"); void refresh(); }} />}
       {rows && !rows.can_write && <p className="mb-3 text-sm">当前课程资料只读，仅展示你有权查看的版本。</p>}
       <form key={`${rawCategory}:${rawSort}:${rawStatus}:${query.get("q")}:${query.get("file_type")}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); clearSelection(); updateQuery({ category: String(form.get("category")), sort: String(form.get("sort")), status: String(form.get("status") || "") || null, q: String(form.get("q") || "").trim() || null, file_type: String(form.get("file_type") || "").trim() || null, page: null, file: null }); }}>
         <label>资料分类<select className={`${apiInput} block`} name="category" defaultValue={filters.category}>{Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

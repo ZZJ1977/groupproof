@@ -30,8 +30,9 @@ from app.modules.c.evidence_service import (
     evidence_in_project,
     list_evidence,
 )
+from app.modules.c.evidence_sources import get_source_port
 from app.modules.c.permissions import get_project_access
-from app.modules.c.source_ports import SourcePort, get_source_port
+from app.modules.c.source_ports import SourcePort
 
 
 def private_response(response: Response) -> None:

@@ -175,17 +175,15 @@ unchanged retries preserve their idempotency key. A version conflict preserves
 the reason and requires explicit refresh/reconfirmation. Refresh, identity or
 course changes hide prior data, and access denial removes action controls and
 signed links. Signed responses must match the requested version and purpose,
-use safe HTTPS and expire within 15 minutes. Upload and replacement remain
-explicitly unavailable until A provides the actual course-scoped upload flow.
+use safe HTTPS and expire within 15 minutes. The upload form calls A's
+course-scoped signing and completion endpoints before registering a draft.
+An uncertain registration reuses the completed receipt and idempotency key.
+A concurrent replacement keeps the selected file and reason in the open form.
+The teacher reviews the latest filename and version before confirming the append.
 
-Scoped ESLint passes for the page, client and eight browser-contract cases in
-`e2e/c-course-files-api.spec.ts`. The cases cover filtering/pagination, student
-visibility, failed/repeated publication, version conflict recovery, unsafe
-links, denied refresh, invalid mock IDs and malformed response envelopes.
-The course-file browser cases passed **8/8**, included in the completed **45/45**
-new API browser suite; the last pending inbox filter locator also passed its rerun. The
-current-batch production build and daily **4/4** rerun also passed. These HTTP
-fixtures do not claim a live A login, byte storage integration or complete
-C5-04 acceptance. The implementation and handoff are published in
-[merged PR #11](https://github.com/ZZJ1977/groupproof/pull/11); latest CI and remaining
-review/acceptance are tracked in [the delivery record](C_DELIVERY.md).
+The course-file browser suite passed 11 cases. Two project upload cases also
+passed with the shared upload form. The tests intercept the signed upload
+and completion endpoints and check the transferred bytes, receipt reuse,
+version checks, permissions and signed-link display. Acceptance with A still
+requires a real storage upload and download. The original course-file
+handoff is in [merged PR #11](https://github.com/ZZJ1977/groupproof/pull/11).

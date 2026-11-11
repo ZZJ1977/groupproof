@@ -82,13 +82,13 @@ test("C1-04 API categories, UTC dates and page survive reload and Back", async (
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.getByRole("link", { name: "动态第 2 页", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/page=2/);
-  await page.getByRole("button", { name: "任务执行", exact: true }).click();
+  await page.getByRole("button", { name: "开发", exact: true }).click();
   await page.getByLabel("开始日期", { exact: true }).fill("2026-10-01");
   await page.getByLabel("结束日期", { exact: true }).fill("2026-10-12");
   await page.getByRole("button", { name: "查询", exact: true }).click();
   await expect(page).toHaveURL(/date_from=2026-10-01/);
   await page.reload();
-  await expect(page.getByRole("button", { name: "任务执行", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "开发", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue("2026-10-01");
   await expect(page.getByRole("link", { name: "动态第 1 页", exact: true })).toBeVisible();
   expect(requests.at(-1)?.searchParams.get("category")).toBe("development");

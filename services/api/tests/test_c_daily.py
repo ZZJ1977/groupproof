@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 import test_c_discussions as discussion_tests
+import test_c_files as file_tests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, event, select
@@ -267,8 +268,9 @@ def test_home_counts_only_current_assignments_and_canonical_status(client, daily
     assert data["course_count"] == data["project_count"] == data["my_task_count"] == 1
     assert data["my_completed_tasks"] == 0
     assert data["task_counts"]["in_progress"] == 1
-    assert data["unread_notifications"] is data["pending_action_items"] is None
-    assert data["unavailable_sources"] == ["notifications", "action_items", "github", "feishu"]
+    # A4-01/A4-03 已接入：通知和待办来自 A 的数据库实现；GitHub/飞书仍未接入。
+    assert data["unread_notifications"] == data["pending_action_items"] == 0
+    assert data["unavailable_sources"] == ["github", "feishu"]
     daily.task.progress_percent = 100
     db.flush()
     assert get_home_summary(db, daily.actor)["my_completed_tasks"] == 0
@@ -364,8 +366,14 @@ def test_feed_exact_event_scope_and_minimal_fields(client, daily):
     assert discussion["href"] == (
         f"/projects/{daily.project.id}/discussions?discussion={daily.discussion.id}"
     )
+    reply = next(item for item in data["items"] if item["event_type"] == "discussion_replied")
+    reply_id = daily.records[3].id
+    assert reply["href"] == f"{discussion['href']}&reply={reply_id}#reply-{reply_id}"
     evidence = next(item for item in data["items"] if item["event_type"] == "evidence_submitted")
-    assert evidence["href"] == f"/projects/{daily.project.id}/evidence?evidence={daily.evidence.id}"
+    assert evidence["href"] == (
+        f"/projects/{daily.project.id}/evidence?evidence={daily.evidence.id}"
+        f"&decision={daily.records[2].id}"
+    )
     note = next(item for item in data["items"] if item["event_type"] == "task_note_saved")
     note_id = daily.records[1].id
     assert (
@@ -378,6 +386,33 @@ def test_feed_exact_event_scope_and_minimal_fields(client, daily):
         progress["href"] == f"/projects/{daily.project.id}/tasks/{daily.task.id}"
         f"?tab=history&progress={progress_id}#progress-{progress_id}"
     )
+
+
+def test_feed_links_each_uploaded_file_revision_only_for_its_current_authorized_actor(db, daily):
+    storage = file_tests.StorageFake(daily)
+    first = file_tests.create(db, daily, storage)
+    updated = file_tests.append(db, daily, storage, first)
+    by_type = [
+        row
+        for row in activity(db, daily, category="development")["items"]
+        if row["event_type"] == "file_version_uploaded"
+    ]
+    versions = {row["id"] for row in updated["versions"]}
+    assert len(by_type) == len(versions) == 2
+    assert {row["href"] for row in by_type} == {
+        f"/projects/{daily.project.id}/files?file={first['id']}&version={version}"
+        for version in versions
+    }
+    member_feed = list_personal_activity(db, daily.users["member"], DailyActivityFilters())
+    assert member_feed["items"] == []
+    membership = db.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == daily.project.id, ProjectMember.user_id == daily.actor.id
+        )
+    )
+    membership.left_at = WHEN
+    db.flush()
+    assert activity(db, daily, category="development")["items"] == []
 
 
 def test_feed_never_relabels_other_peoples_changes_as_actor_activity(db, daily):

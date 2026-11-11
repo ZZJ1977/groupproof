@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import User
+from app.modules.c.file_evidence import replace_file_evidence_source
 from app.modules.c.files_models import FileDecision, FileVersion, LogicalFile
 from app.modules.c.files_schemas import (
     AppendFileVersion,
@@ -20,6 +21,7 @@ from app.modules.c.files_schemas import (
 )
 from app.modules.c.files_storage import StoragePort, UploadReceipt, resolve_receipt, signed_link
 from app.modules.c.integration_events import claim_request, emit_event, finish_request
+from app.modules.c.notification_delivery import notify_file_publication
 from app.modules.c.permissions import get_project_access
 
 
@@ -301,6 +303,9 @@ def append_version(
     _cas(session, row, command.expected_version, latest_version_no=row.latest_version_no + 1)
     version = _register_version(session, row, user, receipt)
     _record(session, row, version, user, "appended", command.reason, previous)
+    old_latest = version.version_no - 1
+    if previous != old_latest:
+        replace_file_evidence_source(session, row, old_latest, version, user.id, command.reason)
     return finish_request(session, request, file_data(session, row))
 
 
@@ -311,6 +316,8 @@ def designate_version(
     file_id: UUID,
     command: DesignateFileVersion,
     key: str,
+    *,
+    writer=None,
 ) -> dict:
     file_access(session, user, project_id, write=True)
     row = file_in_project(session, project_id, file_id)
@@ -337,6 +344,18 @@ def designate_version(
     previous = row.official_version_no
     _cas(session, row, command.expected_version, official_version_no=version.version_no)
     _record(session, row, version, user, "designated", command.reason, previous)
+    if previous is not None:
+        replace_file_evidence_source(session, row, previous, version, user.id, command.reason)
+    notify_file_publication(
+        session,
+        writer,
+        actor_id=user.id,
+        version_id=version.id,
+        name=row.name,
+        version_no=version.version_no,
+        scope_id=project_id,
+        kind="project",
+    )
     return finish_request(session, request, file_data(session, row))
 
 

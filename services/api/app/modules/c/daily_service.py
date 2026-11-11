@@ -24,6 +24,7 @@ from app.db.models import (
 )
 from app.modules.c.daily_schemas import DailyActivityFilters
 from app.modules.c.discussion_models import Discussion, DiscussionReply
+from app.modules.c.files_models import FileVersion, LogicalFile
 from app.modules.c.inbox_ports import InboxPort
 from app.modules.c.inbox_schemas import ActionItemFilters, NotificationFilters
 from app.modules.c.inbox_service import action_items, notifications
@@ -44,7 +45,8 @@ HOME_SCOPE = (
 )
 ACTIVITY_SCOPE = (
     "Only events performed by the current actor on objects still accessible now: canonical "
-    "task progress events, saved task-note versions, evidence decisions (submitted/adopted/"
+    "task progress events, saved task-note versions, registered project file versions, "
+    "evidence decisions (submitted/adopted/"
     "withdrawn/source_changed), discussion creation and replies. Discussion importance changes "
     "and external GitHub/Feishu activity are not included. Titles are current object titles; "
     "timestamps are event creation times. Date filters are inclusive UTC calendar dates. "
@@ -369,7 +371,27 @@ def _activity_events(actor: User):
         .join(Discussion, Discussion.id == DiscussionReply.discussion_id)
         .where(DiscussionReply.author_id == actor.id)
     )
-    return union_all(progress, notes, decisions, discussion, replies).subquery("daily_events")
+    file_versions = (
+        select(
+            *columns(
+                "development",
+                "file_version_uploaded",
+                FileVersion.id,
+                FileVersion.created_at,
+                LogicalFile.project_id,
+                "file",
+                LogicalFile.id,
+                LogicalFile.name,
+                literal(None),
+            )
+        )
+        .select_from(FileVersion)
+        .join(LogicalFile, LogicalFile.id == FileVersion.file_id)
+        .where(FileVersion.uploaded_by == actor.id)
+    )
+    return union_all(progress, notes, decisions, discussion, replies, file_versions).subquery(
+        "daily_events"
+    )
 
 
 def list_personal_activity(session: Session, user: User, filters: DailyActivityFilters) -> dict:
@@ -402,8 +424,12 @@ def list_personal_activity(session: Session, user: User, filters: DailyActivityF
         base = f"/projects/{row.project_id}"
         if row.object_type == "discussion":
             href = f"{base}/discussions?discussion={row.object_id}"
+            if row.event_type == "discussion_replied":
+                href += f"&reply={row.event_id}#reply-{row.event_id}"
         elif row.object_type == "evidence":
-            href = f"{base}/evidence?evidence={row.object_id}"
+            href = f"{base}/evidence?evidence={row.object_id}&decision={row.event_id}"
+        elif row.object_type == "file":
+            href = f"{base}/files?file={row.object_id}&version={row.event_id}"
         elif row.event_type == "task_note_saved":
             href = (
                 f"{base}/tasks/{row.object_id}?tab=history&note={row.event_id}#note-{row.event_id}"

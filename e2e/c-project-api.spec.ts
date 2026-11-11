@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { components } from "../packages/domain/api.generated";
+import { storageRoutes } from "./c-upload-fixture";
 
 // Contract fixtures only: this suite does not claim live A transport/provider access.
 type Schema = components["schemas"];
@@ -55,6 +56,49 @@ async function activityRoutes(page: Page, getItem: () => Schema["ActivityDTO"]) 
     return failure(route, 404);
   });
 }
+
+test("C4-03 lists bound groups with no messages and preserves historical group filters", async ({ page }) => {
+  await contextRoute(page, { ...context, actor: { ...context.actor, is_leader: true } });
+  const endpoint = `**/api/v1/a/projects/${projectId}/feishu/chats`;
+  let linked = [{ chat_id: "oc_without_messages", linked_at: stamp }];
+  await page.route(endpoint, (route) => success(route, linked));
+  await activityRoutes(page, () => ({ ...activity, group_id: "oc_historical" }));
+  await page.goto(`/projects/${projectId}/collaboration`);
+  const section = page.getByRole("region", { name: "项目绑定状态" });
+  await expect(section).toContainText("已绑定 1 个飞书群");
+  await expect(section.getByRole("link", { name: "管理飞书群绑定" })).toHaveAttribute("href", `/feishu/${projectId}`);
+  const groups = page.getByRole("combobox", { name: "来源群组" });
+  await expect(groups.locator("option")).toHaveText(["全部群组", "oc_without_messages", "oc_historical"]);
+  linked = [];
+  await page.getByRole("button", { name: "刷新活动" }).click();
+  await expect(section).toContainText("此项目尚未绑定飞书群");
+  await expect(groups.locator("option")).toHaveText(["全部群组", "oc_historical"]);
+  await page.route(endpoint, (route) => failure(route, 403));
+  await page.getByRole("button", { name: "刷新活动" }).click();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。")).toBeVisible();
+  await expect(groups).toHaveCount(0);
+});
+
+test("C4 shows A's GitHub binding independently of commit records and distinguishes unavailable from unbound", async ({ page }) => {
+  await contextRoute(page, { ...context, actor: { ...context.actor, is_leader: true } });
+  const endpoint = `**/api/v1/a/projects/${projectId}/github/repos`;
+  await page.route(endpoint, (route) => failure(route, 503));
+  await page.route(`**${base}/activities/github?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0 }));
+  await page.goto(`/projects/${projectId}/github`);
+  const section = page.getByRole("region", { name: "项目绑定状态" });
+  await expect(section).toContainText("暂时无法读取绑定状态");
+  await expect(section).not.toContainText("尚未绑定");
+  await page.route(endpoint, (route) => success(route, [{ owner: "ZZJ1977", repo: "groupproof", default_branch: "develop", linked_at: stamp, last_synced_at: stamp }]));
+  await section.getByRole("button", { name: "重试绑定查询" }).click();
+  await expect(section.getByRole("link", { name: "ZZJ1977/groupproof" })).toHaveAttribute("href", "https://github.com/ZZJ1977/groupproof");
+  await expect(section.getByRole("link", { name: "管理 GitHub 仓库绑定" })).toHaveAttribute("href", `/github/${projectId}`);
+  await expect(section).toContainText("文本文件上次同步");
+  await expect(page.getByText("没有符合条件的来源记录")).toBeVisible();
+  await contextRoute(page);
+  await page.reload();
+  await expect(section.getByRole("link", { name: "ZZJ1977/groupproof" })).toBeVisible();
+  await expect(section.getByRole("link", { name: "管理 GitHub 仓库绑定" })).toHaveCount(0);
+});
 
 test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject another host", async ({ page }) => {
   await contextRoute(page);
@@ -271,6 +315,47 @@ test("C4 ignored record restores with a reason, read-only context hides mutation
   await expect(page.locator("main").getByText("接口讨论文档", { exact: true })).toHaveCount(0);
 });
 
+test("C5-02 project upload verifies bytes before registration and reuses the receipt after an uncertain save", async ({ page }) => {
+  await contextRoute(page);
+  const { payload, stage, receipt } = await storageRoutes(page, "project", projectId);
+  const keys: string[] = [];
+  await page.route(`**${base}/files**`, (route) => {
+    if (route.request().method() === "GET") return success(route, fileRows(file));
+    expect(stage.checked).toBeGreaterThan(0);
+    expect(route.request().postDataJSON()).toEqual({ receipt_id: receipt, reason: "新增说明", category: "documents" });
+    keys.push(route.request().headers()["idempotency-key"]);
+    return keys.length === 1 ? failure(route, 503) : success(route, file);
+  });
+  await page.goto(`/projects/${projectId}/files`);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("新增说明");
+  const submit = page.getByRole("button", { name: "上传并保存草稿", exact: true });
+  await submit.click();
+  await expect(page.getByText("上传服务暂不可用，请稍后重试。", { exact: true })).toBeVisible();
+  await submit.click();
+  await expect(page.getByText("文件草稿版本已保存。", { exact: true })).toBeVisible();
+  expect(stage.issued).toBe(1); expect(stage.put).toBe(1);
+  expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+});
+
+test("C5-02 permissions revoked during upload prevent file registration and hide the editor", async ({ page }) => {
+  await contextRoute(page);
+  const { payload, stage } = await storageRoutes(page, "project", projectId);
+  stage.denyCompletion = true;
+  let mutations = 0;
+  await page.route(`**${base}/files**`, (route) => {
+    if (route.request().method() !== "GET") mutations++;
+    return success(route, fileRows(file));
+  });
+  await page.goto(`/projects/${projectId}/files`);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("新增说明");
+  await page.getByRole("button", { name: "上传并保存草稿" }).click();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("选择文件", { exact: true })).toHaveCount(0);
+  expect(mutations).toBe(0); expect(stage.put).toBe(1);
+});
+
 test("C5 designation preserves earlier versions and retries the same payload after failure", async ({ page }) => {
   await contextRoute(page);
   let detail = structuredClone(file);
@@ -283,8 +368,8 @@ test("C5 designation preserves earlier versions and retries the same payload aft
     return success(route, detail);
   });
   await page.goto(`/projects/${projectId}/files?file=${fileId}`);
-  await expect(page.getByText(/真实文件上传尚未接入/)).toBeVisible();
-  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(page.getByLabel("选择文件", { exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "上传并保存草稿" })).toBeDisabled();
   await page.getByRole("button", { name: "设为正式 v2", exact: true }).click();
   await page.getByRole("textbox", { name: "设为正式的原因", exact: true }).fill("确认课程要求的最终内容");
   await page.getByRole("button", { name: "确认设为正式", exact: true }).click();
