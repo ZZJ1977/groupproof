@@ -19,6 +19,10 @@ require A's CSRF check. No client-supplied role or user override is accepted.
   reject self-disable. Lock the target row, then call A's `accounts.disable_user`
   for session revocation, status/version change and audit. Already-disabled or
   conflicting requests cannot create a second mutation.
+  When A4-01 is installed, the same transaction writes a system notification with
+  the reason to the target account's inbox. The response reports `inboxNotified`.
+  Missing A4-01 leaves suspension available. A failure writing an installed inbox
+  rolls back the suspension, revocation and audit so an administrator can retry.
 - `GET /teacher-applications`: status-filtered applications (`pending`, `approved`,
   `rejected`, or `all`; default `pending`), with ten-row SQL pagination. The saved
   application basis/version and decision time/reason are distinct from the current
@@ -43,9 +47,10 @@ inspectable after the pending list refreshes. See `C_DELIVERY.md` for validation
 
 Account restoration and account creation are unavailable because A does not yet
 provide matching identity lifecycle functions. C does not bypass A by inserting
-accounts, assigning roles, or reactivating sessions itself. Notification delivery
-after disable and review still requires A4-01. This partial implementation does
-not close the whole C7-02 task.
+accounts, assigning roles, or reactivating sessions itself. The suspended account
+cannot log in to read its inbox. A's email worker currently skips disabled
+accounts. Reaching a suspended user outside the application needs A's delivery
+support. Teacher review notifications come from A's account service.
 
 The directory here and the read-only canonical Admin directory now use the same
 UUID users. Their response and mutation contracts remain separate. School-email
