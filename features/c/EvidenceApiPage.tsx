@@ -29,6 +29,7 @@ const checkableSources = new Set<Evidence["source_type"]>(["discussion", "file",
 function SourceSnapshotContent({ snapshot, sourceType, projectId }: { snapshot: Evidence["source_snapshots"][number]; sourceType: Evidence["source_type"]; projectId: string }) {
   // Canonical snapshots wrap the immutable source payload; never dump IDs or provider metadata.
   const source = snapshotRecord(snapshot.content.source);
+  const fileVersionId = typeof source.version_id === "string" && isUuid(source.version_id) ? source.version_id : null;
   const text = ["title", "body", "summary", "description"].map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
   const replies = sourceType === "discussion" && Array.isArray(source.replies) ? source.replies.map(snapshotRecord).map((reply) => reply.body).filter((body): body is string => typeof body === "string") : [];
   return <>
@@ -38,8 +39,10 @@ function SourceSnapshotContent({ snapshot, sourceType, projectId }: { snapshot: 
     {sourceType === "screenshot" && source.provenance === "registered_project_file" && typeof source.mime_type === "string" && !["image/png", "image/jpeg"].includes(source.mime_type) && <p>原截图已被其他文件类型替换（{source.mime_type}）。</p>}
     <p className="whitespace-pre-wrap">{text || "该来源快照不包含可直接展示的文字。"}</p>
     {(sourceType === "file" || sourceType === "screenshot") && source.provenance === "registered_project_file" &&
-      typeof source.file_id === "string" && isUuid(source.file_id) && typeof source.version_no === "number" &&
-      <Link className="gp-link" href={`/projects/${projectId}/files?file=${source.file_id}`}>查看原文件及版本 v{source.version_no}</Link>}
+      typeof source.file_id === "string" && isUuid(source.file_id) &&
+      <Link className="gp-link" href={`/projects/${projectId}/files?file=${source.file_id}${fileVersionId ? `&version=${fileVersionId}` : ""}`}>
+        {fileVersionId ? `查看证据引用的文件版本${typeof source.version_no === "number" ? ` v${source.version_no}` : ""}` : "查看原文件"}
+      </Link>}
     {replies.length > 0 && <div className="mt-3"><h4 className="font-semibold">快照中的回复</h4>{replies.map((body, index) => <p key={index} className="my-2 whitespace-pre-wrap">{body}</p>)}</div>}
   </>;
 }
