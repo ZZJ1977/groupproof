@@ -54,14 +54,17 @@ def test_settings_missing_means_not_connected(monkeypatch):
 
 
 def test_app_jwt_is_rs256_signed_with_app_id(private_pem):
-    client = github.GithubClient(_settings(private_pem), now=lambda: NOW)
+    signed_at = datetime.now(UTC)
+    client = github.GithubClient(_settings(private_pem), now=lambda: signed_at)
     token = client._app_jwt()
     public = rsa.generate_private_key(public_exponent=65537, key_size=2048)  # 不同的钥匙不能验证
     with pytest.raises(jwt.InvalidSignatureError):
         jwt.decode(token, public.public_key(), algorithms=["RS256"])
     key = serialization.load_pem_private_key(private_pem.encode(), password=None).public_key()
-    claims = jwt.decode(token, key, algorithms=["RS256"], options={"verify_iat": False})
-    assert claims["iss"] == APP_ID and claims["exp"] - claims["iat"] <= 600
+    claims = jwt.decode(token, key, algorithms=["RS256"])
+    assert claims["iss"] == APP_ID
+    assert claims["iat"] <= int(signed_at.timestamp()) < claims["exp"]
+    assert 0 < claims["exp"] - claims["iat"] <= 600
 
 
 def test_escaped_newlines_in_env_key_are_restored(monkeypatch, private_pem):
