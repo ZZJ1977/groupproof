@@ -84,3 +84,19 @@ def explain_risk(payload: dict[str, Any]) -> dict:
         "explanation": "固定假结果：根据逾期任务数量和风险等级粗略估计，接入真实 AI 后替换。",
         "suggestions": ["优先处理逾期任务", "在组会上确认负责人和截止时间"],
     }
+
+
+def analyze_implementation(payload: dict[str, Any]) -> dict:
+    return {
+        "findings": [
+            {
+                "requirement_id": requirement["id"],
+                "status": "unclear",
+                "confidence": 0.0,
+                "reasons": ["【示例】固定假结果：接入真实 AI 后才会分析代码"],
+                "evidence": [],
+                "missing": [],
+            }
+            for requirement in payload["requirements"]
+        ]
+    }

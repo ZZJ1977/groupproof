@@ -1,7 +1,7 @@
 """A7-01 AI 调用中间层：以后换 AI 厂商只改这里。
 
-- ``AI_PROVIDER`` 选择实现：``fake``（返回固定假结果，让 B、D 先接页面）；
-  未设置、``none`` 或尚未接入的厂商名 → AI 不可用；
+- ``AI_PROVIDER`` 选择实现：``fake``（固定假结果）或 ``openrouter``（真实模型，需要 AI_API_KEY，
+  可选 AI_MODEL）；未设置、``none`` 或未知名称 → AI 不可用；
 - 正式环境（``APP_ENV=production``）禁止 ``fake``，避免假数据出现在正式网站；
 - 密钥只从环境变量（Railway 变量）读取：``AI_API_KEY``；
 - 调用失败或超时自动重试，最终失败时抛 ``AIUnavailable``，由函数层统一转成
@@ -56,7 +56,13 @@ def get_provider() -> AIProvider:
         if environment == "production":
             raise AIUnavailable("fake AI provider is disabled in production")
         return FakeProvider()
-    # 真实厂商在 A7-01 第二阶段接入（需要 AI_API_KEY）；未接入前一律视为不可用。
+    if name == "openrouter":
+        key = os.getenv("AI_API_KEY", "").strip()
+        if not key:
+            raise AIUnavailable("AI_API_KEY is not set")
+        from app.modules.a.ai.openrouter import DEFAULT_MODEL, OpenRouterProvider
+
+        return OpenRouterProvider(key, os.getenv("AI_MODEL", "").strip() or DEFAULT_MODEL)
     raise AIUnavailable("AI provider is not configured")
 
 

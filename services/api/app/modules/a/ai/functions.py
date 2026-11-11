@@ -25,6 +25,8 @@ from app.modules.a.ai.provider import (
 from app.modules.a.ai.schemas import (
     EvidenceMatchInput,
     EvidenceMatchResult,
+    ImplementationAnalysisInput,
+    ImplementationAnalysisResult,
     RequirementExtractionInput,
     RequirementExtractionResult,
     RiskExplanationInput,
@@ -102,3 +104,29 @@ def explain_risk(
     payload: RiskExplanationInput, *, provider: AIProvider | None = None
 ) -> RiskExplanationResult:
     return _run("explain_risk", payload, RiskExplanationResult, provider)
+
+
+def analyze_implementation(
+    payload: ImplementationAnalysisInput, *, provider: AIProvider | None = None
+) -> ImplementationAnalysisResult:
+    result = _run("analyze_implementation", payload, ImplementationAnalysisResult, provider)
+    known_requirements = {r.id for r in payload.requirements}
+    texts = {f.path: f.text for f in payload.files}
+    seen: set = set()
+    for finding in result.findings:
+        if finding.requirement_id not in known_requirements or finding.requirement_id in seen:
+            raise ai_unavailable()
+        seen.add(finding.requirement_id)
+        # 声称已实现或部分实现，必须给出出处；出处必须是真实存在的文件和原文。
+        if finding.status in ("implemented", "partial") and not finding.evidence:
+            raise ai_unavailable()
+        for item in finding.evidence:
+            text = texts.get(item.path)
+            if text is None or _squash(item.quote) not in _squash(text):
+                raise ai_unavailable()
+    return result
+
+
+def _squash(value: str) -> str:
+    """忽略空白差异后再比对引文，避免因缩进或换行不同误判。"""
+    return "".join(value.split())
