@@ -3,7 +3,7 @@
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CApiError, createCClient } from "@/lib/api/c-client";
-import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type UsageQuery } from "@/lib/api/c-governance-client";
+import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type SharedAuditQuery, type UsageQuery } from "@/lib/api/c-governance-client";
 import { useWorkspace } from "@/lib/workspace";
 import type { components } from "@/packages/domain/api.generated";
 import { Box, Empty, Header, Notice, Table, formatDateTime } from "@/features/governance/primitives";
@@ -348,10 +348,74 @@ function AuthLogsPage() {
   </>;
 }
 
+function SharedLogsPage() {
+  const { userId } = useWorkspace();
+  const { query, updateQuery } = useUrlQuery();
+  const [denied, setDenied] = useState<CApiError | null>(null);
+  const page = pageNumber(query.get("shared_page"));
+  const filters: SharedAuditQuery = {
+    page, page_size: 10, actor_id: selected(query.get("shared_actor")),
+    action_prefix: query.get("shared_action") || undefined,
+    target_type: query.get("shared_type") || undefined, target_id: query.get("shared_target") || undefined,
+    since: query.get("shared_since") || undefined, until: query.get("shared_until") || undefined,
+  };
+  const result = useQuery({
+    queryKey: ["c-shared-audit", userId, filters],
+    queryFn: async () => {
+      try { return await api.sharedAuditEvents(filters); }
+      catch (error) { if (unauthorized(error)) setDenied(error); throw error; }
+    },
+    enabled: !denied, ...querySettings,
+  });
+  const data = !denied && result.isSuccess && !result.isFetching ? result.data : undefined;
+  async function refresh() { if ((await result.refetch()).isSuccess) setDenied(null); }
+  const [error, setError] = useState("");
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const type = inputValue(form, "type"), target = inputValue(form, "target");
+    if (Boolean(type) !== Boolean(target)) { setError("请同时填写对象类型和标识。"); return; }
+    const since = isoTime(inputValue(form, "since")), until = isoTime(inputValue(form, "until"));
+    if (since && until && since >= until) { setError("结束时间须晚于开始时间。"); return; }
+    setError("");
+    updateQuery({shared_action: inputValue(form, "prefix") || null, shared_type: type || null, shared_target: target || null,
+      shared_since: since || null, shared_until: until || null, shared_page: null});
+  }
+  return <>
+    <Header title="共享服务操作记录" description="查看已记录的操作、对象、变更和理由。此来源未记录操作时角色和执行结果。"
+      action={<button className={styles.button} type="button" disabled={result.isFetching} onClick={() => void refresh()}>刷新操作记录</button>} />
+    <ErrorBox error={denied ?? result.error} retry={() => void refresh()} />
+    {result.isFetching && <p role="status">正在读取操作记录…</p>}
+    {!denied && <>
+    <UserSelect label="筛选操作人" value={filters.actor_id || ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({shared_actor: value || null, shared_page: null})}/>
+    <form className={styles.filters} key={JSON.stringify([filters.action_prefix, filters.target_type, filters.target_id, filters.since, filters.until])} onSubmit={search}>
+      <Field label="操作前缀"><input className={styles.input} name="prefix" maxLength={120} defaultValue={filters.action_prefix || ""}/></Field>
+      <Field label="对象类型"><input className={styles.input} name="type" maxLength={60} defaultValue={filters.target_type || ""}/></Field>
+      <Field label="对象标识"><input className={styles.input} name="target" maxLength={120} defaultValue={filters.target_id || ""}/></Field>
+      <Field label="起始时间"><input className={styles.input} name="since" type="datetime-local" defaultValue={filters.since ? localTime(filters.since) : ""}/></Field>
+      <Field label="截止时间（不含）"><input className={styles.input} name="until" type="datetime-local" defaultValue={filters.until ? localTime(filters.until) : ""}/></Field>
+      <button type="submit" className={styles.primaryButton}>查询操作记录</button>
+    </form>
+    {error && <p role="alert">{error}</p>}
+    {data && <Box><Table><thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>对象</th><th>详情</th></tr></thead><tbody>
+      {data.items.map((row) => <tr key={row.id}><td>{formatDateTime(row.occurred_at)}</td><td>{row.action}</td>
+        <td>{row.actor_id || "系统"}</td><td>{row.target_type} / {row.target_id}</td><td><details>
+          <summary>查看操作详情</summary><p>理由：{row.reason ?? "未记录"}</p>
+          <h3>变更前</h3><pre>{row.before === null ? "无可展示的快照" : JSON.stringify(row.before, null, 2)}</pre>
+          <h3>变更后</h3><pre>{row.after === null ? "无可展示的快照" : JSON.stringify(row.after, null, 2)}</pre>
+          {row.metadata_redacted && <small>仅显示可公开的变更字段。</small>}
+        </details></td></tr>)}
+    </tbody></Table>{!data.items.length && <Empty>没有符合条件的操作记录</Empty>}
+    <Pager page={data.page} total={data.total} change={(next) => updateQuery({shared_page: String(next)})}/></Box>}
+    </>}
+  </>;
+}
+
 function LogsPage() {
   const { query, updateQuery } = useUrlQuery();
   const authentication = query.get("source") === "auth";
-  return <><div className={styles.actions} aria-label="日志来源"><button className={styles.button} type="button" aria-pressed={authentication} onClick={() => updateQuery({ source: "auth" })}>认证日志</button><button className={styles.button} type="button" aria-pressed={!authentication} onClick={() => updateQuery({ source: "business" })}>全站业务日志</button></div>{authentication ? <AuthLogsPage /> : <BusinessLogsPage />}</>;
+  const shared = query.get("source") === "shared";
+  return <><div className={styles.actions} aria-label="日志来源"><button className={styles.button} type="button" aria-pressed={authentication} onClick={() => updateQuery({ source: "auth" })}>认证日志</button><button className={styles.button} type="button" aria-pressed={!authentication && !shared} onClick={() => updateQuery({ source: "business" })}>全站业务日志</button><button className={styles.button} type="button" aria-pressed={shared} onClick={() => updateQuery({ source: "shared" })}>共享服务操作记录</button></div>{authentication ? <AuthLogsPage /> : shared ? <SharedLogsPage /> : <BusinessLogsPage />}</>;
 }
 
 function costs(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" / ") || "无费用样本"; }
