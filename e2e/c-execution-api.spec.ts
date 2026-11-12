@@ -373,7 +373,7 @@ test("C2 completeness check saves the draft before opening page 16 and restores 
   await expect(page).toHaveURL(new RegExp(`${submitPath}$`));
   await check.click();
   await expect(page).toHaveURL(new RegExp(`/tasks/${tid}/evidence-check$`));
-  await expect(page.getByText(/验收服务暂未接入/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "证据完整性检查" })).toBeVisible();
   expect(writes).toHaveLength(3);
   expect(writes[0].key).toBeTruthy();
   expect(writes[1]).toEqual(writes[0]);
