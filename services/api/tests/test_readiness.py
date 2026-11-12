@@ -7,7 +7,17 @@ from app import main
 
 
 @pytest.mark.parametrize(
-    "revision, status", [("0021", 200), ("0020", 503), ("0019", 503), ("0015", 503), (None, 503)]
+    "revision, status",
+    [
+        ("0024", 200),
+        ("0023", 503),
+        ("0022", 503),
+        ("0021", 503),
+        ("0020", 503),
+        ("0019", 503),
+        ("0015", 503),
+        (None, 503),
+    ],
 )
 def test_readiness_requires_current_migrations(monkeypatch, revision, status):
     engine = MagicMock()

@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 from uuid import UUID
 
@@ -196,6 +196,8 @@ class ProjectRelation:
     teacher: bool
     ta: bool
     course_peer: bool
+    # 有 C 批准的、现在仍有效的项目范围临时只读授权（只读，不等于成员）。
+    granted_read: bool = False
 
     @property
     def staff(self) -> bool:
@@ -407,7 +409,11 @@ def require_project_read(session: Session, user: User | None, project_id: UUID) 
     require_active(user)
     relation = project_relation(session, user, project_id)
     if not (relation.member or relation.staff):
-        raise ApiError(404, "PROJECT_NOT_FOUND", "项目不存在。")
+        from app.modules.a.access_grants import has_read_grant
+
+        if not has_read_grant(session, user.id, project_id):
+            raise ApiError(404, "PROJECT_NOT_FOUND", "项目不存在。")
+        return replace(relation, granted_read=True)  # 到期或撤销后下一次读取就会走上面的 404
     return relation
 
 
@@ -417,7 +423,9 @@ def require_project_member(
     """本项目成员；``write=True`` 时还要求项目可写（未归档/定稿、课程未结束）。"""
     relation = require_project_read(session, user, project_id)
     if not relation.member:
-        raise ApiError(403, "PROJECT_MEMBER_REQUIRED", "只有本项目成员可以执行此操作。")
+        if write or not relation.granted_read:
+            raise ApiError(403, "PROJECT_MEMBER_REQUIRED", "只有本项目成员可以执行此操作。")
+        return relation  # 临时授权：只读
     if write:
         _require_writable(relation)
     return relation

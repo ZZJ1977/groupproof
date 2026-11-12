@@ -1,6 +1,85 @@
 {
   "components": {
     "schemas": {
+      "AccessGrantDTO": {
+        "properties": {
+          "applicant_id": {
+            "format": "uuid",
+            "title": "Applicant Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "project",
+              "task",
+              "evidence"
+            ],
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "revoke_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoke Reason"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "applicant_id",
+          "project_id",
+          "resource_type",
+          "resource_id",
+          "expires_at",
+          "revoked_at",
+          "revoke_reason"
+        ],
+        "title": "AccessGrantDTO",
+        "type": "object"
+      },
       "AccessRequestDTO": {
         "properties": {
           "applicant_id": {
@@ -4755,6 +4834,90 @@
         "title": "EvidenceSnapshotDTO",
         "type": "object"
       },
+      "FeishuAttachmentDTO": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "content_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Sha256"
+          },
+          "file_key": {
+            "title": "File Key",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "file",
+              "audio",
+              "media"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "file_key",
+          "kind",
+          "name",
+          "size_bytes",
+          "content_sha256",
+          "verified_at",
+          "available"
+        ],
+        "title": "FeishuAttachmentDTO",
+        "type": "object"
+      },
       "FeishuAvailableChatDTO": {
         "properties": {
           "chat_id": {
@@ -4790,6 +4953,111 @@
           "chat_id"
         ],
         "title": "FeishuChatLinkDTO",
+        "type": "object"
+      },
+      "FeishuMessageDetailDTO": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuAttachmentDTO"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "msg_type": {
+            "title": "Msg Type",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuMessageVersionDTO"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "message_id",
+          "msg_type",
+          "text",
+          "deleted",
+          "version_no",
+          "content_hash",
+          "occurred_at",
+          "versions",
+          "attachments"
+        ],
+        "title": "FeishuMessageDetailDTO",
+        "type": "object"
+      },
+      "FeishuMessageVersionDTO": {
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version_no",
+          "content_hash",
+          "text",
+          "deleted",
+          "recorded_at"
+        ],
+        "title": "FeishuMessageVersionDTO",
         "type": "object"
       },
       "FeishuSyncDTO": {
@@ -5181,6 +5449,187 @@
         "title": "FileVersionDTO",
         "type": "object"
       },
+      "GithubActivityDTO": {
+        "properties": {
+          "author_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Login"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "commit",
+              "pull_request",
+              "ci_run"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "external_id",
+          "title",
+          "summary",
+          "state",
+          "author_login",
+          "author_name",
+          "author_user_id",
+          "url",
+          "occurred_at",
+          "deleted"
+        ],
+        "title": "GithubActivityDTO",
+        "type": "object"
+      },
+      "GithubActivityPageDTO": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GithubActivityDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "GithubActivityPageDTO",
+        "type": "object"
+      },
+      "GithubLoginDTO": {
+        "properties": {
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          }
+        },
+        "required": [
+          "login"
+        ],
+        "title": "GithubLoginDTO",
+        "type": "object"
+      },
+      "GithubLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "login": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          }
+        },
+        "title": "GithubLoginRequest",
+        "type": "object"
+      },
       "GithubRepoDTO": {
         "properties": {
           "default_branch": {
@@ -5225,12 +5674,37 @@
       },
       "GithubSyncDTO": {
         "properties": {
+          "associated": {
+            "default": 0,
+            "title": "Associated",
+            "type": "integer"
+          },
+          "ci_runs": {
+            "default": 0,
+            "title": "Ci Runs",
+            "type": "integer"
+          },
+          "commits": {
+            "default": 0,
+            "title": "Commits",
+            "type": "integer"
+          },
+          "deleted_sources": {
+            "default": 0,
+            "title": "Deleted Sources",
+            "type": "integer"
+          },
           "fetched": {
             "title": "Fetched",
             "type": "integer"
           },
           "files": {
             "title": "Files",
+            "type": "integer"
+          },
+          "pulls": {
+            "default": 0,
+            "title": "Pulls",
             "type": "integer"
           },
           "removed": {
@@ -6555,6 +7029,22 @@
         "title": "ReviewIn",
         "type": "object"
       },
+      "RevokeGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeGrantRequest",
+        "type": "object"
+      },
       "RiskTransition": {
         "properties": {
           "action": {
@@ -6847,6 +7337,22 @@
           "expected_version"
         ],
         "title": "StartTaskRequest",
+        "type": "object"
+      },
+      "SuccessResponse_AccessGrantDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccessGrantDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AccessGrantDTO]",
         "type": "object"
       },
       "SuccessResponse_AccessRequestDetailDTO_": {
@@ -7313,6 +7819,22 @@
         "title": "SuccessResponse[EvidencePageDTO]",
         "type": "object"
       },
+      "SuccessResponse_FeishuAttachmentDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuAttachmentDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuAttachmentDTO]",
+        "type": "object"
+      },
       "SuccessResponse_FeishuChatLinkDTO_": {
         "properties": {
           "data": {
@@ -7327,6 +7849,22 @@
           "meta"
         ],
         "title": "SuccessResponse[FeishuChatLinkDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_FeishuMessageDetailDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuMessageDetailDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuMessageDetailDTO]",
         "type": "object"
       },
       "SuccessResponse_FeishuSyncDTO_": {
@@ -7375,6 +7913,38 @@
           "meta"
         ],
         "title": "SuccessResponse[FilePageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubActivityPageDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubActivityPageDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubActivityPageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubLoginDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubLoginDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubLoginDTO]",
         "type": "object"
       },
       "SuccessResponse_GithubRepoDTO_": {
@@ -9004,6 +9574,77 @@
         ]
       }
     },
+    "/api/v1/a/access-grants/{grant_id}/revoke": {
+      "post": {
+        "description": "管理员撤销一份临时只读授权；撤销后下一次读取立即失效，重复撤销不改写原记录。",
+        "operationId": "revoke_access_grant_api_v1_a_access_grants__grant_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AccessGrantDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Access Grant",
+        "tags": [
+          "a"
+        ]
+      }
+    },
     "/api/v1/a/ai-usage": {
       "get": {
         "description": "管理员查看 AI 调用记录（谁、哪个功能、哪个模型、成败、token、费用）。",
@@ -9316,6 +9957,67 @@
         ]
       }
     },
+    "/api/v1/a/me/github-login": {
+      "put": {
+        "description": "声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。",
+        "operationId": "set_my_github_login_api_v1_a_me_github_login_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubLoginDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set My Github Login",
+        "tags": [
+          "a"
+        ]
+      }
+    },
     "/api/v1/a/projects": {
       "post": {
         "operationId": "create_personal_project_api_v1_a_projects_post",
@@ -9371,6 +10073,77 @@
           }
         },
         "summary": "Create Personal Project",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/attachments/{attachment_id}/verify": {
+      "post": {
+        "description": "下载附件并记录 SHA-256 指纹，之后可用来核对附件没有被替换。",
+        "operationId": "verify_feishu_attachment_api_v1_a_projects__project_id__feishu_attachments__attachment_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuAttachmentDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Feishu Attachment",
         "tags": [
           "a"
         ]
@@ -9564,6 +10337,77 @@
         ]
       }
     },
+    "/api/v1/a/projects/{project_id}/feishu/messages/{message_row_id}": {
+      "get": {
+        "description": "项目成员查看一条飞书消息的脱敏全文、所有版本和附件引用。",
+        "operationId": "get_feishu_message_api_v1_a_projects__project_id__feishu_messages__message_row_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_row_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Row Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuMessageDetailDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Feishu Message",
+        "tags": [
+          "a"
+        ]
+      }
+    },
     "/api/v1/a/projects/{project_id}/feishu/sync": {
       "post": {
         "operationId": "sync_feishu_api_v1_a_projects__project_id__feishu_sync_post",
@@ -9619,6 +10463,129 @@
           }
         },
         "summary": "Sync Feishu",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/activity": {
+      "get": {
+        "description": "项目成员查看本项目已同步的提交、合并请求和 CI 运行（新的在前）。",
+        "operationId": "list_github_activity_api_v1_a_projects__project_id__github_activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "commit",
+                    "pull_request",
+                    "ci_run"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "author_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubActivityPageDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Github Activity",
         "tags": [
           "a"
         ]

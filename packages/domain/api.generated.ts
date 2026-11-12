@@ -74,6 +74,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/access-grants/{grant_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Access Grant
+         * @description 管理员撤销一份临时只读授权；撤销后下一次读取立即失效，重复撤销不改写原记录。
+         */
+        post: operations["revoke_access_grant_api_v1_a_access_grants__grant_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/ai-usage": {
         parameters: {
             query?: never;
@@ -114,6 +134,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/me/github-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set My Github Login
+         * @description 声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。
+         */
+        put: operations["set_my_github_login_api_v1_a_me_github_login_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects": {
         parameters: {
             query?: never;
@@ -125,6 +165,26 @@ export interface paths {
         put?: never;
         /** Create Personal Project */
         post: operations["create_personal_project_api_v1_a_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/feishu/attachments/{attachment_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Feishu Attachment
+         * @description 下载附件并记录 SHA-256 指纹，之后可用来核对附件没有被替换。
+         */
+        post: operations["verify_feishu_attachment_api_v1_a_projects__project_id__feishu_attachments__attachment_id__verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -166,6 +226,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/projects/{project_id}/feishu/messages/{message_row_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feishu Message
+         * @description 项目成员查看一条飞书消息的脱敏全文、所有版本和附件引用。
+         */
+        get: operations["get_feishu_message_api_v1_a_projects__project_id__feishu_messages__message_row_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects/{project_id}/feishu/sync": {
         parameters: {
             query?: never;
@@ -177,6 +257,26 @@ export interface paths {
         put?: never;
         /** Sync Feishu */
         post: operations["sync_feishu_api_v1_a_projects__project_id__feishu_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/github/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Github Activity
+         * @description 项目成员查看本项目已同步的提交、合并请求和 CI 运行（新的在前）。
+         */
+        get: operations["list_github_activity_api_v1_a_projects__project_id__github_activity_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1928,6 +2028,48 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessGrantDTO */
+        AccessGrantDTO: {
+            /**
+             * Applicant Id
+             * Format: uuid
+             */
+            applicant_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Resource Id
+             * Format: uuid
+             */
+            resource_id: string;
+            /**
+             * Resource Type
+             * @enum {string}
+             */
+            resource_type: "project" | "task" | "evidence";
+            /** Revoke Reason */
+            revoke_reason: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
         /** AccessRequestDetailDTO */
         AccessRequestDetailDTO: {
             /**
@@ -3814,6 +3956,31 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** FeishuAttachmentDTO */
+        FeishuAttachmentDTO: {
+            /** Available */
+            available: boolean;
+            /** Content Sha256 */
+            content_sha256: string | null;
+            /** File Key */
+            file_key: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "file" | "audio" | "media";
+            /** Name */
+            name: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Verified At */
+            verified_at: string | null;
+        };
         /** FeishuAvailableChatDTO */
         FeishuAvailableChatDTO: {
             /** Chat Id */
@@ -3830,6 +3997,53 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+        };
+        /** FeishuMessageDetailDTO */
+        FeishuMessageDetailDTO: {
+            /** Attachments */
+            attachments: components["schemas"]["FeishuAttachmentDTO"][];
+            /** Chat Id */
+            chat_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message Id */
+            message_id: string;
+            /** Msg Type */
+            msg_type: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Text */
+            text: string;
+            /** Version No */
+            version_no: number;
+            /** Versions */
+            versions: components["schemas"]["FeishuMessageVersionDTO"][];
+        };
+        /** FeishuMessageVersionDTO */
+        FeishuMessageVersionDTO: {
+            /** Content Hash */
+            content_hash: string;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Text */
+            text: string;
+            /** Version No */
+            version_no: number;
         };
         /** FeishuSyncDTO */
         FeishuSyncDTO: {
@@ -4028,6 +4242,63 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** GithubActivityDTO */
+        GithubActivityDTO: {
+            /** Author Login */
+            author_login: string | null;
+            /** Author Name */
+            author_name: string | null;
+            /** Author User Id */
+            author_user_id: string | null;
+            /** Deleted */
+            deleted: boolean;
+            /** External Id */
+            external_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "commit" | "pull_request" | "ci_run";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** State */
+            state: string | null;
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string | null;
+        };
+        /** GithubActivityPageDTO */
+        GithubActivityPageDTO: {
+            /** Items */
+            items: components["schemas"]["GithubActivityDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** GithubLoginDTO */
+        GithubLoginDTO: {
+            /** Login */
+            login: string | null;
+        };
+        /** GithubLoginRequest */
+        GithubLoginRequest: {
+            /** Login */
+            login?: string | null;
+        };
         /** GithubRepoDTO */
         GithubRepoDTO: {
             /** Default Branch */
@@ -4046,10 +4317,35 @@ export interface components {
         };
         /** GithubSyncDTO */
         GithubSyncDTO: {
+            /**
+             * Associated
+             * @default 0
+             */
+            associated: number;
+            /**
+             * Ci Runs
+             * @default 0
+             */
+            ci_runs: number;
+            /**
+             * Commits
+             * @default 0
+             */
+            commits: number;
+            /**
+             * Deleted Sources
+             * @default 0
+             */
+            deleted_sources: number;
             /** Fetched */
             fetched: number;
             /** Files */
             files: number;
+            /**
+             * Pulls
+             * @default 0
+             */
+            pulls: number;
             /** Removed */
             removed: number;
             /** Repos */
@@ -4557,6 +4853,11 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** RevokeGrantRequest */
+        RevokeGrantRequest: {
+            /** Reason */
+            reason: string;
+        };
         /** RiskTransition */
         RiskTransition: {
             /** Action */
@@ -4677,6 +4978,11 @@ export interface components {
         StartTaskRequest: {
             /** Expected Version */
             expected_version: number;
+        };
+        /** SuccessResponse[AccessGrantDTO] */
+        SuccessResponse_AccessGrantDTO_: {
+            data: components["schemas"]["AccessGrantDTO"];
+            meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[AccessRequestDetailDTO] */
         SuccessResponse_AccessRequestDetailDTO_: {
@@ -4831,9 +5137,19 @@ export interface components {
             data: components["schemas"]["EvidencePageDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[FeishuAttachmentDTO] */
+        SuccessResponse_FeishuAttachmentDTO_: {
+            data: components["schemas"]["FeishuAttachmentDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[FeishuChatLinkDTO] */
         SuccessResponse_FeishuChatLinkDTO_: {
             data: components["schemas"]["FeishuChatLinkDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[FeishuMessageDetailDTO] */
+        SuccessResponse_FeishuMessageDetailDTO_: {
+            data: components["schemas"]["FeishuMessageDetailDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[FeishuSyncDTO] */
@@ -4849,6 +5165,16 @@ export interface components {
         /** SuccessResponse[FilePageDTO] */
         SuccessResponse_FilePageDTO_: {
             data: components["schemas"]["FilePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GithubActivityPageDTO] */
+        SuccessResponse_GithubActivityPageDTO_: {
+            data: components["schemas"]["GithubActivityPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GithubLoginDTO] */
+        SuccessResponse_GithubLoginDTO_: {
+            data: components["schemas"]["GithubLoginDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[GithubRepoDTO] */
@@ -5587,6 +5913,43 @@ export interface operations {
             };
         };
     };
+    revoke_access_grant_api_v1_a_access_grants__grant_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessGrantDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_ai_usage_events_api_v1_a_ai_usage_get: {
         parameters: {
             query?: {
@@ -5664,6 +6027,41 @@ export interface operations {
             };
         };
     };
+    set_my_github_login_api_v1_a_me_github_login_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GithubLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubLoginDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_personal_project_api_v1_a_projects_post: {
         parameters: {
             query?: never;
@@ -5686,6 +6084,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_PersonalProjectDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_feishu_attachment_api_v1_a_projects__project_id__feishu_attachments__attachment_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                attachment_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_FeishuAttachmentDTO_"];
                 };
             };
             /** @description Validation Error */
@@ -5802,6 +6234,40 @@ export interface operations {
             };
         };
     };
+    get_feishu_message_api_v1_a_projects__project_id__feishu_messages__message_row_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                message_row_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_FeishuMessageDetailDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_feishu_api_v1_a_projects__project_id__feishu_sync_post: {
         parameters: {
             query?: never;
@@ -5822,6 +6288,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_FeishuSyncDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_github_activity_api_v1_a_projects__project_id__github_activity_get: {
+        parameters: {
+            query?: {
+                author_id?: string | null;
+                kind?: ("commit" | "pull_request" | "ci_run") | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubActivityPageDTO_"];
                 };
             };
             /** @description Validation Error */
