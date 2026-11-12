@@ -24,12 +24,14 @@ from app.auth.services import email_challenges, sessions
 from app.db.models import ProgressEvent, TaskAssignee, User
 from app.db.session import get_session
 from app.main import request_context
+from app.modules.a.models import Notification
 from app.modules.c.admin_users_schemas import AdminUserFilters
 from app.modules.c.admin_users_service import get_admin_user, list_admin_users
 from app.modules.c.course_files_permissions import course_access
 from app.modules.c.execution_router import router as execution_router
 from app.modules.c.governance_common import current_actor
 from app.modules.c.governance_course_service import require_teacher
+from app.modules.c.inbox_router import router as inbox_router
 from app.modules.c.notification_delivery import get_notification_writer
 from app.modules.c.permissions import get_project_access
 from app.modules.c.school_email import has_verified_school_email, school_email_binding_verified
@@ -62,6 +64,7 @@ def http(db, scope, monkeypatch):
     app.add_exception_handler(AppError, app_error_handler)
     app.include_router(identity_router)
     app.include_router(execution_router, prefix="/api/v1")
+    app.include_router(inbox_router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_session] = lambda: db
     # Keep issued rows in the identity map: SQLite loses timezone metadata when
@@ -85,6 +88,43 @@ def http(db, scope, monkeypatch):
 
         yield SimpleNamespace(client=client, sign_in=sign_in)
     get_settings.cache_clear()
+
+
+def test_restored_user_receives_the_original_disable_reason_and_restore_notice(http, scope, db):
+    target = scope.users["member"]
+    http.sign_in(scope.users["admin"])
+    prefix = f"/api/v1/c-admin/users/{target.id}"
+    disabled = http.client.post(
+        prefix + "/disable", json={"expectedVersion": target.version, "reason": "核验资料"}
+    )
+    assert disabled.status_code == 200, disabled.text
+    receipt = disabled.json()["data"]
+    assert receipt["inboxNotified"] is True
+    enabled = http.client.post(
+        prefix + "/enable", json={"expectedVersion": receipt["version"], "reason": "核验完成"}
+    )
+    assert enabled.status_code == 200, enabled.text
+    http.sign_in(target)
+    # SQLite strips timezone offsets when it materializes persisted timestamps.
+    # PostgreSQL supports A's full timestamped inbox HTTP contract.
+    if db.bind.dialect.name == "postgresql":
+        response = http.client.get("/api/v1/me/notifications")
+        assert response.status_code == 200, response.text
+        notices = response.json()["data"]["items"]
+    else:
+        notices = (
+            db.execute(
+                select(Notification.title, Notification.description).where(
+                    Notification.recipient_id == target.id
+                )
+            )
+            .mappings()
+            .all()
+        )
+    assert [
+        (row["title"], row["description"]) for row in notices if row["title"] == "账号已停用"
+    ] == [("账号已停用", "核验资料")]
+    assert sum(row["title"] == "账号已恢复" for row in notices) == 1
 
 
 @pytest.mark.parametrize(

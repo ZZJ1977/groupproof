@@ -54,7 +54,7 @@ def get_note(
     *,
     history: bool = False,
 ) -> dict | None:
-    get_project_access(session, user, project_id)
+    get_project_access(session, user, project_id, resource_type="task", resource_id=task_id)
     task_in_project(session, task_id, project_id)
     note = session.scalar(select(TaskNote).where(TaskNote.task_id == task_id))
     return note_data(session, note, history=history) if note else None

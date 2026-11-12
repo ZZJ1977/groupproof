@@ -263,7 +263,12 @@ def grant_change_authorization(db: DbSession, user: User, *, target_email: str) 
 
 
 def submit_teacher_application(
-    db: DbSession, user: User, *, expected_version: int, materials: dict[str, Any] | None
+    db: DbSession,
+    user: User,
+    *,
+    expected_version: int,
+    materials: dict[str, Any] | None,
+    submitted_by: User | None = None,
 ) -> TeacherApplication:
     if expected_version != user.version:
         raise AppError("VERSION_CONFLICT", 409)
@@ -288,7 +293,8 @@ def submit_teacher_application(
         audit.record(
             db,
             "teacher_application.resubmitted",
-            actor_id=user.id,
+            actor_id=submitted_by.id if submitted_by else user.id,
+            target_user_id=user.id if submitted_by else None,
             changed_fields=["teacherReviewStatus"],
         )
         db.flush()
@@ -306,7 +312,8 @@ def submit_teacher_application(
     audit.record(
         db,
         "teacher_application.submitted",
-        actor_id=user.id,
+        actor_id=submitted_by.id if submitted_by else user.id,
+        target_user_id=user.id if submitted_by else None,
         changed_fields=["teacherReviewStatus"],
     )
     db.flush()
@@ -472,10 +479,11 @@ def admin_create_account(
     school_email: str,
     student_id: str | None = None,
     college: str | None = None,
+    submit_for_review: bool = False,
 ) -> User:
     """管理员创建学生/教师账号。
 
-    管理员已人工核对身份，所以学校邮箱记为已验证（方式 admin_created）；教师直接获得教师角色。
+    学校邮箱记为已核验。教师可进入审核流程，未指定审核方式时沿用直接授予角色。
     不生成也不返回任何密码：本人用该邮箱的「忘记密码」流程自行设置密码后登录。
     """
     from uuid import uuid4
@@ -485,6 +493,8 @@ def admin_create_account(
 
     if identity not in ("student", "teacher"):
         raise AppError("VALIDATION_ERROR", 400, field_errors={"identity": "invalid_identity"})
+    if submit_for_review and identity != "teacher":
+        raise AppError("VALIDATION_ERROR", 422, field_errors={"submitForReview": "teacher_only"})
     try:
         normalized_email = check_email_format(school_email)
     except ValueError:
@@ -525,7 +535,9 @@ def admin_create_account(
         student_id=(student_id or "").strip() or None,
         college=(college or "").strip() or None,
         requested_identity=identity,
-        roles=[identity],
+        roles=["student" if submit_for_review else identity],
+        # Teacher review commands bind to a positive version of the provisioned profile.
+        version=1 if submit_for_review else 0,
         account_status="enabled",
     )
     db.add(user)
@@ -560,6 +572,10 @@ def admin_create_account(
         changed_fields=["users", "school_email_bindings", "password_credentials"],
     )
     db.flush()
+    if submit_for_review:
+        submit_teacher_application(
+            db, user, expected_version=user.version, materials=None, submitted_by=admin
+        )
     return user
 
 

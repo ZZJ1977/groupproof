@@ -143,6 +143,18 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
     setError(null); setNotice("最新状态和已保存说明已刷新，输入仍保留；请对照后再次确认。");
   }
   if (!enabled) return <EmptyState title="任务地址无效" />;
+  if (!submission && context.error instanceof CApiError && context.error.code === "PROJECT_ACCESS_DENIED" &&
+      execution.isSuccess && !execution.isFetching && execution.data.temporary_read &&
+      execution.data.project_id === projectId && execution.data.task_id === taskId) {
+    const grantedTask = execution.data;
+    return <>
+      <PageHeader title={grantedTask.title ?? "任务详情"} description="临时只读访问" actions={<button className={apiButton} onClick={() => void refresh()}>刷新任务</button>} />
+      <Panel title="任务概览">
+        <p>{states[grantedTask.status]} · 进度 {grantedTask.progress}%</p>
+        {grantedTask.description && <p className="my-3 whitespace-pre-wrap">{grantedTask.description}</p>}
+      </Panel>
+    </>;
+  }
   return <>
     <PageHeader title={submission ? "任务说明与提交准备" : task?.title ?? "任务执行"} description={access?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || execution.isFetching} onClick={() => void refresh()}>刷新任务</button>} />
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>

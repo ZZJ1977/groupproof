@@ -152,7 +152,7 @@ def detail(
     session: Database,
     user: CurrentUser,
 ):
-    get_project_access(session, user, project_id)
+    get_project_access(session, user, project_id, resource_type="evidence", resource_id=evidence_id)
     row = evidence_in_project(session, evidence_id, project_id)
     return success(evidence_data(session, row, history=True), request)
 
