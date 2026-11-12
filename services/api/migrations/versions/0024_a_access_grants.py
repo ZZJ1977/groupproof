@@ -29,7 +29,10 @@ def upgrade() -> None:
         sa.Column("revoked_by_id", sa.UUID(), nullable=True),
         sa.Column("revoke_reason", sa.Text(), nullable=True),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["applicant_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["reviewer_id"], ["users.id"], ondelete="SET NULL"),
