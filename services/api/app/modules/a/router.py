@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -413,6 +413,12 @@ def analyze_github_code(
     return success(result, request)
 
 
+# 费用以十进制字符串输出；不用 Decimal 类型，避免 OpenAPI 快照随 pydantic 版本变化。
+DecimalText = Annotated[
+    str, BeforeValidator(lambda v: format(v, "f") if isinstance(v, Decimal) else v)
+]
+
+
 class AiUsageDTO(BaseModel):
     id: UUID
     occurred_at: datetime
@@ -425,7 +431,7 @@ class AiUsageDTO(BaseModel):
     error_code: str | None
     input_tokens: int | None
     output_tokens: int | None
-    cost: Decimal | None
+    cost: DecimalText | None
     currency: str | None
     latency_ms: int | None
 
@@ -445,7 +451,7 @@ class AiUsageSummaryDTO(BaseModel):
     failures: int
     input_tokens: int
     output_tokens: int
-    cost: Decimal
+    cost: DecimalText
 
 
 @router.get(
