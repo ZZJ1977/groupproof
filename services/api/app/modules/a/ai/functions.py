@@ -34,6 +34,7 @@ from app.modules.a.ai.schemas import (
     TaskSuggestionInput,
     TaskSuggestionResult,
 )
+from app.modules.a.ai.usage import metered, note_provider_call, note_provider_usage
 
 
 def ai_unavailable() -> ApiError:
@@ -48,11 +49,13 @@ def _run[ResultT: BaseModel](
 ) -> ResultT:
     try:
         provider = provider or get_provider()
+        note_provider_call(provider)
         raw = call_with_retry(
             lambda: provider.generate(
                 feature, payload.model_dump(mode="json"), timeout=DEFAULT_TIMEOUT_SECONDS
             )
         )
+        note_provider_usage(provider)
         return result_model.model_validate(
             {**raw, "provider": provider.name, "is_placeholder": provider.is_placeholder}
         )
@@ -60,6 +63,7 @@ def _run[ResultT: BaseModel](
         raise ai_unavailable() from exc
 
 
+@metered("extract_requirements")
 def extract_requirements(
     payload: RequirementExtractionInput, *, provider: AIProvider | None = None
 ) -> RequirementExtractionResult:
@@ -76,6 +80,7 @@ def extract_requirements(
     return result
 
 
+@metered("suggest_tasks")
 def suggest_tasks(
     payload: TaskSuggestionInput, *, provider: AIProvider | None = None
 ) -> TaskSuggestionResult:
@@ -88,6 +93,7 @@ def suggest_tasks(
     return result
 
 
+@metered("match_evidence")
 def match_evidence(
     payload: EvidenceMatchInput, *, provider: AIProvider | None = None
 ) -> EvidenceMatchResult:
@@ -100,12 +106,14 @@ def match_evidence(
     return result
 
 
+@metered("explain_risk")
 def explain_risk(
     payload: RiskExplanationInput, *, provider: AIProvider | None = None
 ) -> RiskExplanationResult:
     return _run("explain_risk", payload, RiskExplanationResult, provider)
 
 
+@metered("analyze_implementation")
 def analyze_implementation(
     payload: ImplementationAnalysisInput, *, provider: AIProvider | None = None
 ) -> ImplementationAnalysisResult:

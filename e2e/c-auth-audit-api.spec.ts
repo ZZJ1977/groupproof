@@ -163,7 +163,7 @@ test("C7 shared operation filters preserve opaque targets and permission loss hi
       page: 1, page_size: 10, total: 1, items: [{
         id: targetId, occurred_at: "2026-11-10T09:00:00Z", action: "plan.frozen",
         actor_id: null, target_type: "plan", target_id: "imported-plan-17",
-        reason: "全组确认", before: { status: "draft" }, after: { version_no: 2 }, metadata_redacted: true,
+        reason: "全组确认", before: { status: "draft" }, after: { version_no: 2 }, metadata_redacted: true, result: "success", actor_role: null,
       }],
     };
     return allowed ? ok(route, data) : fail(route, 403);
