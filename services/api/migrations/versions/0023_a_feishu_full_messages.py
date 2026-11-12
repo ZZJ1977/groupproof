@@ -29,7 +29,10 @@ def upgrade() -> None:
         sa.Column("attachments", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("deleted", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column(
-            "recorded_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "recorded_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["message_row_id"], ["a_feishu_messages.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
