@@ -39,6 +39,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
   const taskHref = `/projects/${projectId}/tasks/${taskId}`;
   return <main className="mx-auto max-w-5xl space-y-5 p-6">
     <Link className="gp-link" href={taskHref}>返回任务详情</Link>
+    {screen === 16 && <Link className="ml-4 gp-link" href={`${taskHref}/submit`}>返回提交草稿</Link>}
     <h1 className="text-2xl font-semibold">{screen === 16 ? "证据完整性检查" : "任务验收"}</h1>
     {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{error}</p>}
     {notice && <p role="status" className="rounded bg-green-50 p-3 text-green-700">{notice}</p>}
