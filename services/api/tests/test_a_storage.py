@@ -6,6 +6,7 @@ import hashlib
 import io
 import zipfile
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import a_fixtures as fixtures
@@ -23,6 +24,7 @@ from app.modules.c.course_files_storage import (
     UnavailableCourseStoragePort,
     get_course_storage_port,
 )
+from app.modules.c.course_files_storage import signed_link as course_signed_link
 from app.modules.c.files_storage import (
     UnavailableStoragePort,
     get_storage_port,
@@ -117,6 +119,59 @@ def test_upload_complete_resolve_and_sign(db, scope):
     )
     assert link.url.startswith("https://demo.supabase.co/")
     assert link.expires_at <= datetime.now(UTC) + timedelta(minutes=15)
+
+
+@pytest.mark.parametrize("scope_kind", ["project", "course"])
+def test_preview_preserves_signature_and_download_adds_original_filename(
+    db, scope, scope_kind, monkeypatch
+):
+    user = scope.users["leader"] if scope_kind == "project" else scope.users["teacher"]
+    scope_id = scope.project.id if scope_kind == "project" else scope.course.id
+    filename = "说明 #1 & 20%+今日.pdf"
+    client = FakeStorageClient()
+    ticket = storage.create_upload(
+        db,
+        user,
+        scope=scope_kind,
+        scope_id=scope_id,
+        filename=filename,
+        mime_type="application/pdf",
+        size_bytes=len(PDF),
+        client=client,
+    )
+    client.objects[ticket.object_id] = PDF
+    row = storage.complete_upload(db, user, ticket.receipt_id, client=client)
+    signed = (
+        f"https://{client.host}/storage/v1/object/sign/{ticket.object_id}?token=A%2fb+C%3D&v=%2B"
+    )
+
+    def sign(object_id, expires_in):
+        assert object_id == ticket.object_id and expires_in == storage.DOWNLOAD_URL_TTL_SECONDS
+        return signed
+
+    monkeypatch.setattr(client, "create_signed_download_url", sign)
+    if scope_kind == "project":
+        port = storage.SupabaseProjectStoragePort(SessionFactory(db), client)
+        issue = signed_link
+    else:
+        port = storage.SupabaseCourseStoragePort(SessionFactory(db), client)
+        issue = course_signed_link
+    args = {
+        f"{scope_kind}_id": scope_id,
+        "actor_id": user.id,
+        "provider": "supabase",
+        "object_id": ticket.object_id,
+        "revision": row.revision,
+    }
+    preview = issue(port, purpose="preview", **args)
+    download = issue(port, purpose="download", **args)
+    assert preview.url == signed
+    assert download.url.startswith(signed + "&download=")
+    parsed = urlsplit(download.url)
+    assert parsed.hostname == client.host and not parsed.fragment
+    assert parse_qs(parsed.query)["download"] == [filename]
+    assert download.url.isascii()
+    assert datetime.now(UTC) < download.expires_at <= datetime.now(UTC) + timedelta(minutes=10)
 
 
 def test_receipt_is_bound_to_project_and_uploader(db, scope):

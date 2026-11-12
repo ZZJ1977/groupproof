@@ -519,6 +519,24 @@
             ],
             "title": "Evidence Id"
           },
+          "feishu_attachments": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuAttachmentSnapshot"
+            },
+            "title": "Feishu Attachments",
+            "type": "array"
+          },
+          "github_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github State"
+          },
           "group_id": {
             "anyOf": [
               {
@@ -559,6 +577,11 @@
               }
             ],
             "title": "Record Id"
+          },
+          "snapshot_complete": {
+            "default": true,
+            "title": "Snapshot Complete",
+            "type": "boolean"
           },
           "source_changed": {
             "title": "Source Changed",
@@ -3049,6 +3072,11 @@
             ],
             "title": "Studentid"
           },
+          "submitForReview": {
+            "default": false,
+            "title": "Submitforreview",
+            "type": "boolean"
+          },
           "username": {
             "maxLength": 80,
             "minLength": 1,
@@ -3469,6 +3497,9 @@
               "task_progress",
               "task_note_saved",
               "file_version_uploaded",
+              "github_commit",
+              "github_pull_request",
+              "github_ci_run",
               "evidence_submitted",
               "evidence_adopted",
               "evidence_withdrawn",
@@ -3497,7 +3528,8 @@
               "task",
               "evidence",
               "discussion",
-              "file"
+              "file",
+              "github"
             ],
             "title": "Object Type",
             "type": "string"
@@ -4914,6 +4946,74 @@
           "available"
         ],
         "title": "FeishuAttachmentDTO",
+        "type": "object"
+      },
+      "FeishuAttachmentSnapshot": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "file",
+              "audio",
+              "media"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "sha256",
+          "size_bytes",
+          "verified"
+        ],
+        "title": "FeishuAttachmentSnapshot",
         "type": "object"
       },
       "FeishuAvailableChatDTO": {
@@ -8437,6 +8537,17 @@
             "title": "Dependencies",
             "type": "array"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "module_progress": {
             "additionalProperties": {
               "anyOf": [
@@ -8510,6 +8621,22 @@
             "format": "uuid",
             "title": "Task Id",
             "type": "string"
+          },
+          "temporary_read": {
+            "default": false,
+            "title": "Temporary Read",
+            "type": "boolean"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "version": {
             "title": "Version",
@@ -8952,6 +9079,11 @@
             "title": "Failed",
             "type": "integer"
           },
+          "incomplete_token_records": {
+            "default": 0,
+            "title": "Incomplete Token Records",
+            "type": "integer"
+          },
           "input_tokens": {
             "title": "Input Tokens",
             "type": "integer"
@@ -8970,6 +9102,11 @@
           },
           "succeeded": {
             "title": "Succeeded",
+            "type": "integer"
+          },
+          "unpriced_requests": {
+            "default": 0,
+            "title": "Unpriced Requests",
             "type": "integer"
           }
         },
@@ -9004,6 +9141,11 @@
             "title": "Failed",
             "type": "integer"
           },
+          "incomplete_token_records": {
+            "default": 0,
+            "title": "Incomplete Token Records",
+            "type": "integer"
+          },
           "input_tokens": {
             "title": "Input Tokens",
             "type": "integer"
@@ -9018,6 +9160,11 @@
           },
           "succeeded": {
             "title": "Succeeded",
+            "type": "integer"
+          },
+          "unpriced_requests": {
+            "default": 0,
+            "title": "Unpriced Requests",
             "type": "integer"
           }
         },
@@ -9081,6 +9228,11 @@
             "title": "Failed",
             "type": "integer"
           },
+          "incomplete_token_records": {
+            "default": 0,
+            "title": "Incomplete Token Records",
+            "type": "integer"
+          },
           "input_tokens": {
             "title": "Input Tokens",
             "type": "integer"
@@ -9104,6 +9256,11 @@
           },
           "succeeded": {
             "title": "Succeeded",
+            "type": "integer"
+          },
+          "unpriced_requests": {
+            "default": 0,
+            "title": "Unpriced Requests",
             "type": "integer"
           },
           "until": {

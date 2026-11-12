@@ -171,6 +171,8 @@ result = ai.explain_risk(ai.RiskExplanationInput(project_id=..., tasks=[...], ri
 - 恢复账号：`POST /api/v1/c-admin/users/{id}/enable`（body：`expectedVersion`、`reason`），清除停用信息、权限版本加一、通知本人。
 - 创建账号：`POST /api/v1/c-admin/users`（`identity` 为 student/teacher、`name`、`username`、`schoolEmail`，可选 `studentId`、`college`）。管理员已人工核对身份，所以学校邮箱记为已验证；**不生成也不返回密码**，本人用该邮箱走“忘记密码”自己设置密码。创建动作写入操作记录 `user.created_by_admin`。
 
+管理员从 C 的建号页面新增教师时，创建命令传入 `submitForReview: true`，由账号服务在同一事务登记待审申请并通知管理员。教师审核通过后获得教师角色。该选项仅用于教师账号；未指定时沿用原有管理员建号行为。
+
 ## AI 用量（A7）
 
 - 所有 AI 函数多一个可选参数 `usage=ai.AIUsageContext(user_id=..., project_id=...)`，传了就会为这次调用记一行（`a_ai_usage_events`）：用户、项目、功能、厂商、模型、成功与否、错误码、输入/输出 token、费用（OpenRouter 返回的 USD）、耗时。**不传不记录**；记录用独立会话提交，AI 失败或业务事务回滚也不会丢，记录本身出错也不会影响 AI 结果。

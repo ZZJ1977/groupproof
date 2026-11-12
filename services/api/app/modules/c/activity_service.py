@@ -18,6 +18,7 @@ from app.modules.c.activity_ports import (
     ActivitySourcePort,
     ActivitySourceQuery,
     ActivitySourceRecord,
+    github_record,
 )
 from app.modules.c.activity_schemas import AssociateActivity, DecideActivity
 from app.modules.c.evidence_schemas import CreateEvidence
@@ -237,10 +238,24 @@ def activity_data(project_id, kind, item, tasks, codes, row, latest) -> dict:
         "kind": item.kind,
         "group_id": item.group_id,
         "source_identity": item.source.identity,
+        "github_state": item.source.content.get("state") if kind == "github" else None,
         "source_revision": item.source.revision,
         "source_url": item.source.source_url,
         "availability": item.source.availability,
-        "source_changed": bool(latest and latest.source_hash != content_hash(snapshot(item))),
+        # Feishu's paginated list only carries a preview. Compare its revision
+        # with the saved full detail; a shorter projection is not an edit.
+        "source_changed": bool(
+            latest
+            and (
+                latest.source_revision != item.source.revision
+                if kind == "feishu" and "version_no" not in item.source.content
+                else latest.source_hash != content_hash(snapshot(item))
+            )
+        ),
+        "snapshot_complete": item.source.snapshot_complete,
+        "feishu_attachments": item.source.content.get("attachments", [])
+        if kind == "feishu"
+        else [],
         "suggested_task_ids": task_suggestions(tasks, item, codes) if kind == "github" else [],
     }
 
@@ -336,7 +351,11 @@ def query_activities(
             or (author_id is not None and item.author_id != author_id)
             or (since is not None and item.occurred_at < since)
             or (until is not None and item.occurred_at > until)
-            or (q and q.casefold() not in (item.title + "\n" + item.summary).casefold())
+            or (
+                q
+                and not (kind == "feishu" and result.searched_full_text)
+                and q.casefold() not in (item.title + "\n" + item.summary).casefold()
+            )
             or (group_id is not None and item.group_id != group_id)
             or (record_kind is not None and item.kind != record_kind)
         ):
@@ -494,6 +513,11 @@ def auto_associate_github_commit(
     item = port.get(
         project_id=project_id, actor_id=user.id, source_type="github", source_id=source_id
     )
+    # A's sync callback passes its transaction-bound database port directly.
+    from app.modules.a.github_activity import DatabaseGithubActivityPort
+
+    if isinstance(port, DatabaseGithubActivityPort):
+        item = github_record(item)
     validate_record(session, item, project_id, "github", source_id)
     if item.kind != "commit" or item.source.availability != "available":
         return state

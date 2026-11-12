@@ -11,6 +11,9 @@ DailyEventType = Literal[
     "task_progress",
     "task_note_saved",
     "file_version_uploaded",
+    "github_commit",
+    "github_pull_request",
+    "github_ci_run",
     "evidence_submitted",
     "evidence_adopted",
     "evidence_withdrawn",
@@ -83,7 +86,7 @@ class DailyActivityDTO(BaseModel):
     event_type: DailyEventType
     project_id: UUID
     project_name: str
-    object_type: Literal["task", "evidence", "discussion", "file"]
+    object_type: Literal["task", "evidence", "discussion", "file", "github"]
     object_id: UUID
     title: str
     occurred_at: datetime

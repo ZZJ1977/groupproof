@@ -73,13 +73,18 @@ def audit_detail(session, user, record_id, port):
 def totals(rows):
     costs = {}
     for row in rows:
-        costs[row.currency] = costs.get(row.currency, Decimal(0)) + row.cost
+        if row.cost is not None and row.currency is not None:
+            costs[row.currency] = costs.get(row.currency, Decimal(0)) + row.cost
     return {
         "requests": len(rows),
         "succeeded": sum(row.success for row in rows),
         "failed": sum(not row.success for row in rows),
-        "input_tokens": sum(row.input_tokens for row in rows),
-        "output_tokens": sum(row.output_tokens for row in rows),
+        "input_tokens": sum(row.input_tokens for row in rows if row.input_tokens is not None),
+        "output_tokens": sum(row.output_tokens for row in rows if row.output_tokens is not None),
+        "unpriced_requests": sum(row.cost is None or row.currency is None for row in rows),
+        "incomplete_token_records": sum(
+            row.input_tokens is None or row.output_tokens is None for row in rows
+        ),
         "cost_by_currency": {key: format(value, "f") for key, value in sorted(costs.items())},
     }
 
@@ -150,7 +155,7 @@ def usage_summary(session, user, filters: UsageFilters, port, *, now=None):
     for row in rows:
         grouped["date"][row.occurred_at.astimezone(UTC).date()].append(row)
         grouped["feature"][row.feature].append(row)
-        grouped["model"][row.model].append(row)
+        grouped["model"][row.model or "未记录模型"].append(row)
     daily = []
     for offset in range(filters.days):
         day = since.date() + timedelta(days=offset)
@@ -173,6 +178,5 @@ def usage_summary(session, user, filters: UsageFilters, port, *, now=None):
         "daily": daily,
         "by_feature": breakdown("feature"),
         "by_model": breakdown("model"),
-        "aggregation_scope": "Actual A samples in inclusive UTC calendar days through the "
-        "exclusive current timestamp; no estimated health, trends or missing costs.",
+        "aggregation_scope": "按 UTC 自然日统计至查询时刻，费用和 Token 只累计已记录的值。",
     }

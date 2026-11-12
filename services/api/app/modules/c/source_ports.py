@@ -25,6 +25,10 @@ class VerifiedSource:
     source_reference_id: UUID | None = None
     availability: Literal["available", "deleted"] = "available"
 
+    @property
+    def snapshot_complete(self) -> bool:
+        return self.content.get("preview_only") is not True
+
 
 class SourcePort(Protocol):
     def resolve(

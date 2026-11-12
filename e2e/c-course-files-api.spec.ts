@@ -38,7 +38,9 @@ async function setup(page: Page, student = false) {
       if (state.publishFailure) { const status = state.publishFailure; state.publishFailure = 0; return failure(route, status); }
       if (input.expected_version !== state.file.lock_version) return failure(route, 409);
       state.file = { ...state.file, lock_version: state.file.lock_version + 1, official_version_no: 2,
-        versions: state.file.versions.map((version) => ({ ...version, status: version.id === input.version_id ? "current" : "superseded" })) };
+        versions: state.file.versions.map((version) => ({ ...version, status: version.id === input.version_id ? "current" : "superseded" })),
+        decisions: [...state.file.decisions, { ...state.file.decisions[0], id: "00000000-0000-0000-0000-000000000507",
+          version_id: input.version_id, reason: input.reason, previous_official_version_no: 1, resulting_lock_version: state.file.lock_version + 1 }] };
       return success(route, state.file);
     }
     if (url.pathname.endsWith("/link")) return success(route, { version_id: url.pathname.split("/").at(-2)!, purpose: url.searchParams.get("purpose") === "preview" ? "preview" : "download", url: state.link, expires_at: new Date(Date.now() + 5 * 60_000).toISOString() } satisfies Schema["SignedCourseFileLinkDTO"]);
@@ -113,6 +115,48 @@ test("C5-04 student reads only published material and has no publication control
   await expect(page.getByText(/保留原课程发布记录/)).toBeVisible();
 });
 
+test("C5-04 course version reference opens the old publication and requests its exact bytes", async ({ page }) => {
+  const { state, requests } = await setup(page, true);
+  state.file.official_version_no = 2;
+  state.file.versions.forEach((v) => { v.status = v.id === v1Id ? "superseded" : "current"; });
+  await page.goto(`${path}?file=${fileId}&version=${v1Id}`);
+  const selected = page.getByRole("article", { name: "引用的课程资料 v1" });
+  await expect(selected).toBeFocused();
+  await selected.getByRole("button", { name: "申请下载 v1" }).click();
+  await expect(page.getByRole("link", { name: "下载课程资料" })).toBeVisible();
+  expect(requests.filter((u) => u.pathname.endsWith("/link")).map((u) => u.pathname)).toEqual([
+    `/api/v1/courses/${courseId}/files/${fileId}/versions/${v1Id}/link`,
+  ]);
+  state.file.versions = state.file.versions.filter((v) => v.id !== v1Id);
+  await page.reload();
+  await expect(page.getByRole("alert").filter({ hasText: "找不到可访问的引用版本" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "申请下载 v1" })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "引用的课程资料 v2" })).toHaveCount(0);
+});
+
+test("C5-02 rejects a completed receipt from another scope before registering a version", async ({ page }) => {
+  await setup(page);
+  const { payload, receipt } = await storageRoutes(page, "course", courseId);
+  let appends = 0;
+  await page.route(`**/api/v1/storage/uploads/${receipt}/complete`, (route) => success(route, {
+    receipt_id: receipt, scope: "project", scope_id: courseId, status: "completed",
+    filename: payload.name, mime_type: payload.mimeType, size_bytes: payload.buffer.length,
+    content_hash: "b".repeat(64), rejection_reason: null,
+  } satisfies Schema["UploadReceiptDTO"]));
+  await page.route(`**/api/v1/courses/${courseId}/files/${fileId}/versions`, (route) => {
+    appends++;
+    return success(route, original);
+  });
+  await page.goto(path);
+  await openDetail(page);
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+  await page.getByLabel("版本说明", { exact: true }).fill("替换课程资料");
+  await page.getByRole("button", { name: "上传并保存草稿" }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("文件未通过存储校验");
+  await expect(page.getByRole("button", { name: "申请下载 v1" })).toBeEnabled();
+  expect(appends).toBe(0);
+});
+
 test("C5-03/C5-04 a concurrent append requires review and reuses the verified upload on retry", async ({ page }) => {
   const { state } = await setup(page);
   const { stage, payload, receipt } = await storageRoutes(page, "course", courseId);
@@ -184,7 +228,13 @@ test("C5-04 failed publication retains reason and retry key while duplicate clic
   await expect(page.getByLabel("发布原因", { exact: true })).toHaveValue("课程要求已审阅");
   expect(publications).toHaveLength(1);
   await page.getByRole("button", { name: "确认发布课程资料", exact: true }).click();
-  await expect(page.getByText(/课程资料已发布，历史版本和冻结项目原引用均已保留/)).toBeVisible();
+  await expect(page.getByText("课程资料已发布。可在版本历史中查看旧版。", { exact: true })).toBeVisible();
+  await page.reload();
+  const firstHistory = page.getByRole("list", { name: "v1 操作历史", exact: true });
+  const secondHistory = page.getByRole("list", { name: "v2 操作历史", exact: true });
+  await expect(firstHistory).toContainText("保留原课程发布记录");
+  await expect(firstHistory).not.toContainText("课程要求已审阅");
+  await expect(secondHistory).toContainText("发布资料 · 课程要求已审阅");
   expect(publications).toHaveLength(2);
   expect(publications[0].key).toBeTruthy();
   expect(publications[0]).toEqual(publications[1]);

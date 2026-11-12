@@ -18,6 +18,36 @@ const activity = {
   occurred_at: "2026-10-12T00:00:00Z", href: `/projects/${projectId}/tasks/${taskId}?tab=history`,
 } satisfies components["schemas"]["DailyActivityDTO"];
 
+test("C7-07 submits only the requested task scope and refreshes the applicant's own requests", async ({ page }) => {
+  const envelope = (data: unknown) => ({ data, meta: { request_id: "access-test" } });
+  await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: envelope(summary) }));
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({ json: { authenticated: true, csrfToken: "access-csrf" } }));
+  let submitted = false;
+  const scope = { project_id: projectId, resource_type: "task", resource_id: taskId, operation: "read" };
+  await page.route(/\/api\/v1\/me\/access-requests(?:\?.*)?$/, (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON();
+      expect(body.scope).toEqual(scope);
+      expect(body.reason).toBe("查看当前任务");
+      expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+      expect(route.request().headers()["x-csrf-token"]).toBe("access-csrf");
+      submitted = true;
+      return route.fulfill({ status: 201, json: envelope({ id: taskId }) });
+    }
+    return route.fulfill({ json: envelope({ page: 1, total: Number(submitted), page_size: 10,
+      items: submitted ? [{ id: taskId, scope, status: "pending", reason: "查看当前任务" }] : [] }) });
+  });
+  await page.goto("/home");
+  await page.getByRole("button", { name: "我的访问申请" }).click();
+  await page.getByLabel("所属项目 ID", { exact: true }).fill(projectId);
+  await page.getByLabel("任务 ID", { exact: true }).fill(taskId);
+  await page.getByLabel("截止时间", { exact: true }).fill("2099-12-31T18:00");
+  await page.getByLabel("申请理由", { exact: true }).fill("查看当前任务");
+  await page.getByRole("button", { name: "提交只读申请" }).click();
+  await expect(page.getByText("申请已提交，等待管理员审批。")).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: taskId })).toContainText("待审批");
+});
+
 test("C1-01 canonical home refreshes real counts and preserves project/course IDs", async ({ page }) => {
   let completed = 1;
   await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: { data: { ...summary, my_completed_tasks: completed }, meta: { request_id: "home-fixture" } } }));
@@ -75,12 +105,17 @@ test("C1-04 API categories, UTC dates and page survive reload and Back", async (
   await page.route("**/api/v1/me/activity**", (route) => {
     const url = new URL(route.request().url()); requests.push(url);
     const currentPage = Number(url.searchParams.get("page") ?? 1);
-    return route.fulfill({ json: { data: { items: [{ ...activity, title: `动态第 ${currentPage} 页` }], page: currentPage, page_size: 10, total: 11, scope: "Self only", unavailable_sources: ["github", "feishu"] }, meta: { request_id: "activity-fixture" } } });
+    const record = currentPage === 1 ? activity : {
+      ...activity, id: `github_ci_run:${taskId}`, event_type: "github_ci_run",
+      object_type: "github", href: `/projects/${projectId}/github?record=${taskId}`,
+    } satisfies components["schemas"]["DailyActivityDTO"];
+    return route.fulfill({ json: { data: { items: [{ ...record, title: `动态第 ${currentPage} 页` }], page: currentPage, page_size: 10, total: 11, scope: "Self only", unavailable_sources: ["feishu"] }, meta: { request_id: "activity-fixture" } } });
   });
   await page.goto("/activity");
   await expect(page.getByRole("link", { name: "动态第 1 页", exact: true })).toHaveAttribute("href", activity.href);
   await page.getByRole("button", { name: "下一页", exact: true }).click();
-  await expect(page.getByRole("link", { name: "动态第 2 页", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "动态第 2 页", exact: true })).toHaveAttribute("href", `/projects/${projectId}/github?record=${taskId}`);
+  await expect(page.getByText(/GitHub CI 运行 · 数据库项目/)).toBeVisible();
   await expect(page).toHaveURL(/page=2/);
   await page.getByRole("button", { name: "开发", exact: true }).click();
   await page.getByLabel("开始日期", { exact: true }).fill("2026-10-01");
@@ -97,6 +132,38 @@ test("C1-04 API categories, UTC dates and page survive reload and Back", async (
   await expect(page).not.toHaveURL(/date_from=/);
   await page.goBack();
   await expect(page).toHaveURL(/date_from=2026-10-01/);
+});
+
+test("C1-04 saves and clears the current user's GitHub attribution", async ({ page }) => {
+  const envelope = (data: unknown) => ({ data, meta: { request_id: "github-author-test" } });
+  await page.route("**/api/v1/me/activity**", (route) => route.fulfill({ json: envelope({
+    items: [], page: 1, page_size: 10, total: 0, scope: "Self only", unavailable_sources: ["feishu"],
+  }) }));
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({ json: { authenticated: true, csrfToken: "github-csrf" } }));
+  const received: Array<string | null> = [];
+  await page.route("**/api/v1/a/me/github-login", (route) => {
+    expect(route.request().method()).toBe("PUT");
+    expect(route.request().headers()["x-csrf-token"]).toBe("github-csrf");
+    const body = route.request().postDataJSON();
+    expect(Object.keys(body)).toEqual(["login"]);
+    received.push(body.login);
+    if (body.login === "taken") return route.fulfill({ status: 409, json: {
+      error: { code: "GITHUB_LOGIN_TAKEN", message: "这个 GitHub 用户名已经被其他账号使用。" },
+    } });
+    return route.fulfill({ json: envelope({ login: body.login?.toLowerCase() ?? null }) });
+  });
+  await page.goto("/activity");
+  await page.getByText("设置个人 GitHub 用户名", { exact: true }).click();
+  const login = page.getByLabel("GitHub 用户名", { exact: true });
+  await login.fill("taken");
+  await page.getByRole("button", { name: "保存用户名" }).click();
+  await expect(page.getByText("这个 GitHub 用户名已经被其他账号使用。", { exact: true })).toBeVisible();
+  await login.fill("ExampleDev");
+  await page.getByRole("button", { name: "保存用户名" }).click();
+  await expect(page.getByText("已保存 GitHub 用户名 @exampledev。")).toBeVisible();
+  await page.getByRole("button", { name: "清除作者映射" }).click();
+  await expect(page.getByText("已清除 GitHub 用户名映射。")).toBeVisible();
+  expect(received).toEqual(["taken", "ExampleDev", null]);
 });
 
 test("C1-04 unavailable and empty responses never show local personal records", async ({ page }) => {

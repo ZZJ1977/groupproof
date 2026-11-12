@@ -2308,6 +2308,10 @@ export interface components {
             availability: "available" | "deleted";
             /** Evidence Id */
             evidence_id: string | null;
+            /** Feishu Attachments */
+            feishu_attachments?: components["schemas"]["FeishuAttachmentSnapshot"][];
+            /** Github State */
+            github_state?: string | null;
             /** Group Id */
             group_id: string | null;
             /** Kind */
@@ -2326,6 +2330,11 @@ export interface components {
             project_id: string;
             /** Record Id */
             record_id: string | null;
+            /**
+             * Snapshot Complete
+             * @default true
+             */
+            snapshot_complete: boolean;
             /** Source Changed */
             source_changed: boolean;
             /**
@@ -3222,6 +3231,11 @@ export interface components {
             schoolEmail: string;
             /** Studentid */
             studentId?: string | null;
+            /**
+             * Submitforreview
+             * @default false
+             */
+            submitForReview: boolean;
             /** Username */
             username: string;
         };
@@ -3396,7 +3410,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "task_progress" | "task_note_saved" | "file_version_uploaded" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
+            event_type: "task_progress" | "task_note_saved" | "file_version_uploaded" | "github_commit" | "github_pull_request" | "github_ci_run" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
             /** Href */
             href: string;
             /** Id */
@@ -3410,7 +3424,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "task" | "evidence" | "discussion" | "file";
+            object_type: "task" | "evidence" | "discussion" | "file" | "github";
             /**
              * Occurred At
              * Format: date-time
@@ -3980,6 +3994,27 @@ export interface components {
             size_bytes: number | null;
             /** Verified At */
             verified_at: string | null;
+        };
+        /** FeishuAttachmentSnapshot */
+        FeishuAttachmentSnapshot: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "file" | "audio" | "media";
+            /** Name */
+            name: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Verified */
+            verified: boolean;
         };
         /** FeishuAvailableChatDTO */
         FeishuAvailableChatDTO: {
@@ -5323,6 +5358,8 @@ export interface components {
             completed_at: string | null;
             /** Dependencies */
             dependencies: components["schemas"]["TaskDependencyView"][];
+            /** Description */
+            description?: string | null;
             /** Module Progress */
             module_progress: {
                 [key: string]: number | null;
@@ -5352,6 +5389,13 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+            /**
+             * Temporary Read
+             * @default false
+             */
+            temporary_read: boolean;
+            /** Title */
+            title?: string | null;
             /** Version */
             version: number;
         };
@@ -5543,6 +5587,11 @@ export interface components {
             };
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Key */
@@ -5553,6 +5602,11 @@ export interface components {
             requests: number;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
         };
         /** UsageDayDTO */
         UsageDayDTO: {
@@ -5567,6 +5621,11 @@ export interface components {
             date: string;
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -5575,6 +5634,11 @@ export interface components {
             requests: number;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
         };
         /** UsageSummaryDTO */
         UsageSummaryDTO: {
@@ -5597,6 +5661,11 @@ export interface components {
             days: 7 | 30 | 90;
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -5612,6 +5681,11 @@ export interface components {
             source_snapshot_id: string;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
             /**
              * Until
              * Format: date-time

@@ -37,11 +37,11 @@
 
 ## 访问审批与 A 授权端口
 
-`AccessScope` 只允许 read、project/task/evidence，明确 project_id/resource_id；project 类型两 ID 必须相同，task/evidence 必须真实属于该项目。创建申请先调用 trusted `AuthorizationPort.visible_target`，验明申请人和完整 scope 后才查询目标，避免向任意申请人暴露猜测 ID 是否存在。默认 503 `ACCESS_VISIBILITY_UNAVAILABLE`，不伪造可见性。
+访问申请支持项目、任务、证据三种只读范围。审批调用 A 的 `DatabaseAuthorizationPort.visible_target` 检查申请人是否可见项目，再由 C 核实资源归属。首页提供申请、本人记录和已批准资源的入口。
 
-批准前复核申请状态/版本、申请人 active/邮箱、可见目标与未来时限，批准截止不得超过原申请。不可修改原范围，不可自批。`AuthorizationPort.activate` 必须在传入的同一 SQLAlchemy Session/事务中激活授权；回执必须严格匹配 request、applicant、scope、expiry，并有 UUID grant_id。默认 503 `ACCESS_AUTHORIZATION_UNAVAILABLE`。无有效回执就不写 approved，CAS/约束失败也回滚 A 的同事务写入。
+批准时复核申请版本、账号、邮箱、目标与截止时间。A 的 `activate` 在 C 的审批事务中保存授权。C 核对回执中的申请人、资源、期限和授权编号，通过后持久化审批结果。
 
-远端 A 服务不能靠返回任意字符串就满足同事务协议；若实际部署为跨库/远程授权，必须另行设计可靠协调，再接入本端口。fixture 中的 grant outbox 只证明事务回滚，不构成生产授权实现。
+C 的内容读取调用 A 的 `has_read_grant` 核对项目和具体资源。任务临时授权只显示本任务的内容，证据临时授权可打开该条证据及其历史快照。到期或撤销后，下次读取立即失效。写操作仍检查项目成员及相应业务角色。
 
 同 key 同内容重试首先检查当前操作者权限并校验原内容指纹，随后返回当前实体详情，不重复授权；相同 key 不同内容 409。课程已结束或访问期限已过时，重试不会返回旧的 active/未到期状态。Admin 决定只允许 pending 转 approved/rejected；拒绝不调用激活服务。outbox 仅持久化事实，不声称通知已送达。`authorization_state=receipt_recorded_current_access_not_checked` 表示曾收到激活回执，不表示现在仍有权限；当前授权的撤销/到期检查仍由 A 执行。详情与幂等重试均实时计算 `approval_expired`。
 
@@ -63,11 +63,11 @@
 
 ### 全站业务日志和 AI 用量
 
-`GovernanceReadPort` 默认为 503，禁止用 C 本地历史假装完整 A 审计。审计页要求过滤后的精确 total、完整指定页、时间降序和 ID 稳定排序、无重复且符合全部条件；actor_role 是事件发生时的角色（含历史组长或系统），不能用当前角色猜测。角色、对象类型和对象 ID 过滤一并前推 provider，返回不匹配记录会拒绝。详情 ID 必须精确匹配。before/after 只接受明示白名单的标量元数据，禁止任意正文、密钥或嵌套对象；A 适配器仍有责任脱敏 reason/action，不可把敏感正文塞入描述字段。
+共享服务操作日志直接查询 A4 的记录，可按操作、事件当时的角色、结果和对象筛选，详情显示经过筛选的改前、改后字段及原因。旧记录角色未知时按原值展示。全站业务审计仍使用独立的提供方。
 
-用量端口返回真实 UsageSample，时间必须带时区，成功标志和 token 数严格类型，费用非负 Decimal 并有 USD/CNY 币种。7/30/90 天表示从 UTC 日历起点到当前时刻（不含末端）的窗口，筛选前推 A；每页 200，snapshot_id/total 必须跨页稳定、页完整、无重复、全部样本符合筛选。最多 10000 样本，超限拒绝部分汇总并要求收窄查询或接 A 聚合服务。
+用量端口从 A 的 `list_ai_usage` 读取时间窗口内的记录，核对来源页数、总数和重复 ID。C 按 7、30 或 90 个 UTC 自然日及用户、功能、模型筛选，分别累计各币种的已知费用，并显示缺费用或 token 的调用数。单次查询上限为 10,000 条。
 
-按 UTC 日期、功能、模型分别聚合真实请求数、成功/失败、token 和费用；币种不混加。真实完整空窗口才显示零计数。没有 A 数据时 503，不给虚构健康率、趋势、费用或来源状态。日志/用量页的操作人选择读取 canonical Admin 用户目录，URL 保存筛选；对象 ID 来自已有日志的「筛选此对象」按钮或 URL 上下文，没有自由 UUID 输入框。
+按 UTC 日期、功能和模型汇总请求数、成功和失败数、已记录 token 和费用。来源出错时返回错误。管理员可从用户目录设置筛选，日志筛选可从 URL 恢复。
 
 ## 前端行为与验证
 

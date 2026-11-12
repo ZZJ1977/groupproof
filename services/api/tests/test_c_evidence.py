@@ -71,6 +71,7 @@ def db():
         metadata = MetaData()
         names = {
             "users",
+            "a_access_grants",
             "school_email_bindings",
             "courses",
             "course_staff",
