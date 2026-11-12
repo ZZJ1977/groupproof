@@ -73,4 +73,5 @@ def analyze_project_code(
             project_id=project_id, requirements=requirements, files=chosen
         ),
         provider=provider,
+        usage=ai.AIUsageContext(user_id=actor.id, project_id=project_id),
     )

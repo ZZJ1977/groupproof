@@ -210,7 +210,9 @@ jobs:
         run: npm ci
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # 不用 --with-deps：它会通过 apt 安装字体包，而运行器的 Ubuntu 镜像源（azure.archive.ubuntu.com）
+        # 目前无法解析域名，会卡 10 分钟后失败。浏览器运行所需的系统库运行器镜像已自带。
+        run: npx playwright install chromium
 
       - name: Run Playwright tests
         run: npm run test:e2e
@@ -281,7 +283,7 @@ jobs:
         run: |
           npm ci
           python -m pip install -r services/api/requirements.txt -r services/api/requirements-dev.txt
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Exercise real sessions, proxy, C writes and PostgreSQL
         run: npx playwright test --config playwright.c-integration.config.ts
       - name: Preserve integration failure evidence
