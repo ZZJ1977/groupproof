@@ -1,10 +1,11 @@
 """C task execution permissions derived from canonical, current relationships.
 
 The A authentication dependency remains the identity boundary. These helpers never
-read a role or actor ID from request JSON and never grant project content to admins.
+read a role or actor ID from request JSON. Admin status alone confers no project access.
 """
 
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from app.db.models import (
     ProjectMember,
     User,
 )
+from app.modules.a.access_grants import has_read_grant
 from app.modules.c.school_email import has_verified_school_email
 
 
@@ -30,10 +32,11 @@ class ExecutionPermissions:
     leader: bool = False
     staff: bool = False
     email_verified: bool = False
+    temporary_read: bool = False
 
     @property
     def can_read(self) -> bool:
-        return self.member or self.staff
+        return self.member or self.staff or self.temporary_read
 
     @property
     def can_start(self) -> bool:
@@ -56,7 +59,13 @@ class ProjectAccess:
 
 
 def get_project_access(
-    session: Session, user: User, project_id: UUID, *, lock: bool = False
+    session: Session,
+    user: User,
+    project_id: UUID,
+    *,
+    lock: bool = False,
+    resource_type: Literal["project", "task", "evidence"] = "project",
+    resource_id: UUID | None = None,
 ) -> ProjectAccess:
     """Load actual relationships for C execution and evidence operations.
 
@@ -110,7 +119,9 @@ def get_project_access(
         )
     )
     staff = teacher or (user.global_role in {"teacher", "ta"} and staff_record is not None)
-    if not member and not staff:
+    if not (member or staff) and (
+        lock or not has_read_grant(session, user.id, project_id, resource_type, resource_id)
+    ):
         raise ApiError(403, "PROJECT_ACCESS_DENIED", "Project access is denied.")
     group = (
         one(select(ProjectGroup).where(ProjectGroup.id == project.group_id))
@@ -157,6 +168,7 @@ def execution_permissions(
     course_teacher: bool,
     active_course_staff: bool,
     email_verified: bool,
+    temporary_read: bool = False,
 ) -> ExecutionPermissions:
     if user.status != "active":
         raise ApiError(403, "ACCOUNT_INACTIVE", "The account is not active.")
@@ -169,6 +181,7 @@ def execution_permissions(
         staff=(user.global_role == "teacher" and course_teacher)
         or (user.global_role in {"teacher", "ta"} and active_course_staff),
         email_verified=email_verified,
+        temporary_read=temporary_read,
     )
 
 

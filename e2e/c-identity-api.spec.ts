@@ -36,8 +36,34 @@ test("C7-01/02 identity filters survive refresh and disabling uses current versi
   await expect(page.getByText("账号已停用，停用原因已写入该账号的站内收件箱。", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
   await page.getByRole("button", { name: "查看", exact: true }).click();
-  await page.getByLabel("处理原因", { exact: true }).fill("再次点击");
-  await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeDisabled();
+  await page.route("**/api/v1/c-admin/users/identity-student/enable", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ expectedVersion: 4, reason: "已复核恢复" });
+    expect(route.request().headers()["x-csrf-token"]).toBe("identity-fixture-csrf");
+    disabled = false;
+    return route.fulfill({ json: { id: target.id, status: "enabled", version: 5 } });
+  });
+  await expect(page.getByRole("button", { name: "确认恢复" })).toBeDisabled();
+  await page.getByLabel("处理原因", { exact: true }).fill("已复核恢复");
+  await page.getByRole("button", { name: "确认恢复" }).click();
+  await expect(page.getByText("账号已恢复，可重新登录。")).toBeVisible();
+});
+
+test("C7-02 submits the selected identity and school email to A's account service", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
+  await page.route("**/api/v1/c-admin/users", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ name: "李老师", username: "fixture.teacher", identity: "teacher", submitForReview: true, schoolEmail: "teacher@must.edu.mo" });
+    expect(route.request().headers()["x-csrf-token"]).toBe("identity-fixture-csrf");
+    return route.fulfill({ status: 201, json: { id: "teacher-id", passwordSetup: "forgot_password" } });
+  });
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "新增账号" }).click();
+  await page.getByLabel("身份", { exact: true }).selectOption("teacher");
+  await page.getByLabel("姓名", { exact: true }).fill("李老师");
+  await page.getByLabel("用户名", { exact: true }).fill("fixture.teacher");
+  await page.getByLabel("学校邮箱", { exact: true }).fill("teacher@must.edu.mo");
+  await page.getByRole("button", { name: "确认创建" }).click();
+  await expect(page.getByText(/账号已创建，教师申请已提交审核/)).toBeVisible();
 });
 
 test("C7-02 a changed identity session cannot submit the previous account's decision", async ({ page }) => {

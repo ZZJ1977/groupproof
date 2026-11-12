@@ -1,3 +1,7 @@
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from uuid import uuid4
+
 import pytest
 import test_c_governance as governance_tests
 from fastapi import FastAPI
@@ -6,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.auth import get_current_user
 from app.api.errors import install_exception_handlers
 from app.db.session import get_session
+from app.modules.a.models import AiUsageEvent
 from app.modules.c.governance_ports import get_authorization_port
 from app.modules.c.governance_read_router import router as read_router
 from app.modules.c.governance_router import router
@@ -101,11 +106,42 @@ def test_http_access_default_unavailable_then_fixture_approval(client, app, scop
     )
 
 
-@pytest.mark.parametrize("suffix", ["/admin/audit-logs", "/admin/ai-usage?days=7"])
-def test_http_a_read_ports_default503_and_admin_only(client, app, scope, suffix):
-    assert client.get("/api/v1" + suffix).status_code == 503
+@pytest.mark.parametrize(
+    ("suffix", "status"), [("/admin/audit-logs", 503), ("/admin/ai-usage?days=7", 200)]
+)
+def test_http_a_read_ports_and_admin_only(client, app, scope, suffix, status):
+    assert client.get("/api/v1" + suffix).status_code == status
     app.dependency_overrides[get_current_user] = lambda: scope.users["teacher"]
     assert client.get("/api/v1" + suffix).status_code == 403
+
+
+def test_usage_dashboard_reads_all_a_pages_and_preserves_missing_fees(db, scope, client):
+    when = datetime.now(UTC) - timedelta(minutes=1)
+    feature = "verification"
+    for index in range(103):
+        db.add(
+            AiUsageEvent(
+                id=uuid4(),
+                user_id=scope.users["admin"].id,
+                occurred_at=when,
+                feature=feature,
+                model="fixture" if index < 102 else "other",
+                success=index != 0,
+                input_tokens=4 if index else None,
+                output_tokens=2 if index else None,
+                cost=Decimal("0.001") if index else None,
+                currency="USD" if index else None,
+            )
+        )
+    db.commit()
+    response = client.get("/api/v1/admin/ai-usage", params={"model": "fixture", "feature": feature})
+    assert response.status_code == 200, response.text
+    summary = response.json()["data"]
+    assert summary["requests"] == 102 and summary["failed"] == 1
+    assert summary["unpriced_requests"] == summary["incomplete_token_records"] == 1
+    assert Decimal(summary["cost_by_currency"]["USD"]) == Decimal("0.101")
+    assert summary["input_tokens"] == 404 and summary["output_tokens"] == 202
+    assert len(summary["by_model"]) == 1 and summary["by_model"][0]["key"] == "fixture"
 
 
 def test_http_strict_schemas_and_uuid_validation(client, scope):
