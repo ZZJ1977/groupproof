@@ -17,7 +17,7 @@ type Action = "associate" | "adopt" | "ignore" | "restore";
 type Command = { sourceId: string; action: Action; expected: number; taskId: string; criteria: string[]; reason: string };
 const statuses = { candidate: "待处理", adopted: "已采纳", ignored: "已忽略" } as const;
 const actionLabels = { associate: "关联任务", adopt: "采纳为候选证据", ignore: "忽略记录", restore: "恢复待处理" } as const;
-const kindLabels: Record<string, string> = { commit: "提交记录", pr: "拉取请求", ci: "持续集成", sync: "同步事件", document: "文档", message: "消息" };
+const kindLabels: Record<string, string> = { commit: "提交记录", pull_request: "拉取请求", ci_run: "持续集成", pr: "拉取请求", ci: "持续集成", sync: "同步事件", document: "文档", message: "消息" };
 function selectedFilter(value: string | null) { return value && value !== "all" ? value : undefined; }
 function snapshotText(snapshot: Record<string, unknown>, key: string) { return typeof snapshot[key] === "string" ? snapshot[key] as string : ""; }
 
@@ -61,8 +61,11 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     ...(connected?.kind === "feishu" ? connected.items.map((group) => group.chat_id) : []),
     ...(rows?.items.flatMap((item) => item.group_id ? [item.group_id] : []) ?? []),
   ])];
-  const kinds = [...new Set(rows?.items.map((item) => item.kind) ?? [])];
-  const authors = [...new Map(rows?.items.flatMap((item) => item.author_id ? [[item.author_id, item.author_name || "来源未提供作者名称"] as const] : []) ?? []).entries()];
+  const kinds = [...new Set([...(sourceType === "github" ? ["commit", "pull_request", "ci_run"] : []), ...(rows?.items.map((item) => item.kind) ?? [])])];
+  const authors = [...new Map([
+    ...(sourceType === "github" ? access?.members.map((member) => [member.id, member.title] as const) ?? [] : []),
+    ...(rows?.items.flatMap((item) => item.author_id ? [[item.author_id, item.author_name || "来源未提供作者名称"] as const] : []) ?? []),
+  ]).entries()];
   const record = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
   const savedHistory = access && history.isSuccess && !history.isFetching ? history.data : undefined;
   const targetTask = command && access?.tasks.find((task) => task.id === command.taskId);
@@ -72,6 +75,21 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   function fail(error: unknown) {
     setOperationError(error);
     if (accessFailure(error)) { setBlocked(error); setCommand(null); }
+  }
+  async function verifyAttachment(id: string) {
+    if (busyRef.current || !record || record.availability !== "available") return;
+    busyRef.current = true;
+    setBusy(true);
+    setOperationError(null);
+    try {
+      await projectApi.verifyFeishuAttachment(projectId, id);
+      await detail.refetch();
+    } catch (error) {
+      fail(error);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   }
   async function refresh() {
     const results = await Promise.all([context.refetch(), list.refetch(), ...(context.data?.actor.is_member ? [bindings.refetch()] : []), ...(selectedId ? [detail.refetch(), history.refetch()] : [])]);
@@ -127,8 +145,9 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             {access.actor.is_leader && <Link className="gp-link ml-3" href={`/feishu/${projectId}`}>管理飞书群绑定</Link>}</p>}
           {connected?.kind === "github" && (connected.items.length ? <ul>{connected.items.map((repo) => <li key={repo.owner + "/" + repo.repo}>
             <a className="gp-link" href={`https://github.com/${repo.owner}/${repo.repo}`} target="_blank" rel="noopener noreferrer">{repo.owner}/{repo.repo}</a>
-            <span className="ml-2">默认分支 {repo.default_branch} · {repo.last_synced_at ? "文本文件上次同步 " + formatDate(repo.last_synced_at) : "尚未同步文本文件"}</span>
+            <span className="ml-2">默认分支 {repo.default_branch} · {repo.last_synced_at ? "仓库文件与开发活动上次同步 " + formatDate(repo.last_synced_at) : "尚未同步仓库文件与开发活动"}</span>
           </li>)}</ul> : <p>此项目尚未绑定 GitHub 仓库。</p>)}
+          {connected?.kind === "github" && <p className="my-2 text-sm">每次同步从每个仓库读取默认分支最近 100 条提交、最近更新的 100 条拉取请求和最近 100 次 CI 运行。分页总数按当前筛选统计本项目已同步的活动快照。</p>}
           {connected?.kind === "github" && access.actor.is_leader && <Link className="gp-link" href={`/github/${projectId}`}>管理 GitHub 仓库绑定</Link>}
         </section>}
         {!access.permissions.can_manage_activity && <p className="mb-3 text-sm">当前活动记录只读。</p>}
@@ -141,14 +160,19 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           <label>记录作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{filters.author_id && !authors.some(([id]) => id === filters.author_id) && <option value={filters.author_id}>当前 URL 作者筛选（待来源核对）</option>}{authors.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></label>
           <label>开始日期<input className={`${apiInput} block`} type="date" name="date_from" defaultValue={query.get("date_from") ?? ""} /></label><label>结束日期<input className={`${apiInput} block`} type="date" name="date_to" defaultValue={query.get("date_to") ?? ""} /></label>
           <button className={apiButton} type="submit">查询活动</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, task: null, author: null, date_from: null, date_to: null, group_id: null, group: null, kind: null, page: null, record: null }); setCommand(null); }}>重置</button>
-        </form><p className="mb-3 text-xs text-slate-500">日期按 UTC 自然日筛选。{sourceType === "feishu" && "群组选项包括已读取的绑定群和本页历史记录中的群。"}类型和作者选项来自本页记录。</p>
+        </form><p className="mb-3 text-xs text-slate-500">日期按 UTC 自然日筛选。{sourceType === "feishu" && "群组选项包括已读取的绑定群和本页历史记录中的群。"}作者选项包括当前项目的可选成员及本页记录。</p>
         {list.isFetching && <p role="status">正在读取活动…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
-        {rows && <Panel><div className="space-y-3">{rows.items.map((item) => <article key={item.source_id} className="border-b border-slate-100 pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.title}</strong><span>{statuses[item.status]}</span></div><p className="my-2 whitespace-pre-wrap text-sm">{item.summary}</p><p className="mb-2 text-xs text-slate-500">{item.author_name || "来源未提供作者名称"} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</p><button className={apiButton} onClick={() => selectRecord(item.source_id)}>查看记录</button></article>)}</div>{!rows.items.length && <EmptyState title="没有符合条件的来源记录" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), record: null }); setCommand(null); }} /></Panel>}
+        {rows && <Panel><div className="space-y-3">{rows.items.map((item) => <article key={item.source_id} className="border-b border-slate-100 pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.title}</strong><span>{statuses[item.status]}</span></div><p className="my-2 whitespace-pre-wrap text-sm">{item.summary}</p><p className="mb-2 text-xs text-slate-500">{kindLabels[item.kind] ?? item.kind}{item.github_state && ` · ${item.github_state}`} · {item.author_name || "来源未提供作者名称"} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</p><button className={apiButton} onClick={() => selectRecord(item.source_id)}>查看记录</button></article>)}</div>{!rows.items.length && <EmptyState title="没有符合条件的来源记录" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), record: null }); setCommand(null); }} /></Panel>}
         {selectedId && <Panel title="记录详情与历史" action={<button className={apiButton} onClick={() => { updateQuery({ record: null }); setCommand(null); }}>关闭详情</button>}>
           {detail.isFetching && <p role="status">正在读取来源…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} label="重试来源" />}
-          {record && <><h2 className="font-semibold">{record.title}</h2><p className="my-2 whitespace-pre-wrap">{record.summary}</p><p className="mb-3 text-sm">{record.author_name || "来源未提供作者名称"} · {statuses[record.status]} · {taskName(record.task_id)}</p>{record.snapshot_complete === false && <p className="my-2 text-sm">当前来源仅提供摘要，获得完整正文后才可采纳为候选证据。</p>}{record.source_changed && <p className="my-3 text-sm text-amber-800">来源与最近保存的快照不同，旧快照仍保留。正式证据状态需另行核查。</p>}{record.availability === "deleted" && <p className="my-3 text-sm">来源已删除，不可进行新的采纳或关联。</p>}{safeHttps(record.source_url, sourceType === "github") && <a className="gp-link" href={safeHttps(record.source_url, sourceType === "github")!} target="_blank" rel="noopener noreferrer">查看原始来源</a>}
+          {record && <><h2 className="font-semibold">{record.title}</h2><p className="my-2 whitespace-pre-wrap">{record.summary}</p><p className="mb-3 text-sm">{kindLabels[record.kind] ?? record.kind}{record.github_state && ` · ${record.github_state}`} · {record.author_name || "来源未提供作者名称"} · {statuses[record.status]} · {taskName(record.task_id)}</p>{record.snapshot_complete === false && <p className="my-2 text-sm">{record.feishu_attachments?.some((attachment) => !attachment.verified) ? "请先核验当前消息的附件指纹，再采纳证据。" : "当前来源仅提供摘要，获得完整正文后才可采纳为候选证据。"}</p>}{record.source_changed && <p className="my-3 text-sm text-amber-800">来源与最近保存的快照不同，旧快照仍保留。正式证据状态需另行核查。</p>}{record.availability === "deleted" && <p className="my-3 text-sm">来源已删除，不可进行新的采纳或关联。</p>}{safeHttps(record.source_url, sourceType === "github") && <a className="gp-link" href={safeHttps(record.source_url, sourceType === "github")!} target="_blank" rel="noopener noreferrer">查看原始来源</a>}
             {record.suggested_task_ids.length > 0 && <p className="my-2 text-sm">关联建议：{record.suggested_task_ids.map((id) => access.tasks.find((task) => task.id === id)?.title).filter(Boolean).join("、") || "暂无可读任务"}（需人工确认）</p>}
-            {(record.evidence_id || record.source_changed) && <p className="my-3 text-sm"><Link className="gp-link" href={record.evidence_id && isUuid(record.evidence_id) ? `/projects/${projectId}/evidence?evidence=${encodeURIComponent(record.evidence_id)}` : `/projects/${projectId}/evidence?${new URLSearchParams({ source: sourceType, ...(record.task_id && isUuid(record.task_id) ? { task: record.task_id } : {}) })}`}>{record.evidence_id && isUuid(record.evidence_id) ? "查看关联证据并检查来源" : "到证据中心查找相关来源"}</Link>{record.snapshot_complete === false && <p className="my-2 text-sm">当前来源仅提供摘要，获得完整正文后才可采纳为候选证据。</p>}{record.source_changed && <span> · 在证据详情中，由有权限的成员填写原因并主动检查；打开页面不会改变证据。</span>}</p>}
+            {sourceType === "feishu" && record.feishu_attachments?.map((attachment) => <div key={attachment.id} className="my-2 text-sm">
+              {attachment.name || attachment.kind} · {attachment.verified
+                ? <span className="break-all">已核验 · {attachment.size_bytes} 字节 · SHA-256 {attachment.sha256}</span>
+                : <button className={apiButton} disabled={busy || record.availability === "deleted"} onClick={() => void verifyAttachment(attachment.id)}>核验附件指纹</button>}
+            </div>)}
+            {(record.evidence_id || record.source_changed) && <p className="my-3 text-sm"><Link className="gp-link" href={record.evidence_id && isUuid(record.evidence_id) ? `/projects/${projectId}/evidence?evidence=${encodeURIComponent(record.evidence_id)}` : `/projects/${projectId}/evidence?${new URLSearchParams({ source: sourceType, ...(record.task_id && isUuid(record.task_id) ? { task: record.task_id } : {}) })}`}>{record.evidence_id && isUuid(record.evidence_id) ? "查看关联证据并检查来源" : "到证据中心查找相关来源"}</Link>{record.source_changed && <span> · 在证据详情中，由有权限的成员填写原因并主动检查；打开页面不会改变证据。</span>}</p>}
             {canChange && <div className="my-3 flex flex-wrap gap-2">{record.status === "candidate" && <button className={apiButton} disabled={busy} onClick={() => begin(record, "associate")}>关联任务</button>}{sourceType === "feishu" && record.status === "candidate" && <><button className={apiButton} disabled={busy || record.snapshot_complete === false || !access.permissions.can_capture_evidence} onClick={() => begin(record, "adopt")}>采纳为候选证据</button><button className={apiButton} disabled={busy} onClick={() => begin(record, "ignore")}>忽略记录</button></>}{sourceType === "feishu" && record.status === "ignored" && <button className={apiButton} disabled={busy} onClick={() => begin(record, "restore")}>恢复待处理</button>}</div>}
           </>}
           <h3 className="mb-2 mt-4 font-semibold">已保存的操作历史</h3>{history.isFetching && <p role="status">正在读取历史…</p>}{history.isError && <ApiFailure error={history.error} retry={() => void history.refetch()} label="重试历史" />}{savedHistory && <>{savedHistory.decisions.map((decision) => <article key={decision.id} className="mb-3 border-l-2 border-slate-200 pl-3"><p>{actionLabels[decision.action]} · {decision.reason}</p><p className="text-xs text-slate-500">{formatDate(decision.created_at)}</p><p className="mt-1 text-sm">当时来源：{snapshotText(decision.source_snapshot, "title") || "未提供标题"} · {snapshotText(decision.source_snapshot, "author_name") || "未提供作者名称"}</p></article>)}{!savedHistory.decisions.length && <p className="text-sm">还没有保存的处理记录。</p>}</>}

@@ -9,11 +9,14 @@ canonical UUID routes. An unavailable A source adapter still returns 503.
 ## Source contract
 
 `services/api/app/modules/c/activity_ports.py` defines the `ActivitySourcePort`.
-Its default implementation returns `503 ACTIVITY_SOURCE_UNAVAILABLE` for both
-list and detail. There are no third-party SDKs, credentials, inferred source authors
-or browser-supplied source contents in these commands.
+The default adapter reads A's project-authorized GitHub and Feishu records.
+The Feishu list uses 200-character previews. Detail and evidence capture read
+the persisted redacted message revision and its current attachments. The
+collaboration page requests byte verification through A's attachment endpoint
+before capturing a message with attachments. The snapshot preserves each
+verified attachment's identifier, redacted name, size and SHA-256.
 
-A must explicitly wire an adapter over its authorized ingestion store. Every call
+Every call
 contains the canonical project UUID and authenticated actor UUID. Each result
 contains a canonical source UUID, trusted author ID/name, aware timestamp, title,
 summary, kind, optional opaque Feishu `group_id`, and a `VerifiedSource` with

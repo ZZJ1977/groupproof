@@ -18,7 +18,7 @@ const context: Schema["CProjectContextDTO"] = {
 };
 const execution: Schema["TaskExecutionView"] = {
   task_id: tid, project_id: pid, status: "in_progress", progress: 30, version: 2, started_at: stamp, completed_at: null,
-  responsible_ids: [aid], dependencies: [], project_progress: 30, module_progress: {}, can_start: false, can_update_progress: true, read_only: false,
+  responsible_ids: [aid], dependencies: [], project_progress: 30, module_progress: {}, can_start: false, can_update_progress: true, read_only: false, temporary_read: false,
 };
 const note: Schema["TaskNoteDTO"] = {
   id: id(414), project_id: pid, task_id: tid, lock_version: 1, current_version_no: 1,
@@ -41,6 +41,49 @@ async function setup(page: Page, readContext: () => Schema["CProjectContextDTO"]
   await page.route(`**${base}/plan/tasks/${tid}/versions`, (route) => success(route, []));
   await page.route(`**/api/v1/tasks/${tid}/execution`, (route) => success(route, execution));
 }
+
+test("C7-07 a scoped reader opens one task or evidence without the project catalogue", async ({ page }) => {
+  await setup(page);
+  const deny = (route: Route) => route.fulfill({status: 403, json: {
+    error: {code: "PROJECT_ACCESS_DENIED", message: "Project access is denied."}, meta: {request_id: "scope"},
+  }});
+  await page.route(`**${base}/c-context`, deny);
+  await page.route(`**${base}/evidence?**`, deny);
+  await page.route(`**/api/v1/tasks/${tid}/execution`, route => success(route, {
+    ...execution, title: "限时评阅任务", temporary_read: true, read_only: true, can_update_progress: false,
+  }));
+  await page.goto(`/projects/${pid}/tasks/${tid}`);
+  await expect(page.getByRole("heading", {name: "限时评阅任务"})).toBeVisible();
+  await expect(page.getByText("临时只读访问")).toBeVisible();
+  await page.route(`**${base}/evidence/${eid}`, route => success(route, evidence));
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}`);
+  await expect(page.getByText(evidence.description, {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "采纳为正式证据"})).toHaveCount(0);
+  await page.route(`**${base}/evidence/${eid}`, deny);
+  await page.getByRole("button", {name: "刷新证据"}).click();
+  await expect(page.getByText(evidence.description, {exact: true})).toHaveCount(0);
+});
+
+test("C2-06 Feishu evidence picker resolves a list excerpt before saving", async ({ page }) => {
+  await setup(page);
+  const sourceId = id(850);
+  const item = { source_id: sourceId, title: "飞书确认记录", summary: "列表摘要", availability: "available", kind: "message", snapshot_complete: false };
+  await page.route(`**${base}/activities/feishu?**`, (route) => success(route, { items: [item], total: 1, page: 1, page_size: 10 }));
+  await page.route(`**${base}/activities/feishu/${sourceId}`, (route) => success(route, { ...item, summary: "取得完整的飞书详情", snapshot_complete: true }));
+  await page.route(`**${base}/evidence`, (route) => {
+    expect(route.request().postDataJSON().source_id).toBe(sourceId);
+    return success(route, {});
+  });
+  await page.goto(`/projects/${pid}/tasks/${tid}/submit`);
+  await page.getByRole("combobox", { name: "来源类型" }).selectOption("feishu");
+  await page.getByRole("combobox", { name: "来源记录" }).selectOption(sourceId);
+  await expect(page.getByText("取得完整的飞书详情")).toBeVisible();
+  await page.getByRole("textbox", { name: "证据标题" }).fill("协作证据");
+  await page.getByRole("textbox", { name: "证据说明" }).fill("核对已保存的原文");
+  await page.getByRole("checkbox", { name: "请求符合契约" }).check();
+  await page.getByRole("button", { name: "保存候选证据", exact: true }).click();
+  await expect(page.getByText("候选证据已保存，需经采纳后才是正式证据。")).toBeVisible();
+});
 
 test("C4 task evidence opens the associated commit and PR from the task-scoped activity page", async ({ page }) => {
   await setup(page);
