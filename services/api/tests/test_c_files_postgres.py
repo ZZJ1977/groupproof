@@ -124,8 +124,11 @@ def test_pg_storage_receipts_to_project_versions_inbox_and_historical_download(p
                     session, scope.users[role], project_id, file_id, first, purpose, port
                 )
                 assert link["version_id"] == str(first)
-                assert link["url"] == bucket.create_signed_download_url(
+                signed = bucket.create_signed_download_url(
                     tickets[0].object_id, storage.DOWNLOAD_URL_TTL_SECONDS
+                )
+                assert link["url"] == (
+                    signed + "&download=design.txt" if purpose == "download" else signed
                 )
 
 
