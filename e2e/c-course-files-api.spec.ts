@@ -115,6 +115,25 @@ test("C5-04 student reads only published material and has no publication control
   await expect(page.getByText(/保留原课程发布记录/)).toBeVisible();
 });
 
+test("C5-04 course version reference opens the old publication and requests its exact bytes", async ({ page }) => {
+  const { state, requests } = await setup(page, true);
+  state.file.official_version_no = 2;
+  state.file.versions.forEach((v) => { v.status = v.id === v1Id ? "superseded" : "current"; });
+  await page.goto(`${path}?file=${fileId}&version=${v1Id}`);
+  const selected = page.getByRole("article", { name: "引用的课程资料 v1" });
+  await expect(selected).toBeFocused();
+  await selected.getByRole("button", { name: "申请下载 v1" }).click();
+  await expect(page.getByRole("link", { name: "下载课程资料" })).toBeVisible();
+  expect(requests.filter((u) => u.pathname.endsWith("/link")).map((u) => u.pathname)).toEqual([
+    `/api/v1/courses/${courseId}/files/${fileId}/versions/${v1Id}/link`,
+  ]);
+  state.file.versions = state.file.versions.filter((v) => v.id !== v1Id);
+  await page.reload();
+  await expect(page.getByRole("alert").filter({ hasText: "找不到可访问的引用版本" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "申请下载 v1" })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "引用的课程资料 v2" })).toHaveCount(0);
+});
+
 test("C5-02 rejects a completed receipt from another scope before registering a version", async ({ page }) => {
   await setup(page);
   const { payload, receipt } = await storageRoutes(page, "course", courseId);
