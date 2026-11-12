@@ -51,9 +51,19 @@ class ActivityStateDTO(BaseModel):
     lock_version: int
 
 
+class FeishuAttachmentSnapshot(BaseModel):
+    id: UUID
+    kind: Literal["image", "file", "audio", "media"]
+    name: str | None
+    sha256: str | None = Field(pattern=r"^[0-9a-f]{64}$")
+    size_bytes: int | None = Field(ge=0)
+    verified: bool
+
+
 class ActivityDTO(ActivityStateDTO):
     title: str
     summary: str
+    github_state: str | None = None
     author_id: UUID | None
     author_name: str
     occurred_at: datetime
@@ -65,6 +75,7 @@ class ActivityDTO(ActivityStateDTO):
     availability: Literal["available", "deleted"]
     source_changed: bool
     snapshot_complete: bool = True
+    feishu_attachments: list[FeishuAttachmentSnapshot] = Field(default_factory=list)
     suggested_task_ids: list[UUID]
 
 

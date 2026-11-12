@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
+import { CApiError } from "@/lib/api/c-client";
 import type { components, paths } from "@/packages/domain/api.generated";
 import { EvidenceCapturePanel } from "./EvidenceCapturePanel";
 import { useUrlQuery } from "./use-url-query";
@@ -38,6 +39,7 @@ function SourceSnapshotContent({ snapshot, sourceType, projectId, taskId }: { sn
     ? ["title", "text"] : ["title", "body", "summary", "description"];
   const text = textFields.map((field) => typeof source[field] === "string" ? source[field] : null).filter(Boolean).join("\n");
   const replies = sourceType === "discussion" && Array.isArray(source.replies) ? source.replies.map(snapshotRecord).map((reply) => reply.body).filter((body): body is string => typeof body === "string") : [];
+  const attachments = sourceType === "feishu" && Array.isArray(source.attachments) ? source.attachments.map(snapshotRecord) : [];
   return <>
     {snapshot.content.availability === "deleted" && <p className="my-2">此快照记录了来源已删除。</p>}
     {originalUrl && <a className="gp-link" href={originalUrl} target="_blank" rel="noopener noreferrer">打开提交时的网址</a>}
@@ -49,7 +51,11 @@ function SourceSnapshotContent({ snapshot, sourceType, projectId, taskId }: { sn
       (source.id == null || source.id === discussionId) && (source.project_id == null || source.project_id === projectId) &&
       <Link className="gp-link" href={`/projects/${projectId}/discussions?discussion=${discussionId}`}>查看原讨论串</Link>}
     {sourceType === "discussion" && source.is_important === false && <p className="my-2">此快照中的讨论已取消重要标记。</p>}
-    {sourceType === "feishu" && source.preview_only === true && <p className="my-2">来源仅返回消息摘要。完整程度以各版本保存的快照为准。</p>}
+    {sourceType === "feishu" && typeof source.version_no === "number" && <p className="my-2">飞书消息 v{source.version_no}</p>}
+    {sourceType === "feishu" && source.preview_only === true && <p className="my-2">{attachments.length ? "此版本含尚未完整核验的来源。" : "来源仅返回消息摘要。完整程度以各版本保存的快照为准。"}</p>}
+    {attachments.map((attachment, index) => <p key={index} className="my-2 break-all text-sm">
+      {typeof attachment.name === "string" ? attachment.name : "附件"} · {attachment.verified && typeof attachment.sha256 === "string" ? `SHA-256 ${attachment.sha256}` : "未核验"}
+    </p>)}
     {sourceType === "screenshot" && source.provenance === "registered_project_file" && typeof source.mime_type === "string" && !["image/png", "image/jpeg"].includes(source.mime_type) && <p>原截图已被其他文件类型替换（{source.mime_type}）。</p>}
     <p className="whitespace-pre-wrap">{text || "该来源快照不包含可直接展示的文字。"}</p>
     {(sourceType === "file" || sourceType === "screenshot") && source.provenance === "registered_project_file" &&
@@ -74,7 +80,8 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const enabled = isUuid(projectId);
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
   const list = useQuery({ queryKey: ["c-evidence", userId, projectId, filters], queryFn: () => projectApi.evidence(projectId, filters), enabled, ...queryPolicy });
-  const detail = useQuery({ queryKey: ["c-evidence-detail", userId, projectId, selectedId], queryFn: () => projectApi.evidenceDetail(projectId, selectedId!), enabled: enabled && Boolean(selectedId && isUuid(selectedId)) && context.isSuccess && !context.isFetching, ...queryPolicy });
+  const scopedRead = context.error instanceof CApiError && context.error.code === "PROJECT_ACCESS_DENIED";
+  const detail = useQuery({ queryKey: ["c-evidence-detail", userId, projectId, selectedId, scopedRead], queryFn: () => projectApi.evidenceDetail(projectId, selectedId!), enabled: enabled && Boolean(selectedId && isUuid(selectedId)) && (context.isSuccess || scopedRead) && !context.isFetching, ...queryPolicy });
   const [blocked, setBlocked] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
@@ -135,6 +142,25 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
     }
   }
   if (!enabled) return <EmptyState title="项目地址无效" />;
+  if (scopedRead && selectedId && isUuid(selectedId)) {
+    const record = detail.isSuccess && !detail.isFetching && detail.data.id === selectedId &&
+      detail.data.project_id === projectId ? detail.data : null;
+    return <>
+      <PageHeader title="证据详情" actions={<button className={apiButton} disabled={detail.isFetching} onClick={() => void detail.refetch()}>刷新证据</button>} />
+      {detail.isFetching && <p role="status">正在读取授权证据…</p>}
+      {detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
+      {record && <Panel title={record.title}>
+        <p>{states[record.status]} · {sources[record.source_type]} · 只读</p>
+        <p className="my-3 whitespace-pre-wrap">{record.description}</p>
+        {record.source_changed && <p>来源已变化，原始快照保留。</p>}
+        {record.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2">
+          <summary>来源快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary>
+          <SourceSnapshotContent snapshot={snapshot} sourceType={record.source_type} projectId={projectId} taskId={record.task_id} />
+        </details>)}
+        {record.decisions.map((decision) => <p key={decision.id}>{decisions[decision.decision]} · {formatDate(decision.created_at)} · {decision.reason}</p>)}
+      </Panel>}
+    </>;
+  }
   return <>
     <PageHeader title="项目证据" description={access?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新证据</button>} />
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>

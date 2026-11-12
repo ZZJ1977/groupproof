@@ -6,8 +6,12 @@ import re
 from dataclasses import replace
 from datetime import UTC
 
+from pydantic import ValidationError
+
 from app.api.errors import ApiError
+from app.modules.a.redaction import redact_text
 from app.modules.c.activity_ports import ActivitySourcePort, ActivitySourceRecord
+from app.modules.c.activity_schemas import FeishuAttachmentSnapshot
 
 _CONTACT = re.compile(
     r"[\w.%+\-]+@[\w.\-]+\.[\w-]+"
@@ -15,6 +19,16 @@ _CONTACT = re.compile(
     r"|(?:\+?853[ -]?)?6\d{3}[ -]?\d{4}|\+[1-9]\d{7,14})(?!\d)",
     re.ASCII,
 )
+
+
+def _redact(text: str) -> str:
+    # Older synchronized rows and attachment names predate A's text redaction.
+    return _CONTACT.sub("[已脱敏]", redact_text(text))
+
+
+def _digest(fields: dict) -> str:
+    encoded = json.dumps(fields, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 def _message(record: ActivitySourceRecord) -> ActivitySourceRecord:
@@ -25,21 +39,55 @@ def _message(record: ActivitySourceRecord) -> ActivitySourceRecord:
         raise ApiError(
             503, "ACTIVITY_SOURCE_INVALID", "The Feishu message projection is incomplete."
         )
-    # A hashes these three fields before shortening text for its activity feed.
-    # Equality distinguishes a complete 200-character message from a longer excerpt.
-    encoded = json.dumps(
-        {"msg_type": kind, "text": text, "deleted": deleted}, ensure_ascii=False, sort_keys=True
-    )
-    complete = (
-        kind == "text"
-        and bool(text.strip())
-        and hashlib.sha256(encoded.encode()).hexdigest() == source.revision
-    )
-    display = _CONTACT.sub("[已脱敏]", text)
-    if not complete and not deleted:
+    detail = "version_no" in payload
+    attachments = []
+    keys = []
+    raw_attachments = payload.get("attachments", [])
+    if not isinstance(raw_attachments, list):
+        raise ApiError(503, "ACTIVITY_SOURCE_INVALID", "Invalid Feishu attachment list.")
+    for raw in raw_attachments:
+        if not isinstance(raw, dict) or not isinstance(raw.get("available"), bool):
+            raise ApiError(503, "ACTIVITY_SOURCE_INVALID", "Invalid Feishu attachment.")
+        if not raw["available"]:
+            continue  # Upstream retains attachments removed in later message versions.
+        if not isinstance(raw.get("file_key"), str) or not raw["file_key"]:
+            raise ApiError(503, "ACTIVITY_SOURCE_INVALID", "Missing Feishu attachment reference.")
+        try:
+            attachment = FeishuAttachmentSnapshot.model_validate(raw)
+        except ValidationError as exc:
+            raise ApiError(503, "ACTIVITY_SOURCE_INVALID", "Invalid Feishu attachment.") from exc
+        if attachment.name:
+            attachment.name = _redact(attachment.name)
+        attachment.verified = (
+            attachment.verified
+            and attachment.sha256 is not None
+            and attachment.size_bytes is not None
+        )
+        attachments.append(attachment.model_dump(mode="json"))
+        keys.append(raw["file_key"])
+
+    fields = {"msg_type": kind, "text": text, "deleted": deleted}
+
+    # Legacy rows used a three-field digest and a 2,000-character storage cap.
+    # A's current revision also covers the keys of the current version's attachments.
+    legacy = kind == "text" and not keys and _digest(fields) == source.revision
+    matches = (
+        len(text) < 30000 and _digest({**fields, "attachments": sorted(keys)}) == source.revision
+    ) or (legacy and len(text) < 2000)
+    has_content = (kind in {"text", "post"} and bool(text.strip())) or bool(attachments)
+    complete = matches and has_content and all(a["verified"] for a in attachments)
+    display = redact_text(_CONTACT.sub("[已脱敏]", text)) if legacy else _redact(text)
+    if not detail and not complete and not deleted:
         # An excerpt may end part-way through a number or address.
         display = re.sub(r"\+?\d[\d ()-]{3,}$|[\w.%+\-]+@[\w.\-]*$", "…", display, flags=re.ASCII)
-    content = {**payload, "text": display}
+    content = {
+        "chat_id": payload.get("chat_id"),
+        "msg_type": kind,
+        "deleted": deleted,
+        "text": display,
+    }
+    if detail and not legacy:
+        content.update(version_no=payload["version_no"], attachments=attachments)
     if not complete and not deleted:
         content["preview_only"] = True
     return replace(

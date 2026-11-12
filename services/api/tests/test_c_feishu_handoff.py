@@ -1,10 +1,13 @@
 """Read A's real persisted Feishu projection through C's normal activity/evidence services."""
 
+import hashlib
+import json
 from contextlib import nullcontext
 from uuid import UUID, uuid4
 
 import pytest
 import test_a_feishu as upstream
+import test_a_feishu_full as full
 import test_c_activity as activity
 import test_c_evidence as evidence
 import test_c_evidence_postgres as postgres
@@ -13,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.errors import ApiError
 from app.modules.a import feishu
+from app.modules.a.models import FeishuAttachment, FeishuMessage
 from app.modules.c.activity_ports import get_activity_source_port
 from app.modules.c.activity_schemas import DecideActivity
 from app.modules.c.activity_service import change_activity, get_activity, query_activities
@@ -41,6 +45,27 @@ def sync(db, scope, *messages):
     feishu.sync_project(db, scope.users["leader"], scope.project.id, reader)
 
 
+def test_legacy_text_still_matches_the_saved_snapshot_before_upstream_resync(db, scope, port):
+    text = "发布者 editor@example.org"
+    sync(db, scope, upstream._raw_text("om_legacy", text, upstream.T1))
+    row = db.scalar(select(FeishuMessage))
+    # Migration 0023 adds a version number without changing the stored text/digest.
+    fields = {"text": text, "msg_type": "text", "deleted": False}
+    row.text = text
+    row.content_hash = hashlib.sha256(
+        json.dumps(fields, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+    db.flush()
+    record = port.get(
+        project_id=scope.project.id,
+        actor_id=scope.users["member"].id,
+        source_type="feishu",
+        source_id=row.id,
+    )
+    assert record.source.snapshot_complete
+    assert record.source.content == {**fields, "text": "发布者 [已脱敏]", "chat_id": upstream.CHAT}
+
+
 def test_short_message_survives_exact_length_adoption_and_later_source_changes(db, scope, port):
     original = "2026-11-11（20261111）：editor@example.org，13812345678，+853 6123 4567。".ljust(
         200, "文"
@@ -50,7 +75,8 @@ def test_short_message_survives_exact_length_adoption_and_later_source_changes(d
     result = query_activities(db, actor, project, "feishu", port, group_id=upstream.CHAT)
     row = result["items"][0]
     source_id = UUID(row["source_id"])
-    assert row["snapshot_complete"] and row["summary"].count("[已脱敏]") == 3
+    assert row["snapshot_complete"]
+    assert all(marker in row["summary"] for marker in ("[邮箱]", "[手机号]", "[已脱敏]"))
     assert "2026-11-11（20261111）" in row["summary"]
     assert row == get_activity(db, actor, project, "feishu", source_id, port)
     assert "13812345678" not in row["title"] and "editor@example.org" not in row["summary"]
@@ -90,7 +116,8 @@ def test_short_message_survives_exact_length_adoption_and_later_source_changes(d
     changed = db.scalar(
         select(EvidenceSourceSnapshot).where(EvidenceSourceSnapshot.version_no == 2)
     )
-    assert candidate.source_changed and changed.content_json["source"]["preview_only"] is True
+    assert candidate.source_changed and changed.content_json["source"]["text"] == "会" * 300
+    assert changed.content_json["source"]["version_no"] == 2
     assert original_snapshot.content_json["source"]["text"] == row["summary"]
     sync(db, scope, upstream._raw_deleted("om_1", upstream.T1))
     assert get_activity(db, actor, project, "feishu", source_id, port)["availability"] == "deleted"
@@ -111,7 +138,7 @@ def test_short_message_survives_exact_length_adoption_and_later_source_changes(d
     assert deleted.content_json["availability"] == "deleted"
 
 
-def test_excerpt_can_be_filtered_and_triaged_but_never_persisted_as_candidate(db, scope, port):
+def test_excerpt_search_opens_full_detail_and_both_capture_paths_save_full_text(db, scope, port):
     actor, project = scope.users["author"], scope.project.id
     sync(db, scope, upstream._raw_text("om_long", "工" * 300 + "检查尾部", upstream.T1))
     result = query_activities(db, actor, project, "feishu", port, q="检查尾部")
@@ -131,6 +158,48 @@ def test_excerpt_can_be_filtered_and_triaged_but_never_persisted_as_candidate(db
             str(uuid4()),
             port,
         )
+    assert not query_activities(db, actor, project, "feishu", port)["items"][0]["source_changed"]
+    detail = get_activity(db, actor, project, "feishu", source_id, port)
+    assert detail["snapshot_complete"] and detail["summary"].endswith("检查尾部")
+    change_activity(
+        db,
+        actor,
+        project,
+        "feishu",
+        source_id,
+        activity.adopt_command(scope, expected_version=2),
+        str(uuid4()),
+        port,
+    )
+    create_evidence(
+        db,
+        actor,
+        project,
+        evidence.command(scope, source_type="feishu", source_id=source_id),
+        str(uuid4()),
+        WorkspaceEvidenceSources(db, UnavailableSourcePort(), port),
+    )
+    snapshots = db.scalars(select(EvidenceSourceSnapshot)).all()
+    assert snapshots and all(
+        s.content_json["source"]["text"] == detail["summary"] for s in snapshots
+    )
+
+
+def test_attachment_adoption_requires_current_verified_bytes_and_retains_initial_fingerprint(
+    db, scope, port
+):
+    actor, project = scope.users["author"], scope.project.id
+    message = full.raw(
+        "om_file", "file", {"file_key": "file_one", "file_name": "editor@example.org.pdf"}
+    )
+    sync(db, scope, message)
+    source_id = UUID(query_activities(db, actor, project, "feishu", port)["items"][0]["source_id"])
+
+    def detail():
+        return get_activity(db, actor, project, "feishu", source_id, port)
+
+    first = detail()
+    assert not first["snapshot_complete"] and first["feishu_attachments"][0]["name"] == "[邮箱]"
     with pytest.raises(ApiError) as denied, db.begin_nested():
         change_activity(
             db,
@@ -138,22 +207,36 @@ def test_excerpt_can_be_filtered_and_triaged_but_never_persisted_as_candidate(db
             project,
             "feishu",
             source_id,
-            activity.adopt_command(scope, expected_version=2),
+            activity.adopt_command(scope),
             str(uuid4()),
             port,
         )
     assert denied.value.code == "SOURCE_SNAPSHOT_INCOMPLETE"
-    with pytest.raises(ApiError) as denied, db.begin_nested():
-        create_evidence(
-            db,
-            actor,
-            project,
-            evidence.command(scope, source_type="feishu", source_id=source_id),
-            str(uuid4()),
-            WorkspaceEvidenceSources(db, UnavailableSourcePort(), port),
+    attachment = db.scalar(select(FeishuAttachment))
+    reader = full.Reader(message, files={"file_one": b"first content"})
+    feishu.verify_attachment(db, actor, project, attachment.id, reader)
+    assert detail()["snapshot_complete"]
+    key = str(uuid4())
+    adopted = change_activity(
+        db, actor, project, "feishu", source_id, activity.adopt_command(scope), key, port
+    )
+    assert (
+        change_activity(
+            db, actor, project, "feishu", source_id, activity.adopt_command(scope), key, port
         )
-    assert denied.value.code == "SOURCE_SNAPSHOT_INCOMPLETE"
-    assert db.scalar(select(Evidence)) is None
+        == adopted
+    )
+    stored = db.scalar(select(EvidenceSourceSnapshot)).content_json["source"]
+    digest = hashlib.sha256(b"first content").hexdigest()
+    assert stored["attachments"][0]["sha256"] == digest and stored["attachments"][0]["verified"]
+    assert "file_key" not in stored["attachments"][0]
+    sync(
+        db, scope, full.raw("om_file", "file", {"file_key": "file_two", "file_name": "second.pdf"})
+    )
+    updated = detail()
+    assert updated["source_changed"] and not updated["snapshot_complete"]
+    assert [a["name"] for a in updated["feishu_attachments"]] == ["second.pdf"]
+    assert stored["attachments"][0]["sha256"] == digest
 
 
 def test_bound_group_and_local_triage_filter_before_pagination(db, scope, port):

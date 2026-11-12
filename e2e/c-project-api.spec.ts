@@ -99,7 +99,8 @@ test("C4 shows A's GitHub binding independently of commit records and distinguis
   await section.getByRole("button", { name: "重试绑定查询" }).click();
   await expect(section.getByRole("link", { name: "ZZJ1977/groupproof" })).toHaveAttribute("href", "https://github.com/ZZJ1977/groupproof");
   await expect(section.getByRole("link", { name: "管理 GitHub 仓库绑定" })).toHaveAttribute("href", `/github/${projectId}`);
-  await expect(section).toContainText("文本文件上次同步");
+  await expect(section).toContainText("仓库文件与开发活动上次同步");
+  await expect(section).toContainText("分页总数按当前筛选统计本项目已同步的活动快照");
   await expect(page.getByText("没有符合条件的来源记录")).toBeVisible();
   await contextRoute(page);
   await page.reload();
@@ -250,6 +251,27 @@ test("C4 incomplete Feishu messages support triage while evidence capture waits 
   await expect(page.getByText("当前来源仅提供摘要，获得完整正文后才可采纳为候选证据。")).toBeVisible();
   await expect(page.getByRole("button", { name: "采纳为候选证据", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "忽略记录", exact: true })).toBeEnabled();
+});
+
+test("C4 Feishu attachment verification enables adoption after detail refresh", async ({ page }) => {
+  await contextRoute(page);
+  let verified = false;
+  const attachmentId = "00000000-0000-0000-0000-000000000399";
+  await activityRoutes(page, () => ({ ...activity, snapshot_complete: verified, feishu_attachments: [{
+    id: attachmentId, kind: "file", name: "报告.pdf", sha256: verified ? "a".repeat(64) : null,
+    size_bytes: verified ? 12 : null, verified,
+  }] }));
+  await page.route(`**/api/v1/a/projects/${projectId}/feishu/attachments/${attachmentId}/verify`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    verified = true;
+    return success(route, {});
+  });
+  await page.goto(`/projects/${projectId}/collaboration?record=${sourceId}`);
+  const adopt = page.getByRole("button", { name: "采纳为候选证据", exact: true });
+  await expect(adopt).toBeDisabled();
+  await page.getByRole("button", { name: "核验附件指纹" }).click();
+  await expect(page.getByText(/已核验 · 12 字节 · SHA-256/)).toBeVisible();
+  await expect(adopt).toBeEnabled();
 });
 
 test("C4 Feishu adoption retains reason and the same retry key; only creates candidate evidence", async ({ page }) => {

@@ -129,6 +129,9 @@ def sync_project_repos(
     totals["associated"] = github_activity.associate_new_commits(
         session, actor, project_id, new_commits
     )
+    from app.modules.c.github_evidence import reconcile_github_evidence
+
+    reconcile_github_evidence(session, actor, project_id)
     record_audit(
         session,
         actor=actor,
