@@ -74,6 +74,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/ai-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Usage Events
+         * @description 管理员查看 AI 调用记录（谁、哪个功能、哪个模型、成败、token、费用）。
+         */
+        get: operations["list_ai_usage_events_api_v1_a_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/ai-usage/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summarize Ai Usage Events
+         * @description 管理员查看 AI 用量汇总：按功能、模型、币种统计调用数、失败数、token 和费用。
+         */
+        get: operations["summarize_ai_usage_events_api_v1_a_ai_usage_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects": {
         parameters: {
             query?: never;
@@ -505,6 +545,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable User */
+        post: operations["enable_user_api_v1_admin_users__user_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/capabilities": {
         parameters: {
             query?: never;
@@ -793,7 +850,8 @@ export interface paths {
         /** Users */
         get: operations["users_api_v1_c_admin_users_get"];
         put?: never;
-        post?: never;
+        /** Create Account */
+        post: operations["create_account_api_v1_c_admin_users_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -811,6 +869,23 @@ export interface paths {
         put?: never;
         /** Disable */
         post: operations["disable_api_v1_c_admin_users__user_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/c-admin/users/{user_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable */
+        post: operations["enable_api_v1_c_admin_users__user_id__enable_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2306,6 +2381,73 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AiUsageDTO */
+        AiUsageDTO: {
+            /** Cost */
+            cost: string | null;
+            /** Currency */
+            currency: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Feature */
+            feature: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Model */
+            model: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Output Tokens */
+            output_tokens: number | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Success */
+            success: boolean;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** AiUsagePageDTO */
+        AiUsagePageDTO: {
+            /** Items */
+            items: components["schemas"]["AiUsageDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** AiUsageSummaryDTO */
+        AiUsageSummaryDTO: {
+            /** Calls */
+            calls: number;
+            /** Cost */
+            cost: string;
+            /** Currency */
+            currency: string | null;
+            /** Failures */
+            failures: number;
+            /** Feature */
+            feature: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string | null;
+            /** Output Tokens */
+            output_tokens: number;
+        };
         /** AnalyzeCodeRequest */
         AnalyzeCodeRequest: {
             /** Requirements */
@@ -2922,6 +3064,24 @@ export interface components {
             /** Reason */
             reason: string;
             scope: components["schemas"]["AccessScope"];
+        };
+        /** CreateAccount */
+        CreateAccount: {
+            /** College */
+            college?: string | null;
+            /**
+             * Identity
+             * @enum {string}
+             */
+            identity: "student" | "teacher";
+            /** Name */
+            name: string;
+            /** Schoolemail */
+            schoolEmail: string;
+            /** Studentid */
+            studentId?: string | null;
+            /** Username */
+            username: string;
         };
         /** CreateCourse */
         CreateCourse: {
@@ -4439,6 +4599,8 @@ export interface components {
             action: string;
             /** Actor Id */
             actor_id: string | null;
+            /** Actor Role */
+            actor_role?: string | null;
             /** After */
             after: {
                 [key: string]: unknown;
@@ -4461,6 +4623,11 @@ export interface components {
             occurred_at: string;
             /** Reason */
             reason: string | null;
+            /**
+             * Result
+             * @default success
+             */
+            result: string;
             /** Target Id */
             target_id: string;
             /** Target Type */
@@ -4554,6 +4721,11 @@ export interface components {
         /** SuccessResponse[AdminUserPageDTO] */
         SuccessResponse_AdminUserPageDTO_: {
             data: components["schemas"]["AdminUserPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AiUsagePageDTO] */
+        SuccessResponse_AiUsagePageDTO_: {
+            data: components["schemas"]["AiUsagePageDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[AuditPageDTO] */
@@ -4692,6 +4864,12 @@ export interface components {
         /** SuccessResponse[ImplementationAnalysisResult] */
         SuccessResponse_ImplementationAnalysisResult_: {
             data: components["schemas"]["ImplementationAnalysisResult"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[list[AiUsageSummaryDTO]] */
+        SuccessResponse_list_AiUsageSummaryDTO__: {
+            /** Data */
+            data: components["schemas"]["AiUsageSummaryDTO"][];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[list[FeishuAvailableChatDTO]] */
@@ -5396,6 +5574,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ai_usage_events_api_v1_a_ai_usage_get: {
+        parameters: {
+            query?: {
+                feature?: string | null;
+                page?: number;
+                page_size?: number;
+                project_id?: string | null;
+                since?: string | null;
+                success?: boolean | null;
+                until?: string | null;
+                user_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AiUsagePageDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summarize_ai_usage_events_api_v1_a_ai_usage_summary_get: {
+        parameters: {
+            query?: {
+                feature?: string | null;
+                project_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                user_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_AiUsageSummaryDTO__"];
                 };
             };
             /** @description Validation Error */
@@ -6736,8 +6991,10 @@ export interface operations {
             query?: {
                 action_prefix?: string | null;
                 actor_id?: string | null;
+                actor_role?: ("student" | "teacher" | "ta" | "admin") | null;
                 page?: number;
                 page_size?: number;
+                result?: ("success" | "failure" | "denied") | null;
                 since?: string | null;
                 target_id?: string | null;
                 target_type?: string | null;
@@ -7000,6 +7257,41 @@ export interface operations {
         };
     };
     disable_user_api_v1_admin_users__user_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_user_api_v1_admin_users__user_id__enable_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -7552,7 +7844,75 @@ export interface operations {
             };
         };
     };
+    create_account_api_v1_c_admin_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccount"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     disable_api_v1_c_admin_users__user_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_api_v1_c_admin_users__user_id__enable_post: {
         parameters: {
             query?: never;
             header?: never;
