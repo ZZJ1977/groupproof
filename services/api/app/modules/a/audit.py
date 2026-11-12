@@ -13,6 +13,7 @@
         before={"status": "todo"},
         after={"status": "done"},
         reason="组长确认完成",
+        result="success",  # 可选：success | failure | denied
         request=request,  # 可选，用于串起同一请求的日志
     )
 
@@ -34,6 +35,7 @@ from sqlalchemy.orm import Session
 from app.db.models import User
 from app.modules.a.models import AuditEvent
 
+AUDIT_RESULTS = ("success", "failure", "denied")
 MAX_SNAPSHOT_CHARS = 20_000
 # 改前改后快照里不允许出现的字段（大小写不敏感，按字段名包含匹配）。
 SECRET_FIELD_MARKERS = ("password", "secret", "token", "code_hash", "api_key", "private_key")
@@ -76,6 +78,8 @@ def record_audit(
     reason: str | None = None,
     request: Any = None,
     occurred_at: datetime | None = None,
+    result: str = "success",
+    actor_role: str | None = None,
 ) -> AuditEvent:
     """新增一条操作记录（只 flush 不 commit）。actor=None 表示系统操作。"""
     action = action.strip()
@@ -84,7 +88,13 @@ def record_audit(
         raise ValueError("action must be 1-120 characters, e.g. 'task.status.changed'.")
     if not str(target_type).strip() or not str(target_id).strip():
         raise ValueError("target must be (type, id).")
+    if result not in AUDIT_RESULTS:
+        raise ValueError(f"result must be one of {AUDIT_RESULTS}.")
     actor_id = actor.id if isinstance(actor, User) else actor
+    if actor_role is None and actor_id is not None:
+        # 记下操作发生时的角色；之后账号角色变化不会改写历史。
+        user = actor if isinstance(actor, User) else session.get(User, actor_id)
+        actor_role = user.global_role if user is not None else None
     request_id = getattr(getattr(request, "state", None), "request_id", None)
     event = AuditEvent(
         id=uuid4(),
@@ -99,6 +109,8 @@ def record_audit(
         after_json=_snapshot(after),
         reason=reason,
         request_id=request_id,
+        actor_role=actor_role,
+        result=result,
     )
     session.add(event)
     session.flush()
@@ -119,6 +131,8 @@ def list_audit_events(
     actor_id: UUID | None = None,
     target: tuple[str, UUID | str] | None = None,
     action_prefix: str | None = None,
+    result: str | None = None,
+    actor_role: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
     page: int = 1,
@@ -140,6 +154,10 @@ def list_audit_events(
     if action_prefix:
         escaped = action_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         conditions.append(AuditEvent.action.like(f"{escaped}%", escape="\\"))
+    if result is not None:
+        conditions.append(AuditEvent.result == result)
+    if actor_role is not None:
+        conditions.append(AuditEvent.actor_role == actor_role)
     if since is not None:
         conditions.append(AuditEvent.occurred_at >= since)
     if until is not None:

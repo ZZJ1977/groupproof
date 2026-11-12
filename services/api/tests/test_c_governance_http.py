@@ -75,10 +75,8 @@ def test_http_access_default_unavailable_then_fixture_approval(client, app, scop
     result = client.post(
         "/api/v1/me/access-requests", json=body, headers={"Idempotency-Key": "http-request"}
     )
-    assert (
-        result.status_code == 503
-        and result.json()["error"]["code"] == "ACCESS_VISIBILITY_UNAVAILABLE"
-    )
+    # A 的真实授权端口已接入：申请人看不到的目标和“不存在”一样返回 404，不再是 503。
+    assert result.status_code == 404 and result.json()["error"]["code"] == "ACCESS_TARGET_NOT_FOUND"
     port = governance_tests.AuthorizationFixture()
     app.dependency_overrides[get_authorization_port] = lambda: port
     result = client.post(
