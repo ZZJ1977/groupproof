@@ -33,6 +33,67 @@ async function begin(page: Page) {
   await page.getByRole("button", { name: "检查证据来源", exact: true }).click();
 }
 
+test("C3 internal snapshot links use canonical IDs for older records and hide unavailable or inconsistent targets", async ({ page }) => {
+  const revision = id(980), discussionId = id(981);
+  let item: Schema["EvidenceDetailDTO"] = {
+    ...evidence, source_type: "task_note", source_url: null,
+    source_snapshots: [{ ...evidence.source_snapshots[1], source_revision: revision, content: { source: { body: "历史说明快照" } } }],
+  };
+  await setup(page, () => item);
+  const url = `/projects/${pid}/evidence?evidence=${eid}`;
+  async function openSnapshot() {
+    await page.goto(url);
+    await page.getByText(/^快照 v1/).click();
+  }
+  await openSnapshot();
+  const noteLink = page.getByRole("link", { name: "查看此版本的任务说明" });
+  await expect(noteLink).toHaveAttribute("href", `/projects/${pid}/tasks/${tid}?tab=history&note=${revision}#note-${revision}`);
+  item.source_snapshots[0].content.source = { note_version_id: id(999), body: "不一致的版本" };
+  await openSnapshot();
+  await expect(page.getByText("不一致的版本")).toBeVisible();
+  await expect(noteLink).toHaveCount(0);
+
+  const snapshot = item.source_snapshots[0];
+  item = { ...item, source_type: "discussion", source_snapshots: [{ ...snapshot, source_identity: discussionId, content: { source: { body: "历史讨论快照" } } }] };
+  await openSnapshot();
+  const threadLink = page.getByRole("link", { name: "查看原讨论串" });
+  await expect(threadLink).toHaveAttribute("href", `/projects/${pid}/discussions?discussion=${discussionId}`);
+  item.source_snapshots[0].content.availability = "deleted";
+  await openSnapshot();
+  await expect(page.getByText("此快照记录了来源已删除。")).toBeVisible();
+  await expect(threadLink).toHaveCount(0);
+  item.source_snapshots[0].content.availability = "available";
+  item.source_snapshots[0].source_identity = "unresolved";
+  await openSnapshot();
+  await expect(page.getByText("历史讨论快照")).toBeVisible();
+  await expect(threadLink).toHaveCount(0);
+});
+
+test("C3 Feishu evidence opens the original project record and distinguishes original text from a later preview", async ({ page }) => {
+  const fullText = "组内已核对的原始消息正文";
+  const item: Schema["EvidenceDetailDTO"] = {
+    ...evidence, source_url: null,
+    source_snapshots: [
+      { ...evidence.source_snapshots[0], content: { source_id: id(999), source: { text: "短摘要", preview_only: true } } },
+      { ...evidence.source_snapshots[1], content: { source_id: sid, source: { text: fullText } } },
+    ],
+  };
+  await setup(page, () => item);
+  await page.goto(`/projects/${pid}/evidence?evidence=${eid}`);
+  await expect(page.getByRole("link", { name: "查看项目中的飞书记录" })).toHaveAttribute("href", `/projects/${pid}/collaboration?record=${sid}`);
+  await page.getByText(/^快照 v1/).click();
+  await expect(page.getByText(fullText)).toBeVisible();
+  await page.getByText(/^快照 v2/).click();
+  await expect(page.getByText("短摘要", { exact: true })).toBeVisible();
+  await expect(page.getByText(/来源仅返回消息摘要/)).toBeVisible();
+
+  await page.route(`**${base}/evidence/${eid}`, (route) => success(route, { ...item, project_id: id(990) }));
+  await page.reload();
+  await expect(page.getByRole("alert").filter({ hasText: "无法核对这条证据的项目或记录编号" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "查看项目中的飞书记录" })).toHaveCount(0);
+  await expect(page.getByText(fullText)).toHaveCount(0);
+});
+
 test("C1-04 a personal activity link focuses the exact evidence decision after refresh", async ({ page }) => {
   const decisionId = id(925);
   await setup(page, () => ({
@@ -218,7 +279,7 @@ for (const linked of [true, false]) test(`C4 changed activity ${linked ? "links 
   await setup(page);
   const activity: Schema["ActivityDTO"] = {
     record_id: id(910), project_id: pid, group_id: "authorized-group", source_type: "feishu", source_id: sid, status: "adopted", task_id: tid, evidence_id: linked ? eid : null, lock_version: 1,
-    title: "发生变化的来源活动", summary: "新来源内容", author_id: former, author_name: "授权来源中的历史作者", occurred_at: stamp, kind: "document", source_identity: "document-original", source_revision: "r3", source_url: "https://example.feishu.cn/wiki/original", availability: "available", source_changed: true, suggested_task_ids: [],
+    title: "发生变化的来源活动", summary: "新来源内容", author_id: former, author_name: "授权来源中的历史作者", occurred_at: stamp, kind: "document", source_identity: "document-original", source_revision: "r3", source_url: "https://example.feishu.cn/wiki/original", availability: "available", snapshot_complete: true, source_changed: true, suggested_task_ids: [],
   };
   await page.route(`**${base}/activities/feishu**`, (route) => {
     const path = new URL(route.request().url()).pathname;

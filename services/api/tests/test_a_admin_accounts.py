@@ -14,7 +14,7 @@ from app.auth.models import (
     TeacherApplication,
     User,
 )
-from app.auth.services import accounts
+from app.auth.services import accounts, sessions
 from app.auth.services.registration import review_basis
 from app.modules.a.models import Notification
 from app.modules.c.notification_delivery import get_notification_writer
@@ -134,6 +134,63 @@ def test_admin_create_rejects_duplicates_and_bad_input(http, db, scope):
     assert wrong_domain.status_code == 400
     bad_role = http.client.post("/api/v1/c-admin/users", json=create_body(identity="admin"))
     assert bad_role.status_code == 422
+
+
+def test_admin_creates_pending_teacher_then_reviews_saved_application(http, db, scope):
+    admin = scope.users["admin"]
+    http.sign_in(admin)
+    body = create_body(
+        identity="teacher", name="待审教师", schoolEmail="pending@must.edu.mo", submitForReview=True
+    )
+    created = http.client.post("/api/v1/c-admin/users", json=body)
+    assert created.status_code == 201, created.text
+    user = db.get(User, UUID(created.json()["data"]["id"]))
+    assert "teacher" not in user.roles
+    assert sessions.current_facts(db, user)["accountState"] == "review_pending"
+    listing = http.client.get("/api/v1/c-admin/teacher-applications", params={"status": "pending"})
+    assert listing.status_code == 200, listing.text
+    rows = [row for row in listing.json()["data"]["items"] if row["userId"] == str(user.id)]
+    assert len(rows) == 1 and rows[0]["emailVerified"]
+    assert db.scalar(
+        select(Notification.id).where(
+            Notification.recipient_id == admin.id, Notification.title == "新的教师身份审核申请"
+        )
+    )
+    saved = http.client.post(
+        f"/api/v1/c-admin/teacher-applications/{rows[0]['id']}/review",
+        json={
+            "expectedVersion": rows[0]["applicationVersion"],
+            "decision": "approve",
+            "reason": "资料一致",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    db.refresh(user)
+    assert (
+        user.roles == ["teacher"] and sessions.current_facts(db, user)["accountState"] == "active"
+    )
+
+
+def test_pending_teacher_creation_rolls_back_if_notification_fails(db, scope, monkeypatch):
+    body = create_body(identity="teacher", schoolEmail="rollback@must.edu.mo")
+
+    def fail(*_):
+        raise RuntimeError("notification unavailable")
+
+    monkeypatch.setattr(accounts, "_notify_admins_of_application", fail)
+    prior = db.scalar(select(func.count()).select_from(TeacherApplication))
+    with pytest.raises(RuntimeError, match="notification unavailable"), db.begin_nested():
+        accounts.admin_create_account(
+            db,
+            admin=scope.users["admin"],
+            name=body["name"],
+            username=body["username"],
+            school_email=body["schoolEmail"],
+            identity="teacher",
+            submit_for_review=True,
+        )
+    assert db.scalar(select(User.id).where(User.username == body["username"])) is None
+    assert db.scalar(select(func.count()).select_from(TeacherApplication)) == prior
 
 
 def test_create_requires_an_administrator(http, db, scope):

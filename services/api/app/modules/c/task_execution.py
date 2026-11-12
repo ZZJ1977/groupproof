@@ -112,7 +112,14 @@ class SqlExecutionRepository:
             raise ApiError(404, "TASK_NOT_FOUND", "Task not found.")
         # All C execution writers lock the project first, then tasks in UUID order.
         # This prevents concurrent sibling updates from losing a parent rollup.
-        access = get_project_access(self.session, user, task.project_id, lock=lock)
+        access = get_project_access(
+            self.session,
+            user,
+            task.project_id,
+            lock=lock,
+            resource_type="task",
+            resource_id=task_id,
+        )
         project, course = access.project, access.course
         assignees_query = select(TaskAssignee).where(
             TaskAssignee.task_id == task_id,
@@ -131,8 +138,13 @@ class SqlExecutionRepository:
             course_teacher=access.teacher,
             active_course_staff=access.staff,
             email_verified=has_verified_school_email(self.session, user, lock=lock),
+            temporary_read=not (access.member or access.staff),
         )
         require_read(permissions)
+        if permissions.temporary_read:
+            return ExecutionScope(
+                task, project, course, permissions, [task], [], responsible_ids, []
+            )
         tasks_query = select(Task).where(Task.project_id == project.id).order_by(Task.id)
         modules_query = (
             select(FunctionalModule)
@@ -255,11 +267,17 @@ def execution_view(scope: ExecutionScope) -> TaskExecutionView:
         )
         for task_id in scope.dependency_ids
     ]
-    values, overall = progress_projection(scope.tasks)
     task = scope.task
+    if scope.permissions.temporary_read:
+        values, overall = {task.id: task.progress_percent}, None
+    else:
+        values, overall = progress_projection(scope.tasks)
     return TaskExecutionView(
         task_id=task.id,
         project_id=task.project_id,
+        title=task.title,
+        description=task.description,
+        temporary_read=scope.permissions.temporary_read,
         status=task.status,
         progress=values[task.id],
         version=task.lock_version,

@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.errors import ApiError
 from app.db.base import Base
 from app.db.models import ProjectMember
+from app.modules.a.models import Inbox, Notification
 from app.modules.c.evidence_router import commit_command
 from app.modules.c.files_models import FileDecision, FileVersion, LogicalFile
 from app.modules.c.files_schemas import AppendFileVersion, DesignateFileVersion, RegisterFile
@@ -61,7 +62,10 @@ def db():
             connection.execute("PRAGMA foreign_keys=ON")
 
         names = {
+            Inbox.__tablename__,
+            Notification.__tablename__,
             "users",
+            "a_access_grants",
             "school_email_bindings",
             "courses",
             "course_staff",
