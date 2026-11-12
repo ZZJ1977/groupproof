@@ -47,6 +47,8 @@ def test_admin_passes_filters_to_a_and_reads_only_approved_snapshot_metadata(
         occurred_at=when,
         action="project.plan.frozen",
         actor_id=None,
+        actor_role="teacher",
+        result="success",
         target_type="plan_version",
         target_id="imported-id",
         reason=None,
@@ -77,6 +79,8 @@ def test_admin_passes_filters_to_a_and_reads_only_approved_snapshot_metadata(
             action_prefix="project.",
             target=("plan_version", "imported-id"),
             actor_id=None,
+            result=None,
+            actor_role=None,
             since=when,
             until=None,
         )
@@ -84,6 +88,7 @@ def test_admin_passes_filters_to_a_and_reads_only_approved_snapshot_metadata(
     assert page.total == 11 and page.page == 2
     (row,) = page.items
     assert row.actor_id is None and row.reason is None and row.before is None
+    assert row.actor_role == "teacher" and row.result == "success"
     assert row.target_type == "plan_version" and row.target_id == "imported-id"
     assert row.after == {"version_no": 2} and row.metadata_redacted
 

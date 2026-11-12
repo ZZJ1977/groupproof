@@ -6,15 +6,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -58,12 +61,48 @@ class AuditEvent(Base):
     after_json: Mapped[dict | list | None] = mapped_column(JSONB)
     reason: Mapped[str | None] = mapped_column(Text)
     request_id: Mapped[str | None] = mapped_column(String(64))
+    # 操作发生那一刻操作人的角色（之后角色变了也不影响历史记录）和操作结果。
+    actor_role: Mapped[str | None] = mapped_column(String(32))
+    result: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=sa_text("'success'")
+    )
 
     __table_args__ = (
         Index("ix_a_audit_events_target", "target_type", "target_id", "occurred_at"),
         Index("ix_a_audit_events_project", "project_id", "occurred_at"),
         Index("ix_a_audit_events_course", "course_id", "occurred_at"),
         Index("ix_a_audit_events_actor", "actor_id", "occurred_at"),
+    )
+
+
+class AiUsageEvent(Base):
+    """A7 每次 AI 调用一行：谁、哪个功能、哪个模型、成败、token 和费用，供 C 做后台统计。"""
+
+    __tablename__ = "a_ai_usage_events"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    project_id: Mapped[UUID | None] = mapped_column(UUIDType)
+    feature: Mapped[str] = mapped_column(String(60), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(32))
+    model: Mapped[str | None] = mapped_column(String(120))
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    currency: Mapped[str | None] = mapped_column(String(8))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        Index("ix_a_ai_usage_user", "user_id", "occurred_at"),
+        Index("ix_a_ai_usage_feature", "feature", "occurred_at"),
+        Index("ix_a_ai_usage_project", "project_id", "occurred_at"),
     )
 
 

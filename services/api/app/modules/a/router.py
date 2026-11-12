@@ -9,18 +9,29 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.api.responses import SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
-from app.modules.a import ai, code_analysis, feishu, github, github_sync, projects, storage
+from app.modules.a import (
+    ai,
+    code_analysis,
+    feishu,
+    github,
+    github_sync,
+    permissions,
+    projects,
+    storage,
+)
+from app.modules.a.ai import usage as ai_usage
 
 router = APIRouter(tags=["a"])
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -393,3 +404,108 @@ def analyze_github_code(
     """分析已同步的代码是否实现了给定需求。结果只是建议，需要人确认。"""
     result = code_analysis.analyze_project_code(session, user, project_id, payload.requirements)
     return success(result, request)
+
+
+class AiUsageDTO(BaseModel):
+    id: UUID
+    occurred_at: datetime
+    user_id: UUID | None
+    project_id: UUID | None
+    feature: str
+    provider: str | None
+    model: str | None
+    success: bool
+    error_code: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    cost: Decimal | None
+    currency: str | None
+    latency_ms: int | None
+
+
+class AiUsagePageDTO(BaseModel):
+    items: list[AiUsageDTO]
+    total: int
+    page: int
+    page_size: int
+
+
+class AiUsageSummaryDTO(BaseModel):
+    feature: str
+    model: str | None
+    currency: str | None
+    calls: int
+    failures: int
+    input_tokens: int
+    output_tokens: int
+    cost: Decimal
+
+
+@router.get(
+    "/api/v1/a/ai-usage",
+    response_model=SuccessResponse[AiUsagePageDTO],
+    dependencies=[Depends(_private)],
+)
+def list_ai_usage_events(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    user_id: UUID | None = None,
+    project_id: UUID | None = None,
+    feature: str | None = Query(default=None, max_length=60),
+    success_only: bool | None = Query(default=None, alias="success"),
+    since: AwareDatetime | None = None,
+    until: AwareDatetime | None = None,
+    page: int = Query(default=1, ge=1, le=1_000_000),
+    page_size: int = Query(default=20, ge=1, le=100),
+):
+    """管理员查看 AI 调用记录（谁、哪个功能、哪个模型、成败、token、费用）。"""
+    permissions.require_admin(user)
+    found = ai_usage.list_ai_usage(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        feature=feature,
+        success=success_only,
+        since=since,
+        until=until,
+        page=page,
+        page_size=page_size,
+    )
+    return success(
+        AiUsagePageDTO(
+            items=[AiUsageDTO.model_validate(row, from_attributes=True) for row in found.items],
+            total=found.total,
+            page=page,
+            page_size=page_size,
+        ),
+        request,
+    )
+
+
+@router.get(
+    "/api/v1/a/ai-usage/summary",
+    response_model=SuccessResponse[list[AiUsageSummaryDTO]],
+    dependencies=[Depends(_private)],
+)
+def summarize_ai_usage_events(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    user_id: UUID | None = None,
+    project_id: UUID | None = None,
+    feature: str | None = Query(default=None, max_length=60),
+    since: AwareDatetime | None = None,
+    until: AwareDatetime | None = None,
+):
+    """管理员查看 AI 用量汇总：按功能、模型、币种统计调用数、失败数、token 和费用。"""
+    permissions.require_admin(user)
+    rows = ai_usage.summarize_ai_usage(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        feature=feature,
+        since=since,
+        until=until,
+    )
+    return success([AiUsageSummaryDTO(**row) for row in rows], request)
