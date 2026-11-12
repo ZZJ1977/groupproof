@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import JSON, MetaData, create_engine, event, select
@@ -13,8 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.api.errors import ApiError
 from app.db.base import Base
 from app.db.models import AcceptanceCriterion, Course, FunctionalModule, Project, Task, User
+from app.modules.c.models import Evidence, EvidenceCriterion, EvidenceSourceSnapshot
+from app.modules.d import integrity, verification
 from app.modules.d.models import (
     ContributionCalculation,
     ContributionItem,
@@ -47,6 +50,10 @@ def db():
         "functional_modules",
         "tasks",
         "acceptance_criteria",
+        "source_references",
+        "evidence",
+        "evidence_criteria",
+        "evidence_source_snapshots",
         "baseline_versions",
         "plan_versions",
         "integrity_checks",
@@ -134,6 +141,137 @@ def scope(db):
     return SimpleNamespace(
         user=user, course=course, project=project, task=task, criterion=criterion
     )
+
+
+def test_d1_check_excludes_withdrawn_and_unavailable_sources(db, scope, monkeypatch):
+    monkeypatch.setattr(
+        integrity,
+        "get_project_access",
+        lambda *args, **kwargs: SimpleNamespace(
+            member=True,
+            project=scope.project,
+            course=scope.course,
+            latest_plan=SimpleNamespace(
+                status="frozen", snapshot_json={"tasks": [str(scope.task.id)]}
+            ),
+        ),
+    )
+    evidence = Evidence(
+        id=uuid4(),
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        author_id=scope.user.id,
+        title="Formal file",
+        description="Evidence",
+        source_type="file",
+        status="formal",
+        source_changed=False,
+    )
+    db.add(evidence)
+    db.flush()
+    db.add(EvidenceCriterion(evidence_id=evidence.id, criterion_id=scope.criterion.id))
+    snapshot = EvidenceSourceSnapshot(
+        id=uuid4(),
+        evidence_id=evidence.id,
+        version_no=1,
+        source_identity="file-1",
+        source_revision="v1",
+        content_hash="a" * 64,
+        content_json={"availability": "available", "source": {}},
+        captured_by=scope.user.id,
+    )
+    db.add(snapshot)
+    db.flush()
+    first = integrity.run_check(db, scope.project.id, scope.task.id, scope.user)
+    assert (first["covered_criteria"], first["status"]) == (1, "passed")
+    provider = integrity.AcceptanceTransitionProvider(db, UUID(first["id"]))
+    transition_scope = SimpleNamespace(task=scope.task, project=scope.project)
+    provider.authorize(transition_scope, scope.user, "pending_verification", "check")
+    snapshot.content_json = {"availability": "unavailable", "source": {}}
+    db.commit()
+    with pytest.raises(ApiError) as stale:
+        provider.authorize(transition_scope, scope.user, "pending_verification", "check")
+    assert stale.value.code == "STALE_INTEGRITY_CHECK"
+    second = integrity.run_check(db, scope.project.id, scope.task.id, scope.user)
+    assert (second["covered_criteria"], second["status"]) == (0, "incomplete")
+    assert second["details"][0]["evidence"] == []
+    snapshot.content_json = {"availability": "available", "source": {}}
+    evidence.status = "withdrawn"
+    db.commit()
+    third = integrity.run_check(db, scope.project.id, scope.task.id, scope.user)
+    assert third["covered_criteria"] == 0
+
+
+def test_d1_check_rejects_non_member(db, scope, monkeypatch):
+    monkeypatch.setattr(
+        integrity,
+        "get_project_access",
+        lambda *args, **kwargs: SimpleNamespace(
+            member=False,
+            project=scope.project,
+            course=scope.course,
+            latest_plan=SimpleNamespace(
+                status="frozen", snapshot_json={"tasks": [str(scope.task.id)]}
+            ),
+        ),
+    )
+    with pytest.raises(ApiError) as denied:
+        integrity.run_check(db, scope.project.id, scope.task.id, scope.user)
+    assert denied.value.status_code == 403
+
+
+def test_d1_verification_keeps_deterministic_result_when_ai_unavailable(db, scope, monkeypatch):
+    access = SimpleNamespace(
+        member=True,
+        project=scope.project,
+        course=scope.course,
+        latest_plan=SimpleNamespace(status="frozen", snapshot_json={"tasks": [str(scope.task.id)]}),
+    )
+    monkeypatch.setattr(integrity, "get_project_access", lambda *args, **kwargs: access)
+    monkeypatch.setattr(verification, "get_project_access", lambda *args, **kwargs: access)
+    monkeypatch.setattr(
+        verification,
+        "match_evidence",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ApiError(503, "AI_UNAVAILABLE", "Unavailable")
+        ),
+    )
+    scope.task.status = "pending_verification"
+    item = Evidence(
+        id=uuid4(),
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        author_id=scope.user.id,
+        title="Merged PR",
+        description="Verified work",
+        source_type="github",
+        status="formal",
+        source_changed=False,
+    )
+    db.add(item)
+    db.flush()
+    db.add(EvidenceCriterion(evidence_id=item.id, criterion_id=scope.criterion.id))
+    db.add(
+        EvidenceSourceSnapshot(
+            id=uuid4(),
+            evidence_id=item.id,
+            version_no=1,
+            source_identity="pr-1",
+            source_revision="v1",
+            content_hash="b" * 64,
+            content_json={
+                "availability": "available",
+                "source": {"kind": "pull_request", "state": "merged"},
+            },
+            captured_by=scope.user.id,
+        )
+    )
+    db.commit()
+    result = verification.run_verification(db, scope.project.id, scope.task.id, scope.user)
+    assert result["result"] == "passed"
+    assert result["criteria"][0]["result"] == "passed"
+    assert result["criteria"][0]["evidence"][0]["id"] == str(item.id)
+    assert "AI 暂不可用" in result["criteria"][0]["reason"]
 
 
 def test_integrity_checks_keep_each_historical_result(db, scope):
