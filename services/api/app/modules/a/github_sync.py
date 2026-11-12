@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import User
-from app.modules.a import github, permissions
+from app.modules.a import github, github_activity, permissions
 from app.modules.a.audit import record_audit
 from app.modules.a.models import GithubFile, GithubRepoLink
 
@@ -105,12 +105,30 @@ def sync_project_repos(
     links = session.scalars(
         select(GithubRepoLink).where(GithubRepoLink.project_id == project_id)
     ).all()
-    totals = {"repos": len(links), "files": 0, "fetched": 0, "removed": 0, "skipped": 0}
+    totals = {
+        "repos": len(links),
+        "files": 0,
+        "fetched": 0,
+        "removed": 0,
+        "skipped": 0,
+        "commits": 0,
+        "pulls": 0,
+        "ci_runs": 0,
+        "deleted_sources": 0,
+        "associated": 0,
+    }
     now = datetime.now(UTC)
+    resolver = github_activity.AuthorResolver(session, project_id)
+    new_commits = []
     for link in links:
         _sync_link(session, client, link, totals, now)
+        new_commits += github_activity.sync_activity(session, client, link, totals, now, resolver)
         link.last_synced_at = now
     session.flush()
+    # 新提交里写了任务号（如 #T-012）的，调用 C 的匹配函数自动关联。
+    totals["associated"] = github_activity.associate_new_commits(
+        session, actor, project_id, new_commits
+    )
     record_audit(
         session,
         actor=actor,

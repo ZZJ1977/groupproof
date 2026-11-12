@@ -1,6 +1,7 @@
 """C7 read view of operation records exposed by A4-02."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -19,6 +20,8 @@ class SharedAuditFilters(BaseModel):
     actor_id: UUID | None = None
     target_type: str | None = Field(default=None, min_length=1, max_length=60)
     target_id: str | None = Field(default=None, min_length=1, max_length=120)
+    result: Literal["success", "failure", "denied"] | None = None
+    actor_role: Literal["student", "teacher", "ta", "admin"] | None = None
     since: AwareDatetime | None = None
     until: AwareDatetime | None = None
     page: int = Field(default=1, ge=1, le=1_000_000)
@@ -30,6 +33,8 @@ class SharedAuditRow(BaseModel):
     occurred_at: datetime
     action: str
     actor_id: UUID | None
+    actor_role: str | None = None
+    result: str = "success"
     target_type: str
     target_id: str
     reason: str | None
@@ -77,6 +82,8 @@ def shared_audit_page(session: Session, user: User, filters: SharedAuditFilters)
         session,
         action_prefix=filters.action_prefix,
         actor_id=filters.actor_id,
+        result=filters.result,
+        actor_role=filters.actor_role,
         target=(filters.target_type, filters.target_id)
         if filters.target_type is not None
         else None,
@@ -95,6 +102,8 @@ def shared_audit_page(session: Session, user: User, filters: SharedAuditFilters)
                 occurred_at=utc(event.occurred_at),
                 action=event.action,
                 actor_id=event.actor_id,
+                actor_role=event.actor_role,
+                result=event.result,
                 target_type=event.target_type,
                 target_id=event.target_id,
                 reason=event.reason,

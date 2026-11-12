@@ -65,6 +65,11 @@ class OpenRouterProvider:
         self._api_key = api_key
         self._model = model
         self._transport = transport
+        self.last_usage: dict | None = None
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     def generate(self, feature: str, payload: dict[str, Any], *, timeout: float) -> dict:
         if feature not in RESULT_MODELS:
@@ -79,6 +84,7 @@ class OpenRouterProvider:
             "model": self._model,
             "temperature": 0,
             "response_format": {"type": "json_object"},
+            "usage": {"include": True},  # 让 OpenRouter 在结果里带上 token 和费用
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -95,8 +101,21 @@ class OpenRouterProvider:
         if response.status_code in (401, 403):
             raise AIUnavailable("openrouter key rejected")  # 配置问题，不重试
         response.raise_for_status()
+        self.last_usage = self._read_usage(response.json())
         content = response.json()["choices"][0]["message"]["content"]
         result = json.loads(content)
         if not isinstance(result, dict):
             raise ValueError("model did not return a JSON object")
         return result
+
+    @staticmethod
+    def _read_usage(body: dict) -> dict | None:
+        usage = body.get("usage")
+        if not isinstance(usage, dict):
+            return None
+        return {
+            "input_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "cost": usage.get("cost"),
+            "currency": "USD" if usage.get("cost") is not None else None,
+        }

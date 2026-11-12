@@ -84,9 +84,12 @@ class UnavailableActivitySourcePort:
 
 
 def get_activity_source_port() -> ActivitySourcePort:
-    """飞书来源由 A 的只读快照提供；GitHub 来源仍然明确返回 503。"""
+    """飞书和 GitHub 来源都由 A 的只读快照提供，按来源类型分发。"""
     from app.db.session import SessionLocal
     from app.modules.a.feishu import feishu_activity_port
+    from app.modules.a.github_activity import CompositeActivityPort, DatabaseGithubActivityPort
     from app.modules.c.feishu_activity import FeishuActivityPort
 
-    return FeishuActivityPort(feishu_activity_port(SessionLocal))
+    return CompositeActivityPort(
+        FeishuActivityPort(feishu_activity_port(SessionLocal)), DatabaseGithubActivityPort(SessionLocal)
+    )

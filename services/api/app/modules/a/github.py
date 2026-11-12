@@ -1,7 +1,8 @@
 """A5 GitHub 只读接入：用 GitHub App 读取用户授权安装的仓库。
 
 边界（V1）：
-- 只使用 GitHub App 的只读权限（Contents、Metadata）；代码里没有任何写仓库的调用；
+- 只使用 GitHub App 的只读权限（Contents、Metadata、Pull requests、Actions）；
+  代码里没有任何写仓库的调用；
 - 凭证只来自后端变量 ``GITHUB_APP_ID`` 和 ``GITHUB_APP_PRIVATE_KEY``，不进入数据库、日志或前端；
 - 用 App 私钥签发 JWT，换取安装级别的短期访问令牌（约 1 小时），令牌只放在内存里；
 - 仓库必须已经把本 App 安装到其所在账号上，否则明确返回需要安装的提示。
@@ -161,6 +162,59 @@ class GithubClient:
             raise _unavailable("无法读取文件内容。")
         body = response.json()
         return base64.b64decode(body["content"]) if body.get("encoding") == "base64" else b""
+
+    def _list(
+        self, path: str, installation_id: int, params: dict[str, Any], key: str | None = None
+    ) -> list[dict[str, Any]]:
+        response = self._get(path, self.installation_token(installation_id), params=params)
+        if response.status_code != 200:
+            raise _unavailable("无法读取仓库的活动记录，请确认 GitHub App 有只读权限。")
+        body = response.json()
+        items = body.get(key) if key else body
+        if not isinstance(items, list):
+            raise _unavailable()
+        return items
+
+    def commits(
+        self, owner: str, repo: str, branch: str, installation_id: int
+    ) -> list[dict[str, Any]]:
+        """默认分支最近的提交（最多 100 条，新的在前）。"""
+        return self._list(
+            f"/repos/{owner}/{repo}/commits",
+            installation_id,
+            {"sha": branch, "per_page": 100},
+        )
+
+    def pulls(self, owner: str, repo: str, installation_id: int) -> list[dict[str, Any]]:
+        """最近更新的合并请求（含已合并和已关闭，最多 100 条）。"""
+        return self._list(
+            f"/repos/{owner}/{repo}/pulls",
+            installation_id,
+            {"state": "all", "sort": "updated", "direction": "desc", "per_page": 100},
+        )
+
+    def workflow_runs(self, owner: str, repo: str, installation_id: int) -> list[dict[str, Any]]:
+        """最近的 CI（GitHub Actions）运行（最多 100 条）。"""
+        return self._list(
+            f"/repos/{owner}/{repo}/actions/runs",
+            installation_id,
+            {"per_page": 100},
+            key="workflow_runs",
+        )
+
+    def _exists(self, path: str, installation_id: int) -> bool:
+        response = self._get(path, self.installation_token(installation_id))
+        if response.status_code == 200:
+            return True
+        if response.status_code in (404, 422):
+            return False  # 只有 GitHub 明确说查不到才算删除
+        raise _unavailable()
+
+    def commit_exists(self, owner: str, repo: str, sha: str, installation_id: int) -> bool:
+        return self._exists(f"/repos/{owner}/{repo}/commits/{sha}", installation_id)
+
+    def run_exists(self, owner: str, repo: str, run_id: str, installation_id: int) -> bool:
+        return self._exists(f"/repos/{owner}/{repo}/actions/runs/{run_id}", installation_id)
 
 
 def get_github_client() -> GithubClient | None:

@@ -63,4 +63,6 @@ class UnavailableAuthorizationPort:
 
 
 def get_authorization_port() -> AuthorizationPort:
-    return UnavailableAuthorizationPort()
+    from app.modules.a.access_grants import DatabaseAuthorizationPort
+
+    return DatabaseAuthorizationPort()

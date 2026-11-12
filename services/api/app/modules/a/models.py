@@ -6,15 +6,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -58,12 +61,48 @@ class AuditEvent(Base):
     after_json: Mapped[dict | list | None] = mapped_column(JSONB)
     reason: Mapped[str | None] = mapped_column(Text)
     request_id: Mapped[str | None] = mapped_column(String(64))
+    # 操作发生那一刻操作人的角色（之后角色变了也不影响历史记录）和操作结果。
+    actor_role: Mapped[str | None] = mapped_column(String(32))
+    result: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=sa_text("'success'")
+    )
 
     __table_args__ = (
         Index("ix_a_audit_events_target", "target_type", "target_id", "occurred_at"),
         Index("ix_a_audit_events_project", "project_id", "occurred_at"),
         Index("ix_a_audit_events_course", "course_id", "occurred_at"),
         Index("ix_a_audit_events_actor", "actor_id", "occurred_at"),
+    )
+
+
+class AiUsageEvent(Base):
+    """A7 每次 AI 调用一行：谁、哪个功能、哪个模型、成败、token 和费用，供 C 做后台统计。"""
+
+    __tablename__ = "a_ai_usage_events"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    project_id: Mapped[UUID | None] = mapped_column(UUIDType)
+    feature: Mapped[str] = mapped_column(String(60), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(32))
+    model: Mapped[str | None] = mapped_column(String(120))
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    currency: Mapped[str | None] = mapped_column(String(8))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        Index("ix_a_ai_usage_user", "user_id", "occurred_at"),
+        Index("ix_a_ai_usage_feature", "feature", "occurred_at"),
+        Index("ix_a_ai_usage_project", "project_id", "occurred_at"),
     )
 
 
@@ -267,6 +306,8 @@ class FeishuMessage(Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deleted: Mapped[bool] = mapped_column(nullable=False, server_default=sa_text("false"))
+    # 每次内容变化（编辑、附件变化、删除）加 1，历史版本保存在 a_feishu_message_versions。
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default=sa_text("1"))
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -326,4 +367,153 @@ class GithubFile(Base):
     __table_args__ = (
         UniqueConstraint("link_id", "path", name="uq_a_github_files_link_path"),
         Index("ix_a_github_files_project", "project_id", "path"),
+    )
+
+
+class GithubActivity(Base):
+    """A5：仓库的提交、合并请求和 CI 运行记录（只读同步）。
+
+    来源在 GitHub 上查不到时保留行并标记 deleted，不会把读取失败当成删除。
+    """
+
+    __tablename__ = "a_github_activities"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    link_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("a_github_repo_links.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)  # commit|pull_request|ci_run
+    external_id: Mapped[str] = mapped_column(String(120), nullable=False)  # sha / PR 号 / run id
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, server_default=sa_text("''"))
+    state: Mapped[str | None] = mapped_column(String(40))  # open|closed|merged|success|failure...
+    author_login: Mapped[str | None] = mapped_column(String(120))
+    author_name: Mapped[str | None] = mapped_column(String(240))
+    author_email: Mapped[str | None] = mapped_column(String(320))
+    author_user_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    url: Mapped[str | None] = mapped_column(String(500))
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+    revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    deleted: Mapped[bool] = mapped_column(nullable=False, server_default=sa_text("false"))
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("link_id", "kind", "external_id", name="uq_a_github_activities_item"),
+        Index("ix_a_github_activities_project_time", "project_id", "occurred_at", "id"),
+        Index("ix_a_github_activities_author", "project_id", "author_user_id"),
+    )
+
+
+class GithubUserLink(Base):
+    """A5：本站用户自己声明的 GitHub 用户名，用来把提交作者对应到本站用户。"""
+
+    __tablename__ = "a_github_user_links"
+
+    user_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    login: Mapped[str] = mapped_column(String(120), nullable=False)  # 小写
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("login", name="uq_a_github_user_links_login"),)
+
+
+class FeishuMessageVersion(Base):
+    """A6：飞书消息的每一个版本（脱敏后的全文和附件摘要），只增不改。"""
+
+    __tablename__ = "a_feishu_message_versions"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    message_row_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("a_feishu_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    attachments: Mapped[list | None] = mapped_column(JSONB)
+    deleted: Mapped[bool] = mapped_column(nullable=False, server_default=sa_text("false"))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("message_row_id", "version_no", name="uq_a_feishu_versions_message_no"),
+    )
+
+
+class FeishuAttachment(Base):
+    """A6：飞书消息里的附件引用（图片、文件、语音、视频）。
+
+    ``file_key`` 是飞书侧的资源编号；核验时用机器人凭证下载并算出 SHA-256，之后任何人都能
+    对照这个指纹确认附件没有被替换。内容本身不入库。
+    """
+
+    __tablename__ = "a_feishu_attachments"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    message_row_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("a_feishu_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    file_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # image|file|audio|media
+    name: Mapped[str | None] = mapped_column(String(300))
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    available: Mapped[bool] = mapped_column(nullable=False, server_default=sa_text("true"))
+
+    __table_args__ = (
+        UniqueConstraint("message_row_id", "file_key", name="uq_a_feishu_attachments_key"),
+    )
+
+
+class AccessGrant(Base):
+    """A 临时只读授权：C 的访问申请批准后由 A 生效；到期或撤销后立即失效。
+
+    ``command_id`` 是 C 批准动作的稳定编号，同一个编号重复调用只会得到同一份授权。
+    """
+
+    __tablename__ = "a_access_grants"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    request_id: Mapped[UUID] = mapped_column(UUIDType, nullable=False)
+    command_id: Mapped[UUID] = mapped_column(UUIDType, nullable=False)
+    applicant_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reviewer_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    resource_type: Mapped[str] = mapped_column(String(16), nullable=False)  # project|task|evidence
+    resource_id: Mapped[UUID] = mapped_column(UUIDType, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by_id: Mapped[UUID | None] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoke_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("request_id", name="uq_a_access_grants_request"),
+        UniqueConstraint("command_id", name="uq_a_access_grants_command"),
+        CheckConstraint(
+            "resource_type IN ('project', 'task', 'evidence')", name="ck_a_access_grants_type"
+        ),
+        Index("ix_a_access_grants_lookup", "applicant_id", "project_id", "expires_at"),
     )
