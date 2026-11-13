@@ -6,7 +6,7 @@ does not grant administrators project-content access or require writable project
 
 from datetime import UTC, datetime, time
 
-from sqlalchemy import and_, false, func, literal, or_, select, union_all
+from sqlalchemy import and_, case, false, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
@@ -22,6 +22,9 @@ from app.db.models import (
     TaskAssignee,
     User,
 )
+from app.modules.a.github_activity import github_filters
+from app.modules.a.models import GithubActivity
+from app.modules.c.activity_ports import ActivitySourceQuery
 from app.modules.c.daily_schemas import DailyActivityFilters
 from app.modules.c.discussion_models import Discussion, DiscussionReply
 from app.modules.c.files_models import FileVersion, LogicalFile
@@ -47,8 +50,9 @@ ACTIVITY_SCOPE = (
     "Only events performed by the current actor on objects still accessible now: canonical "
     "task progress events, saved task-note versions, registered project file versions, "
     "evidence decisions (submitted/adopted/"
-    "withdrawn/source_changed), discussion creation and replies. Discussion importance changes "
-    "and external GitHub/Feishu activity are not included. Titles are current object titles; "
+    "withdrawn/source_changed), discussion creation and replies, and synced GitHub commits, "
+    "pull requests and CI runs attributed to this member. Personal Feishu activity is unavailable. "
+    "Titles are current object titles; "
     "timestamps are event creation times. Date filters are inclusive UTC calendar dates. "
     "Order is occurred_at descending, event_type ascending, event UUID ascending."
 )
@@ -389,9 +393,40 @@ def _activity_events(actor: User):
         .join(LogicalFile, LogicalFile.id == FileVersion.file_id)
         .where(FileVersion.uploaded_by == actor.id)
     )
-    return union_all(progress, notes, decisions, discussion, replies, file_versions).subquery(
-        "daily_events"
+    # Compose A's author/project filter with current membership before the global
+    # sort and LIMIT. Fetching one already-paged list per project loses events.
+    github = (
+        select(
+            *columns(
+                "development",
+                literal("github_") + GithubActivity.kind,
+                GithubActivity.id,
+                GithubActivity.occurred_at,
+                GithubActivity.project_id,
+                "github",
+                GithubActivity.id,
+                case(
+                    (GithubActivity.deleted, literal("[已删除的 GitHub 记录]")),
+                    else_=GithubActivity.title,
+                ),
+                literal(None),
+            )
+        )
+        .select_from(ProjectMember)
+        .join(
+            GithubActivity,
+            and_(
+                *github_filters(ProjectMember.project_id, ActivitySourceQuery(author_id=actor.id))
+            ),
+        )
+        .where(
+            ProjectMember.user_id == actor.id,
+            ProjectMember.left_at.is_(None),
+        )
     )
+    return union_all(
+        progress, notes, decisions, discussion, replies, file_versions, github
+    ).subquery("daily_events")
 
 
 def list_personal_activity(session: Session, user: User, filters: DailyActivityFilters) -> dict:
@@ -430,6 +465,8 @@ def list_personal_activity(session: Session, user: User, filters: DailyActivityF
             href = f"{base}/evidence?evidence={row.object_id}&decision={row.event_id}"
         elif row.object_type == "file":
             href = f"{base}/files?file={row.object_id}&version={row.event_id}"
+        elif row.object_type == "github":
+            href = f"{base}/github?record={row.object_id}"
         elif row.event_type == "task_note_saved":
             href = (
                 f"{base}/tasks/{row.object_id}?tab=history&note={row.event_id}#note-{row.event_id}"
@@ -463,5 +500,5 @@ def list_personal_activity(session: Session, user: User, filters: DailyActivityF
         "page_size": filters.page_size,
         "total": total,
         "scope": ACTIVITY_SCOPE,
-        "unavailable_sources": ["github", "feishu"],
+        "unavailable_sources": ["feishu"],
     }

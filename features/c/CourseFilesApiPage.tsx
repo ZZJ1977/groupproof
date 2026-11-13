@@ -9,6 +9,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import type { components } from "@/packages/domain/api.generated";
 import { FileUploadForm } from "./FileUploadForm";
+import { FileVersionHistory, groupVersionDecisions } from "./FileVersionHistory";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, ApiPager, apiButton, apiInput, isUuid, pageNumber, queryPolicy, safeHttps, useCommandKey, versionFailure } from "./c-project-api";
 
@@ -50,6 +51,7 @@ function CourseFilesPage({ courseId, userId }: { courseId: string; userId: strin
     page: pageNumber(query.get("page")), page_size: 10,
   };
   const selectedId = query.get("file");
+  const versionId = query.get("version");
   const enabled = isUuid(courseId);
   const list = useQuery({ queryKey: ["c-course-files", userId, courseId, filters], queryFn: () => courseFilesApi.files(courseId, filters), enabled, ...queryPolicy });
   const detail = useQuery({ queryKey: ["c-course-file", userId, courseId, selectedId], queryFn: () => courseFilesApi.file(courseId, selectedId!), enabled: enabled && Boolean(selectedId && isUuid(selectedId)) && list.isSuccess && !list.isFetching, ...queryPolicy });
@@ -64,6 +66,12 @@ function CourseFilesPage({ courseId, userId }: { courseId: string; userId: strin
   const denial = blocked || [list.error, detail.error].find(accessFailure);
   const rows = list.isSuccess && !list.isFetching && !denial ? list.data : undefined;
   const file = rows && detail.isSuccess && !detail.isFetching && !denial ? detail.data : undefined;
+  const decisionsByVersion = file && groupVersionDecisions(file.decisions);
+  const referencedVersion = file?.versions.find((version) => version.id === versionId);
+  const referencedArticle = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (referencedVersion) referencedArticle.current?.focus();
+  }, [referencedVersion]);
   const currentDraft = command && file?.id === command.fileId && file.versions.find((version) => version.id === command.versionId && version.status === "draft" && version.version_no === file.latest_version_no);
 
   useEffect(() => {
@@ -90,7 +98,7 @@ function CourseFilesPage({ courseId, userId }: { courseId: string; userId: strin
     const input = { version_id: command.versionId, expected_version: command.expected, reason: command.reason.trim() };
     try {
       await courseFilesApi.publishVersion(courseId, command.fileId, input, commandKey({ courseId, fileId: command.fileId, input }));
-      setCommand(null); setNotice("课程资料已发布，历史版本和冻结项目原引用均已保留；通知尚未发送。");
+      setCommand(null); setNotice("课程资料已发布。可在版本历史中查看旧版。");
       await refresh();
     } catch (failure) { fail(failure); }
     finally { locked.current = false; setBusy(false); }
@@ -126,22 +134,31 @@ function CourseFilesPage({ courseId, userId }: { courseId: string; userId: strin
     {denial ? <CourseFailure error={denial} retry={() => void refresh()} /> : <>
       {rows?.can_write && (!selectedId || file) && <FileUploadForm key={selectedId ?? "new"} scope="course" scopeId={courseId} target={file} denied={fail} saved={() => { setNotice("课程资料草稿版本已保存。"); void refresh(); }} />}
       {rows && !rows.can_write && <p className="mb-3 text-sm">当前课程资料只读，仅展示你有权查看的版本。</p>}
-      <form key={`${rawCategory}:${rawSort}:${rawStatus}:${query.get("q")}:${query.get("file_type")}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); clearSelection(); updateQuery({ category: String(form.get("category")), sort: String(form.get("sort")), status: String(form.get("status") || "") || null, q: String(form.get("q") || "").trim() || null, file_type: String(form.get("file_type") || "").trim() || null, page: null, file: null }); }}>
+      <form key={`${rawCategory}:${rawSort}:${rawStatus}:${query.get("q")}:${query.get("file_type")}`} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); clearSelection(); updateQuery({ category: String(form.get("category")), sort: String(form.get("sort")), status: String(form.get("status") || "") || null, q: String(form.get("q") || "").trim() || null, file_type: String(form.get("file_type") || "").trim() || null, page: null, file: null, version: null }); }}>
         <label>资料分类<select className={`${apiInput} block`} name="category" defaultValue={filters.category}>{Object.entries(categories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>版本状态<select className={`${apiInput} block`} name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>课程文件名<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} /></label>
         <label>文件类型<input className={`${apiInput} block`} name="file_type" maxLength={16} placeholder="如 pdf" defaultValue={filters.file_type ?? ""} /></label>
         <label>排序<select className={`${apiInput} block`} name="sort" defaultValue={filters.sort}>{Object.entries(sorts).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <button className={apiButton} type="submit" disabled={busy}>查询课程资料</button><button className={apiButton} type="button" disabled={busy} onClick={() => { clearSelection(); updateQuery({ category: null, sort: null, status: null, q: null, file_type: null, page: null, file: null }); }}>重置</button>
+        <button className={apiButton} type="submit" disabled={busy}>查询课程资料</button><button className={apiButton} type="button" disabled={busy} onClick={() => { clearSelection(); updateQuery({ category: null, sort: null, status: null, q: null, file_type: null, page: null, file: null, version: null }); }}>重置</button>
       </form>
       {list.isFetching && <p role="status">正在读取课程资料…</p>}{list.isError && <CourseFailure error={list.error} retry={() => void refresh()} />}
-      {rows && <Panel><div className="gp-table-wrap"><table className="gp-table" aria-label="课程资料列表"><thead><tr><th>资料</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead><tbody>{rows.items.map((item) => <tr key={item.id}><td>{item.name}<p className="text-xs text-slate-500">{item.original_name}</p></td><td>v{item.version_no}</td><td>{statuses[item.status]}</td><td>{(item.size_bytes / 1024).toFixed(1)} KB</td><td><button type="button" className={apiButton} disabled={busy} onClick={() => { clearSelection(); updateQuery({ file: item.file_id }); }}>查看版本</button></td></tr>)}</tbody></table></div>{!rows.items.length && <EmptyState title="没有符合条件的课程资料" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { if (!busy) { clearSelection(); updateQuery({ page: String(page), file: null }); } }} /></Panel>}
-      {selectedId && <Panel title="课程资料版本与历史" action={<button type="button" className={apiButton} disabled={busy} onClick={() => { clearSelection(); updateQuery({ file: null }); }}>关闭详情</button>}>
+      {rows && <Panel><div className="gp-table-wrap"><table className="gp-table" aria-label="课程资料列表"><thead><tr><th>资料</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead><tbody>{rows.items.map((item) => <tr key={item.id}><td>{item.name}<p className="text-xs text-slate-500">{item.original_name}</p></td><td>v{item.version_no}</td><td>{statuses[item.status]}</td><td>{(item.size_bytes / 1024).toFixed(1)} KB</td><td><button type="button" className={apiButton} disabled={busy} onClick={() => { clearSelection(); updateQuery({ file: item.file_id, version: item.id }); }}>查看版本</button></td></tr>)}</tbody></table></div>{!rows.items.length && <EmptyState title="没有符合条件的课程资料" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { if (!busy) { clearSelection(); updateQuery({ page: String(page), file: null, version: null }); } }} /></Panel>}
+      {selectedId && <Panel title="课程资料版本与历史" action={<button type="button" className={apiButton} disabled={busy} onClick={() => { clearSelection(); updateQuery({ file: null, version: null }); }}>关闭详情</button>}>
         {!isUuid(selectedId) && <p role="alert">资料地址无效，请重新选择课程资料。</p>}
         {detail.isFetching && <p role="status">正在读取课程资料版本…</p>}{detail.isError && <CourseFailure error={detail.error} retry={() => void detail.refetch()} />}
-        {file && <><h2 className="mb-3 font-semibold">{file.name}</h2><div className="space-y-3">{file.versions.map((version) => <article key={version.id} className="rounded-md border border-slate-200 p-3"><strong>v{version.version_no} · {statuses[version.status]}</strong><p>{version.original_name}</p><p className="mb-2 text-xs text-slate-500">{formatDate(version.created_at)} · {(version.size_bytes / 1024).toFixed(1)} KB</p><div className="flex flex-wrap gap-2"><button type="button" className={apiButton} disabled={busy} onClick={() => void issueLink(version, "preview")}>申请预览 v{version.version_no}</button><button type="button" className={apiButton} disabled={busy} onClick={() => void issueLink(version, "download")}>申请下载 v{version.version_no}</button>{rows?.can_write && version.status === "draft" && version.version_no === file.latest_version_no && <button type="button" className={apiButton} disabled={busy} onClick={() => { setCommand({ fileId: file.id, versionId: version.id, versionNo: version.version_no, expected: file.lock_version, reason: "" }); setError(null); setNotice(""); }}>发布 v{version.version_no}</button>}</div></article>)}</div><h3 className="mb-2 mt-5 font-semibold">操作历史</h3>{file.decisions.map((decision) => <p key={decision.id} className="mb-2 text-sm">{actions[decision.action]} · {decision.reason} · {formatDate(decision.created_at)}</p>)}</>}
+        {file && <><h2 className="mb-3 font-semibold">{file.name}</h2>
+          {versionId && !referencedVersion && <p role="alert">此资料中找不到可访问的引用版本。</p>}
+          <div className="space-y-3">{file.versions.map((version) => <article key={version.id}
+            ref={version === referencedVersion ? referencedArticle : undefined}
+            tabIndex={version === referencedVersion ? -1 : undefined}
+            aria-label={version === referencedVersion ? `引用的课程资料 v${version.version_no}` : undefined}
+            className={`rounded-md border p-3 ${version === referencedVersion ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}>
+            {version === referencedVersion && <p className="mb-1 text-sm font-semibold text-blue-800">引用的课程资料版本</p>}<strong>v{version.version_no} · {statuses[version.status]}</strong><p>{version.original_name}</p><p className="mb-2 text-xs text-slate-500">{formatDate(version.created_at)} · {(version.size_bytes / 1024).toFixed(1)} KB</p>
+              <FileVersionHistory version={version.version_no} decisions={decisionsByVersion?.get(version.id)} labels={actions} />
+              <div className="flex flex-wrap gap-2"><button type="button" className={apiButton} disabled={busy} onClick={() => void issueLink(version, "preview")}>申请预览 v{version.version_no}</button><button type="button" className={apiButton} disabled={busy} onClick={() => void issueLink(version, "download")}>申请下载 v{version.version_no}</button>{rows?.can_write && version.status === "draft" && version.version_no === file.latest_version_no && <button type="button" className={apiButton} disabled={busy} onClick={() => { setCommand({ fileId: file.id, versionId: version.id, versionNo: version.version_no, expected: file.lock_version, reason: "" }); setError(null); setNotice(""); }}>发布 v{version.version_no}</button>}</div></article>)}</div></>}
       </Panel>}
-      {command && command.fileId === selectedId && <Panel title={`确认发布 v${command.versionNo}`}><p className="mb-3 text-sm">原发布版本会保留；冻结项目的资料引用不会自动更新。通知发送尚未接入。</p><label htmlFor="course-file-publish-reason">发布原因</label><textarea id="course-file-publish-reason" className={`${apiInput} mt-1 block w-full`} maxLength={4000} value={command.reason} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button type="button" className={apiButton} disabled={busy || !currentDraft || !rows?.can_write || !command.reason.trim() || versionFailure(error)} onClick={() => void publish()}>{busy ? "保存中…" : "确认发布课程资料"}</button><button type="button" className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{versionFailure(error) && <button type="button" className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对版本</button>}</div></Panel>}
+      {command && command.fileId === selectedId && <Panel title={`确认发布 v${command.versionNo}`}><p className="mb-3 text-sm">发布后，本版将成为课程资料的当前版本。旧版仍可在版本历史中查看。</p><label htmlFor="course-file-publish-reason">发布原因</label><textarea id="course-file-publish-reason" className={`${apiInput} mt-1 block w-full`} maxLength={4000} value={command.reason} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button type="button" className={apiButton} disabled={busy || !currentDraft || !rows?.can_write || !command.reason.trim() || versionFailure(error)} onClick={() => void publish()}>{busy ? "保存中…" : "确认发布课程资料"}</button><button type="button" className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{versionFailure(error) && <button type="button" className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对版本</button>}</div></Panel>}
       {link && file?.versions.some((version) => version.id === link.version_id) && <p className="my-3"><a className="gp-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.purpose === "preview" ? "打开课程资料预览" : "下载课程资料"}</a><span className="ml-2 text-xs text-slate-500">临时链接，过期后请重新申请。</span></p>}
       {error && <CourseFailure error={error} />}{notice && <p role="status" className="my-3">{notice}</p>}
     </>}

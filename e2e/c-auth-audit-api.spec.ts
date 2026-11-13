@@ -162,29 +162,34 @@ test("C7 shared operation filters preserve opaque targets and permission loss hi
     const data: Schema["SharedAuditPage"] = {
       page: 1, page_size: 10, total: 1, items: [{
         id: targetId, occurred_at: "2026-11-10T09:00:00Z", action: "plan.frozen",
-        actor_id: null, target_type: "plan", target_id: "imported-plan-17",
-        reason: "全组确认", before: { status: "draft" }, after: { version_no: 2 }, metadata_redacted: true,
+        actor_id: targetId, target_type: "plan", target_id: "imported-plan-17",
+        reason: "全组确认", before: { status: "draft" }, after: { version_no: 2 }, metadata_redacted: true, result: "success", actor_role: "teacher",
       }],
     };
     return allowed ? ok(route, data) : fail(route, 403);
   });
-  await page.goto("/admin/logs?source=shared");
+  await page.goto("/admin/logs");
   await expect(page.getByRole("heading", { name: "共享服务操作记录", exact: true })).toBeVisible();
   await page.getByLabel("对象类型", { exact: true }).fill("plan");
   await page.getByRole("button", { name: "查询操作记录" }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText("请同时填写对象类型和标识");
   await page.getByLabel("对象标识", { exact: true }).fill("imported-plan-17");
   await page.getByLabel("操作前缀", { exact: true }).fill("plan.");
+  await page.getByLabel("操作时角色", { exact: true }).selectOption("teacher");
+  await page.getByLabel("执行结果", { exact: true }).selectOption("success");
   await page.getByRole("button", { name: "查询操作记录" }).click();
   await expect.poll(() => requests.at(-1)?.searchParams.get("target_id")).toBe("imported-plan-17");
   expect(requests.at(-1)?.searchParams.get("target_type")).toBe("plan");
   expect(requests.at(-1)?.searchParams.get("action_prefix")).toBe("plan.");
+  expect(requests.at(-1)?.searchParams.get("actor_role")).toBe("teacher");
+  expect(requests.at(-1)?.searchParams.get("result")).toBe("success");
   await page.reload();
   await expect(page.getByLabel("对象标识", { exact: true })).toHaveValue("imported-plan-17");
   await page.getByText("查看操作详情", { exact: true }).click();
   await expect(page.getByText("理由：全组确认", { exact: true })).toBeVisible();
   await expect(page.locator("details pre").first()).toContainText("draft");
-  await expect(page.getByRole("cell", { name: "系统", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: `${targetId} · 教师`, exact: true })).toBeVisible();
+  await expect(page.getByText("执行结果：成功", { exact: true })).toBeVisible();
   allowed = false;
   await page.getByRole("button", { name: "刷新操作记录" }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText("当前账户无权");

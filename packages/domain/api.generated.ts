@@ -74,6 +74,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/access-grants/{grant_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Access Grant
+         * @description 管理员撤销一份临时只读授权；撤销后下一次读取立即失效，重复撤销不改写原记录。
+         */
+        post: operations["revoke_access_grant_api_v1_a_access_grants__grant_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/ai-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ai Usage Events
+         * @description 管理员查看 AI 调用记录（谁、哪个功能、哪个模型、成败、token、费用）。
+         */
+        get: operations["list_ai_usage_events_api_v1_a_ai_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/ai-usage/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summarize Ai Usage Events
+         * @description 管理员查看 AI 用量汇总：按功能、模型、币种统计调用数、失败数、token 和费用。
+         */
+        get: operations["summarize_ai_usage_events_api_v1_a_ai_usage_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/me/github-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set My Github Login
+         * @description 声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。
+         */
+        put: operations["set_my_github_login_api_v1_a_me_github_login_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects": {
         parameters: {
             query?: never;
@@ -85,6 +165,26 @@ export interface paths {
         put?: never;
         /** Create Personal Project */
         post: operations["create_personal_project_api_v1_a_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/feishu/attachments/{attachment_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Feishu Attachment
+         * @description 下载附件并记录 SHA-256 指纹，之后可用来核对附件没有被替换。
+         */
+        post: operations["verify_feishu_attachment_api_v1_a_projects__project_id__feishu_attachments__attachment_id__verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -126,6 +226,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/projects/{project_id}/feishu/messages/{message_row_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feishu Message
+         * @description 项目成员查看一条飞书消息的脱敏全文、所有版本和附件引用。
+         */
+        get: operations["get_feishu_message_api_v1_a_projects__project_id__feishu_messages__message_row_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects/{project_id}/feishu/sync": {
         parameters: {
             query?: never;
@@ -137,6 +257,26 @@ export interface paths {
         put?: never;
         /** Sync Feishu */
         post: operations["sync_feishu_api_v1_a_projects__project_id__feishu_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/github/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Github Activity
+         * @description 项目成员查看本项目已同步的提交、合并请求和 CI 运行（新的在前）。
+         */
+        get: operations["list_github_activity_api_v1_a_projects__project_id__github_activity_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -505,6 +645,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable User */
+        post: operations["enable_user_api_v1_admin_users__user_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/capabilities": {
         parameters: {
             query?: never;
@@ -793,7 +950,8 @@ export interface paths {
         /** Users */
         get: operations["users_api_v1_c_admin_users_get"];
         put?: never;
-        post?: never;
+        /** Create Account */
+        post: operations["create_account_api_v1_c_admin_users_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -811,6 +969,23 @@ export interface paths {
         put?: never;
         /** Disable */
         post: operations["disable_api_v1_c_admin_users__user_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/c-admin/users/{user_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable */
+        post: operations["enable_api_v1_c_admin_users__user_id__enable_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1675,6 +1850,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/enter-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit For Verification */
+        post: operations["submit_for_verification_api_v1_projects__project_id__tasks__task_id__enter_verification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/integrity-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Integrity Check */
+        get: operations["read_integrity_check_api_v1_projects__project_id__tasks__task_id__integrity_check_get"];
+        put?: never;
+        /** Create Integrity Check */
+        post: operations["create_integrity_check_api_v1_projects__project_id__tasks__task_id__integrity_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/tasks/{task_id}/note": {
         parameters: {
             query?: never;
@@ -1704,6 +1914,24 @@ export interface paths {
         get: operations["progress_history_api_v1_projects__project_id__tasks__task_id__progress_history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Verification */
+        get: operations["read_verification_api_v1_projects__project_id__tasks__task_id__verification_get"];
+        put?: never;
+        /** Create Verification */
+        post: operations["create_verification_api_v1_projects__project_id__tasks__task_id__verification_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1853,6 +2081,48 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessGrantDTO */
+        AccessGrantDTO: {
+            /**
+             * Applicant Id
+             * Format: uuid
+             */
+            applicant_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Resource Id
+             * Format: uuid
+             */
+            resource_id: string;
+            /**
+             * Resource Type
+             * @enum {string}
+             */
+            resource_type: "project" | "task" | "evidence";
+            /** Revoke Reason */
+            revoke_reason: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
         /** AccessRequestDetailDTO */
         AccessRequestDetailDTO: {
             /**
@@ -2091,6 +2361,10 @@ export interface components {
             availability: "available" | "deleted";
             /** Evidence Id */
             evidence_id: string | null;
+            /** Feishu Attachments */
+            feishu_attachments?: components["schemas"]["FeishuAttachmentSnapshot"][];
+            /** Github State */
+            github_state?: string | null;
             /** Group Id */
             group_id: string | null;
             /** Kind */
@@ -2109,6 +2383,11 @@ export interface components {
             project_id: string;
             /** Record Id */
             record_id: string | null;
+            /**
+             * Snapshot Complete
+             * @default true
+             */
+            snapshot_complete: boolean;
             /** Source Changed */
             source_changed: boolean;
             /**
@@ -2305,6 +2584,73 @@ export interface components {
             page_size: 10;
             /** Total */
             total: number;
+        };
+        /** AiUsageDTO */
+        AiUsageDTO: {
+            /** Cost */
+            cost: string | null;
+            /** Currency */
+            currency: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Feature */
+            feature: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Model */
+            model: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Output Tokens */
+            output_tokens: number | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Success */
+            success: boolean;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** AiUsagePageDTO */
+        AiUsagePageDTO: {
+            /** Items */
+            items: components["schemas"]["AiUsageDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** AiUsageSummaryDTO */
+        AiUsageSummaryDTO: {
+            /** Calls */
+            calls: number;
+            /** Cost */
+            cost: string;
+            /** Currency */
+            currency: string | null;
+            /** Failures */
+            failures: number;
+            /** Feature */
+            feature: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string | null;
+            /** Output Tokens */
+            output_tokens: number;
         };
         /** AnalyzeCodeRequest */
         AnalyzeCodeRequest: {
@@ -2923,6 +3269,29 @@ export interface components {
             reason: string;
             scope: components["schemas"]["AccessScope"];
         };
+        /** CreateAccount */
+        CreateAccount: {
+            /** College */
+            college?: string | null;
+            /**
+             * Identity
+             * @enum {string}
+             */
+            identity: "student" | "teacher";
+            /** Name */
+            name: string;
+            /** Schoolemail */
+            schoolEmail: string;
+            /** Studentid */
+            studentId?: string | null;
+            /**
+             * Submitforreview
+             * @default false
+             */
+            submitForReview: boolean;
+            /** Username */
+            username: string;
+        };
         /** CreateCourse */
         CreateCourse: {
             /** Code */
@@ -3094,7 +3463,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "task_progress" | "task_note_saved" | "file_version_uploaded" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
+            event_type: "task_progress" | "task_note_saved" | "file_version_uploaded" | "github_commit" | "github_pull_request" | "github_ci_run" | "evidence_submitted" | "evidence_adopted" | "evidence_withdrawn" | "evidence_source_changed" | "discussion_created" | "discussion_replied";
             /** Href */
             href: string;
             /** Id */
@@ -3108,7 +3477,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "task" | "evidence" | "discussion" | "file";
+            object_type: "task" | "evidence" | "discussion" | "file" | "github";
             /**
              * Occurred At
              * Format: date-time
@@ -3654,6 +4023,52 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** FeishuAttachmentDTO */
+        FeishuAttachmentDTO: {
+            /** Available */
+            available: boolean;
+            /** Content Sha256 */
+            content_sha256: string | null;
+            /** File Key */
+            file_key: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "file" | "audio" | "media";
+            /** Name */
+            name: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Verified At */
+            verified_at: string | null;
+        };
+        /** FeishuAttachmentSnapshot */
+        FeishuAttachmentSnapshot: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "file" | "audio" | "media";
+            /** Name */
+            name: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Verified */
+            verified: boolean;
+        };
         /** FeishuAvailableChatDTO */
         FeishuAvailableChatDTO: {
             /** Chat Id */
@@ -3670,6 +4085,53 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+        };
+        /** FeishuMessageDetailDTO */
+        FeishuMessageDetailDTO: {
+            /** Attachments */
+            attachments: components["schemas"]["FeishuAttachmentDTO"][];
+            /** Chat Id */
+            chat_id: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Message Id */
+            message_id: string;
+            /** Msg Type */
+            msg_type: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Text */
+            text: string;
+            /** Version No */
+            version_no: number;
+            /** Versions */
+            versions: components["schemas"]["FeishuMessageVersionDTO"][];
+        };
+        /** FeishuMessageVersionDTO */
+        FeishuMessageVersionDTO: {
+            /** Content Hash */
+            content_hash: string;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Text */
+            text: string;
+            /** Version No */
+            version_no: number;
         };
         /** FeishuSyncDTO */
         FeishuSyncDTO: {
@@ -3868,6 +4330,63 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /** GithubActivityDTO */
+        GithubActivityDTO: {
+            /** Author Login */
+            author_login: string | null;
+            /** Author Name */
+            author_name: string | null;
+            /** Author User Id */
+            author_user_id: string | null;
+            /** Deleted */
+            deleted: boolean;
+            /** External Id */
+            external_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "commit" | "pull_request" | "ci_run";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** State */
+            state: string | null;
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string | null;
+        };
+        /** GithubActivityPageDTO */
+        GithubActivityPageDTO: {
+            /** Items */
+            items: components["schemas"]["GithubActivityDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** GithubLoginDTO */
+        GithubLoginDTO: {
+            /** Login */
+            login: string | null;
+        };
+        /** GithubLoginRequest */
+        GithubLoginRequest: {
+            /** Login */
+            login?: string | null;
+        };
         /** GithubRepoDTO */
         GithubRepoDTO: {
             /** Default Branch */
@@ -3886,10 +4405,35 @@ export interface components {
         };
         /** GithubSyncDTO */
         GithubSyncDTO: {
+            /**
+             * Associated
+             * @default 0
+             */
+            associated: number;
+            /**
+             * Ci Runs
+             * @default 0
+             */
+            ci_runs: number;
+            /**
+             * Commits
+             * @default 0
+             */
+            commits: number;
+            /**
+             * Deleted Sources
+             * @default 0
+             */
+            deleted_sources: number;
             /** Fetched */
             fetched: number;
             /** Files */
             files: number;
+            /**
+             * Pulls
+             * @default 0
+             */
+            pulls: number;
             /** Removed */
             removed: number;
             /** Repos */
@@ -4397,6 +4941,11 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** RevokeGrantRequest */
+        RevokeGrantRequest: {
+            /** Reason */
+            reason: string;
+        };
         /** RiskTransition */
         RiskTransition: {
             /** Action */
@@ -4439,6 +4988,8 @@ export interface components {
             action: string;
             /** Actor Id */
             actor_id: string | null;
+            /** Actor Role */
+            actor_role?: string | null;
             /** After */
             after: {
                 [key: string]: unknown;
@@ -4461,6 +5012,11 @@ export interface components {
             occurred_at: string;
             /** Reason */
             reason: string | null;
+            /**
+             * Result
+             * @default success
+             */
+            result: string;
             /** Target Id */
             target_id: string;
             /** Target Type */
@@ -4511,6 +5067,11 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** SuccessResponse[AccessGrantDTO] */
+        SuccessResponse_AccessGrantDTO_: {
+            data: components["schemas"]["AccessGrantDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[AccessRequestDetailDTO] */
         SuccessResponse_AccessRequestDetailDTO_: {
             data: components["schemas"]["AccessRequestDetailDTO"];
@@ -4554,6 +5115,11 @@ export interface components {
         /** SuccessResponse[AdminUserPageDTO] */
         SuccessResponse_AdminUserPageDTO_: {
             data: components["schemas"]["AdminUserPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AiUsagePageDTO] */
+        SuccessResponse_AiUsagePageDTO_: {
+            data: components["schemas"]["AiUsagePageDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[AuditPageDTO] */
@@ -4659,9 +5225,19 @@ export interface components {
             data: components["schemas"]["EvidencePageDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[FeishuAttachmentDTO] */
+        SuccessResponse_FeishuAttachmentDTO_: {
+            data: components["schemas"]["FeishuAttachmentDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[FeishuChatLinkDTO] */
         SuccessResponse_FeishuChatLinkDTO_: {
             data: components["schemas"]["FeishuChatLinkDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[FeishuMessageDetailDTO] */
+        SuccessResponse_FeishuMessageDetailDTO_: {
+            data: components["schemas"]["FeishuMessageDetailDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[FeishuSyncDTO] */
@@ -4679,6 +5255,16 @@ export interface components {
             data: components["schemas"]["FilePageDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[GithubActivityPageDTO] */
+        SuccessResponse_GithubActivityPageDTO_: {
+            data: components["schemas"]["GithubActivityPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GithubLoginDTO] */
+        SuccessResponse_GithubLoginDTO_: {
+            data: components["schemas"]["GithubLoginDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[GithubRepoDTO] */
         SuccessResponse_GithubRepoDTO_: {
             data: components["schemas"]["GithubRepoDTO"];
@@ -4692,6 +5278,12 @@ export interface components {
         /** SuccessResponse[ImplementationAnalysisResult] */
         SuccessResponse_ImplementationAnalysisResult_: {
             data: components["schemas"]["ImplementationAnalysisResult"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[list[AiUsageSummaryDTO]] */
+        SuccessResponse_list_AiUsageSummaryDTO__: {
+            /** Data */
+            data: components["schemas"]["AiUsageSummaryDTO"][];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[list[FeishuAvailableChatDTO]] */
@@ -4819,6 +5411,8 @@ export interface components {
             completed_at: string | null;
             /** Dependencies */
             dependencies: components["schemas"]["TaskDependencyView"][];
+            /** Description */
+            description?: string | null;
             /** Module Progress */
             module_progress: {
                 [key: string]: number | null;
@@ -4848,6 +5442,13 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+            /**
+             * Temporary Read
+             * @default false
+             */
+            temporary_read: boolean;
+            /** Title */
+            title?: string | null;
             /** Version */
             version: number;
         };
@@ -5039,6 +5640,11 @@ export interface components {
             };
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Key */
@@ -5049,6 +5655,11 @@ export interface components {
             requests: number;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
         };
         /** UsageDayDTO */
         UsageDayDTO: {
@@ -5063,6 +5674,11 @@ export interface components {
             date: string;
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -5071,6 +5687,11 @@ export interface components {
             requests: number;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
         };
         /** UsageSummaryDTO */
         UsageSummaryDTO: {
@@ -5093,6 +5714,11 @@ export interface components {
             days: 7 | 30 | 90;
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -5108,6 +5734,11 @@ export interface components {
             source_snapshot_id: string;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
             /**
              * Until
              * Format: date-time
@@ -5409,6 +6040,155 @@ export interface operations {
             };
         };
     };
+    revoke_access_grant_api_v1_a_access_grants__grant_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AccessGrantDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ai_usage_events_api_v1_a_ai_usage_get: {
+        parameters: {
+            query?: {
+                feature?: string | null;
+                page?: number;
+                page_size?: number;
+                project_id?: string | null;
+                since?: string | null;
+                success?: boolean | null;
+                until?: string | null;
+                user_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AiUsagePageDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summarize_ai_usage_events_api_v1_a_ai_usage_summary_get: {
+        parameters: {
+            query?: {
+                feature?: string | null;
+                project_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                user_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_AiUsageSummaryDTO__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_my_github_login_api_v1_a_me_github_login_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GithubLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubLoginDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_personal_project_api_v1_a_projects_post: {
         parameters: {
             query?: never;
@@ -5431,6 +6211,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_PersonalProjectDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_feishu_attachment_api_v1_a_projects__project_id__feishu_attachments__attachment_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                attachment_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_FeishuAttachmentDTO_"];
                 };
             };
             /** @description Validation Error */
@@ -5547,6 +6361,40 @@ export interface operations {
             };
         };
     };
+    get_feishu_message_api_v1_a_projects__project_id__feishu_messages__message_row_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                message_row_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_FeishuMessageDetailDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_feishu_api_v1_a_projects__project_id__feishu_sync_post: {
         parameters: {
             query?: never;
@@ -5567,6 +6415,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_FeishuSyncDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_github_activity_api_v1_a_projects__project_id__github_activity_get: {
+        parameters: {
+            query?: {
+                author_id?: string | null;
+                kind?: ("commit" | "pull_request" | "ci_run") | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubActivityPageDTO_"];
                 };
             };
             /** @description Validation Error */
@@ -6736,8 +7622,10 @@ export interface operations {
             query?: {
                 action_prefix?: string | null;
                 actor_id?: string | null;
+                actor_role?: ("student" | "teacher" | "ta" | "admin") | null;
                 page?: number;
                 page_size?: number;
+                result?: ("success" | "failure" | "denied") | null;
                 since?: string | null;
                 target_id?: string | null;
                 target_type?: string | null;
@@ -7000,6 +7888,41 @@ export interface operations {
         };
     };
     disable_user_api_v1_admin_users__user_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_user_api_v1_admin_users__user_id__enable_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -7552,7 +8475,75 @@ export interface operations {
             };
         };
     };
+    create_account_api_v1_c_admin_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccount"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     disable_api_v1_c_admin_users__user_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_api_v1_c_admin_users__user_id__enable_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -11235,6 +12226,114 @@ export interface operations {
             };
         };
     };
+    submit_for_verification_api_v1_projects__project_id__tasks__task_id__enter_verification_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_integrity_check_api_v1_projects__project_id__tasks__task_id__integrity_check_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_integrity_check_api_v1_projects__project_id__tasks__task_id__integrity_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_note_api_v1_projects__project_id__tasks__task_id__note_get: {
         parameters: {
             query?: {
@@ -11479,6 +12578,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_verification_api_v1_projects__project_id__tasks__task_id__verification_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_verification_api_v1_projects__project_id__tasks__task_id__verification_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -43,6 +43,12 @@ export function createGovernanceClient(client = createApiClient()) {
     async accessRequests(query: AccessQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/access-requests", { params: { query } }));
     },
+    async ownAccessRequests(page: number) {
+      return unwrap(await client.GET("/api/v1/me/access-requests", { params: { query: { page, page_size: 10 } } }));
+    },
+    async requestAccess(body: Schema["CreateAccessRequest"], key: string) {
+      return unwrap(await client.POST("/api/v1/me/access-requests", { params: { header: { "Idempotency-Key": key } }, body }));
+    },
     async accessRequest(id: string) {
       return unwrap(await client.GET("/api/v1/admin/access-requests/{request_id}", { params: { path: { request_id: id } } }));
     },

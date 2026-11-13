@@ -4,25 +4,132 @@ The shared concurrency fixture creates/removes its own UUID-named schema.
 It does not modify other containers or any pre-existing schema.
 """
 
+import hashlib
 import importlib
 from uuid import UUID, uuid4
 
 import pytest
+import test_a_storage as storage_tests
 import test_c_evidence_postgres as pg_tests
 import test_c_files as file_tests
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import delete, func, inspect, select
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.errors import ApiError
+from app.modules.a import inbox, storage
 from app.modules.c.files_models import FileDecision, FileVersion, LogicalFile
 from app.modules.c.files_schemas import AppendFileVersion, DesignateFileVersion, RegisterFile
-from app.modules.c.files_service import append_version, designate_version, register_file
+from app.modules.c.files_service import (
+    append_version,
+    designate_version,
+    get_signed_link,
+    register_file,
+)
+from app.modules.c.inbox_schemas import NotificationFilters
 from app.modules.c.models import IntegrationOutbox, RequestIdempotency
 
 pg_scope = pg_tests.pg_scope
+
+
+def test_pg_storage_receipts_to_project_versions_inbox_and_historical_download(pg_scope):
+    engine, scope = pg_scope
+    sessions = sessionmaker(engine)
+    bucket = storage_tests.FakeStorageClient()
+    port = storage.SupabaseProjectStoragePort(sessions, bucket)
+    project_id = scope.project.id
+    author = scope.users["author"]
+    leader = scope.users["leader"]
+    bodies = (b"first draft", b"revised draft")
+    tickets = []
+    for content in bodies:
+        with sessions.begin() as session:
+            ticket = storage.create_upload(
+                session,
+                author,
+                scope="project",
+                scope_id=project_id,
+                filename="design.txt",
+                mime_type="text/plain",
+                size_bytes=len(content),
+                client=bucket,
+            )
+        bucket.objects[ticket.object_id] = content
+        with sessions.begin() as session:
+            storage.complete_upload(session, author, ticket.receipt_id, client=bucket)
+        tickets.append(ticket)
+
+    with sessions.begin() as session:
+        original = register_file(
+            session,
+            author,
+            project_id,
+            RegisterFile(receipt_id=tickets[0].receipt_id, reason="Initial design"),
+            "register",
+            port,
+        )
+    file_id = UUID(original["id"])
+    first = UUID(original["versions"][0]["id"])
+    with sessions.begin() as session:
+        published = designate_version(
+            session,
+            leader,
+            project_id,
+            file_id,
+            DesignateFileVersion(version_id=first, expected_version=0, reason="Review passed"),
+            "publish-first",
+            writer=inbox.notify,
+        )
+    with sessions.begin() as session:
+        revised = append_version(
+            session,
+            author,
+            project_id,
+            file_id,
+            AppendFileVersion(
+                receipt_id=tickets[1].receipt_id,
+                expected_version=published["lock_version"],
+                reason="Correct diagram",
+            ),
+            "append",
+            port,
+        )
+    publish = DesignateFileVersion(
+        version_id=UUID(revised["versions"][0]["id"]),
+        expected_version=revised["lock_version"],
+        reason="Approved revision",
+    )
+    for _ in range(2):
+        with sessions.begin() as session:
+            current = designate_version(
+                session, leader, project_id, file_id, publish, "publish-second", writer=inbox.notify
+            )
+    assert [(v["status"], v["content_hash"]) for v in current["versions"]] == [
+        ("current", hashlib.sha256(bodies[1]).hexdigest()),
+        ("superseded", hashlib.sha256(bodies[0]).hexdigest()),
+    ]
+    with sessions() as session:
+        messages = inbox.DatabaseInboxPort().notifications(
+            session,
+            recipient_id=scope.users["member"].id,
+            filters=NotificationFilters(category="project"),
+        )
+        assert messages.unread_total == 2
+        assert {message.description for message in messages.items} == {"正式版本 v1", "正式版本 v2"}
+        for role in ("member", "teacher", "ta"):
+            for purpose in ("preview", "download"):
+                link = get_signed_link(
+                    session, scope.users[role], project_id, file_id, first, purpose, port
+                )
+                assert link["version_id"] == str(first)
+                signed = bucket.create_signed_download_url(
+                    tickets[0].object_id, storage.DOWNLOAD_URL_TTL_SECONDS
+                )
+                assert link["url"] == (
+                    signed + "&download=design.txt" if purpose == "download" else signed
+                )
 
 
 def test_pg_duplicate_registration_is_one_file_version_and_outbox(pg_scope):

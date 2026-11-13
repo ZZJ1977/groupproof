@@ -20,6 +20,7 @@ const ProjectFilesApiPage = dynamic(() => import("@/features/c/ProjectFilesApiPa
 const CourseFilesApiPage = dynamic(() => import("@/features/c/CourseFilesApiPage").then((module) => module.CourseFilesApiPage));
 const ExecutionApiPage = dynamic(() => import("@/features/c/ExecutionApiPage").then((module) => module.ExecutionApiPage));
 const RiskApiPage = dynamic(() => import("@/features/d/RiskApiPage").then((module) => module.RiskApiPage));
+const AcceptanceApiPage = dynamic(() => import("@/features/d/AcceptanceApiPage").then((module) => module.AcceptanceApiPage));
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
 const DiscussionsApiPage = dynamic(() => import("@/features/c/DiscussionsApiPage").then((module) => module.DiscussionsApiPage));
 const IdentityAdminApiPage = dynamic(() => import("@/features/c/IdentityAdminApiPages").then((module) => module.IdentityAdminApiPage));
@@ -60,9 +61,7 @@ export function RouteDispatcher() {
     else if ([21, 22].includes(screen) && projectId) realContent = <ActivityApiPage projectId={projectId} sourceType={screen === 21 ? "github" : "feishu"} />;
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
-    else if ([16, 17].includes(screen)) realContent = <div className="gp-empty"><p role="status">验收服务暂未接入，请返回任务页面查看已保存的提交。</p>
-      {screen === 16 && projectId && taskId && <Link className="gp-link" href={`/projects/${projectId}/tasks/${taskId}/submit`}>返回提交草稿</Link>}
-    </div>;
+    else if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;

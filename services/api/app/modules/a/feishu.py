@@ -27,7 +27,12 @@ from app.api.errors import ApiError
 from app.db.models import User
 from app.modules.a import permissions
 from app.modules.a.audit import record_audit
-from app.modules.a.models import FeishuChatLink, FeishuMessage
+from app.modules.a.models import (
+    FeishuAttachment,
+    FeishuChatLink,
+    FeishuMessage,
+    FeishuMessageVersion,
+)
 from app.modules.c.activity_ports import (
     ActivitySourcePage,
     ActivitySourceQuery,
@@ -39,7 +44,7 @@ FEISHU_API_BASE = "https://open.feishu.cn"
 PAGE_SIZE = 50  # 飞书消息列表单页上限
 MAX_PAGES_PER_CHAT = 200  # 单次同步最多 10000 条；超过就失败，不做部分提交
 TOKEN_REFRESH_MARGIN = 300  # 访问令牌到期前 5 分钟重新获取
-MAX_TEXT_CHARS = 2000
+MAX_TEXT_CHARS = 30000  # 与 C 的来源快照上限一致（脱敏后全文）
 _CHAT_ID = re.compile(r"oc_[A-Za-z0-9_-]{4,120}")
 _UNAVAILABLE = "FEISHU_UNAVAILABLE"
 
@@ -89,6 +94,8 @@ class FeishuReader(Protocol):
     ) -> tuple[list[FeishuMessageItem], str | None]: ...
 
     def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]: ...
+
+    def download_resource(self, message_id: str, file_key: str, resource_type: str) -> bytes: ...
 
 
 class FeishuClient:
@@ -160,6 +167,26 @@ class FeishuClient:
         next_token = data.get("page_token") if data.get("has_more") else None
         return items, next_token
 
+    def download_resource(self, message_id: str, file_key: str, resource_type: str) -> bytes:
+        """下载消息里的附件内容（只读），超过 20MB 或读取失败都报 503，不返回部分内容。"""
+        try:
+            with self._http.stream(
+                "GET",
+                f"/open-apis/im/v1/messages/{message_id}/resources/{file_key}",
+                params={"type": resource_type},
+                headers={"Authorization": f"Bearer {self._access_token()}"},
+            ) as response:
+                if response.status_code != 200:
+                    raise _unavailable("无法读取这个附件，可能已被删除或机器人没有权限。")
+                data = bytearray()
+                for chunk in response.iter_bytes():
+                    data.extend(chunk)
+                    if len(data) > MAX_VERIFY_BYTES:
+                        raise _unavailable("附件超过 20MB，暂不支持核验。")
+        except httpx.HTTPError as exc:
+            raise _unavailable() from exc
+        return bytes(data)
+
     def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]:
         """列出机器人所在的群（只读），用于让用户从下拉列表里选群，而不是手动输入群 ID。"""
         params: dict[str, Any] = {"page_size": PAGE_SIZE}
@@ -213,19 +240,87 @@ def _require_reader(reader: FeishuReader | None) -> FeishuReader:
 # ------------------------------------------------------------------ 文本与指纹
 
 
-def _plain_text(msg_type: str, content: str) -> str:
+ATTACHMENT_KINDS = {"image": "image", "file": "file", "audio": "audio", "media": "media"}
+
+
+@dataclass(frozen=True)
+class ParsedMessage:
+    text: str  # 已脱敏的全文
+    attachments: tuple[dict[str, Any], ...]  # [{"file_key", "kind", "name"}]
+
+
+def _json(content: str) -> dict[str, Any]:
+    try:
+        value = json.loads(content)
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _post_text(body: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
+    """富文本：按语言取第一份内容，拼出文字，并收集里面的图片/视频。"""
+    if "content" not in body:
+        body = next((v for v in body.values() if isinstance(v, dict) and "content" in v), {})
+    lines: list[str] = []
+    attachments: list[dict[str, Any]] = []
+    title = body.get("title")
+    if isinstance(title, str) and title.strip():
+        lines.append(title.strip())
+    for paragraph in body.get("content") or []:
+        parts: list[str] = []
+        for node in paragraph if isinstance(paragraph, list) else []:
+            if not isinstance(node, dict):
+                continue
+            tag = node.get("tag")
+            if tag in ("text", "a"):
+                parts.append(str(node.get("text") or ""))
+            elif tag == "at":
+                parts.append("@" + str(node.get("user_name") or "成员"))
+            elif tag == "img" and node.get("image_key"):
+                attachments.append({"file_key": str(node["image_key"]), "kind": "image"})
+            elif tag == "media" and node.get("file_key"):
+                attachments.append({"file_key": str(node["file_key"]), "kind": "media"})
+        lines.append("".join(parts))
+    return lines, attachments
+
+
+def parse_message(msg_type: str, content: str) -> ParsedMessage:
+    """把飞书消息体变成脱敏的全文和附件引用。不认识的类型只留类型占位。"""
+    from app.modules.a.redaction import redact_text
+
+    body = _json(content)
+    attachments: list[dict[str, Any]] = []
     if msg_type == "text":
-        try:
-            text = json.loads(content).get("text", "")
-        except (ValueError, AttributeError):
-            text = ""
-        return str(text)[:MAX_TEXT_CHARS]
-    return f"[{msg_type}]"
+        text = str(body.get("text", ""))
+    elif msg_type == "post":
+        lines, attachments = _post_text(body)
+        text = "\n".join(lines).strip()
+    elif msg_type in ATTACHMENT_KINDS:
+        key = body.get("file_key") or body.get("image_key")
+        if key:
+            attachment = {"file_key": str(key), "kind": ATTACHMENT_KINDS[msg_type]}
+            if body.get("file_name"):
+                attachment["name"] = str(body["file_name"])[:300]
+            attachments.append(attachment)
+        text = f"[{msg_type}]" + (f" {body['file_name']}" if body.get("file_name") else "")
+    else:
+        text = f"[{msg_type}]"
+    unique: dict[str, dict[str, Any]] = {}
+    for item in attachments:
+        unique.setdefault(item["file_key"], item)
+    return ParsedMessage(
+        text=redact_text(text)[:MAX_TEXT_CHARS], attachments=tuple(unique.values())
+    )
 
 
-def _content_hash(msg_type: str, text: str, deleted: bool) -> str:
+def _content_hash(msg_type: str, text: str, deleted: bool, attachments=()) -> str:
     payload = json.dumps(
-        {"msg_type": msg_type, "text": text, "deleted": deleted},
+        {
+            "msg_type": msg_type,
+            "text": text,
+            "deleted": deleted,
+            "attachments": sorted(a["file_key"] for a in attachments),
+        },
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -323,8 +418,9 @@ def _upsert(
     now: datetime,
     totals: dict[str, int],
 ) -> None:
-    text = "" if item.deleted else _plain_text(item.msg_type, item.content)
-    digest = _content_hash(item.msg_type, text, item.deleted)
+    parsed = ParsedMessage("", ()) if item.deleted else parse_message(item.msg_type, item.content)
+    text, attachments = parsed.text, parsed.attachments
+    digest = _content_hash(item.msg_type, text, item.deleted, attachments)
     occurred_at = datetime.fromtimestamp(item.create_time_ms / 1000, UTC)
     row = session.scalar(
         select(FeishuMessage).where(
@@ -333,22 +429,25 @@ def _upsert(
         )
     )
     if row is None:
-        session.add(
-            FeishuMessage(
-                id=uuid4(),
-                project_id=project_id,
-                chat_id=chat_id,
-                message_id=item.message_id,
-                sender_open_id=item.sender_open_id,
-                sender_type=item.sender_type,
-                msg_type=item.msg_type,
-                text=text,
-                content_hash=digest,
-                occurred_at=occurred_at,
-                deleted=item.deleted,
-                synced_at=now,
-            )
+        row = FeishuMessage(
+            id=uuid4(),
+            project_id=project_id,
+            chat_id=chat_id,
+            message_id=item.message_id,
+            sender_open_id=item.sender_open_id,
+            sender_type=item.sender_type,
+            msg_type=item.msg_type,
+            text=text,
+            content_hash=digest,
+            occurred_at=occurred_at,
+            deleted=item.deleted,
+            version_no=1,
+            synced_at=now,
         )
+        session.add(row)
+        session.flush()
+        _record_version(session, row, attachments)
+        _sync_attachments(session, row, attachments)
         totals["created"] += 1
         if item.deleted:
             totals["deleted"] += 1
@@ -358,10 +457,57 @@ def _upsert(
         row.msg_type = item.msg_type
         row.content_hash = digest
         row.deleted = item.deleted
+        row.version_no += 1
         row.synced_at = now
+        _record_version(session, row, attachments)
+        _sync_attachments(session, row, attachments)
         totals["updated"] += 1
         if item.deleted:
             totals["deleted"] += 1
+
+
+def _record_version(session: Session, row: FeishuMessage, attachments) -> None:
+    session.add(
+        FeishuMessageVersion(
+            id=uuid4(),
+            message_row_id=row.id,
+            version_no=row.version_no,
+            content_hash=row.content_hash,
+            text=row.text,
+            attachments=[dict(a) for a in attachments],
+            deleted=row.deleted,
+        )
+    )
+
+
+def _sync_attachments(session: Session, row: FeishuMessage, attachments) -> None:
+    """按最新版本的附件列表对齐；消失的附件标记不可用（保留行和已核验的指纹）。"""
+    existing = {
+        a.file_key: a
+        for a in session.scalars(
+            select(FeishuAttachment).where(FeishuAttachment.message_row_id == row.id)
+        )
+    }
+    keep = set()
+    for item in attachments:
+        keep.add(item["file_key"])
+        found = existing.get(item["file_key"])
+        if found is None:
+            session.add(
+                FeishuAttachment(
+                    id=uuid4(),
+                    message_row_id=row.id,
+                    file_key=item["file_key"],
+                    kind=item["kind"],
+                    name=item.get("name"),
+                    available=True,
+                )
+            )
+        else:
+            found.available = True
+    for key, found in existing.items():
+        if key not in keep:
+            found.available = False
 
 
 # ------------------------------------------------------------------ C 的活动来源端口
@@ -371,9 +517,35 @@ def _sender_label(row: FeishuMessage) -> str:
     return "飞书成员" if row.sender_open_id else "未知发送者"
 
 
-def _record(row: FeishuMessage) -> ActivitySourceRecord:
-    title = "[已删除的消息]" if row.deleted else (row.text[:60] or f"[{row.msg_type}]")
-    summary = "" if row.deleted else row.text[:200]
+def _attachment_view(a: FeishuAttachment) -> dict[str, Any]:
+    return {
+        "id": str(a.id),
+        "file_key": a.file_key,
+        "kind": a.kind,
+        "name": a.name,
+        "size_bytes": a.size_bytes,
+        "sha256": a.content_sha256,
+        "verified": a.verified_at is not None,
+        "available": a.available,
+    }
+
+
+def _record(
+    row: FeishuMessage, attachments: list[FeishuAttachment] | None = None, *, full: bool = False
+) -> ActivitySourceRecord:
+    """列表只给前 200 字（短）；``get`` 给脱敏后的全文、版本号和附件引用（full=True）。"""
+    first_line = (row.text.strip().splitlines() or [""])[0]
+    title = "[已删除的消息]" if row.deleted else (first_line[:60] or f"[{row.msg_type}]")
+    summary = "" if row.deleted else (row.text if full else row.text[:200])
+    content: dict[str, Any] = {
+        "chat_id": row.chat_id,
+        "msg_type": row.msg_type,
+        "text": summary,
+        "deleted": row.deleted,
+    }
+    if full:
+        content["version_no"] = row.version_no
+        content["attachments"] = [_attachment_view(a) for a in attachments or []]
     return ActivitySourceRecord(
         id=row.id,
         title=title,
@@ -387,12 +559,7 @@ def _record(row: FeishuMessage) -> ActivitySourceRecord:
             source_type="feishu",
             identity=row.message_id,
             revision=row.content_hash,
-            content={
-                "chat_id": row.chat_id,
-                "msg_type": row.msg_type,
-                "text": summary,
-                "deleted": row.deleted,
-            },
+            content=content,
             source_url=None,
             source_reference_id=row.id,
             availability="deleted" if row.deleted else "available",
@@ -458,7 +625,14 @@ class DatabaseFeishuActivityPort:
             )
             if row is None:
                 raise ApiError(404, "ACTIVITY_NOT_FOUND", "记录不存在。")
-            return _record(row)
+            attachments = list(
+                session.scalars(
+                    select(FeishuAttachment)
+                    .where(FeishuAttachment.message_row_id == row.id)
+                    .order_by(FeishuAttachment.file_key)
+                )
+            )
+            return _record(row, attachments, full=True)
 
 
 def _escape_like(value: str) -> str:
@@ -486,3 +660,85 @@ def list_linked_chats(session: Session, actor: User, project_id: UUID) -> list[F
             .order_by(FeishuChatLink.linked_at.asc())
         ).all()
     )
+
+
+# ------------------------------------------------------------------ 消息详情与附件核验
+
+MAX_VERIFY_BYTES = 20 * 1024 * 1024
+_RESOURCE_TYPE = {"image": "image", "file": "file", "audio": "file", "media": "file"}
+
+
+@dataclass(frozen=True)
+class MessageDetail:
+    message: FeishuMessage
+    versions: list[FeishuMessageVersion]
+    attachments: list[FeishuAttachment]
+
+
+def get_message_detail(
+    session: Session, actor: User, project_id: UUID, message_row_id: UUID
+) -> MessageDetail:
+    """项目成员查看一条消息的脱敏全文、所有版本和附件引用。"""
+    permissions.require_project_member(session, actor, project_id, write=False)
+    row = session.scalar(
+        select(FeishuMessage).where(
+            FeishuMessage.id == message_row_id, FeishuMessage.project_id == project_id
+        )
+    )
+    if row is None:
+        raise ApiError(404, "ACTIVITY_NOT_FOUND", "记录不存在。")
+    versions = list(
+        session.scalars(
+            select(FeishuMessageVersion)
+            .where(FeishuMessageVersion.message_row_id == row.id)
+            .order_by(FeishuMessageVersion.version_no)
+        )
+    )
+    attachments = list(
+        session.scalars(
+            select(FeishuAttachment)
+            .where(FeishuAttachment.message_row_id == row.id)
+            .order_by(FeishuAttachment.file_key)
+        )
+    )
+    return MessageDetail(row, versions, attachments)
+
+
+def verify_attachment(
+    session: Session,
+    actor: User,
+    project_id: UUID,
+    attachment_id: UUID,
+    reader: FeishuReader | None,
+) -> FeishuAttachment:
+    """用机器人凭证下载附件并记录 SHA-256 和大小；内容不入库，下载失败整体 503。"""
+    relation = permissions.require_project_member(session, actor, project_id, write=False)
+    if not relation.member:
+        raise ApiError(403, "PROJECT_MEMBER_REQUIRED", "只有本项目成员可以核验附件。")
+    attachment = session.scalar(
+        select(FeishuAttachment)
+        .join(FeishuMessage, FeishuMessage.id == FeishuAttachment.message_row_id)
+        .where(FeishuAttachment.id == attachment_id, FeishuMessage.project_id == project_id)
+    )
+    if attachment is None:
+        raise ApiError(404, "ATTACHMENT_NOT_FOUND", "附件不存在。")
+    if attachment.verified_at is not None:
+        return attachment  # 指纹一旦记录就不改写；要换版本需要新消息版本
+    message = session.get(FeishuMessage, attachment.message_row_id)
+    client = _require_reader(reader)
+    data = client.download_resource(
+        message.message_id, attachment.file_key, _RESOURCE_TYPE[attachment.kind]
+    )
+    attachment.content_sha256 = hashlib.sha256(data).hexdigest()
+    attachment.size_bytes = len(data)
+    attachment.verified_at = datetime.now(UTC)
+    session.flush()
+    record_audit(
+        session,
+        actor=actor,
+        action="feishu.attachment.verified",
+        target=("feishu_attachment", attachment.id),
+        project_id=project_id,
+        after={"sha256": attachment.content_sha256, "size_bytes": attachment.size_bytes},
+    )
+    return attachment

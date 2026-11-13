@@ -26,7 +26,7 @@ const activity: Schema["ActivityDTO"] = {
   status: "candidate", task_id: null, evidence_id: null, lock_version: 0,
   title: "接口讨论文档", summary: "来源服务返回的说明", author_id: actorId, author_name: "来源作者",
   occurred_at: stamp, kind: "document", source_identity: "document-1", source_revision: "r1",
-  source_url: "https://example.feishu.cn/wiki/verified", availability: "available", source_changed: false, suggested_task_ids: [taskId],
+  source_url: "https://example.feishu.cn/wiki/verified", availability: "available", source_changed: false, snapshot_complete: true, suggested_task_ids: [taskId],
 };
 const file: Schema["FileDetailDTO"] = {
   id: fileId, project_id: projectId, name: "真实需求说明", category: "documents", latest_version_no: 2,
@@ -88,11 +88,19 @@ test("C4 shows A's GitHub binding independently of commit records and distinguis
   const section = page.getByRole("region", { name: "项目绑定状态" });
   await expect(section).toContainText("暂时无法读取绑定状态");
   await expect(section).not.toContainText("尚未绑定");
+  await page.route(endpoint, (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "gateway unavailable" }));
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/github/repos")),
+    section.getByRole("button", { name: "重试绑定查询" }).click(),
+  ]);
+  await expect(section).toContainText("暂时无法读取绑定状态");
+  await expect(section).not.toContainText("尚未绑定");
   await page.route(endpoint, (route) => success(route, [{ owner: "ZZJ1977", repo: "groupproof", default_branch: "develop", linked_at: stamp, last_synced_at: stamp }]));
   await section.getByRole("button", { name: "重试绑定查询" }).click();
   await expect(section.getByRole("link", { name: "ZZJ1977/groupproof" })).toHaveAttribute("href", "https://github.com/ZZJ1977/groupproof");
   await expect(section.getByRole("link", { name: "管理 GitHub 仓库绑定" })).toHaveAttribute("href", `/github/${projectId}`);
-  await expect(section).toContainText("文本文件上次同步");
+  await expect(section).toContainText("仓库文件与开发活动上次同步");
+  await expect(section).toContainText("分页总数按当前筛选统计本项目已同步的活动快照");
   await expect(page.getByText("没有符合条件的来源记录")).toBeVisible();
   await contextRoute(page);
   await page.reload();
@@ -236,6 +244,36 @@ test("C4 GitHub PR filter keeps its exact wire value and does not forward Feishu
   await expect(page.getByRole("combobox", { name: "记录类型", exact: true }).locator("option:checked")).toHaveText("拉取请求");
 });
 
+test("C4 incomplete Feishu messages support triage while evidence capture waits for full text", async ({ page }) => {
+  await contextRoute(page);
+  await activityRoutes(page, () => ({ ...activity, snapshot_complete: false }));
+  await page.goto(`/projects/${projectId}/collaboration?record=${sourceId}`);
+  await expect(page.getByText("当前来源仅提供摘要，获得完整正文后才可采纳为候选证据。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "采纳为候选证据", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "忽略记录", exact: true })).toBeEnabled();
+});
+
+test("C4 Feishu attachment verification enables adoption after detail refresh", async ({ page }) => {
+  await contextRoute(page);
+  let verified = false;
+  const attachmentId = "00000000-0000-0000-0000-000000000399";
+  await activityRoutes(page, () => ({ ...activity, snapshot_complete: verified, feishu_attachments: [{
+    id: attachmentId, kind: "file", name: "报告.pdf", sha256: verified ? "a".repeat(64) : null,
+    size_bytes: verified ? 12 : null, verified,
+  }] }));
+  await page.route(`**/api/v1/a/projects/${projectId}/feishu/attachments/${attachmentId}/verify`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    verified = true;
+    return success(route, {});
+  });
+  await page.goto(`/projects/${projectId}/collaboration?record=${sourceId}`);
+  const adopt = page.getByRole("button", { name: "采纳为候选证据", exact: true });
+  await expect(adopt).toBeDisabled();
+  await page.getByRole("button", { name: "核验附件指纹" }).click();
+  await expect(page.getByText(/已核验 · 12 字节 · SHA-256/)).toBeVisible();
+  await expect(adopt).toBeEnabled();
+});
+
 test("C4 Feishu adoption retains reason and the same retry key; only creates candidate evidence", async ({ page }) => {
   await contextRoute(page);
   let item = structuredClone(activity);
@@ -364,7 +402,11 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await page.route(`**${base}/files/${fileId}/designate`, (route) => {
     attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postDataJSON() });
     if (attempts.length === 1) return failure(route, 503);
-    detail = { ...detail, official_version_no: 2, lock_version: 3, versions: detail.versions.map((version) => ({ ...version, status: version.version_no === 2 ? "current" : "superseded" })) };
+    const input = route.request().postDataJSON() as Schema["DesignateFileVersion"];
+    detail = { ...detail, official_version_no: 2, lock_version: 3,
+      versions: detail.versions.map((version) => ({ ...version, status: version.version_no === 2 ? "current" : "superseded" })),
+      decisions: [...detail.decisions, { ...detail.decisions[0], id: "00000000-0000-0000-0000-000000000310",
+        version_id: input.version_id, reason: input.reason, previous_official_version_no: 1, resulting_lock_version: 3 }] };
     return success(route, detail);
   });
   await page.goto(`/projects/${projectId}/files?file=${fileId}`);
@@ -378,7 +420,12 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await page.getByRole("button", { name: "确认设为正式", exact: true }).click();
   await expect(page.getByText("v1 · 历史版本", { exact: true })).toBeVisible();
   await expect(page.getByText("v2 · 正式", { exact: true })).toBeVisible();
-  await expect(page.getByText(/保留原始发布记录/)).toBeVisible();
+  await page.reload();
+  const firstHistory = page.getByRole("list", { name: "v1 操作历史", exact: true });
+  const secondHistory = page.getByRole("list", { name: "v2 操作历史", exact: true });
+  await expect(firstHistory).toContainText("保留原始发布记录");
+  await expect(firstHistory).not.toContainText("确认课程要求的最终内容");
+  await expect(secondHistory).toContainText("设为正式 · 确认课程要求的最终内容");
   expect(attempts).toHaveLength(2); expect(attempts[0].key).toBeTruthy(); expect(attempts[1]).toEqual(attempts[0]);
   expect(attempts[0].body).toEqual({ version_id: v2Id, expected_version: 2, reason: "确认课程要求的最终内容" });
 });

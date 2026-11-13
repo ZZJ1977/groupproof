@@ -26,7 +26,7 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
 }
 
-function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Response }): T {
+export function unwrap<T>(result: { data?: { data: T }; error?: unknown; response: Response }): T {
   const envelope = record(result.response.ok ? result.data : result.error);
   const meta = record(envelope.meta);
   if (result.response.ok && Object.hasOwn(envelope, "data") && envelope.data !== undefined
@@ -63,6 +63,9 @@ export function createCClient(client = createApiClient()) {
     async personalActivity(query: DailyActivityQuery = {}) {
       return unwrap(await client.GET("/api/v1/me/activity", { params: { query } }));
     },
+    async setGithubLogin(login: string | null) {
+      return unwrap<Schema["GithubLoginDTO"]>(await client.PUT("/api/v1/a/me/github-login", { body: { login } }));
+    },
     async activities(projectId: string, sourceType: ActivitySourceType, query: ActivityQuery = {}) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/activities/{source_type}", {
         params: { path: { project_id: projectId, source_type: sourceType }, query },
@@ -76,6 +79,11 @@ export function createCClient(client = createApiClient()) {
     async activityHistory(projectId: string, sourceType: ActivitySourceType, sourceId: string) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/activities/{source_type}/{source_id}/history", {
         params: { path: { project_id: projectId, source_type: sourceType, source_id: sourceId } },
+      }));
+    },
+    async verifyFeishuAttachment(projectId: string, attachmentId: string) {
+      return unwrap(await client.POST("/api/v1/a/projects/{project_id}/feishu/attachments/{attachment_id}/verify", {
+        params: { path: { project_id: projectId, attachment_id: attachmentId } },
       }));
     },
     async associateActivity(projectId: string, sourceType: ActivitySourceType, sourceId: string, input: Schema["AssociateActivity"], key: string) {

@@ -9,8 +9,10 @@ import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { EvidenceCapturePanel } from "./EvidenceCapturePanel";
 import { readCriterionRechecks } from "@/lib/api/c-criterion-rechecks";
+import { readTaskPlanVersions } from "@/lib/api/c-task-plan-versions";
 import { CApiError } from "@/lib/api/c-client";
 import { TaskCriteriaPanel } from "./TaskCriteriaPanel";
+import { TaskPlanHistory } from "./TaskPlanHistory";
 import { TaskGithubActivities } from "./TaskGithubActivities";
 import { DiscussionsApiPage } from "./DiscussionsApiPage";
 import { useUrlQuery } from "./use-url-query";
@@ -43,6 +45,13 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
     ...queryPolicy,
   });
   const showRechecks = taskExists && !submission && tab === "criteria";
+  const showPlanVersions = taskExists && !submission && tab === "history";
+  const planVersions = useQuery({
+    queryKey: ["c-task-plan-versions", userId, projectId, taskId],
+    queryFn: ({ signal }) => readTaskPlanVersions(projectId, taskId, signal),
+    enabled: showPlanVersions,
+    ...queryPolicy,
+  });
   const rechecks = useQuery({
     queryKey: ["c-criterion-rechecks", userId, projectId, taskId],
     queryFn: ({ signal }) => readCriterionRechecks(projectId, taskId, signal),
@@ -62,11 +71,11 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const [draft, setDraft] = useState<NoteDraft | null>(null);
   const [prepareVersion, setPrepareVersion] = useState<number | null>(null);
   const [evidenceDirty, setEvidenceDirty] = useState(false);
-  // B returns PROJECT_NOT_FOUND for a hidden or removed project. An unmounted
-  // optional route returns a generic 404 and affects only the recheck panel.
-  const hiddenProject = rechecks.error instanceof CApiError && rechecks.error.status === 404 &&
-    rechecks.error.code === "PROJECT_NOT_FOUND" ? rechecks.error : null;
-  const denial = blocked || hiddenProject || [context.error, execution.error, note.error, evidence.error, history.error, rechecks.error, github.error].find(accessFailure);
+  // B conceals a hidden project or task with a named 404. A generic 404
+  // indicates that the individual optional route is unavailable.
+  const hiddenTarget = [rechecks.error, planVersions.error].find((error) =>
+    error instanceof CApiError && error.status === 404 && ["PROJECT_NOT_FOUND", "TASK_NOT_FOUND"].includes(error.code));
+  const denial = blocked || hiddenTarget || [context.error, execution.error, note.error, evidence.error, history.error, rechecks.error, planVersions.error, github.error].find(accessFailure);
   const access = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
   const task = access?.tasks.find((item) => item.id === taskId);
   const state = task && execution.isSuccess && !execution.isFetching && execution.data.project_id === projectId && execution.data.task_id === taskId ? execution.data : undefined;
@@ -85,7 +94,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   }, [focusTarget]);
   function deny(next: unknown) { setBlocked(next); setProgress(null); setDraft(null); setPrepareVersion(null); }
   async function refresh() {
-    const results = await Promise.all([context.refetch(), execution.refetch(), ...(taskExists ? [note.refetch()] : []), ...(taskExists && (submission || tab === "evidence") ? [evidence.refetch()] : []), ...(taskExists && !submission && tab === "history" ? [history.refetch()] : []), ...(showRechecks ? [rechecks.refetch()] : []), ...(showGithub ? [github.refetch()] : [])]);
+    const results = await Promise.all([context.refetch(), execution.refetch(), ...(taskExists ? [note.refetch()] : []), ...(taskExists && (submission || tab === "evidence") ? [evidence.refetch()] : []), ...(showPlanVersions ? [history.refetch(), planVersions.refetch()] : []), ...(showRechecks ? [rechecks.refetch()] : []), ...(showGithub ? [github.refetch()] : [])]);
     const denied = results.find((result) => accessFailure(result.error));
     if (denied) deny(denied.error); else if (results[0].isSuccess) setBlocked(null);
   }
@@ -134,6 +143,18 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
     setError(null); setNotice("最新状态和已保存说明已刷新，输入仍保留；请对照后再次确认。");
   }
   if (!enabled) return <EmptyState title="任务地址无效" />;
+  if (!submission && context.error instanceof CApiError && context.error.code === "PROJECT_ACCESS_DENIED" &&
+      execution.isSuccess && !execution.isFetching && execution.data.temporary_read &&
+      execution.data.project_id === projectId && execution.data.task_id === taskId) {
+    const grantedTask = execution.data;
+    return <>
+      <PageHeader title={grantedTask.title ?? "任务详情"} description="临时只读访问" actions={<button className={apiButton} onClick={() => void refresh()}>刷新任务</button>} />
+      <Panel title="任务概览">
+        <p>{states[grantedTask.status]} · 进度 {grantedTask.progress}%</p>
+        {grantedTask.description && <p className="my-3 whitespace-pre-wrap">{grantedTask.description}</p>}
+      </Panel>
+    </>;
+  }
   return <>
     <PageHeader title={submission ? "任务说明与提交准备" : task?.title ?? "任务执行"} description={access?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || execution.isFetching} onClick={() => void refresh()}>刷新任务</button>} />
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
@@ -146,6 +167,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
         {progress && state.can_update_progress && <Panel title="更新任务进度"><label>任务进度<input className={`${apiInput} block`} type="number" min={0} max={100} step={1} value={progress.value} disabled={busy} onChange={(event) => setProgress({ ...progress, value: Number(event.target.value) })} /></label><label htmlFor="progress-reason">进度变更原因</label><textarea id="progress-reason" className={`${apiInput} block w-full`} maxLength={2000} disabled={busy} value={progress.reason} onChange={(event) => setProgress({ ...progress, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void perform("progress")}>保存进度</button><button className={apiButton} disabled={busy} onClick={() => setProgress(null)}>取消</button></div></Panel>}
         {!submission && tab === "overview" && <Panel title="执行概览"><h3 className="font-semibold">任务描述</h3><p className="my-2 whitespace-pre-wrap">{task.description || "未填写任务描述。"}</p><p>项目进度：{state.project_progress === null ? "暂无可计算进度" : `${state.project_progress}%`}</p><p className="my-2">负责人：{state.responsible_ids.map((id) => access.members.find((member) => member.id === id)?.title ?? "项目负责人").join("、") || "未指派"}</p><h3 className="mt-3 font-semibold">前置任务</h3>{state.dependencies.map((dependency) => <p key={dependency.task_id}>{access.tasks.find((item) => item.id === dependency.task_id)?.title ?? "前置任务"} · {dependency.satisfied ? "已满足" : "尚未满足"}</p>)}{!state.dependencies.length && <p>没有前置任务。</p>}<p className="mt-3 text-sm">验收详情和结论服务尚未接入。</p></Panel>}
         {!submission && tab === "criteria" && <TaskCriteriaPanel criteria={task.criteria} requirements={access.requirements} rechecks={rechecks} />}
+        {showPlanVersions && <TaskPlanHistory query={planVersions} />}
         {showGithub && <TaskGithubActivities projectId={projectId} taskId={taskId} query={github} changePage={(page) => updateQuery({ github_page: String(page) })} />}
         {!submission && tab === "verification" && <Panel title="任务验收"><p>验收查询和结论服务尚未接入，当前无法读取验收检查、通过或退回结果。</p><p className="mt-3 text-sm">已保存的任务进度、说明和正式证据不会被当作验收通过结果。</p></Panel>}
         {(submission || tab === "evidence") && <Panel title="任务已有证据">{evidence.isFetching && <p role="status">正在读取证据…</p>}{evidence.isError && <ApiFailure error={evidence.error} retry={() => void evidence.refetch()} />}{evidence.isSuccess && !evidence.isFetching && <>{evidence.data.items.map((item) => <p className="my-2" key={item.id}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${item.id}`}>{item.title}</Link> · {item.effective ? "有效正式证据" : "当前不计入有效证据"}</p>)}{!evidence.data.items.length && <p>暂无证据。</p>}<ApiPager page={evidence.data.page} pageSize={evidence.data.page_size} total={evidence.data.total} change={(page) => updateQuery({ evidence_page: String(page) })} /></>}</Panel>}
