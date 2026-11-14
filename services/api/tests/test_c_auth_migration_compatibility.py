@@ -296,7 +296,7 @@ def test_upgrade_0013_through_d_and_google_preserves_c_history(migration_databas
     assert D_TABLES <= set(inspect(engine).get_table_names())
     assert snapshot(engine, columns) == before
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0024"
+    assert current_revision(engine) == "0025"
     assert RISK_TABLES <= set(inspect(engine).get_table_names())
     assert snapshot(engine, columns) == before
     with Session(engine) as session:
@@ -310,9 +310,9 @@ def test_upgrade_0013_through_d_and_google_preserves_c_history(migration_databas
 def test_clean_database_rebuild_has_one_head_and_matches_models(migration_database):
     engine, config = migration_database.engine, migration_database.config
     assert inspect(engine).get_table_names() == []
-    assert ScriptDirectory.from_config(config).get_heads() == ["0024"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0025"]
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0024"
+    assert current_revision(engine) == "0025"
     inspector = inspect(engine)
     assert D_TABLES <= set(inspector.get_table_names())
     assert RISK_TABLES <= set(inspector.get_table_names())
@@ -332,4 +332,4 @@ def test_clean_database_rebuild_has_one_head_and_matches_models(migration_databa
     command.check(config)
     # Re-running head is a no-op, not a duplicate D/OAuth schema installation.
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0024"
+    assert current_revision(engine) == "0025"

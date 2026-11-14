@@ -9,7 +9,8 @@ from app import main
 @pytest.mark.parametrize(
     "revision, status",
     [
-        ("0024", 200),
+        ("0025", 200),
+        ("0024", 503),
         ("0023", 503),
         ("0022", 503),
         ("0021", 503),

@@ -21,6 +21,7 @@ const CourseFilesApiPage = dynamic(() => import("@/features/c/CourseFilesApiPage
 const ExecutionApiPage = dynamic(() => import("@/features/c/ExecutionApiPage").then((module) => module.ExecutionApiPage));
 const RiskApiPage = dynamic(() => import("@/features/d/RiskApiPage").then((module) => module.RiskApiPage));
 const AcceptanceApiPage = dynamic(() => import("@/features/d/AcceptanceApiPage").then((module) => module.AcceptanceApiPage));
+const ContributionApiPage = dynamic(() => import("@/features/d/ContributionApiPage").then((module) => module.ContributionApiPage));
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
 const DiscussionsApiPage = dynamic(() => import("@/features/c/DiscussionsApiPage").then((module) => module.DiscussionsApiPage));
 const IdentityAdminApiPage = dynamic(() => import("@/features/c/IdentityAdminApiPages").then((module) => module.IdentityAdminApiPage));
@@ -54,6 +55,9 @@ export function RouteDispatcher() {
   if (screen === 30 && apiMode("daily") === "real") realContent = <PersonalActivityApiPage />;
   if (screen === 5 && apiMode("inbox") === "real") realContent = <NotificationsApiPage />;
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
+  // D's acceptance and contribution pages always read persisted API records.
+  if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
+  if ((screen === 25 || screen === 26) && projectId) realContent = <ContributionApiPage projectId={projectId} memberId={screen === 26 ? memberId : undefined} />;
   if (apiMode("cworkspace") === "real") {
     if (screen === 18 && projectId) realContent = <RiskApiPage projectId={projectId} />;
     if ([14, 15].includes(screen) && projectId && taskId) realContent = <ExecutionApiPage projectId={projectId} taskId={taskId} submission={screen === 15} />;
@@ -61,7 +65,6 @@ export function RouteDispatcher() {
     else if ([21, 22].includes(screen) && projectId) realContent = <ActivityApiPage projectId={projectId} sourceType={screen === 21 ? "github" : "feishu"} />;
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
-    else if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
   }
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;

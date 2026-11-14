@@ -105,6 +105,7 @@ class VerificationRun(Base):
     )
     task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
     triggered_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    task_version: Mapped[int | None] = mapped_column(Integer)
     result: Mapped[str] = mapped_column(
         String(16), default="pending", server_default=text("'pending'")
     )
@@ -179,6 +180,58 @@ class CriterionResult(Base):
             postgresql_where=text("invalidated_at IS NULL"),
         ),
     )
+
+
+class AcceptanceDecision(Base):
+    """Append-only human decision by a current responsible task assignee."""
+
+    __tablename__ = "acceptance_decisions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    verification_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("verification_runs.id", ondelete="RESTRICT"), index=True
+    )
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    revision_no: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(16))
+    responsibility_share: Mapped[float | None] = mapped_column(Numeric(7, 4))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "verification_run_id",
+            "actor_id",
+            "revision_no",
+            name="uq_acceptance_decisions_revision",
+        ),
+        CheckConstraint("revision_no > 0", name="ck_acceptance_decisions_revision"),
+        CheckConstraint(
+            "decision IN ('confirmed', 'rejected')", name="ck_acceptance_decisions_decision"
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="ck_acceptance_decisions_reason"),
+        CheckConstraint(
+            "responsibility_share IS NULL OR responsibility_share BETWEEN 0 AND 100",
+            name="ck_acceptance_decisions_share",
+        ),
+    )
+
+
+class FormalOutcome(Base):
+    """One accepted result; invalidation preserves its original basis."""
+
+    __tablename__ = "formal_outcomes"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
+    verification_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("verification_runs.id", ondelete="RESTRICT"), unique=True
+    )
+    basis_json: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invalidated_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class ContributionCalculation(Base):
@@ -298,6 +351,9 @@ class ContributionItemTask(Base):
     )
     task_id: Mapped[UUID] = mapped_column(
         ForeignKey("tasks.id", ondelete="RESTRICT"), primary_key=True
+    )
+    formal_outcome_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("formal_outcomes.id", ondelete="RESTRICT")
     )
     ratio: Mapped[float] = mapped_column(Numeric(7, 4))
 
