@@ -5,7 +5,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
@@ -83,7 +83,13 @@ def invalidate_run(session: Session, run: VerificationRun, actor: User, reason: 
 
 
 def invalidate_for_task(session: Session, task_id: UUID, actor_id: UUID, reason: str) -> None:
-    """Called in the source transaction so old results never remain contribution-eligible."""
+    """Invalidate in the source transaction once the week-five D schema exists.
+
+    C evidence operations also run while historical databases are upgraded from
+    revision 0013; those databases have no D acceptance tables yet.
+    """
+    if not inspect(session.connection()).has_table(FormalOutcome.__tablename__):
+        return
     actor = session.get(User, actor_id)
     if actor is None:
         raise ApiError(409, "ACTOR_NOT_FOUND", "Invalidation actor no longer exists.")

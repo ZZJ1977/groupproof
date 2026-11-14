@@ -86,10 +86,6 @@ def db():
             "evidence_criteria",
             "evidence_decisions",
             "evidence_source_snapshots",
-            "integrity_checks",
-            "verification_runs",
-            "criterion_results",
-            "formal_outcomes",
         }
         metadata = MetaData()
         for table in Base.metadata.sorted_tables:
