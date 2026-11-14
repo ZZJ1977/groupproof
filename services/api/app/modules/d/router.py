@@ -11,6 +11,8 @@ from app.api.responses import success
 from app.db.models import Milestone, ProjectMember, Task, User
 from app.db.session import get_session
 from app.modules.c.permissions import get_project_access
+from app.modules.d.acceptance import decide, history
+from app.modules.d.contribution import calculate, latest_snapshot
 from app.modules.d.integrity import enter_verification, latest_check, run_check
 from app.modules.d.models import Risk, RiskEvent
 from app.modules.d.verification import latest_verification, run_verification
@@ -18,6 +20,19 @@ from app.modules.d.verification import latest_verification, run_verification
 router = APIRouter(prefix="/api/d", tags=["d"])
 risk_router = APIRouter(prefix="/api/v1/projects", tags=["d-risks"])
 acceptance_router = APIRouter(prefix="/api/v1/projects", tags=["d-acceptance"])
+
+
+class AcceptanceDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(confirmed|rejected)$")
+    reason: str = Field(min_length=1, max_length=2000)
+    responsibility_share: float | None = Field(default=None, ge=0, le=100)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Reason must not be blank")
+        return value.strip()
 
 
 @acceptance_router.get("/{project_id}/tasks/{task_id}/integrity-check")
@@ -68,6 +83,59 @@ def create_verification(
     session: Session = Depends(get_session),
 ) -> dict:
     return {"data": run_verification(session, project_id, task_id, user)}
+
+
+@acceptance_router.get("/{project_id}/tasks/{task_id}/verification/history")
+def read_verification_history(
+    project_id: UUID,
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": history(session, project_id, task_id, user)}
+
+
+@acceptance_router.post("/{project_id}/tasks/{task_id}/verification/decision")
+def create_acceptance_decision(
+    project_id: UUID,
+    task_id: UUID,
+    payload: AcceptanceDecisionRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    from decimal import Decimal
+
+    return {
+        "data": decide(
+            session,
+            project_id,
+            task_id,
+            user,
+            payload.decision,
+            payload.reason,
+            Decimal(str(payload.responsibility_share))
+            if payload.responsibility_share is not None
+            else None,
+        )
+    }
+
+
+@acceptance_router.get("/{project_id}/contribution")
+def read_contribution(
+    project_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": latest_snapshot(session, project_id, user)}
+
+
+@acceptance_router.post("/{project_id}/contribution/calculate")
+def calculate_contribution(
+    project_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": calculate(session, project_id, user)}
 
 
 @router.get("/ready", include_in_schema=False)

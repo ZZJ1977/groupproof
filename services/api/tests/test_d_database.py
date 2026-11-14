@@ -15,15 +15,25 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.errors import ApiError
 from app.db.base import Base
-from app.db.models import AcceptanceCriterion, Course, FunctionalModule, Project, Task, User
+from app.db.models import (
+    AcceptanceCriterion,
+    Course,
+    FunctionalModule,
+    Project,
+    Task,
+    TaskAssignee,
+    User,
+)
 from app.modules.c.models import Evidence, EvidenceCriterion, EvidenceSourceSnapshot
-from app.modules.d import integrity, verification
+from app.modules.d import acceptance, contribution, integrity, verification
 from app.modules.d.models import (
+    AcceptanceDecision,
     ContributionCalculation,
     ContributionItem,
     ContributionItemTask,
     ContributionSnapshot,
     CriterionResult,
+    FormalOutcome,
     IntegrityCheck,
     Report,
     ReportSnapshot,
@@ -49,6 +59,7 @@ def db():
         "projects",
         "functional_modules",
         "tasks",
+        "task_assignees",
         "acceptance_criteria",
         "source_references",
         "evidence",
@@ -59,6 +70,8 @@ def db():
         "integrity_checks",
         "verification_runs",
         "criterion_results",
+        "acceptance_decisions",
+        "formal_outcomes",
         "contribution_calculations",
         "contribution_snapshots",
         "contribution_items",
@@ -471,3 +484,148 @@ def test_report_snapshot_freezes_render_input(db, scope):
     db.expire(snapshot, ["data_snapshot"])
     assert snapshot.data_snapshot == {"project_name": "D project", "criteria": ["AC1"]}
     assert snapshot.snapshot_created_at is not None
+
+
+def test_human_acceptance_requires_every_responsible_and_real_shares(db, scope, monkeypatch):
+    second = User(
+        id=uuid4(),
+        name="Second responsible",
+        username=f"d-{uuid4()}",
+        email=f"{uuid4()}@example.test",
+        college="Test",
+        global_role="student",
+        status="active",
+    )
+    db.add(second)
+    db.flush()
+    db.add_all(
+        [
+            TaskAssignee(task_id=scope.task.id, user_id=scope.user.id, role="responsible"),
+            TaskAssignee(task_id=scope.task.id, user_id=second.id, role="responsible"),
+        ]
+    )
+    evidence = Evidence(
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        author_id=scope.user.id,
+        title="Formal evidence",
+        description="Recorded source",
+        source_type="manual",
+        status="formal",
+        source_changed=False,
+    )
+    db.add(evidence)
+    db.flush()
+    db.add(EvidenceCriterion(evidence_id=evidence.id, criterion_id=scope.criterion.id))
+    db.add(
+        EvidenceSourceSnapshot(
+            evidence_id=evidence.id,
+            version_no=1,
+            source_identity="manual-record",
+            source_revision="v1",
+            content_hash="a" * 64,
+            content_json={"availability": "available", "source": {}},
+            captured_by=scope.user.id,
+        )
+    )
+    db.flush()
+    check = IntegrityCheck(
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        checked_by=scope.user.id,
+        rule_version="effective-formal-v1",
+        total_criteria=1,
+        covered_criteria=1,
+        coverage_rate=100,
+        status="passed",
+        missing_criteria_json=[],
+        pending_sources=0,
+        details_json=[
+            {
+                "criterion_id": str(scope.criterion.id),
+                "criterion_version": scope.criterion.lock_version,
+                "evidence": [{"id": str(evidence.id), "version": evidence.lock_version}],
+            }
+        ],
+    )
+    db.add(check)
+    db.flush()
+    run = VerificationRun(
+        integrity_check_id=check.id,
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        triggered_by=scope.user.id,
+        task_version=scope.task.lock_version,
+        result="uncertain",
+        status="completed",
+        engine_version="deterministic-v1+ai-advice",
+    )
+    db.add(run)
+    db.flush()
+    transition_scope = SimpleNamespace(task=scope.task, project=scope.project)
+    provider = acceptance.HumanTransitionProvider(db, run.id, "confirmed")
+    db.add(
+        AcceptanceDecision(
+            verification_run_id=run.id,
+            actor_id=scope.user.id,
+            revision_no=1,
+            decision="confirmed",
+            responsibility_share=60,
+            reason="Reviewed evidence",
+        )
+    )
+    db.flush()
+    with pytest.raises(ApiError) as missing:
+        provider.authorize(transition_scope, scope.user, "completed", "confirm")
+    assert missing.value.code == "CONFIRMATIONS_MISSING"
+    db.add(
+        AcceptanceDecision(
+            verification_run_id=run.id,
+            actor_id=second.id,
+            revision_no=1,
+            decision="confirmed",
+            responsibility_share=30,
+            reason="Reviewed evidence",
+        )
+    )
+    db.flush()
+    with pytest.raises(ApiError) as incomplete:
+        provider.authorize(transition_scope, scope.user, "completed", "confirm")
+    assert incomplete.value.code == "SHARES_INCOMPLETE"
+    db.add(
+        AcceptanceDecision(
+            verification_run_id=run.id,
+            actor_id=second.id,
+            revision_no=2,
+            decision="confirmed",
+            responsibility_share=40,
+            reason="Corrected actual share",
+        )
+    )
+    db.flush()
+    provider.authorize(transition_scope, scope.user, "completed", "confirm")
+    db.flush()
+    outcome = db.scalar(select(FormalOutcome).where(FormalOutcome.verification_run_id == run.id))
+    assert outcome.basis_json["responsibility_shares"] == {
+        str(scope.user.id): "60.0000",
+        str(second.id): "40.0000",
+    }
+    scope.task.status = "completed"
+    scope.task.lock_version += 1
+    db.flush()
+    monkeypatch.setattr(
+        contribution,
+        "get_project_access",
+        lambda *a, **k: SimpleNamespace(leader=True, teacher=False, staff=False),
+    )
+    result = contribution.calculate(db, scope.project.id, scope.user)
+    assert result["stale"] is False
+    assert sum(item["share"] for item in result["members"]) == 100
+    assert all(
+        item["tasks"][0]["formal_outcome_id"] == str(outcome.id) for item in result["members"]
+    )
+    assert sorted(item["share"] for item in result["members"]) == [40, 60]
+    acceptance.invalidate_for_task(db, scope.task.id, scope.user.id, "source changed")
+    db.flush()
+    assert outcome.invalidated_at is not None
+    assert contribution.latest_snapshot(db, scope.project.id, scope.user)["stale"] is True

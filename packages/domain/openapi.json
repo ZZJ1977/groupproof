@@ -1,6 +1,40 @@
 {
   "components": {
     "schemas": {
+      "AcceptanceDecisionRequest": {
+        "properties": {
+          "decision": {
+            "pattern": "^(confirmed|rejected)$",
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "responsibility_share": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsibility Share"
+          }
+        },
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "title": "AcceptanceDecisionRequest",
+        "type": "object"
+      },
       "AccessGrantDTO": {
         "properties": {
           "applicant_id": {
@@ -17980,6 +18014,130 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/contribution": {
+      "get": {
+        "operationId": "read_contribution_api_v1_projects__project_id__contribution_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Contribution Api V1 Projects  Project Id  Contribution Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Contribution",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/contribution/calculate": {
+      "post": {
+        "operationId": "calculate_contribution_api_v1_projects__project_id__contribution_calculate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Calculate Contribution Api V1 Projects  Project Id  Contribution Calculate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calculate Contribution",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/discussions": {
       "get": {
         "operationId": "collection_api_v1_projects__project_id__discussions_get",
@@ -21914,6 +22072,160 @@
           }
         },
         "summary": "Create Verification",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/decision": {
+      "post": {
+        "operationId": "create_acceptance_decision_api_v1_projects__project_id__tasks__task_id__verification_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptanceDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Acceptance Decision Api V1 Projects  Project Id  Tasks  Task Id  Verification Decision Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Acceptance Decision",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/history": {
+      "get": {
+        "operationId": "read_verification_history_api_v1_projects__project_id__tasks__task_id__verification_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Verification History Api V1 Projects  Project Id  Tasks  Task Id  Verification History Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Verification History",
         "tags": [
           "d-acceptance"
         ]
