@@ -118,6 +118,9 @@ def run_verification(session: Session, project_id: UUID, task_id: UUID, user: Us
     AcceptanceTransitionProvider(session, UUID(check["id"])).authorize(
         SimpleNamespace(task=task, project=access.project), user, "pending_verification", "recheck"
     )
+    from app.modules.d.acceptance import invalidate_for_task
+
+    invalidate_for_task(session, task_id, user.id, "已运行新的验收，旧验收结果失效")
     checked = session.get(IntegrityCheck, UUID(check["id"]))
     now = datetime.now(UTC)
     run = VerificationRun(
@@ -125,6 +128,7 @@ def run_verification(session: Session, project_id: UUID, task_id: UUID, user: Us
         project_id=project_id,
         task_id=task_id,
         triggered_by=user.id,
+        task_version=task.lock_version,
         result="uncertain",
         status="completed",
         engine_version="deterministic-v1+ai-advice",

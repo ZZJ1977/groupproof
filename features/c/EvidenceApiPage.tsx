@@ -86,7 +86,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [command, setCommand] = useState<{ id: string; action: "adopt" | "withdraw" | "checkSource"; expected: number; reason: string; sourceId?: string } | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(query.get("capture") === "1");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const key = useCommandKey();
@@ -198,7 +198,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
         {command && command.id === selectedId && item && canDecide(item) && <Panel title={command.action === "checkSource" ? "确认检查来源" : command.action === "adopt" ? "确认采纳" : "确认撤回"}><p className="mb-3 text-sm">{command.action === "checkSource" ? "检查将对比原始来源与保存的快照；确认变化后会保留历史并标记该证据不再有效。外部来源服务未接通时无法完成检查。" : command.action === "adopt" ? "采纳不会自动形成验收结论。" : "撤回会使证据不再计入有效证据，历史仍保留。"}</p><label htmlFor="evidence-reason">{command.action === "checkSource" ? "来源检查原因" : "证据决定原因"}</label><textarea id="evidence-reason" className={`${apiInput} block w-full`} value={command.reason} maxLength={4000} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy || command.expected !== item.lock_version || versionFailure(error)} onClick={() => void save()}>{command.action === "checkSource" ? "确认检查来源" : "确认决定"}</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{(versionFailure(error) || command.expected !== item.lock_version) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对证据</button>}</div></Panel>}
         {error && <ApiFailure error={error} />}{notice && <p role="status" className="my-3">{notice}</p>}
       </>}
-      {creating && context.data && <EvidenceCapturePanel context={context.data} userId={userId} visible={Boolean(access?.permissions.can_capture_evidence)} onSaved={() => void refresh()} onDenied={deny} />}
+      {creating && context.data && <EvidenceCapturePanel context={context.data} userId={userId} initialTaskId={query.get("task") ?? undefined} initialCriterionId={query.get("criterion") ?? undefined} visible={Boolean(access?.permissions.can_capture_evidence)} onSaved={() => void refresh()} onDenied={deny} />}
     </>}
   </>;
 }

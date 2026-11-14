@@ -434,6 +434,9 @@ def decide_evidence(
     else:
         raise ValueError("Unsupported evidence decision")
     bump_evidence(session, row, command.expected_version, status=status)
+    from app.modules.d.acceptance import invalidate_for_task
+
+    invalidate_for_task(session, row.task_id, user.id, f"证据已{status}：{row.id}")
     session.add(
         EvidenceDecision(
             evidence_id=row.id,
@@ -483,6 +486,9 @@ def append_source_change(
     if latest.source_revision == source.revision and latest.content_hash == digest:
         return False
     bump_evidence(session, row, row.lock_version, source_changed=True)
+    from app.modules.d.acceptance import invalidate_for_task
+
+    invalidate_for_task(session, row.task_id, actor_id, f"证据来源已变化：{row.id}")
     session.add(
         EvidenceSourceSnapshot(
             evidence_id=row.id,

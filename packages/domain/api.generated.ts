@@ -1553,6 +1553,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/contribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Contribution */
+        get: operations["read_contribution_api_v1_projects__project_id__contribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/contribution/calculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Calculate Contribution */
+        post: operations["calculate_contribution_api_v1_projects__project_id__contribution_calculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/discussions": {
         parameters: {
             query?: never;
@@ -1938,6 +1972,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Acceptance Decision */
+        post: operations["create_acceptance_decision_api_v1_projects__project_id__tasks__task_id__verification_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Verification History */
+        get: operations["read_verification_history_api_v1_projects__project_id__tasks__task_id__verification_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage/uploads": {
         parameters: {
             query?: never;
@@ -2081,6 +2149,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptanceDecisionRequest */
+        AcceptanceDecisionRequest: {
+            /** Decision */
+            decision: string;
+            /** Reason */
+            reason: string;
+            /** Responsibility Share */
+            responsibility_share?: number | null;
+        };
         /** AccessGrantDTO */
         AccessGrantDTO: {
             /**
@@ -10533,6 +10610,76 @@ export interface operations {
             };
         };
     };
+    read_contribution_api_v1_projects__project_id__contribution_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calculate_contribution_api_v1_projects__project_id__contribution_calculate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     collection_api_v1_projects__project_id__discussions_get: {
         parameters: {
             query?: {
@@ -12619,6 +12766,82 @@ export interface operations {
         };
     };
     create_verification_api_v1_projects__project_id__tasks__task_id__verification_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_acceptance_decision_api_v1_projects__project_id__tasks__task_id__verification_decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptanceDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_verification_history_api_v1_projects__project_id__tasks__task_id__verification_history_get: {
         parameters: {
             query?: never;
             header?: {
