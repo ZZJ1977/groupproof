@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from hmac import compare_digest
 from io import BytesIO
 from secrets import token_urlsafe
 from uuid import UUID
@@ -30,6 +29,7 @@ from app.modules.d.models import (
     Report,
     ReportArtifact,
     ReportDownload,
+    ReportDownloadLink,
     ReportReview,
     ReportSnapshot,
     Risk,
@@ -639,15 +639,17 @@ def download_export(
         raise ApiError(404, "REPORT_EXPORT_NOT_FOUND", "Report export not found.")
     if artifact.status != "ready" or not artifact.content:
         raise ApiError(409, "REPORT_EXPORT_NOT_READY", "Report export is not ready.")
-    expires = artifact.download_expires_at
+    link = session.scalar(
+        select(ReportDownloadLink).where(
+            ReportDownloadLink.artifact_id == artifact.id,
+            ReportDownloadLink.user_id == user.id,
+            ReportDownloadLink.token_hash == sha256(token.encode()).hexdigest(),
+        )
+    )
+    expires = link.expires_at if link else None
     if expires is not None and expires.tzinfo is None:
         expires = expires.replace(tzinfo=UTC)
-    if (
-        not artifact.download_token_hash
-        or expires is None
-        or expires <= datetime.now(UTC)
-        or not compare_digest(artifact.download_token_hash, sha256(token.encode()).hexdigest())
-    ):
+    if expires is None or expires <= datetime.now(UTC):
         raise ApiError(403, "REPORT_LINK_EXPIRED", "Request a new download link.")
     session.add(
         ReportDownload(
@@ -685,7 +687,6 @@ def create_download_link(
         .join(ReportSnapshot, ReportArtifact.snapshot_id == ReportSnapshot.id)
         .join(Report, ReportSnapshot.report_id == Report.id)
         .where(ReportArtifact.id == artifact_id, Report.project_id == project_id)
-        .with_for_update()
     )
     if artifact is None:
         raise ApiError(404, "REPORT_EXPORT_NOT_FOUND", "Report export not found.")
@@ -693,8 +694,14 @@ def create_download_link(
         raise ApiError(409, "REPORT_EXPORT_NOT_READY", "Report export is not ready.")
     token = token_urlsafe(32)
     expires = datetime.now(UTC) + timedelta(minutes=10)
-    artifact.download_token_hash = sha256(token.encode()).hexdigest()
-    artifact.download_expires_at = expires
+    session.add(
+        ReportDownloadLink(
+            artifact_id=artifact.id,
+            user_id=user.id,
+            token_hash=sha256(token.encode()).hexdigest(),
+            expires_at=expires,
+        )
+    )
     session.commit()
     return success(
         {
