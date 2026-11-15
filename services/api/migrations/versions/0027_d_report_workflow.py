@@ -31,8 +31,6 @@ def upgrade() -> None:
         sa.Column("error", sa.Text()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("completed_at", sa.DateTime(timezone=True)),
-        sa.Column("download_token_hash", sa.String(64)),
-        sa.Column("download_expires_at", sa.DateTime(timezone=True)),
         sa.CheckConstraint("file_format IN ('pdf','docx')", name="ck_report_artifacts_format"),
         sa.CheckConstraint(
             "status IN ('pending','generating','ready','failed')",
@@ -40,6 +38,18 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_report_artifacts_snapshot_id", "report_artifacts", ["snapshot_id"])
+    op.create_table(
+        "report_download_links",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("artifact_id", sa.Uuid(), sa.ForeignKey("report_artifacts.id"), nullable=False),
+        sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("token_hash", sa.String(64), nullable=False, unique=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index(
+        "ix_report_download_links_artifact_id", "report_download_links", ["artifact_id"]
+    )
     op.create_table(
         "report_reviews",
         sa.Column("id", sa.Uuid(), primary_key=True),
@@ -58,6 +68,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_report_download_links_artifact_id", table_name="report_download_links")
+    op.drop_table("report_download_links")
     op.drop_index("ix_report_reviews_report_id", table_name="report_reviews")
     op.drop_table("report_reviews")
     op.drop_index("ix_report_artifacts_snapshot_id", table_name="report_artifacts")
