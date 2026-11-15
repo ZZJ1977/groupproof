@@ -17,6 +17,7 @@ from app.modules.d.acceptance import decide, history
 from app.modules.d.contribution import calculate, latest_snapshot
 from app.modules.d.integrity import enter_verification, latest_check, run_check
 from app.modules.d.models import Risk, RiskEvent
+from app.modules.d.risk_read import risk_counts
 from app.modules.d.verification import latest_verification, run_verification
 
 router = APIRouter(prefix="/api/d", tags=["d"])
@@ -245,10 +246,7 @@ def risk_summary(
     active = [risk for risk in risks if risk.status != "closed"]
     return success(
         {
-            "total": len(active),
-            "high": sum(risk.level == "high" for risk in active),
-            "medium": sum(risk.level == "medium" for risk in active),
-            "low": sum(risk.level == "low" for risk in active),
+            **risk_counts(active),
             "risks": [
                 {
                     "id": str(risk.id),
