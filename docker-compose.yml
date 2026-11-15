@@ -81,6 +81,20 @@ services:
       api:
         condition: service_healthy
 
+  report-worker:
+    build:
+      context: ./services/api
+    command: ["celery", "-A", "app.modules.d.report_tasks:celery_app", "worker", "--loglevel=info"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-groupproof}:${POSTGRES_PASSWORD:-groupproof-local}@postgres:5432/${POSTGRES_DB:-groupproof}
+      DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   web:
     build:
       context: .
