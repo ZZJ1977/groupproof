@@ -399,6 +399,7 @@ class ReportSnapshot(Base):
     report_id: Mapped[UUID] = mapped_column(
         ForeignKey("reports.id", ondelete="RESTRICT"), index=True
     )
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     baseline_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("baseline_versions.id", ondelete="SET NULL")
     )
@@ -427,6 +428,21 @@ class ReportSnapshot(Base):
             name="ck_report_snapshots_status",
         ),
         Index("ix_report_snapshots_contribution_snapshot_id", "contribution_snapshot_id"),
+    )
+
+
+class ReportDownload(Base):
+    """Append-only audit of generated report downloads."""
+
+    __tablename__ = "report_downloads"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    file_format: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("file_format IN ('pdf','docx')", name="ck_report_downloads_format"),
     )
 
 
