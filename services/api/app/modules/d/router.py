@@ -10,6 +10,8 @@ from app.api.errors import ApiError
 from app.api.responses import success
 from app.db.models import Milestone, ProjectMember, Task, User
 from app.db.session import get_session
+from app.modules.a.ai import AIUsageContext, RiskExplanationInput, explain_risk
+from app.modules.a.ai.schemas import RiskRecord, TaskProgressBrief
 from app.modules.c.permissions import get_project_access
 from app.modules.d.acceptance import decide, history
 from app.modules.d.contribution import calculate, latest_snapshot
@@ -229,6 +231,90 @@ def list_risks(
         select(Risk).where(Risk.project_id == project_id).order_by(Risk.created_at.desc(), Risk.id)
     ).all()
     return success([risk_data(session, risk) for risk in risks], request)
+
+
+@risk_router.get("/{project_id}/risk-summary")
+def risk_summary(
+    project_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    get_project_access(session, user, project_id)
+    risks = session.scalars(select(Risk).where(Risk.project_id == project_id)).all()
+    active = [risk for risk in risks if risk.status != "closed"]
+    return success(
+        {
+            "total": len(active),
+            "high": sum(risk.level == "high" for risk in active),
+            "medium": sum(risk.level == "medium" for risk in active),
+            "low": sum(risk.level == "low" for risk in active),
+            "risks": [
+                {
+                    "id": str(risk.id),
+                    "title": risk.title,
+                    "level": risk.level,
+                    "status": risk.status,
+                    "task_id": str(risk.task_id) if risk.task_id else None,
+                    "milestone_id": str(risk.milestone_id) if risk.milestone_id else None,
+                }
+                for risk in active
+            ],
+        },
+        request,
+    )
+
+
+@risk_router.get("/{project_id}/risk-explanation")
+def risk_explanation(
+    project_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    get_project_access(session, user, project_id)
+    risks = session.scalars(
+        select(Risk)
+        .where(Risk.project_id == project_id, Risk.status != "closed")
+        .order_by(Risk.created_at.desc())
+        .limit(100)
+    ).all()
+    tasks = session.scalars(select(Task).where(Task.project_id == project_id).limit(500)).all()
+    facts = [
+        {
+            "id": str(risk.id),
+            "title": risk.title,
+            "level": risk.level,
+            "description": risk.description,
+        }
+        for risk in risks
+    ]
+    payload = RiskExplanationInput(
+        project_id=project_id,
+        tasks=[
+            TaskProgressBrief(
+                id=task.id,
+                title=task.title,
+                status=task.status,
+                progress_percent=task.progress_percent,
+            )
+            for task in tasks
+        ],
+        risks=[
+            RiskRecord(kind=risk.title, description=risk.description, severity=risk.level)
+            for risk in risks
+        ],
+    )
+    try:
+        result = explain_risk(payload, usage=AIUsageContext(user_id=user.id, project_id=project_id))
+        return success(
+            {"ai_available": True, "explanation": result.model_dump(mode="json"), "facts": facts},
+            request,
+        )
+    except ApiError as error:
+        if error.status_code != 503:
+            raise
+        return success({"ai_available": False, "explanation": None, "facts": facts}, request)
 
 
 @risk_router.post("/{project_id}/risks", status_code=201)
