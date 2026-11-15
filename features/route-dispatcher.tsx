@@ -20,6 +20,7 @@ const ProjectFilesApiPage = dynamic(() => import("@/features/c/ProjectFilesApiPa
 const CourseFilesApiPage = dynamic(() => import("@/features/c/CourseFilesApiPage").then((module) => module.CourseFilesApiPage));
 const ExecutionApiPage = dynamic(() => import("@/features/c/ExecutionApiPage").then((module) => module.ExecutionApiPage));
 const RiskApiPage = dynamic(() => import("@/features/d/RiskApiPage").then((module) => module.RiskApiPage));
+const ReportApiPage = dynamic(() => import("@/features/d/ReportApiPage").then((module) => module.ReportApiPage));
 const AcceptanceApiPage = dynamic(() => import("@/features/d/AcceptanceApiPage").then((module) => module.AcceptanceApiPage));
 const ContributionApiPage = dynamic(() => import("@/features/d/ContributionApiPage").then((module) => module.ContributionApiPage));
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
@@ -55,6 +56,7 @@ export function RouteDispatcher() {
   if (screen === 30 && apiMode("daily") === "real") realContent = <PersonalActivityApiPage />;
   if (screen === 5 && apiMode("inbox") === "real") realContent = <NotificationsApiPage />;
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
+  if ([27, 28].includes(screen) && projectId && apiMode("reports") === "real") realContent = <ReportApiPage projectId={projectId} exportView={screen === 28} />;
   // D's acceptance and contribution pages always read persisted API records.
   if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
   if ((screen === 25 || screen === 26) && projectId) realContent = <ContributionApiPage projectId={projectId} memberId={screen === 26 ? memberId : undefined} />;
