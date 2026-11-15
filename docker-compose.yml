@@ -70,6 +70,17 @@ services:
       timeout: 3s
       retries: 3
 
+  risk-scheduler:
+    build:
+      context: ./services/api
+    command: ["python", "-m", "scripts.daily_risks", "--loop"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-groupproof}:${POSTGRES_PASSWORD:-groupproof-local}@postgres:5432/${POSTGRES_DB:-groupproof}
+      DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
+    depends_on:
+      api:
+        condition: service_healthy
+
   web:
     build:
       context: .

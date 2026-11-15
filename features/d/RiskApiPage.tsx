@@ -27,6 +27,7 @@ export function RiskApiPage({ projectId }: { projectId: string }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [explanation, setExplanation] = useState<{ ai_available: boolean; explanation: { summary: string; explanation: string; suggestions: string[] } | null; facts: { id: string; title: string; level: string; description: string }[] } | null>(null);
   const base = `/api/v1/projects/${projectId}/risks`;
 
   async function refresh() { setRisks(await riskRequest<Risk[]>(base)); }
@@ -52,9 +53,17 @@ export function RiskApiPage({ projectId }: { projectId: string }) {
     finally { setBusy(false); }
   }
 
+  async function explain() {
+    setBusy(true); setError("");
+    try { setExplanation(await riskRequest(`/api/v1/projects/${projectId}/risk-explanation`)); }
+    catch (failure) { setError((failure as Error).message); }
+    finally { setBusy(false); }
+  }
+
   return <main className="mx-auto max-w-4xl space-y-5 p-6"><h1 className="text-2xl font-semibold">里程碑与风险</h1>{error && <p role="alert" className="text-red-700">{error}</p>}
     <section className="space-y-2 rounded border bg-white p-4"><h2 className="font-semibold">里程碑</h2>{milestones.map((item) => <p key={item.id}>{item.title}</p>)}{!milestones.length && <p>暂无里程碑</p>}</section>
     <section className="space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">创建风险</h2><input className="w-full rounded border p-2" aria-label="风险标题" placeholder="风险标题" value={title} onChange={(event) => setTitle(event.target.value)} /><textarea className="w-full rounded border p-2" aria-label="风险描述" placeholder="描述" value={description} onChange={(event) => setDescription(event.target.value)} /><div className="flex flex-wrap gap-2"><select aria-label="等级" value={level} onChange={(event) => setLevel(event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select><select aria-label="关联任务" value={taskId} onChange={(event) => { setTaskId(event.target.value); if (event.target.value) setMilestoneId(""); }}><option value="">选择关联任务</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select><span>或</span><select aria-label="关联里程碑" value={milestoneId} onChange={(event) => { setMilestoneId(event.target.value); if (event.target.value) setTaskId(""); }}><option value="">选择关联里程碑</option>{milestones.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select><select aria-label="负责人" value={ownerId} onChange={(event) => setOwnerId(event.target.value)}><option value="">选择负责人</option>{members.map((member) => <option key={member.id} value={member.id}>{member.title}</option>)}</select></div><button className="rounded bg-blue-700 px-3 py-2 text-white disabled:opacity-50" disabled={busy || !title.trim() || !description.trim() || !(taskId || milestoneId) || !ownerId} onClick={() => void create()}>创建风险</button></section>
     <section className="space-y-3"><h2 className="font-semibold">风险记录</h2><input className="w-full rounded border p-2" aria-label="变化说明" placeholder="缓解或关闭原因" value={note} onChange={(event) => setNote(event.target.value)} />{risks.map((risk) => <article className="rounded border bg-white p-4" key={risk.id}><h3 className="font-semibold">{risk.title} · {risk.level} · {risk.status}</h3><p>{risk.description}</p><div className="mt-2 flex gap-2">{risk.status === "open" && <button disabled={busy || !note.trim()} onClick={() => void transition(risk, "mitigate")}>缓解</button>}{risk.status !== "closed" && <button disabled={busy || !note.trim()} onClick={() => void transition(risk, "close")}>关闭</button>}</div><details className="mt-2"><summary>变化历史（{risk.events.length}）</summary>{risk.events.map((event) => <p key={event.id}>{event.created_at} · {event.type} · {event.note}</p>)}</details></article>)}{risks.length === 0 && <p>暂无风险记录</p>}</section>
+    <section className="space-y-2 rounded border bg-white p-4"><button disabled={busy} onClick={() => void explain()} className="rounded border px-3 py-2">生成风险解释</button>{explanation && <div role="status">{explanation.ai_available && explanation.explanation ? <><h2 className="font-semibold">{explanation.explanation.summary}</h2><p>{explanation.explanation.explanation}</p>{explanation.explanation.suggestions.map((item) => <p key={item}>{item}</p>)}<p>AI 建议，需人工判断。</p></> : <><p>AI 暂不可用，显示当前风险事实：</p>{explanation.facts.map((item) => <p key={item.id}>{item.title} · {item.level} · {item.description}</p>)}</>}</div>}</section>
   </main>;
 }
