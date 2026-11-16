@@ -1,6 +1,119 @@
 {
   "components": {
     "schemas": {
+      "AcceptanceDecisionRequest": {
+        "properties": {
+          "decision": {
+            "pattern": "^(confirmed|rejected)$",
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "responsibility_share": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsibility Share"
+          }
+        },
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "title": "AcceptanceDecisionRequest",
+        "type": "object"
+      },
+      "AccessGrantDTO": {
+        "properties": {
+          "applicant_id": {
+            "format": "uuid",
+            "title": "Applicant Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "project",
+              "task",
+              "evidence"
+            ],
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "revoke_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoke Reason"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "applicant_id",
+          "project_id",
+          "resource_type",
+          "resource_id",
+          "expires_at",
+          "revoked_at",
+          "revoke_reason"
+        ],
+        "title": "AccessGrantDTO",
+        "type": "object"
+      },
       "AccessRequestDTO": {
         "properties": {
           "applicant_id": {
@@ -440,6 +553,24 @@
             ],
             "title": "Evidence Id"
           },
+          "feishu_attachments": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuAttachmentSnapshot"
+            },
+            "title": "Feishu Attachments",
+            "type": "array"
+          },
+          "github_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github State"
+          },
           "group_id": {
             "anyOf": [
               {
@@ -480,6 +611,11 @@
               }
             ],
             "title": "Record Id"
+          },
+          "snapshot_complete": {
+            "default": true,
+            "title": "Snapshot Complete",
+            "type": "boolean"
           },
           "source_changed": {
             "title": "Source Changed",
@@ -1115,6 +1251,251 @@
           "total"
         ],
         "title": "AdminUserPageDTO",
+        "type": "object"
+      },
+      "AiUsageDTO": {
+        "properties": {
+          "cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "user_id",
+          "project_id",
+          "feature",
+          "provider",
+          "model",
+          "success",
+          "error_code",
+          "input_tokens",
+          "output_tokens",
+          "cost",
+          "currency",
+          "latency_ms"
+        ],
+        "title": "AiUsageDTO",
+        "type": "object"
+      },
+      "AiUsagePageDTO": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AiUsageDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AiUsagePageDTO",
+        "type": "object"
+      },
+      "AiUsageSummaryDTO": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "failures": {
+            "title": "Failures",
+            "type": "integer"
+          },
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feature",
+          "model",
+          "currency",
+          "calls",
+          "failures",
+          "input_tokens",
+          "output_tokens",
+          "cost"
+        ],
+        "title": "AiUsageSummaryDTO",
         "type": "object"
       },
       "AnalyzeCodeRequest": {
@@ -2678,6 +3059,74 @@
         "title": "CreateAccessRequest",
         "type": "object"
       },
+      "CreateAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "college": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "College"
+          },
+          "identity": {
+            "enum": [
+              "student",
+              "teacher"
+            ],
+            "title": "Identity",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schoolEmail": {
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Schoolemail",
+            "type": "string"
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studentid"
+          },
+          "submitForReview": {
+            "default": false,
+            "title": "Submitforreview",
+            "type": "boolean"
+          },
+          "username": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "name",
+          "username",
+          "schoolEmail"
+        ],
+        "title": "CreateAccount",
+        "type": "object"
+      },
       "CreateCourse": {
         "additionalProperties": false,
         "properties": {
@@ -3082,6 +3531,9 @@
               "task_progress",
               "task_note_saved",
               "file_version_uploaded",
+              "github_commit",
+              "github_pull_request",
+              "github_ci_run",
               "evidence_submitted",
               "evidence_adopted",
               "evidence_withdrawn",
@@ -3110,7 +3562,8 @@
               "task",
               "evidence",
               "discussion",
-              "file"
+              "file",
+              "github"
             ],
             "title": "Object Type",
             "type": "string"
@@ -3927,6 +4380,31 @@
         "title": "DiscussionReplyResultDTO",
         "type": "object"
       },
+      "EditSection": {
+        "properties": {
+          "body": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "body",
+          "expected_version"
+        ],
+        "title": "EditSection",
+        "type": "object"
+      },
       "EmailRegistrationCompleteIn": {
         "properties": {
           "password": {
@@ -4445,6 +4923,178 @@
         "title": "EvidenceSnapshotDTO",
         "type": "object"
       },
+      "ExportInput": {
+        "properties": {
+          "file_format": {
+            "pattern": "^(pdf|docx)$",
+            "title": "File Format",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "file_format"
+        ],
+        "title": "ExportInput",
+        "type": "object"
+      },
+      "FeishuAttachmentDTO": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "content_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Sha256"
+          },
+          "file_key": {
+            "title": "File Key",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "file",
+              "audio",
+              "media"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "file_key",
+          "kind",
+          "name",
+          "size_bytes",
+          "content_sha256",
+          "verified_at",
+          "available"
+        ],
+        "title": "FeishuAttachmentDTO",
+        "type": "object"
+      },
+      "FeishuAttachmentSnapshot": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "image",
+              "file",
+              "audio",
+              "media"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "sha256",
+          "size_bytes",
+          "verified"
+        ],
+        "title": "FeishuAttachmentSnapshot",
+        "type": "object"
+      },
       "FeishuAvailableChatDTO": {
         "properties": {
           "chat_id": {
@@ -4480,6 +5130,111 @@
           "chat_id"
         ],
         "title": "FeishuChatLinkDTO",
+        "type": "object"
+      },
+      "FeishuMessageDetailDTO": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuAttachmentDTO"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "msg_type": {
+            "title": "Msg Type",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuMessageVersionDTO"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "message_id",
+          "msg_type",
+          "text",
+          "deleted",
+          "version_no",
+          "content_hash",
+          "occurred_at",
+          "versions",
+          "attachments"
+        ],
+        "title": "FeishuMessageDetailDTO",
+        "type": "object"
+      },
+      "FeishuMessageVersionDTO": {
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version_no",
+          "content_hash",
+          "text",
+          "deleted",
+          "recorded_at"
+        ],
+        "title": "FeishuMessageVersionDTO",
         "type": "object"
       },
       "FeishuSyncDTO": {
@@ -4871,6 +5626,187 @@
         "title": "FileVersionDTO",
         "type": "object"
       },
+      "GithubActivityDTO": {
+        "properties": {
+          "author_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Login"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "commit",
+              "pull_request",
+              "ci_run"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "external_id",
+          "title",
+          "summary",
+          "state",
+          "author_login",
+          "author_name",
+          "author_user_id",
+          "url",
+          "occurred_at",
+          "deleted"
+        ],
+        "title": "GithubActivityDTO",
+        "type": "object"
+      },
+      "GithubActivityPageDTO": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GithubActivityDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "GithubActivityPageDTO",
+        "type": "object"
+      },
+      "GithubLoginDTO": {
+        "properties": {
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          }
+        },
+        "required": [
+          "login"
+        ],
+        "title": "GithubLoginDTO",
+        "type": "object"
+      },
+      "GithubLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "login": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          }
+        },
+        "title": "GithubLoginRequest",
+        "type": "object"
+      },
       "GithubRepoDTO": {
         "properties": {
           "default_branch": {
@@ -4915,12 +5851,37 @@
       },
       "GithubSyncDTO": {
         "properties": {
+          "associated": {
+            "default": 0,
+            "title": "Associated",
+            "type": "integer"
+          },
+          "ci_runs": {
+            "default": 0,
+            "title": "Ci Runs",
+            "type": "integer"
+          },
+          "commits": {
+            "default": 0,
+            "title": "Commits",
+            "type": "integer"
+          },
+          "deleted_sources": {
+            "default": 0,
+            "title": "Deleted Sources",
+            "type": "integer"
+          },
           "fetched": {
             "title": "Fetched",
             "type": "integer"
           },
           "files": {
             "title": "Files",
+            "type": "integer"
+          },
+          "pulls": {
+            "default": 0,
+            "title": "Pulls",
             "type": "integer"
           },
           "removed": {
@@ -6087,6 +7048,17 @@
         "title": "PublishCourseFileVersion",
         "type": "object"
       },
+      "RefreshInput": {
+        "properties": {
+          "includes_appendix": {
+            "default": false,
+            "title": "Includes Appendix",
+            "type": "boolean"
+          }
+        },
+        "title": "RefreshInput",
+        "type": "object"
+      },
       "RegisterCourseFile": {
         "additionalProperties": false,
         "properties": {
@@ -6216,6 +7188,20 @@
         "title": "ResponseMeta",
         "type": "object"
       },
+      "RestoreInput": {
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "RestoreInput",
+        "type": "object"
+      },
       "ReviewIn": {
         "properties": {
           "decision": {
@@ -6243,6 +7229,43 @@
           "expectedVersion"
         ],
         "title": "ReviewIn",
+        "type": "object"
+      },
+      "ReviewInput": {
+        "properties": {
+          "action": {
+            "pattern": "^(return|approve)$",
+            "title": "Action",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "ReviewInput",
+        "type": "object"
+      },
+      "RevokeGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeGrantRequest",
         "type": "object"
       },
       "RiskTransition": {
@@ -6367,6 +7390,17 @@
             ],
             "title": "Actor Id"
           },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
           "after": {
             "anyOf": [
               {
@@ -6415,6 +7449,11 @@
               }
             ],
             "title": "Reason"
+          },
+          "result": {
+            "default": "success",
+            "title": "Result",
+            "type": "string"
           },
           "target_id": {
             "title": "Target Id",
@@ -6521,6 +7560,22 @@
           "expected_version"
         ],
         "title": "StartTaskRequest",
+        "type": "object"
+      },
+      "SuccessResponse_AccessGrantDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AccessGrantDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AccessGrantDTO]",
         "type": "object"
       },
       "SuccessResponse_AccessRequestDetailDTO_": {
@@ -6665,6 +7720,22 @@
           "meta"
         ],
         "title": "SuccessResponse[AdminUserPageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_AiUsagePageDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AiUsagePageDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AiUsagePageDTO]",
         "type": "object"
       },
       "SuccessResponse_AuditPageDTO_": {
@@ -6971,6 +8042,22 @@
         "title": "SuccessResponse[EvidencePageDTO]",
         "type": "object"
       },
+      "SuccessResponse_FeishuAttachmentDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuAttachmentDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuAttachmentDTO]",
+        "type": "object"
+      },
       "SuccessResponse_FeishuChatLinkDTO_": {
         "properties": {
           "data": {
@@ -6985,6 +8072,22 @@
           "meta"
         ],
         "title": "SuccessResponse[FeishuChatLinkDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_FeishuMessageDetailDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuMessageDetailDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuMessageDetailDTO]",
         "type": "object"
       },
       "SuccessResponse_FeishuSyncDTO_": {
@@ -7033,6 +8136,38 @@
           "meta"
         ],
         "title": "SuccessResponse[FilePageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubActivityPageDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubActivityPageDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubActivityPageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubLoginDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubLoginDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubLoginDTO]",
         "type": "object"
       },
       "SuccessResponse_GithubRepoDTO_": {
@@ -7380,6 +8515,26 @@
         "title": "SuccessResponse[dict]",
         "type": "object"
       },
+      "SuccessResponse_list_AiUsageSummaryDTO__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AiUsageSummaryDTO"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[list[AiUsageSummaryDTO]]",
+        "type": "object"
+      },
       "SuccessResponse_list_FeishuAvailableChatDTO__": {
         "properties": {
           "data": {
@@ -7507,6 +8662,17 @@
             "title": "Dependencies",
             "type": "array"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "module_progress": {
             "additionalProperties": {
               "anyOf": [
@@ -7580,6 +8746,22 @@
             "format": "uuid",
             "title": "Task Id",
             "type": "string"
+          },
+          "temporary_read": {
+            "default": false,
+            "title": "Temporary Read",
+            "type": "boolean"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "version": {
             "title": "Version",
@@ -8022,6 +9204,11 @@
             "title": "Failed",
             "type": "integer"
           },
+          "incomplete_token_records": {
+            "default": 0,
+            "title": "Incomplete Token Records",
+            "type": "integer"
+          },
           "input_tokens": {
             "title": "Input Tokens",
             "type": "integer"
@@ -8040,6 +9227,11 @@
           },
           "succeeded": {
             "title": "Succeeded",
+            "type": "integer"
+          },
+          "unpriced_requests": {
+            "default": 0,
+            "title": "Unpriced Requests",
             "type": "integer"
           }
         },
@@ -8074,6 +9266,11 @@
             "title": "Failed",
             "type": "integer"
           },
+          "incomplete_token_records": {
+            "default": 0,
+            "title": "Incomplete Token Records",
+            "type": "integer"
+          },
           "input_tokens": {
             "title": "Input Tokens",
             "type": "integer"
@@ -8088,6 +9285,11 @@
           },
           "succeeded": {
             "title": "Succeeded",
+            "type": "integer"
+          },
+          "unpriced_requests": {
+            "default": 0,
+            "title": "Unpriced Requests",
             "type": "integer"
           }
         },
@@ -8151,6 +9353,11 @@
             "title": "Failed",
             "type": "integer"
           },
+          "incomplete_token_records": {
+            "default": 0,
+            "title": "Incomplete Token Records",
+            "type": "integer"
+          },
           "input_tokens": {
             "title": "Input Tokens",
             "type": "integer"
@@ -8174,6 +9381,11 @@
           },
           "succeeded": {
             "title": "Succeeded",
+            "type": "integer"
+          },
+          "unpriced_requests": {
+            "default": 0,
+            "title": "Unpriced Requests",
             "type": "integer"
           },
           "until": {
@@ -8642,6 +9854,450 @@
         ]
       }
     },
+    "/api/v1/a/access-grants/{grant_id}/revoke": {
+      "post": {
+        "description": "管理员撤销一份临时只读授权；撤销后下一次读取立即失效，重复撤销不改写原记录。",
+        "operationId": "revoke_access_grant_api_v1_a_access_grants__grant_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AccessGrantDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Access Grant",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/ai-usage": {
+      "get": {
+        "description": "管理员查看 AI 调用记录（谁、哪个功能、哪个模型、成败、token、费用）。",
+        "operationId": "list_ai_usage_events_api_v1_a_ai_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "feature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Feature"
+            }
+          },
+          {
+            "in": "query",
+            "name": "success",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Success"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AiUsagePageDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Ai Usage Events",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/ai-usage/summary": {
+      "get": {
+        "description": "管理员查看 AI 用量汇总：按功能、模型、币种统计调用数、失败数、token 和费用。",
+        "operationId": "summarize_ai_usage_events_api_v1_a_ai_usage_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "feature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Feature"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_list_AiUsageSummaryDTO__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Summarize Ai Usage Events",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/me/github-login": {
+      "put": {
+        "description": "声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。",
+        "operationId": "set_my_github_login_api_v1_a_me_github_login_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubLoginDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set My Github Login",
+        "tags": [
+          "a"
+        ]
+      }
+    },
     "/api/v1/a/projects": {
       "post": {
         "operationId": "create_personal_project_api_v1_a_projects_post",
@@ -8697,6 +10353,77 @@
           }
         },
         "summary": "Create Personal Project",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/attachments/{attachment_id}/verify": {
+      "post": {
+        "description": "下载附件并记录 SHA-256 指纹，之后可用来核对附件没有被替换。",
+        "operationId": "verify_feishu_attachment_api_v1_a_projects__project_id__feishu_attachments__attachment_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuAttachmentDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Feishu Attachment",
         "tags": [
           "a"
         ]
@@ -8890,6 +10617,77 @@
         ]
       }
     },
+    "/api/v1/a/projects/{project_id}/feishu/messages/{message_row_id}": {
+      "get": {
+        "description": "项目成员查看一条飞书消息的脱敏全文、所有版本和附件引用。",
+        "operationId": "get_feishu_message_api_v1_a_projects__project_id__feishu_messages__message_row_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_row_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Row Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuMessageDetailDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Feishu Message",
+        "tags": [
+          "a"
+        ]
+      }
+    },
     "/api/v1/a/projects/{project_id}/feishu/sync": {
       "post": {
         "operationId": "sync_feishu_api_v1_a_projects__project_id__feishu_sync_post",
@@ -8945,6 +10743,129 @@
           }
         },
         "summary": "Sync Feishu",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/activity": {
+      "get": {
+        "description": "项目成员查看本项目已同步的提交、合并请求和 CI 运行（新的在前）。",
+        "operationId": "list_github_activity_api_v1_a_projects__project_id__github_activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "commit",
+                    "pull_request",
+                    "ci_run"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "author_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubActivityPageDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Github Activity",
         "tags": [
           "a"
         ]
@@ -11234,6 +13155,49 @@
           },
           {
             "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "success",
+                    "failure",
+                    "denied"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "student",
+                    "teacher",
+                    "ta",
+                    "admin"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Role"
+            }
+          },
+          {
+            "in": "query",
             "name": "since",
             "required": false,
             "schema": {
@@ -11825,6 +13789,56 @@
           }
         },
         "summary": "Disable User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/enable": {
+      "post": {
+        "operationId": "enable_user_api_v1_admin_users__user_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable User",
         "tags": [
           "admin"
         ]
@@ -12577,6 +14591,43 @@
         "tags": [
           "c-admin"
         ]
+      },
+      "post": {
+        "operationId": "create_account_api_v1_c_admin_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Account",
+        "tags": [
+          "c-admin"
+        ]
       }
     },
     "/api/v1/c-admin/users/{user_id}/disable": {
@@ -12624,6 +14675,56 @@
           }
         },
         "summary": "Disable",
+        "tags": [
+          "c-admin"
+        ]
+      }
+    },
+    "/api/v1/c-admin/users/{user_id}/enable": {
+      "post": {
+        "operationId": "enable_api_v1_c_admin_users__user_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable",
         "tags": [
           "c-admin"
         ]
@@ -13528,6 +15629,64 @@
         "tags": [
           "c",
           "c-course-files"
+        ]
+      }
+    },
+    "/api/v1/courses/{course_id}/teacher-overview": {
+      "get": {
+        "operationId": "teacher_overview_api_v1_courses__course_id__teacher_overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Teacher Overview",
+        "tags": [
+          "d-teacher-overview"
         ]
       }
     },
@@ -16001,6 +18160,130 @@
         "tags": [
           "c",
           "c-context"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/contribution": {
+      "get": {
+        "operationId": "read_contribution_api_v1_projects__project_id__contribution_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Contribution Api V1 Projects  Project Id  Contribution Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Contribution",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/contribution/calculate": {
+      "post": {
+        "operationId": "calculate_contribution_api_v1_projects__project_id__contribution_calculate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Calculate Contribution Api V1 Projects  Project Id  Contribution Calculate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calculate Contribution",
+        "tags": [
+          "d-acceptance"
         ]
       }
     },
@@ -18953,6 +21236,791 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/reports": {
+      "get": {
+        "operationId": "list_reports_api_v1_projects__project_id__reports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Reports",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/exports": {
+      "post": {
+        "operationId": "request_export_api_v1_projects__project_id__reports_exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Export",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/exports/{artifact_id}": {
+      "get": {
+        "operationId": "read_export_api_v1_projects__project_id__reports_exports__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Export",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/exports/{artifact_id}/download": {
+      "get": {
+        "operationId": "download_export_api_v1_projects__project_id__reports_exports__artifact_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/exports/{artifact_id}/download-link": {
+      "post": {
+        "operationId": "create_download_link_api_v1_projects__project_id__reports_exports__artifact_id__download_link_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Download Link",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/refresh": {
+      "post": {
+        "operationId": "refresh_report_api_v1_projects__project_id__reports_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Report",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/restore": {
+      "post": {
+        "operationId": "restore_report_version_api_v1_projects__project_id__reports_restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Report Version",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/review": {
+      "post": {
+        "operationId": "review_report_api_v1_projects__project_id__reports_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Report",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/sections": {
+      "post": {
+        "operationId": "edit_section_api_v1_projects__project_id__reports_sections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditSection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Section",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/reports/submit": {
+      "post": {
+        "operationId": "submit_report_api_v1_projects__project_id__reports_submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Report",
+        "tags": [
+          "d-reports"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/risk-explanation": {
+      "get": {
+        "operationId": "risk_explanation_api_v1_projects__project_id__risk_explanation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Risk Explanation",
+        "tags": [
+          "d-risks"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/risk-summary": {
+      "get": {
+        "operationId": "risk_summary_api_v1_projects__project_id__risk_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Risk Summary",
+        "tags": [
+          "d-risks"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/risks": {
       "get": {
         "operationId": "list_risks_api_v1_projects__project_id__risks_get",
@@ -19938,6 +23006,160 @@
           }
         },
         "summary": "Create Verification",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/decision": {
+      "post": {
+        "operationId": "create_acceptance_decision_api_v1_projects__project_id__tasks__task_id__verification_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptanceDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Acceptance Decision Api V1 Projects  Project Id  Tasks  Task Id  Verification Decision Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Acceptance Decision",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/history": {
+      "get": {
+        "operationId": "read_verification_history_api_v1_projects__project_id__tasks__task_id__verification_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Verification History Api V1 Projects  Project Id  Tasks  Task Id  Verification History Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Verification History",
         "tags": [
           "d-acceptance"
         ]

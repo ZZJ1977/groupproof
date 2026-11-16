@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -105,6 +106,7 @@ class VerificationRun(Base):
     )
     task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
     triggered_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    task_version: Mapped[int | None] = mapped_column(Integer)
     result: Mapped[str] = mapped_column(
         String(16), default="pending", server_default=text("'pending'")
     )
@@ -179,6 +181,58 @@ class CriterionResult(Base):
             postgresql_where=text("invalidated_at IS NULL"),
         ),
     )
+
+
+class AcceptanceDecision(Base):
+    """Append-only human decision by a current responsible task assignee."""
+
+    __tablename__ = "acceptance_decisions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    verification_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("verification_runs.id", ondelete="RESTRICT"), index=True
+    )
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    revision_no: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(16))
+    responsibility_share: Mapped[float | None] = mapped_column(Numeric(7, 4))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "verification_run_id",
+            "actor_id",
+            "revision_no",
+            name="uq_acceptance_decisions_revision",
+        ),
+        CheckConstraint("revision_no > 0", name="ck_acceptance_decisions_revision"),
+        CheckConstraint(
+            "decision IN ('confirmed', 'rejected')", name="ck_acceptance_decisions_decision"
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="ck_acceptance_decisions_reason"),
+        CheckConstraint(
+            "responsibility_share IS NULL OR responsibility_share BETWEEN 0 AND 100",
+            name="ck_acceptance_decisions_share",
+        ),
+    )
+
+
+class FormalOutcome(Base):
+    """One accepted result; invalidation preserves its original basis."""
+
+    __tablename__ = "formal_outcomes"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
+    verification_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("verification_runs.id", ondelete="RESTRICT"), unique=True
+    )
+    basis_json: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invalidated_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class ContributionCalculation(Base):
@@ -299,6 +353,9 @@ class ContributionItemTask(Base):
     task_id: Mapped[UUID] = mapped_column(
         ForeignKey("tasks.id", ondelete="RESTRICT"), primary_key=True
     )
+    formal_outcome_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("formal_outcomes.id", ondelete="RESTRICT")
+    )
     ratio: Mapped[float] = mapped_column(Numeric(7, 4))
 
     __table_args__ = (
@@ -328,7 +385,8 @@ class Report(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('draft', 'generating', 'generated', 'finalized', 'failed')",
+            "status IN ('draft', 'generating', 'generated', 'submitted', "
+            "'returned', 'finalized', 'failed')",
             name="ck_reports_status",
         ),
     )
@@ -343,6 +401,7 @@ class ReportSnapshot(Base):
     report_id: Mapped[UUID] = mapped_column(
         ForeignKey("reports.id", ondelete="RESTRICT"), index=True
     )
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     baseline_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("baseline_versions.id", ondelete="SET NULL")
     )
@@ -371,6 +430,75 @@ class ReportSnapshot(Base):
             name="ck_report_snapshots_status",
         ),
         Index("ix_report_snapshots_contribution_snapshot_id", "contribution_snapshot_id"),
+    )
+
+
+class ReportDownload(Base):
+    """Append-only audit of generated report downloads."""
+
+    __tablename__ = "report_downloads"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    file_format: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("file_format IN ('pdf','docx')", name="ck_report_downloads_format"),
+    )
+
+
+class ReportArtifact(Base):
+    """Generated immutable bytes for one snapshot and format."""
+
+    __tablename__ = "report_artifacts"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"), index=True)
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    file_format: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    content: Mapped[bytes | None] = mapped_column(LargeBinary)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("file_format IN ('pdf','docx')", name="ck_report_artifacts_format"),
+        CheckConstraint(
+            "status IN ('pending','generating','ready','failed')",
+            name="ck_report_artifacts_status",
+        ),
+    )
+
+
+class ReportDownloadLink(Base):
+    """Independent short-lived grant for one authorized user and export."""
+
+    __tablename__ = "report_download_links"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    artifact_id: Mapped[UUID] = mapped_column(ForeignKey("report_artifacts.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReportReview(Base):
+    """Append-only report submission and teacher decisions."""
+
+    __tablename__ = "report_reviews"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    report_id: Mapped[UUID] = mapped_column(ForeignKey("reports.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('submitted','returned','finalized')", name="ck_report_reviews_action"
+        ),
     )
 
 

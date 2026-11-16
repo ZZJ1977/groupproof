@@ -251,7 +251,7 @@ function AccessPanel({ id, onChanged, close, onUnauthorized }: { id: string; onC
       {data.status === "approved" && <Notice>此处显示审批结果；实际访问还需通过权限检查。{data.approval_expired ? "授权期限已过。" : `批准截止：${formatDateTime(data.approved_expires_at ?? undefined)}`}</Notice>}<History items={data.history} /></>}
     {requestExpired && <Notice>申请期限已过，无法批准；可填写理由拒绝此申请。</Notice>}
     {(!data || data.status === "pending") && <form className={styles.stack} onSubmit={submit}><Field label="审批决定"><select className={styles.select} aria-label="审批决定" value={decision} disabled={command.busy} onChange={(event) => setDecision(event.target.value as "approved" | "rejected")}><option value="approved" disabled={requestExpired}>批准只读访问</option><option value="rejected">拒绝</option></select></Field>
-      {decision === "approved" && <><Field label="批准截止时间"><input className={styles.input} type="datetime-local" required value={expiry ?? (data ? localTime(data.requested_expires_at) : "")} max={data ? localTime(data.requested_expires_at) : undefined} disabled={command.busy || requestExpired} onChange={(event) => setExpiry(event.target.value)} /></Field><Notice>当前批准功能需授权服务支持；操作失败时申请会保持待审批。</Notice></>}
+      {decision === "approved" && <><Field label="批准截止时间"><input className={styles.input} type="datetime-local" required value={expiry ?? (data ? localTime(data.requested_expires_at) : "")} max={data ? localTime(data.requested_expires_at) : undefined} disabled={command.busy || requestExpired} onChange={(event) => setExpiry(event.target.value)} /></Field><Notice>批准后按申请范围授予只读访问，到期后自动失效。</Notice></>}
       <Field label="审批理由"><textarea className={styles.textarea} required maxLength={2000} value={reason} disabled={command.busy} onChange={(event) => setReason(event.target.value)} /></Field><button className={styles.primaryButton} type="submit" disabled={!data || command.busy || !reason.trim() || (decision === "approved" && requestExpired) || conflictNeedsRefresh(command, detail.dataUpdatedAt)}>{command.busy ? "正在提交…" : "确认审批决定"}</button></form>}
     <ErrorBox error={command.error} />
   </div></Box>;
@@ -362,6 +362,8 @@ function SharedLogsPage() {
   const page = pageNumber(query.get("shared_page"));
   const filters: SharedAuditQuery = {
     page, page_size: 10, actor_id: selected(query.get("shared_actor")),
+    actor_role: (["student", "teacher", "ta", "admin"].includes(query.get("shared_role") ?? "") ? query.get("shared_role") : undefined) as NonNullable<SharedAuditQuery>["actor_role"],
+    result: (["success", "failure", "denied"].includes(query.get("shared_result") ?? "") ? query.get("shared_result") : undefined) as NonNullable<SharedAuditQuery>["result"],
     action_prefix: query.get("shared_action") || undefined,
     target_type: query.get("shared_type") || undefined, target_id: query.get("shared_target") || undefined,
     since: query.get("shared_since") || undefined, until: query.get("shared_until") || undefined,
@@ -386,16 +388,19 @@ function SharedLogsPage() {
     if (since && until && since >= until) { setError("结束时间须晚于开始时间。"); return; }
     setError("");
     updateQuery({shared_action: inputValue(form, "prefix") || null, shared_type: type || null, shared_target: target || null,
+      shared_role: inputValue(form, "role") || null, shared_result: inputValue(form, "result") || null,
       shared_since: since || null, shared_until: until || null, shared_page: null});
   }
   return <>
-    <Header title="共享服务操作记录" description="查看已记录的操作、对象、变更和理由。此来源未记录操作时角色和执行结果。"
+    <Header title="共享服务操作记录" description="按操作时角色和执行结果查询共享服务的操作记录。"
       action={<button className={styles.button} type="button" disabled={result.isFetching} onClick={() => void refresh()}>刷新操作记录</button>} />
     <ErrorBox error={denied ?? result.error} retry={() => void refresh()} />
     {result.isFetching && <p role="status">正在读取操作记录…</p>}
     {!denied && <>
     <UserSelect label="筛选操作人" value={filters.actor_id || ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({shared_actor: value || null, shared_page: null})}/>
-    <form className={styles.filters} key={JSON.stringify([filters.action_prefix, filters.target_type, filters.target_id, filters.since, filters.until])} onSubmit={search}>
+    <form className={styles.filters} key={JSON.stringify([filters.action_prefix, filters.target_type, filters.target_id, filters.actor_role, filters.result, filters.since, filters.until])} onSubmit={search}>
+      <Field label="操作时角色"><select className={styles.select} name="role" defaultValue={filters.actor_role || ""}><option value="">全部角色</option>{(["student", "teacher", "ta", "admin"] as const).map((role) => <option key={role} value={role}>{auditRoles[role]}</option>)}</select></Field>
+      <Field label="执行结果"><select className={styles.select} name="result" defaultValue={filters.result || ""}><option value="">全部结果</option><option value="success">成功</option><option value="failure">失败</option><option value="denied">拒绝</option></select></Field>
       <Field label="操作前缀"><input className={styles.input} name="prefix" maxLength={120} defaultValue={filters.action_prefix || ""}/></Field>
       <Field label="对象类型"><input className={styles.input} name="type" maxLength={60} defaultValue={filters.target_type || ""}/></Field>
       <Field label="对象标识"><input className={styles.input} name="target" maxLength={120} defaultValue={filters.target_id || ""}/></Field>
@@ -406,8 +411,8 @@ function SharedLogsPage() {
     {error && <p role="alert">{error}</p>}
     {data && <Box><Table><thead><tr><th>时间</th><th>操作</th><th>操作人</th><th>对象</th><th>详情</th></tr></thead><tbody>
       {data.items.map((row) => <tr key={row.id}><td>{formatDateTime(row.occurred_at)}</td><td>{row.action}</td>
-        <td>{row.actor_id || "系统"}</td><td>{row.target_type} / {row.target_id}</td><td><details>
-          <summary>查看操作详情</summary><p>理由：{row.reason ?? "未记录"}</p>
+        <td>{row.actor_id || "系统"} · {row.actor_role ? auditRoles[row.actor_role as keyof typeof auditRoles] ?? row.actor_role : "未记录角色"}</td><td>{row.target_type} / {row.target_id}</td><td><details>
+          <summary>查看操作详情</summary><p>执行结果：{({ success: "成功", failure: "失败", denied: "拒绝" } as Record<string, string>)[row.result] ?? row.result}</p><p>理由：{row.reason ?? "未记录"}</p>
           <h3>变更前</h3><pre>{row.before === null ? "无可展示的快照" : JSON.stringify(row.before, null, 2)}</pre>
           <h3>变更后</h3><pre>{row.after === null ? "无可展示的快照" : JSON.stringify(row.after, null, 2)}</pre>
           {row.metadata_redacted && <small>仅显示可公开的变更字段。</small>}
@@ -418,16 +423,75 @@ function SharedLogsPage() {
   </>;
 }
 
+export function MyAccessRequests() {
+  const [open, setOpen] = useState(false);
+  return <section className="my-4">
+    <button className={styles.button} type="button" aria-expanded={open} onClick={() => setOpen(!open)}>我的访问申请</button>
+    {open && <ApplicantPanel />}
+  </section>;
+}
+
+function ApplicantPanel() {
+  const { userId } = useWorkspace();
+  const [page, setPage] = useState(1);
+  const [kind, setKind] = useState<"task" | "evidence" | "project">("task");
+  const [denied, setDenied] = useState<CApiError | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const command = useCommand(setDenied);
+  const cache = useQueryClient();
+  const list = useQuery({ queryKey: ["c-own-access", userId, page], queryFn: () =>
+    readWithAccessCheck(() => api.ownAccessRequests(page), setDenied), enabled: !denied, ...querySettings });
+  const data = !denied && list.isSuccess && !list.isFetching ? list.data : undefined;
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const target = event.currentTarget;
+    const form = new FormData(target);
+    const projectId = inputValue(form, "project"), resourceId = kind === "project" ? projectId : inputValue(form, "resource");
+    const expires = isoTime(inputValue(form, "expiry"));
+    if (!expires || Date.parse(expires) <= Date.now()) { setFeedback("请选择未来的截止时间。"); return; }
+    const body: Schema["CreateAccessRequest"] = {
+      scope: { project_id: projectId, resource_type: kind, resource_id: resourceId, operation: "read" },
+      reason: inputValue(form, "reason"), expires_at: expires,
+    };
+    setFeedback("");
+    void command.run(body, (key) => api.requestAccess(body, key), () => {
+      target.reset(); setKind("task"); setPage(1); setFeedback("申请已提交，等待管理员审批。");
+      void cache.invalidateQueries({ queryKey: ["c-own-access", userId] });
+    });
+  }
+  if (denied) return <ErrorBox error={denied} retry={() => { setDenied(null); void list.refetch(); }} />;
+  const idPattern = "[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}";
+  return <Box title="申请只读访问"><div className={styles.panelBody}>
+    <form onSubmit={submit}><fieldset disabled={command.busy} className={styles.filters}>
+      <Field label="申请范围"><select className={styles.select} value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="task">任务</option><option value="evidence">证据</option><option value="project">整个项目</option></select></Field>
+      <Field label="所属项目 ID"><input className={styles.input} name="project" required pattern={idPattern} /></Field>
+      {kind !== "project" && <Field label={kind === "task" ? "任务 ID" : "证据 ID"}><input className={styles.input} name="resource" required pattern={idPattern} /></Field>}
+      <Field label="截止时间"><input className={styles.input} type="datetime-local" name="expiry" required /></Field>
+      <Field label="申请理由"><textarea className={styles.input} name="reason" maxLength={2000} required /></Field>
+      <button className={styles.primaryButton} type="submit">提交只读申请</button>
+    </fieldset></form>
+    {feedback && <p role="status">{feedback}</p>}<ErrorBox error={command.error ?? list.error} />
+    <button className={styles.button} type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>刷新我的申请</button>
+    {data && <><ul>{data.items.map((row) => {
+      const scope = row.scope, base = `/projects/${scope.project_id}`;
+      const href = scope.resource_type === "task" ? `${base}/tasks/${scope.resource_id}` : scope.resource_type === "evidence" ? `${base}/evidence?evidence=${scope.resource_id}` : `${base}/evidence`;
+      return <li key={row.id} className="my-2">{targetTypes[scope.resource_type]} {scope.resource_id} · {requestStatuses[row.status]} · {row.reason}
+        {row.status === "approved" && <> · {row.approval_expired ? "已到期" : <a className="gp-link" href={href}>查看获批范围</a>}</>}</li>;
+    })}</ul>{!data.items.length && <Empty>暂无访问申请</Empty>}<Pager page={page} total={data.total} change={setPage}/></>}
+  </div></Box>;
+}
+
 function LogsPage() {
   const { query, updateQuery } = useUrlQuery();
   const authentication = query.get("source") === "auth";
-  const shared = query.get("source") === "shared";
+  const legacyBusinessFilters = ["log", "action", "actor", "actor_role", "target_type", "target_id", "result", "since", "until", "page"];
+  const shared = query.get("source") === "shared" || (!query.has("source") && !legacyBusinessFilters.some((key) => query.has(key)));
   return <><div className={styles.actions} aria-label="日志来源"><button className={styles.button} type="button" aria-pressed={authentication} onClick={() => updateQuery({ source: "auth" })}>认证日志</button><button className={styles.button} type="button" aria-pressed={!authentication && !shared} onClick={() => updateQuery({ source: "business" })}>全站业务日志</button><button className={styles.button} type="button" aria-pressed={shared} onClick={() => updateQuery({ source: "shared" })}>共享服务操作记录</button></div>{authentication ? <AuthLogsPage /> : shared ? <SharedLogsPage /> : <BusinessLogsPage />}</>;
 }
 
 function costs(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" / ") || "无费用样本"; }
 function UsageTable({ title, items }: { title: string; items: (Schema["UsageBreakdownDTO"] | Schema["UsageDayDTO"])[] }) {
-  return <Box title={title}><Table><thead><tr><th>维度</th><th>请求数</th><th>成功 / 失败</th><th>输入 / 输出 Token</th><th>费用（按币种）</th></tr></thead><tbody>{items.map((item) => <tr key={"key" in item ? item.key : item.date}><td>{"key" in item ? item.key : item.date}</td><td>{item.requests}</td><td>{item.succeeded} / {item.failed}</td><td>{item.input_tokens} / {item.output_tokens}</td><td>{costs(item.cost_by_currency)}</td></tr>)}</tbody></Table>{!items.length && <Empty>当前范围没有用量样本</Empty>}</Box>;
+  return <Box title={title}><Table><thead><tr><th>维度</th><th>请求数</th><th>成功 / 失败</th><th>输入 / 输出 Token</th><th>费用（按币种）</th></tr></thead><tbody>{items.map((item) => <tr key={"key" in item ? item.key : item.date}><td>{"key" in item ? item.key : item.date}</td><td>{item.requests}</td><td>{item.succeeded} / {item.failed}</td><td>{item.input_tokens} / {item.output_tokens}</td><td>{costs(item.cost_by_currency)}{item.unpriced_requests > 0 && ` · ${item.unpriced_requests} 次费用未记录`}{item.incomplete_token_records > 0 && ` · ${item.incomplete_token_records} 次 Token 不完整`}</td></tr>)}</tbody></Table>{!items.length && <Empty>当前范围没有用量样本</Empty>}</Box>;
 }
 function UsagePage() {
   const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
@@ -444,7 +508,7 @@ function UsagePage() {
     <UserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
     <form className={styles.filters} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}><Field label="功能"><input className={styles.input} name="feature" maxLength={100} defaultValue={filters.feature ?? ""} /></Field><Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} /></Field><button className={styles.primaryButton} type="submit">查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></form>
     {result.isFetching && <p role="status">正在读取用量…</p>}<ErrorBox error={result.error} retry={() => void result.refetch()} />
-    {data && <><Box title="用量汇总"><div className={styles.panelBody}><p>范围：{formatDateTime(data.since)} 至 {formatDateTime(data.until)}（UTC 日历窗口）</p><p>请求总数：{data.requests} · 成功：{data.succeeded} · 失败：{data.failed}</p><p>输入 Token：{data.input_tokens} · 输出 Token：{data.output_tokens}</p><p>费用：{costs(data.cost_by_currency)}</p><p>{data.aggregation_scope}</p></div></Box><UsageTable title="按日期" items={data.daily} /><UsageTable title="按功能" items={data.by_feature} /><UsageTable title="按模型" items={data.by_model} /></>}
+    {data && <><Box title="用量汇总"><div className={styles.panelBody}><p>范围：{formatDateTime(data.since)} 至 {formatDateTime(data.until)}（UTC 日历窗口）</p><p>请求总数：{data.requests} · 成功：{data.succeeded} · 失败：{data.failed}</p><p>输入 Token：{data.input_tokens} · 输出 Token：{data.output_tokens}</p><p>费用：{costs(data.cost_by_currency)}</p>{data.unpriced_requests > 0 && <p>{data.unpriced_requests} 次调用尚无完整计费数据。</p>}{data.incomplete_token_records > 0 && <p>{data.incomplete_token_records} 次调用的 Token 记录不完整。</p>}<p>{data.aggregation_scope}</p></div></Box><UsageTable title="按日期" items={data.daily} /><UsageTable title="按功能" items={data.by_feature} /><UsageTable title="按模型" items={data.by_model} /></>}
   </>;
 }
 

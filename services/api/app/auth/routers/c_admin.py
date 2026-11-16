@@ -163,6 +163,79 @@ def disable(
     )
 
 
+@router.post("/users/{user_id}/enable")
+def enable(
+    user_id: str,
+    body: DisableDecision,
+    request: Request,
+    context: AuthContext = Depends(require_admin),
+    db: DbSession = Depends(get_db),
+):
+    check_admin_write(request, context, db)
+    try:
+        target_id = UUID(user_id)
+    except ValueError:
+        raise AppError("NOT_FOUND", 404) from None
+    user = db.scalar(
+        select(User)
+        .where(User.id == target_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None:
+        raise AppError("NOT_FOUND", 404)
+    accounts.enable_user(
+        db, user, admin=context.user, reason=body.reason, expected_version=body.expectedVersion
+    )
+    db.commit()
+    return response({"id": user.id, "status": user.account_status, "version": user.version})
+
+
+class CreateAccount(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    identity: Literal["student", "teacher"]
+    name: str = Field(min_length=1, max_length=120)
+    username: str = Field(min_length=1, max_length=80)
+    schoolEmail: str = Field(min_length=3, max_length=255)
+    studentId: str | None = Field(default=None, max_length=80)
+    college: str | None = Field(default=None, max_length=160)
+    submitForReview: bool = Field(default=False, strict=True)
+
+
+@router.post("/users", status_code=201)
+def create_account(
+    body: CreateAccount,
+    request: Request,
+    context: AuthContext = Depends(require_admin),
+    db: DbSession = Depends(get_db),
+):
+    check_admin_write(request, context, db)
+    user = accounts.admin_create_account(
+        db,
+        admin=context.user,
+        identity=body.identity,
+        name=body.name,
+        username=body.username,
+        school_email=body.schoolEmail,
+        student_id=body.studentId,
+        college=body.college,
+        submit_for_review=body.submitForReview,
+    )
+    db.commit()
+    return JSONResponse(
+        {
+            "id": user.id,
+            "status": user.account_status,
+            "roles": user.roles,
+            "version": user.version,
+            # 不返回密码：本人通过「忘记密码」用该邮箱设置自己的密码。
+            "passwordSetup": "forgot_password",
+        },
+        status_code=201,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 @router.get("/teacher-applications")
 def applications(
     request: Request,

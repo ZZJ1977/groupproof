@@ -53,7 +53,7 @@ def list_progress_history(
     )
     if actor is None:
         raise ApiError(401, "UNAUTHENTICATED", "Authentication is required.")
-    get_project_access(session, actor, project_id)
+    get_project_access(session, actor, project_id, resource_type="task", resource_id=task_id)
     task = session.scalar(select(Task.id).where(Task.id == task_id, Task.project_id == project_id))
     if task is None:
         raise ApiError(404, "TASK_NOT_FOUND", "Task not found in the authorized project.")

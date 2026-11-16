@@ -23,9 +23,11 @@ from app.modules.a.ai.schemas import (
     TaskSuggestionInput,
     TaskSuggestionResult,
 )
+from app.modules.a.ai.usage import AIUsageContext
 
 __all__ = [
     "AIProvider",
+    "AIUsageContext",
     "AIUnavailable",
     "CodeFile",
     "EvidenceMatchInput",

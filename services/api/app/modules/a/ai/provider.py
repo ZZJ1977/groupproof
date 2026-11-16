@@ -29,6 +29,9 @@ class AIUnavailable(Exception):
 class AIProvider(Protocol):
     name: str
     is_placeholder: bool
+    model: str
+    # 最近一次成功调用的用量：{"input_tokens", "output_tokens", "cost", "currency"}，没有就为 None。
+    last_usage: dict[str, Any] | None
 
     def generate(self, feature: str, payload: dict[str, Any], *, timeout: float) -> dict:
         """按功能名生成结构化结果（字典），由函数层校验字段。"""
@@ -39,6 +42,8 @@ class FakeProvider:
 
     name = "fake"
     is_placeholder = True
+    model = "fake"
+    last_usage: dict[str, Any] | None = None
 
     def generate(self, feature: str, payload: dict[str, Any], *, timeout: float) -> dict:
         from app.modules.a.ai import fake_results
