@@ -5,7 +5,32 @@ import { useCallback, useEffect, useState } from "react";
 type Envelope<T> = { data: T };
 type ErrorBody = { error?: { code?: string; message?: string; details?: { install_url?: string } } };
 type Repo = { owner: string; repo: string; default_branch: string; linked_at: string; last_synced_at: string | null };
-type SyncResult = { repos: number; files: number; fetched: number; removed: number; skipped: number };
+type SyncResult = {
+  repos: number;
+  files: number;
+  fetched: number;
+  removed: number;
+  skipped: number;
+  commits?: number;
+  pulls?: number;
+  ci_runs?: number;
+  deleted_sources?: number;
+};
+type ActivityKind = "commit" | "pull_request" | "ci_run";
+type Activity = {
+  id: string;
+  kind: ActivityKind;
+  title: string;
+  state: string | null;
+  author_login: string | null;
+  author_name: string | null;
+  url: string | null;
+  occurred_at: string;
+  deleted: boolean;
+};
+type ActivityPage = { items: Activity[]; total: number; page: number; page_size: number };
+
+const kindLabels: Record<ActivityKind, string> = { commit: "提交", pull_request: "合并请求", ci_run: "CI 运行" };
 
 const buttonStyle: React.CSSProperties = {
   padding: "8px 16px",
@@ -69,13 +94,28 @@ function formatTime(value: string | null): string {
   return new Date(value).toLocaleString("zh-CN");
 }
 
-export function GithubRepoBinding({ projectId }: { projectId: string }) {
+export function GithubRepoBinding({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
   const base = `/api/v1/a/projects/${projectId}/github`;
   const [repos, setRepos] = useState<Repo[] | null>(null);
   const [repoUrl, setRepoUrl] = useState("");
   const [message, setMessage] = useState("");
   const [installUrl, setInstallUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activity, setActivity] = useState<ActivityPage | null>(null);
+  const [kind, setKind] = useState<ActivityKind | "">("");
+
+  const loadActivity = useCallback(async () => {
+    try {
+      const query = kind ? `?kind=${kind}` : "";
+      setActivity(await request<ActivityPage>("GET", `${base}/activity${query}`));
+    } catch {
+      setActivity({ items: [], total: 0, page: 1, page_size: 20 });
+    }
+  }, [base, kind]);
+
+  useEffect(() => {
+    void loadActivity();
+  }, [loadActivity]);
 
   const load = useCallback(async () => {
     try {
@@ -112,8 +152,11 @@ export function GithubRepoBinding({ projectId }: { projectId: string }) {
     setMessage("");
     try {
       const result = await request<SyncResult>("POST", `${base}/sync`);
-      setMessage(`同步完成：共 ${result.files} 个文件，下载 ${result.fetched} 个，移除 ${result.removed} 个，跳过 ${result.skipped} 个。`);
-      await load();
+      setMessage(
+        `同步完成：共 ${result.files} 个文件，下载 ${result.fetched} 个，移除 ${result.removed} 个，跳过 ${result.skipped} 个；` +
+          `提交 ${result.commits ?? 0} 条，合并请求 ${result.pulls ?? 0} 条，CI 运行 ${result.ci_runs ?? 0} 条。`,
+      );
+      await Promise.all([load(), loadActivity()]);
     } catch (error) {
       setMessage(friendly(error));
     } finally {
@@ -121,8 +164,9 @@ export function GithubRepoBinding({ projectId }: { projectId: string }) {
     }
   }
 
+  const Shell = embedded ? "div" : "main";
   return (
-    <main style={{ maxWidth: 560, margin: "40px auto", padding: "0 16px", fontFamily: "inherit" }}>
+    <Shell style={embedded ? undefined : { maxWidth: 560, margin: "40px auto", padding: "0 16px", fontFamily: "inherit" }}>
       <h1 style={{ fontSize: 22, fontWeight: 600 }}>GitHub 仓库</h1>
       <p style={{ color: "#666", marginTop: 4 }}>绑定项目的代码仓库，之后可以读取代码，用来判断功能是否已经实现。只读访问，不会修改你的仓库。</p>
 
@@ -179,6 +223,51 @@ export function GithubRepoBinding({ projectId }: { projectId: string }) {
           </p>
         )}
       </section>
-    </main>
+
+      {repos !== null && repos.length > 0 && (
+        <section style={{ marginTop: 24, padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600 }}>最近开发活动</h2>
+            <select
+              aria-label="活动类型"
+              value={kind}
+              onChange={(event) => setKind(event.target.value as ActivityKind | "")}
+              style={fieldStyle}
+            >
+              <option value="">全部类型</option>
+              <option value="commit">提交</option>
+              <option value="pull_request">合并请求</option>
+              <option value="ci_run">CI 运行</option>
+            </select>
+          </div>
+          {activity === null && <p role="status" style={{ marginTop: 12 }}>正在读取活动…</p>}
+          {activity !== null && activity.items.length === 0 && (
+            <p style={{ color: "#666", marginTop: 12 }}>暂无活动。点击“立即同步”拉取最近的提交、合并请求和 CI 运行。</p>
+          )}
+          {activity !== null && activity.items.length > 0 && (
+            <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0", display: "grid", gap: 10 }}>
+              {activity.items.map((item) => (
+                <li key={item.id} style={{ fontSize: 14, opacity: item.deleted ? 0.6 : 1 }}>
+                  <span style={{ color: "#2563eb", marginRight: 8 }}>{kindLabels[item.kind]}</span>
+                  {item.url ? (
+                    <a href={item.url} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>{item.title}</a>
+                  ) : (
+                    item.title
+                  )}
+                  <div style={{ color: "#666", fontSize: 13 }}>
+                    {item.author_name || item.author_login || "未知作者"} · {formatTime(item.occurred_at)}
+                    {item.state ? ` · ${item.state}` : ""}
+                    {item.deleted ? " · 源已删除" : ""}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {activity !== null && activity.total > activity.items.length && (
+            <p style={{ color: "#666", fontSize: 13, marginTop: 8 }}>共 {activity.total} 条，仅显示最近 {activity.items.length} 条。</p>
+          )}
+        </section>
+      )}
+    </Shell>
   );
 }

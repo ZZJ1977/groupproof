@@ -39,6 +39,16 @@ class FakeGithub:
         ]
         return {"tree": entries, "truncated": self.truncated}
 
+    # 活动记录（提交 / 合并请求 / CI）：这些测试不关心，默认没有。
+    def commits(self, owner, repo, branch, installation_id):
+        return []
+
+    def pulls(self, owner, repo, installation_id):
+        return []
+
+    def workflow_runs(self, owner, repo, installation_id):
+        return []
+
     def blob(self, owner, repo, sha, installation_id):
         if self.fail_blob:
             raise ApiError(503, "GITHUB_UNAVAILABLE", "boom")

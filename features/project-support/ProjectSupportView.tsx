@@ -42,6 +42,7 @@ import { apiMode } from "@/lib/api/config";
 import { canMarkDiscussionImportant, canWriteDiscussion, createDiscussion, discussionAsEvidence, discussionMentionTargets, markDiscussionImportant, replyDiscussion } from "@/features/c/discussions";
 import { useUrlQuery } from "@/features/c/use-url-query";
 import { GithubRecordPanels, FeishuRecordPanel } from "@/features/c/ActivityRecordPanels";
+import { GithubRepoBinding } from "@/features/github-binding/GithubRepoBinding";
 import { feishuActivityFilters } from "@/features/c/activity-records";
 import { fileCategories, fileCategoryLabels, fileFilterPatch, filePageSizes, queryProjectFiles, readFileFilters, type FileFilters } from "@/features/c/file-filters";
 import { canWriteProjectFiles, designateProjectFile, type FileWithCDecisions } from "@/features/c/file-decisions";
@@ -110,6 +111,10 @@ function GithubPage({ data, add, update, project }: ProjectContext) {
   const [notice, setNotice] = useState("");
   const lastConnection = records.find((item) => item.type === "sync");
   const repository = lastConnection?.repository || records[0]?.repository || "尚未绑定";
+  // 真实项目（后端项目 ID 为 UUID）走真实绑定、同步和活动接口；演示项目保留本地演示数据。
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(project.id)) {
+    return <div><Header project={project} title="GitHub" description="绑定仓库、同步提交、合并请求与 CI 运行，并查看开发活动。" icon={Github} /><GithubRepoBinding projectId={project.id} embedded /></div>;
+  }
   const disconnected = project.githubEnabled === false || lastConnection?.status === "已解除绑定";
   const sync = () => {
     if (disconnected || repository === "尚未绑定") { setNotice("请先绑定 GitHub 仓库。"); return; }

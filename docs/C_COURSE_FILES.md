@@ -122,6 +122,11 @@ file. This service exposes immutable version IDs; choosing a newer course file
 for a B baseline is an explicit B-owned change. D validation results and project
 evidence are not modified by course-file publication.
 
+The course file page accepts `/teacher/courses/{courseId}/files?file={fileId}&version={versionId}`.
+It focuses the matching version in the viewer's authorized history. A missing
+or hidden revision displays a notice. Preview and download requests use the
+selected version ID.
+
 ## A course-storage contract
 
 `CourseStoragePort.resolve_receipt(course_id, actor_id, receipt_id)` is an

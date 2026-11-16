@@ -263,7 +263,12 @@ def grant_change_authorization(db: DbSession, user: User, *, target_email: str) 
 
 
 def submit_teacher_application(
-    db: DbSession, user: User, *, expected_version: int, materials: dict[str, Any] | None
+    db: DbSession,
+    user: User,
+    *,
+    expected_version: int,
+    materials: dict[str, Any] | None,
+    submitted_by: User | None = None,
 ) -> TeacherApplication:
     if expected_version != user.version:
         raise AppError("VERSION_CONFLICT", 409)
@@ -288,7 +293,8 @@ def submit_teacher_application(
         audit.record(
             db,
             "teacher_application.resubmitted",
-            actor_id=user.id,
+            actor_id=submitted_by.id if submitted_by else user.id,
+            target_user_id=user.id if submitted_by else None,
             changed_fields=["teacherReviewStatus"],
         )
         db.flush()
@@ -306,7 +312,8 @@ def submit_teacher_application(
     audit.record(
         db,
         "teacher_application.submitted",
-        actor_id=user.id,
+        actor_id=submitted_by.id if submitted_by else user.id,
+        target_user_id=user.id if submitted_by else None,
         changed_fields=["teacherReviewStatus"],
     )
     db.flush()
@@ -346,10 +353,21 @@ def review_teacher_application(
         raise AppError("VERSION_CONFLICT", 409, params={"reason": "application_changed"})
     if app.status != "pending":
         raise AppError("INVALID_STATE", 409, params={"reason": "already_reviewed"})
+    # 共享审核规则（A 与 C 两个入口一致）：拒绝必须写理由；批准时学校邮箱必须仍然有效；
+    # 已停用账号不能被审核。
+    if decision == "reject" and not (reason or "").strip():
+        raise AppError("VALIDATION_ERROR", 400, field_errors={"reason": "reason_required"})
     user = db.get(User, app.user_id)
     if user is None:
         raise AppError("NOT_FOUND", 404)
+    if user.account_status == "disabled":
+        raise AppError("INVALID_STATE", 409, params={"reason": "account_disabled"})
     binding = user.email_binding
+    if decision == "approve":
+        from app.modules.c.school_email import school_email_binding_verified
+
+        if not school_email_binding_verified(binding):
+            raise AppError("VALIDATION_ERROR", 422, field_errors={"email": "email_not_verified"})
     if app.snapshot != review_basis(user, binding):
         raise AppError("VERSION_CONFLICT", 409, params={"reason": "basis_changed"})
     now = utcnow()
@@ -416,6 +434,149 @@ def disable_user(
         target_user_id=user.id,
         changed_fields=["accountStatus"],
     )
+
+
+def enable_user(
+    db: DbSession, user: User, *, admin: User, reason: str | None, expected_version: int
+) -> None:
+    """管理员恢复已停用账号：清除停用信息、权限版本 +1（旧会话已在停用时撤销）、通知本人。"""
+    if expected_version != user.version:
+        raise AppError("VERSION_CONFLICT", 409)
+    if user.account_status != "disabled":
+        raise AppError("INVALID_STATE", 409, params={"reason": "not_disabled"})
+    user.account_status = "enabled"
+    user.disabled_reason = None
+    user.disabled_at = None
+    user.auth_version += 1
+    _bump(user)
+    audit.record(
+        db,
+        "user.enabled",
+        actor_id=admin.id,
+        target_user_id=user.id,
+        changed_fields=["accountStatus"],
+    )
+    db.flush()
+    from app.modules.a.inbox import notify
+
+    notify(
+        db,
+        recipient=user,
+        category="system",
+        title="账号已恢复",
+        description=(reason or "管理员已恢复你的账号，现在可以重新登录。")[:2000],
+        dedupe_key=f"account-enabled:{user.id}:{user.version}",
+    )
+
+
+def admin_create_account(
+    db: DbSession,
+    *,
+    admin: User,
+    identity: str,
+    name: str,
+    username: str,
+    school_email: str,
+    student_id: str | None = None,
+    college: str | None = None,
+    submit_for_review: bool = False,
+) -> User:
+    """管理员创建学生/教师账号。
+
+    学校邮箱记为已核验。教师可进入审核流程，未指定审核方式时沿用直接授予角色。
+    不生成也不返回任何密码：本人用该邮箱的「忘记密码」流程自行设置密码后登录。
+    """
+    from uuid import uuid4
+
+    from ..models import PasswordCredential
+    from ..security import hash_password
+
+    if identity not in ("student", "teacher"):
+        raise AppError("VALIDATION_ERROR", 400, field_errors={"identity": "invalid_identity"})
+    if submit_for_review and identity != "teacher":
+        raise AppError("VALIDATION_ERROR", 422, field_errors={"submitForReview": "teacher_only"})
+    try:
+        normalized_email = check_email_format(school_email)
+    except ValueError:
+        raise AppError(
+            "VALIDATION_ERROR", 400, field_errors={"schoolEmail": "invalid_email"}
+        ) from None
+    if not email_domain_allowed(normalized_email, identity):
+        raise AppError(
+            "VALIDATION_ERROR", 400, field_errors={"schoolEmail": "email_domain_not_allowed"}
+        )
+    try:
+        clean_name = validate_name(name)
+    except ValueError as exc:
+        raise AppError("VALIDATION_ERROR", 400, field_errors={"name": str(exc)}) from None
+    try:
+        clean_username = validate_username(username)
+    except ValueError as exc:
+        raise AppError("VALIDATION_ERROR", 400, field_errors={"username": str(exc)}) from None
+    taken_user = db.scalar(
+        select(User).where(User.username_normalized == normalize_username(clean_username))
+    )
+    if taken_user is not None:
+        raise AppError("USERNAME_CONFLICT", 409, field_errors={"username": "username_taken"})
+    taken_email = db.scalar(
+        select(SchoolEmailBinding).where(
+            SchoolEmailBinding.school_email_normalized == normalized_email
+        )
+    )
+    if taken_email is not None or db.scalar(select(User.id).where(User.email == normalized_email)):
+        raise AppError("EMAIL_CONFLICT", 409, field_errors={"schoolEmail": "email_taken"})
+    now = utcnow()
+    user = User(
+        id=uuid4(),
+        name=clean_name,
+        username=clean_username,
+        username_normalized=normalize_username(clean_username),
+        email=normalized_email,
+        student_id=(student_id or "").strip() or None,
+        college=(college or "").strip() or None,
+        requested_identity=identity,
+        roles=["student" if submit_for_review else identity],
+        # Teacher review commands bind to a positive version of the provisioned profile.
+        version=1 if submit_for_review else 0,
+        account_status="enabled",
+    )
+    db.add(user)
+    db.flush()
+    db.add(
+        SchoolEmailBinding(
+            user_id=user.id,
+            school_email=school_email.strip(),
+            school_email_normalized=normalized_email,
+            verified_at=now,
+            verification_method="admin_created",
+        )
+    )
+    db.add(
+        PasswordCredential(
+            user_id=user.id,
+            login_email=school_email.strip(),
+            login_email_normalized=normalized_email,
+            login_email_verified_at=now,
+            verification_evidence_ref=f"admin:{admin.id}",
+            credential_version=1,
+            # 随机不可用密码：本人只能通过「忘记密码」设置自己的密码
+            password_hash=hash_password(new_token() + "Aa1!"),
+            password_algo="argon2id",
+        )
+    )
+    audit.record(
+        db,
+        "user.created_by_admin",
+        actor_id=admin.id,
+        target_user_id=user.id,
+        changed_fields=["users", "school_email_bindings", "password_credentials"],
+    )
+    db.flush()
+    if submit_for_review:
+        submit_teacher_application(
+            db, user, expected_version=user.version, materials=None, submitted_by=admin
+        )
+    return user
 
 
 def set_preference(db: DbSession, user: User, *, preferred_locale: str) -> None:
