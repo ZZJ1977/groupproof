@@ -30,7 +30,8 @@ async function signIn(page: Page, fixture: Fixture, actor: string, target: strin
   return session;
 }
 
-test("Google identity persists C execution, note versions and candidate snapshots through the real proxy", async ({ page, request }) => {
+test("Google identity persists C evidence and completes D acceptance through the real proxy", async ({ page, request }) => {
+  test.setTimeout(180_000);
   const fixture = await seed(request);
   const path = `/projects/${fixture.project}/tasks/${fixture.task}`;
   await signIn(page, fixture, "member", path);
