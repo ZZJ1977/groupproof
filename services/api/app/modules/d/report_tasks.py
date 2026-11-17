@@ -37,6 +37,8 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
                 select(Project).where(Project.id == report.project_id).with_for_update()
             )
             snapshot.data_snapshot = snapshot_data(session, project.id, project.name, appendix)
+            contribution_id = snapshot.data_snapshot["contribution_snapshot_id"]
+            snapshot.contribution_snapshot_id = UUID(contribution_id) if contribution_id else None
             project_id = project.id
             creator_id = snapshot.created_by or report.created_by
             session.commit()
