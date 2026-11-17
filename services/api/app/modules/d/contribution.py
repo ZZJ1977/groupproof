@@ -26,17 +26,8 @@ from app.modules.d.models import (
 FORMULA = "formal-task-weight-x-confirmed-responsibility-v1"
 
 
-def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | None:
-    get_project_access(session, user, project_id)
-    snapshot = session.scalar(
-        select(ContributionSnapshot)
-        .where(ContributionSnapshot.project_id == project_id)
-        .order_by(ContributionSnapshot.version_no.desc())
-        .limit(1)
-    )
-    if snapshot is None:
-        return None
-    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+def current_basis_hash(session: Session, project_id: UUID) -> str:
+    """Read current formal inputs without changing historical calculations."""
     current_basis = []
     outcomes = session.scalars(
         select(FormalOutcome)
@@ -61,7 +52,40 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
                 },
             }
         )
-    current_hash = hashlib.sha256(json.dumps(current_basis, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(current_basis, sort_keys=True).encode()).hexdigest()
+
+
+def current_frozen_snapshot(session: Session, project_id: UUID) -> ContributionSnapshot | None:
+    """A new report may reference only a frozen calculation of current outcomes."""
+    snapshot = session.scalar(
+        select(ContributionSnapshot)
+        .where(
+            ContributionSnapshot.project_id == project_id,
+            ContributionSnapshot.status == "frozen",
+        )
+        .order_by(ContributionSnapshot.version_no.desc())
+        .limit(1)
+    )
+    if snapshot is None:
+        return None
+    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+    if calculation.input_hash != current_basis_hash(session, project_id):
+        return None
+    return snapshot
+
+
+def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | None:
+    get_project_access(session, user, project_id)
+    snapshot = session.scalar(
+        select(ContributionSnapshot)
+        .where(ContributionSnapshot.project_id == project_id)
+        .order_by(ContributionSnapshot.version_no.desc())
+        .limit(1)
+    )
+    if snapshot is None:
+        return None
+    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+    current_hash = current_basis_hash(session, project_id)
     items = session.execute(
         select(ContributionItem, User)
         .join(User, User.id == ContributionItem.user_id)
