@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 
 // The signed destination is intercepted. Only fixture bytes can be sent during this suite.
@@ -6,7 +7,7 @@ export async function storageRoutes(page: Page, scope: "project" | "course", sco
   const signed = `https://fixture.invalid/storage/v1/object/upload/sign/files/${scope}/${scopeId}/${receipt}/spec.txt?token=fixture`;
   const bytes = Buffer.from("file version content");
   const payload = { name: "spec.txt", mimeType: "text/plain", buffer: bytes };
-  const stage = { issued: 0, put: 0, checked: 0, reject: false, denyCompletion: false };
+  const stage = { issued: 0, put: 0, checked: 0, reject: false, denyCompletion: false, storedBytes: bytes as Buffer | null };
   await page.route("**/api/v1/storage/uploads", (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBeTruthy();
     expect(route.request().postDataJSON()).toEqual({ scope, scope_id: scopeId, filename: payload.name,
@@ -35,8 +36,12 @@ export async function storageRoutes(page: Page, scope: "project" | "course", sco
     if (stage.reject) return route.fulfill({ status: 422, json: {
       error: { code: "UPLOAD_REJECTED", message: "文件未通过检查。" }, meta: { request_id: "upload-test" },
     } });
+    if (!stage.storedBytes) return route.fulfill({ status: 409, json: {
+      error: { code: "UPLOAD_NOT_RECEIVED", message: "还没有收到文件，请先完成上传。" }, meta: { request_id: "upload-test" },
+    } });
     return route.fulfill({ json: { data: { receipt_id: receipt, status: "completed", scope, scope_id: scopeId,
-      content_hash: "a".repeat(64), filename: payload.name, size_bytes: bytes.length, mime_type: payload.mimeType },
+      content_hash: createHash("sha256").update(stage.storedBytes).digest("hex"), filename: payload.name,
+      size_bytes: stage.storedBytes.length, mime_type: payload.mimeType },
     meta: { request_id: "upload-test" } } });
   });
   return { payload, stage, receipt };

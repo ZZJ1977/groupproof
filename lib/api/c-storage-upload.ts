@@ -69,4 +69,11 @@ export async function verifyFile(scope: Scope, scopeId: string, file: File, rece
       result.mime_type !== expectedMime || typeof result.content_hash !== "string" || !/^[a-f0-9]{64}$/.test(result.content_hash)) {
     throw new CApiError(422, "UPLOAD_RECEIPT_INVALID", "文件未通过存储校验，请重新选择文件。", null);
   }
+  if (!crypto.subtle) throw new Error("请通过 HTTPS 或本机地址打开页面，以校验上传文件。");
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  signal.throwIfAborted();
+  const localHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (localHash !== result.content_hash) {
+    throw new CApiError(422, "UPLOAD_RECEIPT_INVALID", "存储内容与所选文件不一致，请重新上传。", null);
+  }
 }
