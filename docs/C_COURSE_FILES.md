@@ -113,9 +113,9 @@ an older published version, and recheck authority before replay.
 One `course_file.created`, `course_file.appended` or `course_file.published` fact
 is recorded per successful command in `c_course_file_outbox`. It contains the
 course-scoped aggregate, version/actor/decision IDs, reason, previous/current
-official pointer and resulting file lock version. `delivered_at` remains null.
-Dispatch, recipient resolution and A notification delivery are still pending.
-Neither a pending event nor a local frontend message means users were notified.
+official pointer and resulting file lock version. The publish command also calls A's
+inbox writer in the same transaction for active enrolled students and course staff
+other than the actor. It deduplicates notifications by version and recipient.
 
 B's frozen project source references are never rewritten to the latest course
 file. This service exposes immutable version IDs; choosing a newer course file
@@ -126,6 +126,27 @@ The course file page accepts `/teacher/courses/{courseId}/files?file={fileId}&ve
 It focuses the matching version in the viewer's authorized history. A missing
 or hidden revision displays a notice. Preview and download requests use the
 selected version ID.
+
+### Verify a frozen project on Staging
+
+Use a test project whose actual B baseline was frozen while v1 was published. Then
+publish a different v2 and sign in as a member who can read both the baseline and the course file.
+Use the Staging session setup in [project file verification](C_PROJECT_FILES.md#verify-c5-02-on-staging).
+
+```powershell
+$env:C5_STAGING_PROJECT_ID = '<frozen project UUID>'
+$env:C5_STAGING_COURSE_ID = '<course UUID>'
+$env:C5_STAGING_COURSE_FILE_ID = '<course file UUID>'
+$env:C5_STAGING_FROZEN_VERSION_ID = '<published v1 UUID>'
+$env:C5_STAGING_STORAGE_STATE = '<absolute path to the saved session JSON>'
+npm run test:c5-freeze-staging
+```
+
+This read-only test checks that B saved the file and version together, that the
+project page links to that version, and that its downloaded bytes match the
+historical SHA-256 after a reload. `B_task@91bfdae` does not yet save the pair.
+The C file page alone can verify historical access, but cannot reconstruct which
+version a project selected at freeze time.
 
 ## A course-storage contract
 
