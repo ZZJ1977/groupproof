@@ -31,7 +31,21 @@ export function TeacherReportsApiPage({ courseId }: { courseId: string }) {
     if (!projectId) return;
     setReview(await call<Review>(`/api/v1/projects/${projectId}/teacher-report`));
   }, [projectId]);
-  useEffect(() => { void call<{ items: Project[] }>(`/api/v1/courses/${courseId}/teacher-groups?size=100`).then((result) => setProjects(result.items)).catch((failure) => setError(failure.message)); }, [courseId]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProjects() {
+      const all: Project[] = [];
+      for (let page = 1; ; page += 1) {
+        const result = await call<{ total: number; items: Project[] }>(
+          `/api/v1/courses/${courseId}/teacher-groups?size=100&page=${page}`);
+        all.push(...result.items);
+        if (all.length >= result.total || result.items.length === 0) break;
+      }
+      if (!cancelled) setProjects(all);
+    }
+    void loadProjects().catch((failure) => { if (!cancelled) setError(failure.message); });
+    return () => { cancelled = true; };
+  }, [courseId]);
   useEffect(() => { void refresh().catch((failure) => setError(failure.message)); }, [refresh]);
   async function send(path: string, data: unknown) {
     setBusy(true); setError("");
