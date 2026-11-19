@@ -110,3 +110,26 @@ def disable_user(
     return JSONResponse(
         {"id": user.id, "accountState": "disabled"}, headers={"Cache-Control": "private, no-store"}
     )
+
+
+@router.post("/users/{user_id}/enable")
+def enable_user(
+    user_id: str,
+    body: DisableIn,
+    request: Request,
+    context: AuthContext = Depends(require_admin),
+    db: DbSession = Depends(get_db),
+) -> JSONResponse:
+    check_csrf(request, context)
+    from ..models import User
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise AppError("NOT_FOUND", 404)
+    accounts.enable_user(
+        db, user, admin=context.user, reason=body.reason, expected_version=body.expectedVersion
+    )
+    db.commit()
+    return JSONResponse(
+        {"id": user.id, "accountState": "enabled"}, headers={"Cache-Control": "private, no-store"}
+    )

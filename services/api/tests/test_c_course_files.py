@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.errors import ApiError
 from app.db.base import Base
 from app.db.models import Course, CourseMember, CourseStaff
+from app.modules.a.models import Inbox, Notification
 from app.modules.c.course_files_models import (
     CourseFile,
     CourseFileDecision,
@@ -63,6 +64,8 @@ def db():
             connection.execute("PRAGMA foreign_keys=ON")
 
         names = {
+            Inbox.__tablename__,
+            Notification.__tablename__,
             "users",
             "school_email_bindings",
             "courses",

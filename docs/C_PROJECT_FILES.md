@@ -1,10 +1,10 @@
 # C5 project file service
 
 This delivery implements the C-owned project file lifecycle in the canonical
-`services/api` application. The default A storage port returns **503**. It does
-not upload bytes, manufacture receipts, issue fake links, or claim notification
-delivery. Course-file publication remains a separate integration task; the
-existing C5-04 frontend is still an explicitly labelled metadata demonstration.
+`services/api` application. The page requests a signed upload from A, sends the
+selected bytes, waits for A to verify the upload, and registers the completed
+receipt with C. An unconfigured storage port returns **503**. The separate
+[course-file service](C_COURSE_FILES.md) handles teacher uploads and publication.
 
 ## Ownership and assembly
 
@@ -45,6 +45,11 @@ and `reason`. Appending accepts `receipt_id`, the logical file's current
 paths, actor IDs or URLs, are rejected. `expected_version` refers to the C
 logical file's `lock_version`, **not** a B project/plan version.
 
+While the upload form is open, retrying an uncertain registration reuses the
+verified receipt and idempotency key. If another member changed the file, the
+form reads the current version number and filename for review. Confirming the
+append uses the new lock version and keeps the original upload and reason.
+
 Example registration body:
 
 ```json
@@ -71,9 +76,15 @@ raw storage coordinates and receipt IDs are not exposed.
 
 ## Authorization and transaction rules
 
-Current project members and assigned course teachers/TA may read. Only verified,
+The project file list, version history, preview and download require
+`project.content.read`. Current project members and the course's assigned
+teaching staff can read. A student from another group in the same course cannot
+read these files, even with the exact file and version IDs. Only verified,
 active project members may write, and both project and course must be active.
 Platform administrators and unrelated teachers get no implicit content access.
+The [project permissions matrix](development-stages/01-权限矩阵与权限判断.md)
+and the [project file handoff](development-stages/13-接口交接表.md) define this
+teaching-staff exception. Course files use their own course-scoped routes.
 Preparation of project files does not require a frozen B baseline or plan.
 Every link request repeats authorization; historical versions remain readable
 to currently authorized users. Ended/archived contexts remain read-only.

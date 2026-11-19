@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.errors import ApiError
 from app.db.base import Base
 from app.db.models import ProjectMember
+from app.modules.a.models import Inbox, Notification
 from app.modules.c.evidence_router import commit_command
 from app.modules.c.files_models import FileDecision, FileVersion, LogicalFile
 from app.modules.c.files_schemas import AppendFileVersion, DesignateFileVersion, RegisterFile
@@ -61,7 +62,10 @@ def db():
             connection.execute("PRAGMA foreign_keys=ON")
 
         names = {
+            Inbox.__tablename__,
+            Notification.__tablename__,
             "users",
+            "a_access_grants",
             "school_email_bindings",
             "courses",
             "course_staff",
@@ -77,6 +81,11 @@ def db():
             "c_logical_files",
             "c_file_versions",
             "c_file_decisions",
+            "source_references",
+            "evidence",
+            "evidence_criteria",
+            "evidence_decisions",
+            "evidence_source_snapshots",
         }
         metadata = MetaData()
         for table in Base.metadata.sorted_tables:

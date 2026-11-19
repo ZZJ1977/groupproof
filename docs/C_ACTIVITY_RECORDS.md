@@ -9,11 +9,14 @@ canonical UUID routes. An unavailable A source adapter still returns 503.
 ## Source contract
 
 `services/api/app/modules/c/activity_ports.py` defines the `ActivitySourcePort`.
-Its default implementation returns `503 ACTIVITY_SOURCE_UNAVAILABLE` for both
-list and detail. There are no third-party SDKs, credentials, inferred source authors
-or browser-supplied source contents in these commands.
+The default adapter reads A's project-authorized GitHub and Feishu records.
+The Feishu list uses 200-character previews. Detail and evidence capture read
+the persisted redacted message revision and its current attachments. The
+collaboration page requests byte verification through A's attachment endpoint
+before capturing a message with attachments. The snapshot preserves each
+verified attachment's identifier, redacted name, size and SHA-256.
 
-A must explicitly wire an adapter over its authorized ingestion store. Every call
+Every call
 contains the canonical project UUID and authenticated actor UUID. Each result
 contains a canonical source UUID, trusted author ID/name, aware timestamp, title,
 summary, kind, optional opaque Feishu `group_id`, and a `VerifiedSource` with
@@ -71,13 +74,19 @@ the literal value `all`; legacy `group=all` and `kind=all` mean no filter.
 Submitting filters clears pagination and the selected record. Reset removes both
 group parameter names and `kind`; reloading retains the URL filters.
 
-Group/type options come only from the current authorized response page, not an
-exhaustive group directory or local seed. A URL value absent from that page stays
-selected so the server can evaluate it. Missing groups and unknown types use an
-unverified-filter label; known type codes retain their display labels. Page
-options do not establish source authorization;
-the backend/provider still validate every query and operation. GitHub requests
-omit `group_id`.
+For project members, A's read-only `/api/v1/a/projects/{project_id}/feishu/chats`
+returns the currently bound groups, including groups with no messages. The group
+filter also includes historical groups present in the current activity page.
+Binding state comes from A's response. A failed lookup displays a retry action;
+an authorized empty response displays the unbound state. GitHub's corresponding
+`/github/repos` response supplies the repository, default branch and last text
+file synchronization time. Commit and PR counts come from the activity query.
+Project leaders can open A's binding pages at `/feishu/{projectId}` and
+`/github/{projectId}` after the corresponding list is available.
+
+Type and author options come from the current authorized response page.
+A URL filter absent from available options stays selected. All data requests
+still check project access. GitHub requests omit `group_id`.
 
 ## Persistence and transaction rules
 

@@ -30,8 +30,9 @@ from app.modules.c.evidence_service import (
     evidence_in_project,
     list_evidence,
 )
+from app.modules.c.evidence_sources import get_source_port
 from app.modules.c.permissions import get_project_access
-from app.modules.c.source_ports import SourcePort, get_source_port
+from app.modules.c.source_ports import SourcePort
 
 
 def private_response(response: Response) -> None:
@@ -151,7 +152,7 @@ def detail(
     session: Database,
     user: CurrentUser,
 ):
-    get_project_access(session, user, project_id)
+    get_project_access(session, user, project_id, resource_type="evidence", resource_id=evidence_id)
     row = evidence_in_project(session, evidence_id, project_id)
     return success(evidence_data(session, row, history=True), request)
 

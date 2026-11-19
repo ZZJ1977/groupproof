@@ -1,7 +1,7 @@
 """B-2 groups: group invitations, leader change requests and confirmations.
 
-Revision ID: 0020
-Revises: 0019
+Revision ID: 0026
+Revises: 0025
 """
 
 from collections.abc import Sequence
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0020"
-down_revision: str | None = "0019"
+revision: str = "0026"
+down_revision: str | None = "0025"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

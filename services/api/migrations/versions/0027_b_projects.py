@@ -1,7 +1,7 @@
 """B-3 projects: course milestone templates, wizard drafts, project materials.
 
-Revision ID: 0021
-Revises: 0020
+Revision ID: 0027
+Revises: 0026
 
 - b_course_project_templates: milestones copied into each new project;
 - b_project_drafts: page 35 wizard draft, one per group;
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0021"
-down_revision: str | None = "0020"
+revision: str = "0027"
+down_revision: str | None = "0026"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

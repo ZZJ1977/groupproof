@@ -7,6 +7,7 @@ export type CourseQuery = paths["/api/v1/admin/courses"]["get"]["parameters"]["q
 export type AccessQuery = paths["/api/v1/admin/access-requests"]["get"]["parameters"]["query"];
 export type AuditQuery = paths["/api/v1/admin/audit-logs"]["get"]["parameters"]["query"];
 export type AuthAuditQuery = paths["/api/v1/admin/auth-audit-logs"]["get"]["parameters"]["query"];
+export type SharedAuditQuery = paths["/api/v1/admin/shared-audit-events"]["get"]["parameters"]["query"];
 export type UsageQuery = paths["/api/v1/admin/ai-usage"]["get"]["parameters"]["query"];
 
 function record(value: unknown): Record<string, unknown> {
@@ -42,6 +43,12 @@ export function createGovernanceClient(client = createApiClient()) {
     async accessRequests(query: AccessQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/access-requests", { params: { query } }));
     },
+    async ownAccessRequests(page: number) {
+      return unwrap(await client.GET("/api/v1/me/access-requests", { params: { query: { page, page_size: 10 } } }));
+    },
+    async requestAccess(body: Schema["CreateAccessRequest"], key: string) {
+      return unwrap(await client.POST("/api/v1/me/access-requests", { params: { header: { "Idempotency-Key": key } }, body }));
+    },
     async accessRequest(id: string) {
       return unwrap(await client.GET("/api/v1/admin/access-requests/{request_id}", { params: { path: { request_id: id } } }));
     },
@@ -56,6 +63,9 @@ export function createGovernanceClient(client = createApiClient()) {
     },
     async authAuditLogs(query: AuthAuditQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/auth-audit-logs", { params: { query } }));
+    },
+    async sharedAuditEvents(query: SharedAuditQuery = {}) {
+      return unwrap(await client.GET("/api/v1/admin/shared-audit-events", { params: { query } }));
     },
     async authAuditLog(id: string) {
       return unwrap(await client.GET("/api/v1/admin/auth-audit-logs/{record_id}", { params: { path: { record_id: id } } }));

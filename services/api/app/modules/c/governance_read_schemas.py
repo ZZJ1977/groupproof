@@ -58,27 +58,33 @@ class AuditRecord(ReadContract):
     @classmethod
     def safe_metadata_only(cls, value):
         # A must project metadata, not arbitrary source rows or protected content.
-        allowed = {
-            "status",
-            "role",
-            "global_role",
-            "college",
-            "semester",
-            "owner_id",
-            "project_id",
-            "lock_version",
-            "is_important",
-            "source_type",
-            "version_no",
-            "email_verified",
-            "expires_at",
-            "resource_type",
-            "resource_id",
-            "operation",
-        }
-        if set(value) - allowed or any(isinstance(item, dict | list) for item in value.values()):
+        if set(value) - SAFE_AUDIT_METADATA_FIELDS or any(
+            isinstance(item, dict | list) for item in value.values()
+        ):
             raise ValueError("Audit changes must contain only approved scalar metadata fields")
         return value
+
+
+SAFE_AUDIT_METADATA_FIELDS = frozenset(
+    {
+        "status",
+        "role",
+        "global_role",
+        "college",
+        "semester",
+        "owner_id",
+        "project_id",
+        "lock_version",
+        "is_important",
+        "source_type",
+        "version_no",
+        "email_verified",
+        "expires_at",
+        "resource_type",
+        "resource_id",
+        "operation",
+    }
+)
 
 
 class AuditPageDTO(ReadContract):
@@ -103,15 +109,15 @@ class UsageFilters(ReadContract):
 
 class UsageSample(ReadContract):
     id: UUID
-    user_id: UUID
+    user_id: UUID | None
     occurred_at: AwareDatetime
     feature: str = Field(min_length=1, max_length=100)
-    model: str = Field(min_length=1, max_length=160)
+    model: str | None = Field(min_length=1, max_length=160)
     success: bool = Field(strict=True)
-    input_tokens: int = Field(ge=0, strict=True)
-    output_tokens: int = Field(ge=0, strict=True)
-    cost: Decimal = Field(ge=0, max_digits=24, decimal_places=12, allow_inf_nan=False)
-    currency: Literal["USD", "CNY"]
+    input_tokens: int | None = Field(ge=0, strict=True)
+    output_tokens: int | None = Field(ge=0, strict=True)
+    cost: Decimal | None = Field(ge=0, max_digits=24, decimal_places=12, allow_inf_nan=False)
+    currency: str | None = Field(pattern=r"^[A-Z]{3}$")
 
 
 class UsageTotalsDTO(ReadContract):
@@ -121,6 +127,8 @@ class UsageTotalsDTO(ReadContract):
     input_tokens: int
     output_tokens: int
     cost_by_currency: dict[str, str]
+    unpriced_requests: int = 0
+    incomplete_token_records: int = 0
 
 
 class UsageDayDTO(UsageTotalsDTO):

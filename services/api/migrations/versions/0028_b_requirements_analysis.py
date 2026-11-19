@@ -1,7 +1,7 @@
 """B-4 requirements analysis, conflicts and baseline review.
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0028
+Revises: 0027
 
 - b_analysis_runs: one A7-03 analysis per row; at most one processing per project;
 - b_requirement_meta / b_module_meta: AI or manual origin and "edited by a person",
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0022"
-down_revision: str | None = "0021"
+revision: str = "0028"
+down_revision: str | None = "0027"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

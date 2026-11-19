@@ -380,6 +380,7 @@ def signed_download_url(
     scope_id: UUID,
     object_id: str,
     revision: str,
+    purpose: Literal["preview", "download"] = "preview",
     client: StorageClient | None = None,
 ) -> tuple[str, datetime]:
     """“拿限时下载链接”：只对已完成、属于该项目/课程且版本一致的文件签名。权限由调用方先查。"""
@@ -400,6 +401,11 @@ def signed_download_url(
         url = client.create_signed_download_url(object_id, DOWNLOAD_URL_TTL_SECONDS)
     except Exception as exc:  # noqa: BLE001
         raise ApiError(503, "FILE_STORAGE_UNAVAILABLE", "文件存储暂时不可用。") from exc
+    if purpose == "download":
+        # Supabase sets Content-Disposition from this query parameter. Preserve
+        # the signed path and query verbatim; only encode the original filename.
+        separator = "&" if "?" in url else "?"
+        url += f"{separator}download={quote(row.filename, safe='')}"
     return url, expires_at
 
 
@@ -469,6 +475,7 @@ class SupabaseProjectStoragePort(_SupabasePortBase):
                 scope_id=project_id,
                 object_id=object_id,
                 revision=revision,
+                purpose=purpose,
                 client=self._client,
             )
             return StorageLink(
@@ -519,6 +526,7 @@ class SupabaseCourseStoragePort(_SupabasePortBase):
                 scope_id=course_id,
                 object_id=object_id,
                 revision=revision,
+                purpose=purpose,
                 client=self._client,
             )
             return CourseStorageLink(
