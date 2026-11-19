@@ -22,6 +22,12 @@ const ExecutionApiPage = dynamic(() => import("@/features/c/ExecutionApiPage").t
 const RiskApiPage = dynamic(() => import("@/features/d/RiskApiPage").then((module) => module.RiskApiPage));
 const ReportApiPage = dynamic(() => import("@/features/d/ReportApiPage").then((module) => module.ReportApiPage));
 const TeacherOverviewApiPage = dynamic(() => import("@/features/d/TeacherOverviewApiPage").then((module) => module.TeacherOverviewApiPage));
+const TeacherAppealsApiPage = dynamic(() => import("@/features/d/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
+const TeacherWorkspaceApiPage = dynamic(() => import("@/features/d/TeacherWorkspaceApiPage").then((module) => module.TeacherWorkspaceApiPage));
+const TeacherReportsApiPage = dynamic(() => import("@/features/d/TeacherReportsApiPage").then((module) => module.TeacherReportsApiPage));
+const CourseRulesApiPage = dynamic(() => import("@/features/d/CourseRulesApiPage").then((module) => module.CourseRulesApiPage));
+const ProjectSettingsApiPage = dynamic(() => import("@/features/d/ProjectSettingsApiPage").then((module) => module.ProjectSettingsApiPage));
+const CourseReopenApiPage = dynamic(() => import("@/features/d/CourseReopenApiPage").then((module) => module.CourseReopenApiPage));
 const AcceptanceApiPage = dynamic(() => import("@/features/d/AcceptanceApiPage").then((module) => module.AcceptanceApiPage));
 const ContributionApiPage = dynamic(() => import("@/features/d/ContributionApiPage").then((module) => module.ContributionApiPage));
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
@@ -67,6 +73,12 @@ export function RouteDispatcher() {
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
   if ([27, 28].includes(screen) && projectId && apiMode("reports") === "real") realContent = <ReportApiPage projectId={projectId} exportView={screen === 28} />;
   if (screen === 41 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherOverviewApiPage courseId={courseId} />;
+  if (screen === 49 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherAppealsApiPage courseId={courseId} />;
+  if ([42, 43, 44].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <TeacherWorkspaceApiPage courseId={courseId} groupId={groupId} screen={screen as 42 | 43 | 44} />;
+  if (screen === 45 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherReportsApiPage courseId={courseId} />;
+  if ([38, 40, 46, 47].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <CourseRulesApiPage courseId={courseId} teacher={screen >= 46} settingsView={screen === 46} />;
+  if (screen === 29 && projectId && apiMode("cworkspace") === "real") realContent = <ProjectSettingsApiPage projectId={projectId} reopenView={false} />;
+  if (screen === 39 && courseId && apiMode("cworkspace") === "real") realContent = <CourseReopenApiPage courseId={courseId} />;
   // D's acceptance and contribution pages always read persisted API records.
   if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
   if ((screen === 25 || screen === 26) && projectId) realContent = <ContributionApiPage projectId={projectId} memberId={screen === 26 ? memberId : undefined} />;

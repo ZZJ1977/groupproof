@@ -11,6 +11,7 @@ from app.api.errors import ApiError
 from app.api.responses import success
 from app.db.models import Course, CourseStaff, ProgressEvent, Project, ProjectGroup, Task, User
 from app.db.session import get_session
+from app.modules.a.access_grants import has_read_grant
 from app.modules.d.models import Risk
 from app.modules.d.risk_read import risk_counts
 
@@ -49,6 +50,8 @@ def teacher_overview(
     }
     entries = []
     for project in projects:
+        if user.global_role == "ta" and not has_read_grant(session, user.id, project.id):
+            continue
         tasks = session.scalars(select(Task).where(Task.project_id == project.id)).all()
         risks = session.scalars(select(Risk).where(Risk.project_id == project.id)).all()
         recent = session.scalar(
