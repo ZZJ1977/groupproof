@@ -33,6 +33,7 @@ from app.modules.d import (
     contribution,
     contribution_week7,
     integrity,
+    project_lifecycle,
     report_tasks,
     reporting,
     risk_checks,
@@ -50,6 +51,8 @@ from app.modules.d.models import (
     CriterionResult,
     FormalOutcome,
     IntegrityCheck,
+    ProjectArchive,
+    ProjectReopen,
     Report,
     ReportArtifact,
     ReportDownloadLink,
@@ -78,10 +81,13 @@ def db():
         "groups",
         "projects",
         "functional_modules",
+        "requirements",
         "tasks",
         "milestones",
         "project_members",
         "task_milestones",
+        "task_requirements",
+        "task_dependencies",
         "progress_events",
         "task_assignees",
         "acceptance_criteria",
@@ -104,6 +110,10 @@ def db():
         "contribution_appeals",
         "appeal_decisions",
         "contribution_archives",
+        "project_archives",
+        "project_reopens",
+        "a_github_repo_links",
+        "a_feishu_chat_links",
         "reports",
         "report_snapshots",
         "report_artifacts",
@@ -1093,3 +1103,73 @@ def test_week7_notes_restore_and_adjustment_archive_preserves_old_shares(db, sco
         select(ContributionArchive).where(ContributionArchive.source_id == source_id)
     )
     assert sorted(row["share"] for row in archived.data["members"]) == ["40.0000", "60.0000"]
+
+
+def test_week7_project_settings_archive_gate_and_reopen_provenance(db, scope, monkeypatch):
+    access = SimpleNamespace(leader=True, teacher=False, project=scope.project)
+    monkeypatch.setattr(project_lifecycle, "get_project_access", lambda *a, **k: access)
+    request = SimpleNamespace(state=SimpleNamespace(request_id="lifecycle-test"))
+    project_lifecycle.save_settings(
+        scope.project.id,
+        project_lifecycle.SettingsInput(name="Renamed", visibility="course", language="zh"),
+        request,
+        db,
+        scope.user,
+    )
+    assert scope.project.name == "Renamed"
+    assert scope.project.visibility == "course"
+    with pytest.raises(ApiError) as incomplete:
+        project_lifecycle.archive_project(scope.project.id, request, db, scope.user)
+    assert incomplete.value.code == "PROJECT_NOT_FINAL"
+    scope.project.lifecycle = "archived"
+    scope.project.archived_at = datetime.now(UTC)
+    db.add(
+        ProjectArchive(
+            project_id=scope.project.id,
+            actor_id=scope.user.id,
+            snapshot={"project": {"name": scope.project.name}},
+        )
+    )
+    db.add(
+        ProjectMember(id=uuid4(), project_id=scope.project.id, user_id=scope.user.id, role="leader")
+    )
+    db.commit()
+    result = project_lifecycle.reopen_project(
+        scope.project.id,
+        project_lifecycle.ReopenInput(
+            version_label="v2", reason="New semester", copy_scope="baseline"
+        ),
+        request,
+        db,
+        scope.user,
+    )
+    new_id = UUID(result.data["new_project_id"])
+    assert db.get(Project, new_id).lifecycle == "active"
+    assert scope.project.lifecycle == "archived"
+    assert (
+        db.scalar(select(ProjectReopen).where(ProjectReopen.new_project_id == new_id)).reason
+        == "New semester"
+    )
+    with pytest.raises(ApiError) as duplicate:
+        project_lifecycle.reopen_project(
+            scope.project.id,
+            project_lifecycle.ReopenInput(
+                version_label="v2", reason="Duplicate", copy_scope="baseline"
+            ),
+            request,
+            db,
+            scope.user,
+        )
+    assert duplicate.value.code == "REOPEN_VERSION_EXISTS"
+    full = project_lifecycle.reopen_project(
+        scope.project.id,
+        project_lifecycle.ReopenInput(
+            version_label="v3", reason="Copy structure", copy_scope="full"
+        ),
+        request,
+        db,
+        scope.user,
+    )
+    copied_id = UUID(full.data["new_project_id"])
+    assert db.scalar(select(Task).where(Task.project_id == copied_id)).title == scope.task.title
+    assert db.scalar(select(Task).where(Task.project_id == copied_id)).status == "not_started"

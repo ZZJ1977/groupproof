@@ -23,6 +23,8 @@ const RiskApiPage = dynamic(() => import("@/features/d/RiskApiPage").then((modul
 const ReportApiPage = dynamic(() => import("@/features/d/ReportApiPage").then((module) => module.ReportApiPage));
 const TeacherOverviewApiPage = dynamic(() => import("@/features/d/TeacherOverviewApiPage").then((module) => module.TeacherOverviewApiPage));
 const TeacherAppealsApiPage = dynamic(() => import("@/features/d/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
+const ProjectSettingsApiPage = dynamic(() => import("@/features/d/ProjectSettingsApiPage").then((module) => module.ProjectSettingsApiPage));
+const CourseReopenApiPage = dynamic(() => import("@/features/d/CourseReopenApiPage").then((module) => module.CourseReopenApiPage));
 const AcceptanceApiPage = dynamic(() => import("@/features/d/AcceptanceApiPage").then((module) => module.AcceptanceApiPage));
 const ContributionApiPage = dynamic(() => import("@/features/d/ContributionApiPage").then((module) => module.ContributionApiPage));
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
@@ -69,6 +71,8 @@ export function RouteDispatcher() {
   if ([27, 28].includes(screen) && projectId && apiMode("reports") === "real") realContent = <ReportApiPage projectId={projectId} exportView={screen === 28} />;
   if (screen === 41 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherOverviewApiPage courseId={courseId} />;
   if (screen === 49 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherAppealsApiPage courseId={courseId} />;
+  if (screen === 29 && projectId && apiMode("cworkspace") === "real") realContent = <ProjectSettingsApiPage projectId={projectId} reopenView={false} />;
+  if (screen === 39 && courseId && apiMode("cworkspace") === "real") realContent = <CourseReopenApiPage courseId={courseId} />;
   // D's acceptance and contribution pages always read persisted API records.
   if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
   if ((screen === 25 || screen === 26) && projectId) realContent = <ContributionApiPage projectId={projectId} memberId={screen === 26 ? memberId : undefined} />;

@@ -423,6 +423,28 @@ class ContributionArchive(Base):
     __table_args__ = (UniqueConstraint("source_kind", "source_id"),)
 
 
+class ProjectArchive(Base):
+    __tablename__ = "project_archives"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectReopen(Base):
+    __tablename__ = "project_reopens"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    source_project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    new_project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    version_label: Mapped[str] = mapped_column(String(80))
+    copy_scope: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("copy_scope IN ('full','baseline')"),)
+
+
 class Report(Base):
     """Mutable report identity whose generated versions are immutable snapshots."""
 
