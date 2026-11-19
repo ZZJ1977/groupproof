@@ -108,8 +108,9 @@ or creates/modifies D verification results.
 
 Each successful command stores one audit decision and one `file.created`,
 `file.appended`, or `file.designated` outbox fact in the same transaction as
-the file mutation and replay record. `delivered_at` remains null. A/D consumers
-and member notification delivery are pending integrations, not completed work.
+the file mutation and replay record. Designation also calls A's inbox writer
+for active student project members other than the actor, once per recipient
+and version. The audit outbox's `delivered_at` is separate from this write.
 Internal service helpers never commit; HTTP uses the existing `commit_command`
 boundary to roll back every row on validation/storage/database failure.
 
@@ -163,3 +164,22 @@ SQLite is not evidence of PostgreSQL locking correctness.
 Downgrade refuses to drop these tables if any file/version/decision or matching
 outbox/replay row remains. Preserving/exporting that data requires a deliberate
 migration plan; populated downgrade never silently deletes provenance.
+
+### Verify C5-02 on Staging
+
+Use an isolated, writable project on the [team Staging site](https://groupproof-staging-production.up.railway.app).
+Sign in with an ordinary project member's account and save its Playwright storage state outside the repository.
+For example, run `npx playwright codegen --save-storage="<local path outside the repository>" https://groupproof-staging-production.up.railway.app`, sign in, then close the browser.
+Use the UUID in the project URL:
+
+```powershell
+$env:C5_STAGING_PROJECT_ID = '<test project UUID>'
+$env:C5_STAGING_STORAGE_STATE = '<absolute path to the saved session JSON>'
+npm run test:c5-storage-staging
+```
+
+The test saves two different drafts of one uniquely named file through the normal upload form.
+It interrupts a third upload, reloads the page, previews v1, and downloads v1 and v2 to check
+their original filenames and exact bytes. The two drafts remain in the test project. The
+interrupted upload can leave a pending receipt. The runner only needs the member session;
+Supabase configuration stays on the API server.
