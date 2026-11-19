@@ -10,6 +10,7 @@ import { BApiError, newIdempotencyKey } from "@/lib/api/b-client";
 import { bCoursesApi, type BCoursePreview, type BJoinRequest, type BJoinResult } from "@/lib/api/b-courses";
 import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
+import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
 
@@ -26,7 +27,8 @@ const PAGE_SIZE = 10;
 export function MyCoursesApiPage() {
   const t = useTranslations("pages.courses");
   const ts = useTranslations("pages.shared");
-  const { userId } = useWorkspace();
+  const { userId, role } = useWorkspace();
+  const isTeacher = role === "teacher" || role === "ta";
   const errorText = useBErrorMessage();
   const { filters, setFilters } = useUrlFilters(myCourseFilters);
   const [search, setSearch] = useState(filters.q);
@@ -38,7 +40,21 @@ export function MyCoursesApiPage() {
   const data = list.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
   return <div>
-    <PageHeader title={t("title")} description={t("description")} actions={<Link href="/courses/join" className={button}><Plus size={15} />{t("join")}</Link>} />
+    <AnnouncementBanner />
+    <PageHeader
+      title={t("title")}
+      description={t("description")}
+      actions={
+        isTeacher ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/teacher/courses" className={button}><Plus size={15} />我的班级 / 创建班级</Link>
+            <Link href="/courses/join" className={secondary}>{t("join")}</Link>
+          </div>
+        ) : (
+          <Link href="/courses/join" className={button}><Plus size={15} />{t("join")}</Link>
+        )
+      }
+    />
     <div role="tablist" className="mb-4 mt-5 flex flex-wrap gap-6 border-b border-slate-200">{myCourseTabs.map((key) => <button key={key} type="button" role="tab" aria-selected={filters.tab === key} onClick={() => setFilters({ tab: key })} className={`border-b-2 pb-3 text-sm font-medium ${filters.tab === key ? "border-blue-600 text-[var(--gp-action)]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{t(`tabs.${key}`)}{data ? ` ${data.counts[key]}` : ""}</button>)}</div>
     <form className="mb-4 flex max-w-md gap-2" onSubmit={(event) => { event.preventDefault(); setFilters({ q: search.trim() }); }}>
       <label className="sr-only" htmlFor="b-course-search">{t("searchLabel")}</label>
@@ -53,7 +69,7 @@ export function MyCoursesApiPage() {
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"><span>{course.group ? t("currentGroup", { name: course.group.name }) : t("noGroup")}</span><span>{t("formationDeadline", { date: dateOnly(course.formation_deadline, ts("notSet")) })}</span><span>{t("projectDeadline", { date: dateOnly(course.project_deadline, ts("notSet")) })}</span>{course.pending_count > 0 && <span className="text-amber-600">{t("pendingCount", { count: course.pending_count })}</span>}</div>
         <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm"><Link href={course.project ? `/projects/${course.project.id}` : course.group ? `/courses/${course.id}/projects/new` : `/courses/${course.id}/groups`} className="font-medium text-[var(--gp-action)] hover:underline">{course.project ? t("enterProject") : course.group ? t("createProject") : t("startGrouping")} <ArrowRight size={14} className="inline" /></Link></div>
       </Panel>)}</div>
-      : <Panel><EmptyState title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")} action={<Link href="/courses/join" className={button}>{t("joinWithCode")}</Link>} /></Panel>}
+      : <Panel><EmptyState title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")} action={isTeacher ? <Link href="/teacher/courses" className={button}>前往我的班级创建课程</Link> : <Link href="/courses/join" className={button}>{t("joinWithCode")}</Link>} /></Panel>}
     {data && pages > 1 && <nav aria-label={ts("pagination")} className="mt-4 flex items-center justify-end gap-2 text-sm"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>{ts("prev")}</button><span>{ts("pagerOf", { page: filters.page, pages })}</span><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>{ts("next")}</button></nav>}
   </div>;
 }

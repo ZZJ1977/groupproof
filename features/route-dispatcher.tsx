@@ -10,11 +10,27 @@ import ProjectCoreView from "@/features/project-core/ProjectCoreView";
 import { ProjectSupportView } from "@/features/project-support/ProjectSupportView";
 import { CourseView } from "@/features/course/CourseView";
 import { GovernanceView } from "@/features/governance/GovernanceView";
-import { resolveRoute } from "@/lib/routes";
+import { isTeacherScreen, resolveRoute } from "@/lib/routes";
 import { useWorkspace } from "@/lib/workspace";
 import { useTranslations } from "next-intl";
 import { apiMode } from "@/lib/api/config";
 import { isBScreen } from "@/features/b/screens";
+
+const TeacherClassesApiPage = dynamic(() => import("@/features/teacher/TeacherClassesApiPage").then((module) => module.TeacherClassesApiPage));
+const TeacherClassLayout = dynamic(() => import("@/features/teacher/TeacherClassLayout").then((module) => module.TeacherClassLayout));
+const TeacherClassHomeApiPage = dynamic(() => import("@/features/teacher/TeacherClassHomeApiPage").then((module) => module.TeacherClassHomeApiPage));
+const TeamPlazaApiPage = dynamic(() => import("@/features/teacher/TeamPlazaApiPage").then((module) => module.TeamPlazaApiPage));
+const TeacherGroupDetailApiPage = dynamic(() => import("@/features/teacher/TeacherGroupDetailApiPage").then((module) => module.TeacherGroupDetailApiPage));
+const TeacherActionsApiPage = dynamic(() => import("@/features/teacher/TeacherActionsApiPage").then((module) => module.TeacherActionsApiPage));
+const TeacherSettingsApiPage = dynamic(() => import("@/features/teacher/TeacherSettingsApiPage").then((module) => module.TeacherSettingsApiPage));
+const TeacherRulesApiPage = dynamic(() => import("@/features/teacher/TeacherRulesApiPage").then((module) => module.TeacherRulesApiPage));
+const TeacherStaffApiPage = dynamic(() => import("@/features/teacher/TeacherStaffApiPage").then((module) => module.TeacherStaffApiPage));
+const TeacherFilesApiPage = dynamic(() => import("@/features/teacher/TeacherFilesApiPage").then((module) => module.TeacherFilesApiPage));
+const TeacherAnnouncementsApiPage = dynamic(() => import("@/features/teacher/TeacherAnnouncementsApiPage").then((module) => module.TeacherAnnouncementsApiPage));
+const TeacherReportsApiPage = dynamic(() => import("@/features/teacher/TeacherReportsApiPage").then((module) => module.TeacherReportsApiPage));
+const TeacherAppealsApiPage = dynamic(() => import("@/features/teacher/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
+const TeacherProjectsApiPage = dynamic(() => import("@/features/teacher/TeacherProjectsApiPage").then((module) => module.TeacherProjectsApiPage));
+const TeacherDashboardApiPage = dynamic(() => import("@/features/teacher/TeacherDashboardApiPage").then((module) => module.TeacherDashboardApiPage));
 
 const ActivityApiPage = dynamic(() => import("@/features/c/ActivityApiPages").then((module) => module.ActivityApiPage));
 const ProjectFilesApiPage = dynamic(() => import("@/features/c/ProjectFilesApiPage").then((module) => module.ProjectFilesApiPage));
@@ -67,7 +83,7 @@ export function RouteDispatcher() {
   const { screen, projectId, taskId, milestoneId, memberId, courseId, groupId } = route;
 
   // 布局按路由选择；访问资格单独判断（阶段 01），最终授权由 FastAPI 在数据接口执行
-  const kind = screen >= 51 ? "admin" : screen >= 41 ? "teacher" : "student";
+  const kind = isTeacherScreen(screen) ? "teacher" : screen >= 51 ? "admin" : "student";
   // These pages use the authenticated API's authorization, not demo role state.
   // Mount by the actual route ID; never translate seed IDs into canonical IDs.
   let realContent;
@@ -92,7 +108,21 @@ export function RouteDispatcher() {
     else if (screen === 33 && courseId) realContent = <GroupsApiPage courseId={courseId} />;
     else if (screen === 34 && courseId && groupId) realContent = <GroupDetailApiPage courseId={courseId} groupId={groupId} />;
     else if (screen === 36 && courseId && groupId) realContent = <ChangeLeaderApiPage courseId={courseId} groupId={groupId} />;
+    else if (screen === 57) realContent = <TeacherClassesApiPage />;
+    else if (screen === 41 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="home"><TeacherClassHomeApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 42 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="groups"><TeamPlazaApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 43 && courseId && groupId) realContent = <TeacherClassLayout courseId={courseId} activeTab="detail"><TeacherGroupDetailApiPage courseId={courseId} groupId={groupId} /></TeacherClassLayout>;
+    else if (screen === 44 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="actions"><TeacherActionsApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 45 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="reports"><TeacherReportsApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 46 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="settings"><TeacherSettingsApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 47 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="rules"><TeacherRulesApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 59 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="staff"><TeacherStaffApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 50 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="files"><TeacherFilesApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 60 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="announcements"><TeacherAnnouncementsApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 61 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="projects"><TeacherProjectsApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 58) realContent = <TeacherDashboardApiPage />;
     else if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
+    else if (screen === 49 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="appeals"><TeacherAppealsApiPage courseId={courseId} /></TeacherClassLayout>;
     else if (screen === 35 && courseId) realContent = <NewProjectApiPage courseId={courseId} />;
     else if (screen === 7 && projectId) realContent = <ProjectOverviewApiPage projectId={projectId} />;
     else if (screen === 8 && projectId) realContent = <ProjectSetupApiPage projectId={projectId} />;
@@ -106,9 +136,9 @@ export function RouteDispatcher() {
     else if (screen === 37 && courseId && groupId) realContent = <LeaveGroupApiPage courseId={courseId} groupId={groupId} />;
     else realContent = <BNotConnectedPage screen={screen} />;
   }
-  if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
+  if (screen === 50 && courseId && !realContent && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;
-  if (screen >= 53 && apiMode("governance") === "real") {
+  if (screen >= 53 && screen <= 56 && apiMode("governance") === "real") {
     const section = ({ 53: "courses", 54: "logs", 55: "ai-usage", 56: "access-requests" } as const)[screen as 53 | 54 | 55 | 56];
     if (section) realContent = <GovernanceApiPage screen={section} />;
   }
@@ -128,6 +158,7 @@ export function RouteDispatcher() {
   else if (screen >= 7 && screen <= 20 && projectId) content = <ProjectCoreView screen={screen} projectId={projectId} taskId={taskId} milestoneId={milestoneId} />;
   else if (screen >= 21 && screen <= 29 && projectId) content = <ProjectSupportView screen={screen} projectId={projectId} memberId={memberId} />;
   else if (screen >= 31 && screen <= 40) content = <CourseView screen={screen} courseId={courseId} groupId={groupId} />;
+  else if (screen === 57) content = <BNotConnectedPage screen={screen} />;
   else if (screen >= 41) content = <GovernanceView screen={screen} courseId={courseId} groupId={groupId} />;
   else content = <div className="gp-empty">{tc("loading")}</div>;
 

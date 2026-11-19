@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Bell, BookOpen, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Search, Settings, ShieldCheck, UserRound, Users, X } from "lucide-react";
+import { Activity, Bell, BookOpen, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -16,6 +16,7 @@ import { inboxApi } from "@/lib/api/c-inbox-client";
 import { mockService } from "@/lib/api/mock-service";
 import { authClient } from "@/lib/api/auth-client";
 import { projectNavItems, resolveObjectContext, resolveCanonicalRouteContext, teacherNavItems } from "@/lib/ux/navigation";
+import { tr } from "@/lib/i18n/tr";
 import type { Role } from "@/types/domain";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ const iconByKey: Record<string, typeof Home> = {
   folder: Folder, fileClock: FileClock, fileText: FileText, clipboardList: ClipboardList,
   listTree: ListTree, fileCheck: FileCheck, shieldCheck: ShieldCheck, gitBranch: GitBranch,
   messageSquare: MessageSquare, users: Users, settings: Settings, home: Home, checkSquare: CheckSquare,
+  userCog: UserCog, bell: Bell,
 };
 
 function NavLink({ item, label, pathname, search }: { item: NavItem; label: string; pathname: string; search: string }) {
@@ -90,10 +92,14 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
         { label: t("adminItems.accessRequests"), href: "/admin/access-requests", icon: ShieldCheck },
       ];
     }
-    if (kind === "teacher") return navCourseId ? map(teacherNavItems(navCourseId), "teacher") : globalNav;
-    return projectMode ? map(projectNavItems(context.projectId as string), "project") : globalNav;
+    const teacherDashboard: NavItem = { label: tr("教师工作台"), href: "/teacher/dashboard", icon: Activity };
+    const myClasses: NavItem = { label: tr("我的班级"), href: "/teacher/courses", icon: BookOpen };
+    const teacherGlobal = role === "teacher" || role === "ta" ? [teacherDashboard, myClasses, ...globalNav] : globalNav;
+    const isGlobalTeacherRoute = pathname === "/teacher/dashboard" || pathname === "/teacher/courses";
+    if (kind === "teacher") return navCourseId && !isGlobalTeacherRoute ? map(teacherNavItems(navCourseId), "teacher") : [teacherDashboard, myClasses, ...globalNav];
+    return projectMode ? map(projectNavItems(context.projectId as string), "project") : teacherGlobal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, navCourseId, projectMode, context.projectId, t]);
+  }, [kind, navCourseId, projectMode, context.projectId, role, pathname, t]);
 
   const searchResults = useMemo(() => {
     if (!search.trim()) return [];
@@ -123,7 +129,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       <Link href={kind === "admin" ? "/admin/users" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
       {kind === "admin" && <div className="px-[22px] text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
       {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><Folder size={16} className="text-[#246bfa]" /> {context.courseName ? `${context.courseName} · ` : ""}{context.projectName ?? ts("projectFallback")} <ChevronDown size={13} className="ml-auto" /></Link>}
-      {kind === "teacher" && <div className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><BookOpen size={15} /> {context.courseName ?? defaultCourse?.name ?? ts("courseFallback")} <ChevronDown size={13} className="ml-auto" /></div>}
+      {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={15} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
       <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
         {projectMode && <><div className="gp-nav-section">{t("global")}</div><NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" /><NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" /><div className="gp-nav-section">{t("currentProject")}</div></>}
         {nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}

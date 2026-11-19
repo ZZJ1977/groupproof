@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -204,9 +206,11 @@ class Course(TimestampMixin, LockVersionMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     college: Mapped[str] = mapped_column(String(160), nullable=False)
     semester: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=sa_text("'draft'")
     )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     project_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     formation_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     grouping_mode: Mapped[str] = mapped_column(
@@ -239,6 +243,12 @@ class CourseStaff(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
+    permissions: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        server_default=sa_text("'{}'"),
+        default=dict,
+        nullable=False,
+    )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

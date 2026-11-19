@@ -4,4 +4,9 @@ export const secondary = "inline-flex min-h-9 items-center justify-center gap-2 
 export const input = "w-full rounded border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 export const label = "mb-1.5 block text-xs font-semibold text-slate-600";
 export const queryPolicy = { retry: false, refetchOnWindowFocus: false } as const;
+export const card = "rounded-xl border border-slate-200 bg-white p-5";
 export const dateOnly = (value: string | null | undefined, fallback = "未设置") => (value ? value.slice(0, 10) : fallback);
+export const dateTime = (value: string | null | undefined, fallback = "未设置") =>
+  value ? value.slice(0, 16).replace("T", " ") : fallback;
+export const errorText = (error: unknown): string =>
+  error instanceof Error && error.message ? error.message : "操作失败，请稍后重试。";

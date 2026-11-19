@@ -40,7 +40,7 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
   const [loaded, setLoaded] = useState(!mockWorkspace);
   const initial = useMemo(() => mockWorkspace ? seedData : emptyWorkspace(user.id), [user.id]);
   const identity = useQuery({ queryKey: ["workspace-identity", user.id], queryFn: authClient.me,
-    enabled: !mockWorkspace, retry: false, staleTime: 0 });
+    enabled: !mockWorkspace || !demoMode, retry: false, staleTime: 0 });
   // 查询键与本地存储均按用户隔离，防止退出后旧请求写入新用户缓存（A21）
   setWorkspaceScope(user.id);
   const scopedKey = scopedWorkspaceKey(user.id);
@@ -138,9 +138,11 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
     });
   }, [commit]);
 
+  const authRole = identity.data
+    ? ((["admin", "teacher", "ta"] as Role[]).find((item) => identity.data.user.roles.includes(item)) ?? "student")
+    : undefined;
   return (
-    <WorkspaceContext.Provider value={{ data, role: mockWorkspace ? data.currentRole :
-      (["admin", "teacher", "ta"] as Role[]).find((role) => identity.data?.user.roles.includes(role)) ?? "student",
+    <WorkspaceContext.Provider value={{ data, role: !mockWorkspace ? authRole ?? "student" : !demoMode && authRole ? authRole : data.currentRole,
       loading: !loaded, userId: user.id, userName: user.name, setRole, demoMode: demoMode && mockWorkspace, mockWorkspace, update, add, remove }}>
       {loaded ? children : <div className="flex min-h-screen items-center justify-center text-[13px] text-[#75849a]">…</div>}
     </WorkspaceContext.Provider>

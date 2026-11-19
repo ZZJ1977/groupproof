@@ -6,6 +6,7 @@ from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -26,6 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
 from app.db.base import Base
+from app.db.models.core import TimestampMixin
 
 DocumentJSON = JSON().with_variant(JSONB(), "postgresql")
 
@@ -722,3 +724,201 @@ class BTaskHandover(Base):
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("request_id", "task_id", name="uq_b_task_handovers_task"),)
+
+
+class BCourseRuleVersion(Base):
+    """Versioned course rules snapshot created and published by teachers."""
+
+    __tablename__ = "b_course_rule_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'draft'"))
+    rules_json: Mapped[dict] = mapped_column(DocumentJSON, default=dict)
+    change_summary: Mapped[str | None] = mapped_column(Text)
+    published_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')", name="ck_rule_version_status"
+        ),
+        UniqueConstraint("course_id", "version_no", name="uq_rule_version_course_no"),
+    )
+
+
+class BCourseFileFolder(Base):
+    """Teacher-managed hierarchical folders for course materials."""
+
+    __tablename__ = "b_course_file_folders"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    parent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("b_course_file_folders.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    sort_order: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_b_course_file_folders_course_id", "course_id"),)
+
+
+class BCourseMaterialItem(TimestampMixin, Base):
+    """Teacher-uploaded course material with visibility scope and versioning."""
+
+    __tablename__ = "b_course_material_items"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    folder_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("b_course_file_folders.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    visibility: Mapped[str] = mapped_column(String(20), server_default=text("'all'"))
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'published'"))
+    latest_version_no: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    mime_type: Mapped[str] = mapped_column(
+        String(200), server_default=text("'application/octet-stream'")
+    )
+    size_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "visibility IN ('all', 'grouped', 'staff')", name="ck_b_material_visibility"
+        ),
+        CheckConstraint("status IN ('draft', 'published')", name="ck_b_material_status"),
+        CheckConstraint("latest_version_no > 0", name="ck_b_material_latest_v"),
+        Index("ix_b_course_material_items_course_id", "course_id"),
+        Index("ix_b_course_material_items_folder_id", "folder_id"),
+    )
+
+
+class BCourseMaterialVersion(Base):
+    """Immutable version snapshot of a course material upload."""
+
+    __tablename__ = "b_course_material_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    material_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_course_material_items.id", ondelete="CASCADE")
+    )
+    version_no: Mapped[int] = mapped_column(Integer)
+    original_name: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(
+        String(200), server_default=text("'application/octet-stream'")
+    )
+    size_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    checksum: Mapped[str] = mapped_column(String(64), server_default=text("''"))
+    storage_key: Mapped[str | None] = mapped_column(String(500))
+    content_base64: Mapped[str | None] = mapped_column(Text)
+    change_note: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("material_id", "version_no", name="uq_b_material_version"),
+        CheckConstraint("version_no > 0", name="ck_b_material_version_no"),
+        Index("ix_b_course_material_versions_material_id", "material_id"),
+    )
+
+
+class BCourseAnnouncement(TimestampMixin, Base):
+    """Teacher-published course announcements with priority and pinning."""
+
+    __tablename__ = "b_course_announcements"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(16), server_default=text("'normal'"))
+    is_pinned: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'published'"))
+    published_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "priority IN ('normal', 'important', 'urgent')", name="ck_b_announcement_priority"
+        ),
+        CheckConstraint("status IN ('draft', 'published')", name="ck_b_announcement_status"),
+        Index("ix_b_course_announcements_course_id", "course_id"),
+    )
+
+
+class BAnnouncementRead(Base):
+    """Per-student read receipt for a course announcement."""
+
+    __tablename__ = "b_announcement_reads"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    announcement_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_course_announcements.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("announcement_id", "user_id", name="uq_b_announcement_read"),
+        Index("ix_b_announcement_reads_user_id", "user_id"),
+    )
+
+
+class BCourseAppeal(TimestampMixin, Base):
+    """Student appeal regarding contribution, task evaluation, or grading within a course."""
+
+    __tablename__ = "b_course_appeals"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    appellant_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    appeal_type: Mapped[str] = mapped_column(String(32), server_default=text("'contribution'"))
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    supplement_text: Mapped[str | None] = mapped_column(Text)
+    evidence_json: Mapped[list] = mapped_column(DocumentJSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), server_default=text("'pending'"))
+    resolved_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "appeal_type IN ('contribution', 'task', 'score', 'other')",
+            name="ck_b_course_appeal_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'need_supplement', 'accepted', 'rejected')",
+            name="ck_b_course_appeal_status",
+        ),
+        Index("ix_b_course_appeals_course_id", "course_id"),
+        Index("ix_b_course_appeals_project_id", "project_id"),
+    )
+
+
+class BCourseAppealDecision(Base):
+    """Append-only audit and contribution adjustment log for a course appeal."""
+
+    __tablename__ = "b_course_appeal_decisions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    appeal_id: Mapped[UUID] = mapped_column(ForeignKey("b_course_appeals.id", ondelete="CASCADE"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(32))
+    reason: Mapped[str] = mapped_column(Text)
+    snapshot_id: Mapped[UUID | None] = mapped_column(Uuid)
+    adjustments_json: Mapped[list | None] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('reject', 'accept', 'request_supplement', 'supplement_submitted')",
+            name="ck_b_appeal_decision_action",
+        ),
+        Index("ix_b_course_appeal_decisions_appeal_id", "appeal_id"),
+    )

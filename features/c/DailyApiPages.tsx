@@ -9,6 +9,7 @@ import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
+import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { useUrlQuery } from "./use-url-query";
 import { MyAccessRequests } from "./GovernanceApiPages";
 
@@ -37,13 +38,24 @@ function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
 
 /** Canonical queries only; workspace data and demo roles are never a data source. */
 export function HomeApiPage() {
-  const { userId } = useWorkspace();
+  const { userId, role } = useWorkspace();
+  const isTeacher = role === "teacher" || role === "ta";
   const t = useTranslations("core.home");
   const td = useTranslations("pages.daily");
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
-    <PageHeader title={t("title")} description={td("homeDesc")} actions={<button className={buttonClass} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}>{td("refreshStats")}</button>} />
+    <AnnouncementBanner />
+    <PageHeader
+      title={t("title")}
+      description={td("homeDesc")}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          {isTeacher && <Link className="inline-flex items-center rounded-md bg-[#246bfa] px-3 py-2 text-sm font-medium text-white hover:bg-[#1b5be0]" href="/teacher/courses">我的班级 / 创建班级</Link>}
+          <button className={buttonClass} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}>{td("refreshStats")}</button>
+        </div>
+      }
+    />
     {result.isFetching && <p role="status">{td("loadingHome")}</p>}
     {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
     {data && <>
@@ -69,11 +81,12 @@ export function HomeApiPage() {
           {!data.projects.length && <EmptyState title={t("emptyProjects")} />}
         </Panel>
         <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">{td("recentCourses")}</p>
+          {isTeacher && <div className="mb-3"><Link className="gp-link text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link></div>}
           <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div><strong>{course.name}</strong><span className="ml-2"><StatusBadge status={course.status} /></span></div>
-            <Link className="gp-link text-sm" href={`/courses/${encodeURIComponent(course.id)}/rules`}>{td("viewCourse")}</Link>
+            <Link className="gp-link text-sm" href={isTeacher ? `/teacher/courses/${encodeURIComponent(course.id)}` : `/courses/${encodeURIComponent(course.id)}/rules`}>{td("viewCourse")}</Link>
           </div>)}</div>
-          {!data.courses.length && <EmptyState title={t("emptyCourses")} />}
+          {!data.courses.length && <EmptyState title={t("emptyCourses")} action={isTeacher ? <Link className="inline-flex rounded-md bg-[#246bfa] px-3 py-2 text-sm font-medium text-white hover:bg-[#1b5be0]" href="/teacher/courses">前往我的班级创建课程</Link> : undefined} />}
         </Panel>
       </div>
       <Link className="gp-link mt-4 inline-block" href="/activity">{td("viewActivity")}</Link>

@@ -248,8 +248,7 @@ def _has_linked_ancestor(task: Task, linked: set[UUID], by_id: dict[UUID, Task])
     return False
 
 
-def list_milestones(session: Session, user: User, project_id: UUID) -> MilestoneListDTO:
-    relation = permissions.require_project_read(session, user, project_id)
+def milestone_briefs(session: Session, project_id: UUID) -> list[MilestoneDTO]:
     rows = _milestones(session, project_id)
     facts = _facts(session, project_id)
     by_id = {t.id: t for t in facts.tasks}
@@ -257,11 +256,16 @@ def list_milestones(session: Session, user: User, project_id: UUID) -> Milestone
     ids = [m.id for m in rows]
     linked, counts = _linked(session, ids), _deliverable_counts(session, ids)
     risks = _risks(session, project_id, linked, ids, _risk_tasks(facts, by_id))
+    return [
+        _brief(m, linked.get(m.id, []), by_id, values, counts.get(m.id, (0, 0)), risks)
+        for m in rows
+    ]
+
+
+def list_milestones(session: Session, user: User, project_id: UUID) -> MilestoneListDTO:
+    relation = permissions.require_project_read(session, user, project_id)
     return MilestoneListDTO(
-        items=[
-            _brief(m, linked.get(m.id, []), by_id, values, counts.get(m.id, (0, 0)), risks)
-            for m in rows
-        ],
+        items=milestone_briefs(session, project_id),
         can_lead=relation.leader and not relation.read_only,
     )
 

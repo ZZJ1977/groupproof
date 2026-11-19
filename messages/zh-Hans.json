@@ -437,7 +437,13 @@
       "overview": "课程总览",
       "groups": "小组",
       "actions": "待处理",
+      "projects": "项目总览",
       "reports": "报告",
+      "rules": "课程规则",
+      "files": "课程资料",
+      "announcements": "课程公告",
+      "appeals": "申诉处理",
+      "staff": "助教管理",
       "settings": "课程设置"
     },
     "adminItems": {
