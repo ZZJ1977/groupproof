@@ -932,6 +932,23 @@ def test_preview_worker_freezes_one_report_snapshot(db, scope, monkeypatch):
         == contribution_snapshot.id
     )
     assert db.get(Report, report.id).status == "generated"
+    original_tasks = stored.data_snapshot["sections"]["tasks"]
+    scope.task.title = "Changed after generation"
+    db.commit()
+    report_tasks.generate_preview.run(str(snapshot.id), False)
+    db.expire_all()
+    assert db.get(ReportSnapshot, snapshot.id).data_snapshot["sections"]["tasks"] == original_tasks
+    assert (
+        len(
+            db.scalars(
+                select(ContributionArchive).where(
+                    ContributionArchive.source_kind == "report",
+                    ContributionArchive.source_id == snapshot.id,
+                )
+            ).all()
+        )
+        == 1
+    )
 
 
 def test_teacher_overview_uses_same_risk_count_and_course_authorization(db, scope):
