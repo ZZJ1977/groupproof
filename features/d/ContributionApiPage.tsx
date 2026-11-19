@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ContributionWeek7Panel } from "./ContributionWeek7Panel";
 
 type TaskCredit = { task_id: string; title: string; responsibility_share: number; weight: number; formal_outcome_id: string | null; evidence_url: string; evidence: { criterion_id: string; evidence_id: string; version: number }[] };
 type Member = { user_id: string; name: string; share: number; task_credit: number; tasks: TaskCredit[] };
@@ -39,7 +40,7 @@ export function ContributionApiPage({ projectId, memberId }: { projectId: string
     {snapshot?.stale && <p role="status" className="rounded bg-amber-50 p-3 text-amber-800">正式成果或证据已变化；以下为历史计算快照，请重新计算当前贡献。</p>}
     {memberId ? <>
       <Link className="gp-link" href={`/projects/${projectId}/contribution`}>返回贡献总览</Link>
-      {selected ? <section className="space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">{selected.name} · {selected.share}%</h2><p>正式任务权重积分：{selected.task_credit}</p>{selected.tasks.map((task) => <article className="border-t py-3" key={task.task_id}><p>{task.title} · 任务权重 {task.weight} · 实际承担 {task.responsibility_share}%</p><Link className="gp-link" href={task.evidence_url}>查看验收记录</Link>{task.evidence.map((ref) => <p key={`${ref.criterion_id}:${ref.evidence_id}`}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${ref.evidence_id}`}>查看正式证据（v{ref.version}）</Link><Link className="ml-3 gp-link" href={`/projects/${projectId}/evidence?task=${task.task_id}&criterion=${ref.criterion_id}&capture=1`}>按此标准补充证据</Link></p>)}</article>)}</section> : snapshot && <p>此计算版本没有该成员的正式贡献。</p>}
+      {selected ? <><section className="space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">{selected.name} · {selected.share}%</h2><p>正式任务权重积分：{selected.task_credit}</p>{selected.tasks.map((task) => <article className="border-t py-3" key={task.task_id}><p>{task.title} · 任务权重 {task.weight} · 实际承担 {task.responsibility_share}%</p><Link className="gp-link" href={task.evidence_url}>查看验收记录</Link>{task.evidence.map((ref) => <p key={`${ref.criterion_id}:${ref.evidence_id}`}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${ref.evidence_id}`}>查看正式证据（v{ref.version}）</Link><Link className="ml-3 gp-link" href={`/projects/${projectId}/evidence?task=${task.task_id}&criterion=${ref.criterion_id}&capture=1`}>按此标准补充证据</Link></p>)}</article>)}</section><ContributionWeek7Panel projectId={projectId} memberId={memberId} tasks={selected.tasks} /></> : snapshot && <p>此计算版本没有该成员的正式贡献。</p>}
     </> : <section className="space-y-3 rounded border bg-white p-4">{snapshot?.members.map((member) => <article className="border-t py-3" key={member.user_id}><div className="flex items-center justify-between"><span>{member.name}</span><strong>{member.share}%</strong></div><div className="mt-2 h-2 rounded bg-slate-100"><div className="h-2 rounded bg-blue-600" style={{ width: `${member.share}%` }} /></div><p className="text-sm">正式任务权重积分：{member.task_credit}</p><Link className="gp-link" href={`/projects/${projectId}/contribution/${member.user_id}`}>查看任务与证据</Link></article>)}{snapshot?.members.length === 0 && <p>暂无正式贡献。</p>}</section>}
   </main>;
 }

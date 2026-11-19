@@ -364,6 +364,147 @@ class ContributionItemTask(Base):
     )
 
 
+class CollaborationNote(Base):
+    """Append-only member explanation, including restored revisions."""
+
+    __tablename__ = "collaboration_notes"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    author_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    revision: Mapped[int] = mapped_column(Integer)
+    body: Mapped[str] = mapped_column(Text)
+    restored_from: Mapped[UUID | None] = mapped_column(ForeignKey("collaboration_notes.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("project_id", "member_id", "revision"),)
+
+
+class ContributionAppeal(Base):
+    """A member's dispute against one frozen contribution basis."""
+
+    __tablename__ = "contribution_appeals"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_snapshots.id"))
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id"))
+    evidence_id: Mapped[UUID] = mapped_column(ForeignKey("evidence.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("status IN ('pending','upheld','adjusted','returned')"),)
+
+
+class AppealDecision(Base):
+    __tablename__ = "appeal_decisions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    appeal_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_appeals.id"), index=True)
+    teacher_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    adjusted_share: Mapped[float | None] = mapped_column(Numeric(7, 4))
+    resulting_snapshot_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("contribution_snapshots.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContributionArchive(Base):
+    """Immutable contribution basis copied when a report is generated or graded."""
+
+    __tablename__ = "contribution_archives"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_snapshots.id"))
+    source_kind: Mapped[str] = mapped_column(String(16))
+    source_id: Mapped[UUID] = mapped_column(Uuid)
+    data: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("source_kind", "source_id"),)
+
+
+class ProjectArchive(Base):
+    __tablename__ = "project_archives"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectReopen(Base):
+    __tablename__ = "project_reopens"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    source_project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    new_project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    version_label: Mapped[str] = mapped_column(String(80))
+    copy_scope: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("copy_scope IN ('full','baseline')"),)
+
+
+class CourseRuleVersion(Base):
+    __tablename__ = "course_rule_versions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    rules: Mapped[dict] = mapped_column(DocumentJSON)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("course_id", "version_no"),)
+
+
+class CourseRuleConfirmation(Base):
+    __tablename__ = "course_rule_confirmations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    __table_args__ = (UniqueConstraint("version_id", "project_id"),)
+
+
+class CourseTemplateApplication(Base):
+    """Immutable rule version and template attached to a newly created project."""
+
+    __tablename__ = "course_template_applications"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"))
+    template: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeacherReportComment(Base):
+    __tablename__ = "teacher_report_comments"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CourseGrade(Base):
+    __tablename__ = "course_grades"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    report_snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    contribution_archive_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_archives.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    score: Mapped[float] = mapped_column(Numeric(5, 2))
+    comment: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("score >= 0 AND score <= 100"),)
+
+
 class Report(Base):
     """Mutable report identity whose generated versions are immutable snapshots."""
 

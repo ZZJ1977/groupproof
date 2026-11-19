@@ -24,6 +24,7 @@ from app.db.session import get_session
 from app.modules.c.models import Evidence
 from app.modules.c.permissions import get_project_access
 from app.modules.d.contribution import current_frozen_snapshot
+from app.modules.d.contribution_week7 import archive_contribution
 from app.modules.d.models import (
     ContributionItem,
     Report,
@@ -149,6 +150,10 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
             "contribution_members": len(shares),
         },
         "sections": sections,
+        "evidence_records": [
+            {"id": str(item.id), "task_id": str(item.task_id), "title": item.title}
+            for item in evidence
+        ],
     }
 
 
@@ -304,6 +309,10 @@ def refresh_report(
             data_snapshot={},
         )
         session.add(version)
+        session.flush()
+        archive_contribution(
+            session, project_id, "report", version.id, version.contribution_snapshot_id
+        )
         report.status = "generating"
         report.includes_appendix = payload.includes_appendix
         report.lock_version += 1
