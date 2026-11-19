@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -30,6 +31,7 @@ from app.modules.c.models import Evidence, EvidenceCriterion, EvidenceSourceSnap
 from app.modules.d import (
     acceptance,
     contribution,
+    contribution_week7,
     integrity,
     report_tasks,
     reporting,
@@ -39,6 +41,8 @@ from app.modules.d import (
 )
 from app.modules.d.models import (
     AcceptanceDecision,
+    ContributionAppeal,
+    ContributionArchive,
     ContributionCalculation,
     ContributionItem,
     ContributionItemTask,
@@ -96,6 +100,10 @@ def db():
         "contribution_snapshots",
         "contribution_items",
         "contribution_item_tasks",
+        "collaboration_notes",
+        "contribution_appeals",
+        "appeal_decisions",
+        "contribution_archives",
         "reports",
         "report_snapshots",
         "report_artifacts",
@@ -524,6 +532,7 @@ def test_human_acceptance_requires_every_responsible_and_real_shares(db, scope, 
     )
     db.add(second)
     db.flush()
+    db.flush()
     db.add_all(
         [
             TaskAssignee(task_id=scope.task.id, user_id=scope.user.id, role="responsible"),
@@ -947,3 +956,140 @@ def test_report_restore_creates_new_version_and_download_link_expires(db, scope,
     db.commit()
     with pytest.raises(ApiError):
         reporting.download_export(scope.project.id, artifact.id, token, db, scope.user)
+
+
+def test_week7_notes_restore_and_adjustment_archive_preserves_old_shares(db, scope, monkeypatch):
+    second = User(
+        id=uuid4(),
+        name="Second",
+        username=f"s-{uuid4()}",
+        email=f"{uuid4()}@example.test",
+        college="Test",
+        global_role="student",
+        status="active",
+    )
+    db.add(second)
+    db.flush()
+    db.add_all(
+        [
+            ProjectMember(
+                id=uuid4(), project_id=scope.project.id, user_id=scope.user.id, role="leader"
+            ),
+            ProjectMember(
+                id=uuid4(), project_id=scope.project.id, user_id=second.id, role="member"
+            ),
+        ]
+    )
+    calculation = ContributionCalculation(
+        project_id=scope.project.id,
+        formula_version="test-v1",
+        basis_version="test",
+        calculated_by=scope.user.id,
+    )
+    db.add(calculation)
+    db.flush()
+    snapshot = ContributionSnapshot(
+        project_id=scope.project.id,
+        calculation_id=calculation.id,
+        version_no=1,
+        status="frozen",
+        created_by=scope.user.id,
+    )
+    db.add(snapshot)
+    db.flush()
+    db.add_all(
+        [
+            ContributionItem(
+                snapshot_id=snapshot.id,
+                user_id=scope.user.id,
+                task_credit=60,
+                collaboration_credit=0,
+                share=60,
+                acceptance_rate=100,
+                status="formal",
+            ),
+            ContributionItem(
+                snapshot_id=snapshot.id,
+                user_id=second.id,
+                task_credit=40,
+                collaboration_credit=0,
+                share=40,
+                acceptance_rate=100,
+                status="formal",
+            ),
+        ]
+    )
+    db.commit()
+    access = SimpleNamespace(leader=True, member=True, teacher=False, project=scope.project)
+    monkeypatch.setattr(contribution_week7, "get_project_access", lambda *a, **k: access)
+    request = SimpleNamespace(state=SimpleNamespace(request_id="week7-test"))
+    contribution_week7.save_note(
+        scope.project.id,
+        scope.user.id,
+        contribution_week7.NoteInput(body="Original"),
+        request,
+        db,
+        scope.user,
+    )
+    contribution_week7.save_note(
+        scope.project.id,
+        scope.user.id,
+        contribution_week7.NoteInput(body="Updated"),
+        request,
+        db,
+        scope.user,
+    )
+    contribution_week7.save_note(
+        scope.project.id,
+        scope.user.id,
+        contribution_week7.NoteInput(body="restore", restore_revision=1),
+        request,
+        db,
+        scope.user,
+    )
+    assert [
+        row["body"]
+        for row in contribution_week7.read_notes(
+            scope.project.id, scope.user.id, request, db, scope.user
+        ).data
+    ] == ["Original", "Updated", "Original"]
+    source_id = uuid4()
+    contribution_week7.archive_contribution(db, scope.project.id, "grade", source_id)
+    appeal = ContributionAppeal(
+        project_id=scope.project.id,
+        snapshot_id=snapshot.id,
+        member_id=scope.user.id,
+        task_id=scope.task.id,
+        evidence_id=uuid4(),
+        reason="Credit mismatch",
+        status="pending",
+    )
+    # A formal evidence row is needed for the appeal foreign key.
+    evidence = Evidence(
+        id=appeal.evidence_id,
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        author_id=scope.user.id,
+        title="Proof",
+        description="Proof",
+        source_type="manual",
+        status="formal",
+    )
+    db.add(evidence)
+    db.flush()
+    db.add(appeal)
+    db.flush()
+    revised = contribution_week7.adjusted_snapshot(db, appeal, Decimal("70"), scope.user.id)
+    db.commit()
+    shares = [
+        item.share
+        for item in db.scalars(
+            select(ContributionItem).where(ContributionItem.snapshot_id == revised.id)
+        )
+    ]
+    assert sum(shares) == 100
+    assert sorted(shares) == [30, 70]
+    archived = db.scalar(
+        select(ContributionArchive).where(ContributionArchive.source_id == source_id)
+    )
+    assert sorted(row["share"] for row in archived.data["members"]) == ["40.0000", "60.0000"]

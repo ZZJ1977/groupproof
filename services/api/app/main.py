@@ -20,6 +20,7 @@ from app.db.session import engine
 from app.modules.a.router import router as a_router
 from app.modules.b.router import router as b_router
 from app.modules.c.router import router as c_router
+from app.modules.d.contribution_week7 import router as d_contribution_week7_router
 from app.modules.d.reporting import router as d_report_router
 from app.modules.d.router import acceptance_router as d_acceptance_router
 from app.modules.d.router import risk_router as d_risk_router
@@ -89,6 +90,7 @@ app.include_router(c_router)
 app.include_router(d_router)
 app.include_router(d_risk_router)
 app.include_router(d_report_router)
+app.include_router(d_contribution_week7_router)
 app.include_router(d_teacher_overview_router)
 app.include_router(d_acceptance_router)
 app.include_router(examples_router)
