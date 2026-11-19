@@ -19,6 +19,8 @@ const staticRoutes: Record<string, number> = {
   "/activity": 30,
   "/courses": 31,
   "/courses/join": 32,
+  "/teacher/courses": 57,
+  "/teacher/dashboard": 58,
   "/admin/users": 51,
   "/admin/teacher-verifications": 52,
   "/admin/courses": 53,
@@ -26,6 +28,12 @@ const staticRoutes: Record<string, number> = {
   "/admin/ai-usage": 55,
   "/admin/access-requests": 56,
 };
+
+export const teacherScreens = [41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 57, 58, 59, 60, 61] as const;
+
+export function isTeacherScreen(screen: number): boolean {
+  return (teacherScreens as readonly number[]).includes(screen);
+}
 
 export function resolveRoute(pathname: string, view?: string | null): ResolvedRoute | null {
   const normalized = pathname.replace(/\/$/, "") || "/";
@@ -78,12 +86,15 @@ export function resolveRoute(pathname: string, view?: string | null): ResolvedRo
     if (parts.length === 3) return { screen: 41, courseId };
     if (parts[3] === "groups") return parts[4] ? { screen: 43, courseId, groupId: parts[4] } : { screen: 42, courseId };
     if (parts[3] === "actions") return { screen: 44, courseId };
+    if (parts[3] === "projects") return { screen: 61, courseId };
     if (parts[3] === "reports") return { screen: 45, courseId };
     if (parts[3] === "settings") return { screen: 46, courseId };
     if (parts[3] === "rules") return { screen: 47, courseId };
     if (parts[3] === "member-changes") return { screen: 48, courseId };
     if (parts[3] === "appeals") return { screen: 49, courseId };
     if (parts[3] === "files") return { screen: 50, courseId };
+    if (parts[3] === "announcements") return { screen: 60, courseId };
+    if (parts[3] === "staff") return { screen: 59, courseId };
   }
 
   return null;

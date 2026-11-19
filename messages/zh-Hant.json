@@ -437,7 +437,13 @@
       "overview": "課程總覽",
       "groups": "小組",
       "actions": "待處理",
+      "projects": "專案總覽",
       "reports": "報告",
+      "rules": "課程規則",
+      "files": "課程資料",
+      "announcements": "課程公告",
+      "appeals": "申訴處理",
+      "staff": "助教管理",
       "settings": "課程設定"
     },
     "adminItems": {

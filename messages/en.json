@@ -437,7 +437,13 @@
       "overview": "Course overview",
       "groups": "Groups",
       "actions": "Action items",
+      "projects": "Projects",
       "reports": "Reports",
+      "rules": "Course rules",
+      "files": "Materials",
+      "announcements": "Announcements",
+      "appeals": "Appeals",
+      "staff": "TA & permissions",
       "settings": "Course settings"
     },
     "adminItems": {
