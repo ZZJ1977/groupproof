@@ -23,9 +23,9 @@ from app.db.models import BaselineVersion, Milestone, PlanVersion, ProjectMember
 from app.db.session import get_session
 from app.modules.c.models import Evidence
 from app.modules.c.permissions import get_project_access
+from app.modules.d.contribution import current_frozen_snapshot
 from app.modules.d.models import (
     ContributionItem,
-    ContributionSnapshot,
     Report,
     ReportArtifact,
     ReportDownload,
@@ -106,14 +106,7 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
             Evidence.source_changed.is_(False),
         )
     ).all()
-    contribution = session.scalar(
-        select(ContributionSnapshot)
-        .where(
-            ContributionSnapshot.project_id == project_id, ContributionSnapshot.status == "frozen"
-        )
-        .order_by(ContributionSnapshot.version_no.desc())
-        .limit(1)
-    )
+    contribution = current_frozen_snapshot(session, project_id)
     shares = (
         session.scalars(
             select(ContributionItem)
@@ -146,6 +139,7 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
         sections["appendix"] = "\n".join(item.title for item in evidence) or "No formal evidence."
     return {
         "project_name": project_name,
+        "contribution_snapshot_id": str(contribution.id) if contribution else None,
         "counts": {
             "members": len(members),
             "tasks": len(tasks),
@@ -298,15 +292,7 @@ def refresh_report(
             .order_by(PlanVersion.version_no.desc())
             .limit(1)
         )
-        contribution = session.scalar(
-            select(ContributionSnapshot)
-            .where(
-                ContributionSnapshot.project_id == project_id,
-                ContributionSnapshot.status == "frozen",
-            )
-            .order_by(ContributionSnapshot.version_no.desc())
-            .limit(1)
-        )
+        contribution = current_frozen_snapshot(session, project_id)
         version = ReportSnapshot(
             report_id=report.id,
             created_by=user.id,

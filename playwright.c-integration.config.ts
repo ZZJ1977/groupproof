@@ -29,8 +29,8 @@ export default defineConfig({
       gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
     },
     {
-      command: "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 13007",
-      url: "http://127.0.0.1:13007/healthz", reuseExistingServer: false, timeout: 120_000,
+      command: "node e2e/c-integration-server.mjs",
+      url: "http://127.0.0.1:13007/healthz", reuseExistingServer: false, timeout: 240_000,
       env: {
         API_INTERNAL_URL: "http://127.0.0.1:18007", NEXT_DIST_DIR: ".next-c-integration",
         NEXT_PUBLIC_APP_MODE: "real", NEXT_PUBLIC_ENABLE_MOCKS: "false",
