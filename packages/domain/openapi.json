@@ -19063,6 +19063,64 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/applied-course-template": {
+      "get": {
+        "operationId": "applied_template_api_v1_projects__project_id__applied_course_template_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Applied Template",
+        "tags": [
+          "d-teacher-course"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/archive": {
       "post": {
         "operationId": "archive_project_api_v1_projects__project_id__archive_post",
