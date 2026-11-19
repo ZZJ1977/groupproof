@@ -865,6 +865,35 @@ def test_report_worker_persists_real_pdf_and_status(db, scope, monkeypatch):
 
 
 def test_preview_worker_freezes_one_report_snapshot(db, scope, monkeypatch):
+    calculation = ContributionCalculation(
+        project_id=scope.project.id,
+        formula_version="test-v1",
+        basis_version="test",
+        calculated_by=scope.user.id,
+        input_hash=contribution.current_basis_hash(db, scope.project.id),
+    )
+    db.add(calculation)
+    db.flush()
+    contribution_snapshot = ContributionSnapshot(
+        project_id=scope.project.id,
+        calculation_id=calculation.id,
+        version_no=1,
+        status="frozen",
+        created_by=scope.user.id,
+    )
+    db.add(contribution_snapshot)
+    db.flush()
+    db.add(
+        ContributionItem(
+            snapshot_id=contribution_snapshot.id,
+            user_id=scope.user.id,
+            task_credit=100,
+            collaboration_credit=0,
+            share=100,
+            acceptance_rate=100,
+            status="formal",
+        )
+    )
     report = Report(
         id=uuid4(), project_id=scope.project.id, created_by=scope.user.id, status="generating"
     )
@@ -892,6 +921,16 @@ def test_preview_worker_freezes_one_report_snapshot(db, scope, monkeypatch):
     stored = db.get(ReportSnapshot, snapshot.id)
     assert stored.status == "generated"
     assert stored.data_snapshot["counts"]["tasks"] == 1
+    assert stored.contribution_snapshot_id == contribution_snapshot.id
+    assert (
+        db.scalar(
+            select(ContributionArchive.snapshot_id).where(
+                ContributionArchive.source_kind == "report",
+                ContributionArchive.source_id == snapshot.id,
+            )
+        )
+        == contribution_snapshot.id
+    )
     assert db.get(Report, report.id).status == "generated"
 
 
@@ -1353,6 +1392,18 @@ def test_week7_grade_uses_finalized_report_contribution_basis(db, scope, monkeyp
         == contribution_snapshot.id
     )
     assert db.scalar(select(TeacherReportComment)).body == "Needs stronger evidence"
+    snapshot.contribution_snapshot_id = None
+    db.commit()
+    with pytest.raises(ApiError) as missing:
+        teacher_reports.grade_report(
+            scope.project.id,
+            teacher_reports.GradeInput(score=80, comment="Second grade"),
+            request,
+            db,
+            scope.user,
+        )
+    assert missing.value.code == "CONTRIBUTION_MISSING"
+    assert len(db.scalars(select(CourseGrade)).all()) == 1
 
 
 def test_week7_new_course_project_binds_current_template(db, scope):

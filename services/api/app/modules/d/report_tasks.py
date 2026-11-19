@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.db.models import Project
 from app.db.session import SessionLocal
+from app.modules.d.contribution_week7 import archive_contribution
 from app.modules.d.models import Report, ReportArtifact, ReportSnapshot
 from app.modules.d.reporting import render_document, snapshot_data
 from app.modules.d.risk_read import risk_advice
@@ -39,6 +40,14 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
             snapshot.data_snapshot = snapshot_data(session, project.id, project.name, appendix)
             contribution_id = snapshot.data_snapshot["contribution_snapshot_id"]
             snapshot.contribution_snapshot_id = UUID(contribution_id) if contribution_id else None
+            if snapshot.contribution_snapshot_id is not None:
+                archive_contribution(
+                    session,
+                    project.id,
+                    "report",
+                    snapshot.id,
+                    snapshot.contribution_snapshot_id,
+                )
             project_id = project.id
             creator_id = snapshot.created_by or report.created_by
             session.commit()

@@ -32,6 +32,7 @@ from app.modules.c.task_execution import TaskSubmissionService
 from app.modules.d import acceptance, contribution, integrity, report_tasks, reporting, verification
 from app.modules.d.models import (
     AcceptanceDecision,
+    ContributionArchive,
     ContributionSnapshot,
     CriterionResult,
     FormalOutcome,
@@ -223,6 +224,10 @@ def test_c_change_excludes_old_formal_outcomes_from_new_reports_preserving_histo
     if queued_before_change:
         new = queue_preview()
         assert new.contribution_snapshot_id == snapshot.id
+        assert (
+            db.scalar(select(ContributionArchive).where(ContributionArchive.source_id == new.id))
+            is None
+        )
 
     key = str(uuid4())
     change_evidence(db, scope, flow, kind, key=key)
@@ -257,6 +262,10 @@ def test_c_change_excludes_old_formal_outcomes_from_new_reports_preserving_histo
     report_tasks.generate_preview.run(str(new.id), True)
     assert new.data_snapshot["counts"]["contribution_members"] == 0
     assert new.contribution_snapshot_id is None
+    assert (
+        db.scalar(select(ContributionArchive).where(ContributionArchive.source_id == new.id))
+        is None
+    )
     assert old.data_snapshot == old_data
     assert old.contribution_snapshot_id == snapshot.id
     effective = list_evidence(

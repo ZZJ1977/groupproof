@@ -200,6 +200,8 @@ def grade_report(
         raise ApiError(409, "REPORT_NOT_FINAL", "Finalize the report before grading.")
     if not payload.comment.strip():
         raise ApiError(422, "GRADE_COMMENT_REQUIRED", "Grade comment is required.")
+    if snapshot.contribution_snapshot_id is None:
+        raise ApiError(409, "CONTRIBUTION_MISSING", "No contribution basis is available.")
     project = session.get(Project, project_id)
     grade_id = uuid4()
     archive = archive_contribution(
