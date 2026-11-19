@@ -125,7 +125,9 @@ evidence are not modified by course-file publication.
 The course file page accepts `/teacher/courses/{courseId}/files?file={fileId}&version={versionId}`.
 It focuses the matching version in the viewer's authorized history. A missing
 or hidden revision displays a notice. Preview and download requests use the
-selected version ID.
+selected version ID. When C's course-file API is enabled, a URL with a
+`version` parameter goes directly to this viewer, including when B provides
+the ordinary course materials page.
 
 ### Verify a frozen project on Staging
 
@@ -144,9 +146,15 @@ npm run test:c5-freeze-staging
 
 This read-only test checks that B saved the file and version together, that the
 project page links to that version, and that its downloaded bytes match the
-historical SHA-256 after a reload. `B_task@91bfdae` does not yet save the pair.
-The C file page alone can verify historical access, but cannot reconstruct which
-version a project selected at freeze time.
+historical SHA-256 after a reload.
+
+On November 19, [B's course materials center](https://github.com/ZZJ1977/groupproof/blob/81fa4262763f46c35656c116a8d1839ac8c04e92/docs/modules/b/phase-reports/phase-4-course-files-report.md)
+supported downloads by version number for files in its own catalog. The
+[project baseline snapshot](https://github.com/ZZJ1977/groupproof/blob/81fa4262763f46c35656c116a8d1839ac8c04e92/services/api/app/modules/b/baseline_service.py#L247-L306)
+still needs to persist each selected C publication's `file_id` and `version_id`
+when the baseline is submitted for confirmation. The frozen project page can
+then use that pair to construct the version URL above. For older snapshots
+without a recorded pair, the selected version is unknown.
 
 ## A course-storage contract
 

@@ -52,6 +52,14 @@ export function RouteDispatcher() {
   const kind = screen >= 51 ? "admin" : screen >= 41 ? "teacher" : "student";
   // These pages use the authenticated API's authorization, not demo role state.
   // Mount by the actual route ID; never translate seed IDs into canonical IDs.
+  // Version links address C's publication history even when B provides the course files index.
+  if (screen === 50 && courseId && search.has("version") && apiMode("coursefiles") === "real") {
+    return (
+      <WorkspaceShell kind={kind}>
+        <CourseFilesApiPage key={`${userId}:${courseId}`} courseId={courseId} />
+      </WorkspaceShell>
+    );
+  }
   let realContent;
   if (screen === 4 && apiMode("daily") === "real") realContent = <HomeApiPage />;
   if (screen === 30 && apiMode("daily") === "real") realContent = <PersonalActivityApiPage />;
