@@ -40,7 +40,9 @@ optional `project_id`, inclusive UTC `date_from`/`date_to`, and page/page_size
 are rejected. Pagination is server-side; order is event time descending, event
 type ascending and event UUID ascending, including deterministic timestamp ties.
 
-- Development: real progress events and saved task-note versions.
+- Development includes task progress events, saved task-note versions, registered
+  project file versions and synced GitHub commits, pull requests and CI runs
+  attributed to the current member. GitHub records open the original project activity.
 - Evidence: submitted/adopted/withdrawn/source-changed decision records.
 - Discussion: original discussions and appended replies.
 
@@ -48,11 +50,15 @@ Only the signed-in actor's events with an existing, currently accessible target
 are returned. Leaving a project removes its old activity from this query. Event
 timestamps are immutable creation times; a colleague's later edit does not become
 the actor's activity. Titles are the current target titles. Links use real target
-IDs; discussion links select the discussion, and evidence links open its task's
-evidence tab. A target page still needs its own canonical data implementation.
+IDs. Progress, note, file and reply links open the exact history entry, version
+or reply. Evidence links select the decision in the evidence detail. Each target
+checks current project access again when opened.
 
-The view explicitly excludes external GitHub/Feishu ingestion and discussion
-importance-only events. It does not claim to be a complete external activity log.
+Members can declare or clear their own GitHub login with
+`PUT /api/v1/a/me/github-login`. The next project sync applies A's author mapping.
+Repository access still comes from the project binding. Personal Feishu activity
+requires a mapping between Feishu senders and site users. Discussion importance
+changes remain outside this feed.
 
 ## Frontend and rollout
 

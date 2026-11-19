@@ -2,6 +2,7 @@
 
 from app.modules.a.ai.functions import (
     ai_unavailable,
+    analyze_implementation,
     explain_risk,
     extract_requirements,
     match_evidence,
@@ -9,8 +10,12 @@ from app.modules.a.ai.functions import (
 )
 from app.modules.a.ai.provider import AIProvider, AIUnavailable, FakeProvider, get_provider
 from app.modules.a.ai.schemas import (
+    CodeFile,
     EvidenceMatchInput,
     EvidenceMatchResult,
+    ImplementationAnalysisInput,
+    ImplementationAnalysisResult,
+    ImplRequirement,
     RequirementExtractionInput,
     RequirementExtractionResult,
     RiskExplanationInput,
@@ -18,13 +23,19 @@ from app.modules.a.ai.schemas import (
     TaskSuggestionInput,
     TaskSuggestionResult,
 )
+from app.modules.a.ai.usage import AIUsageContext
 
 __all__ = [
     "AIProvider",
+    "AIUsageContext",
     "AIUnavailable",
+    "CodeFile",
     "EvidenceMatchInput",
     "EvidenceMatchResult",
     "FakeProvider",
+    "ImplRequirement",
+    "ImplementationAnalysisInput",
+    "ImplementationAnalysisResult",
     "RequirementExtractionInput",
     "RequirementExtractionResult",
     "RiskExplanationInput",
@@ -32,6 +43,7 @@ __all__ = [
     "TaskSuggestionInput",
     "TaskSuggestionResult",
     "ai_unavailable",
+    "analyze_implementation",
     "explain_risk",
     "extract_requirements",
     "get_provider",

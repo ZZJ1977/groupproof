@@ -12,7 +12,7 @@ const teacher: Schema["AdminUserDTO"] = { id: teacherId, name: "服务端教师"
 const course: Schema["CourseDetailDTO"] = { id: courseId, code: "CANONICAL101", name: "服务器课程", college: "软件学院", semester: "2027春", owner_id: teacherId, status: "draft", grouping_mode: "free", min_group_size: 2, max_group_size: 6, formation_deadline: "2027-01-01T00:00:00Z", project_deadline: "2027-06-01T00:00:00Z", lock_version: 0, invite_code: null, invite_revoked_at: null, history: [] };
 const access: Schema["AccessRequestDetailDTO"] = { id: requestId, applicant_id: applicantId, reason: "核对范围内的任务实现", scope: { project_id: projectId, resource_type: "project", resource_id: projectId, operation: "read" }, status: "pending", lock_version: 0, requested_expires_at: "2027-12-01T00:00:00Z", approved_expires_at: null, approval_expired: false, authorization_receipt: null, authorization_state: "not_activated", history: [], created_at: "2026-10-12T00:00:00Z" };
 const audit: Schema["AuditRecord"] = { id: logId, actor_id: teacherId, actor_role: "teacher", action: "course.publish", result: "success", occurred_at: "2026-10-12T00:00:00Z", target_type: "course", target_id: courseId, reason: "可追溯发布理由", before: { status: "draft" }, after: { status: "<img src=x onerror=alert(1)>" } };
-const counts = { requests: 3, succeeded: 2, failed: 1, input_tokens: 140, output_tokens: 70, cost_by_currency: { USD: "0.030000", CNY: "0.100000" } };
+const counts = { unpriced_requests: 0, incomplete_token_records: 0, requests: 3, succeeded: 2, failed: 1, input_tokens: 140, output_tokens: 70, cost_by_currency: { USD: "0.030000", CNY: "0.100000" } };
 const usage: Schema["UsageSummaryDTO"] = { ...counts, days: 7, since: "2026-10-06T00:00:00Z", until: "2026-10-12T12:00:00Z", source_snapshot_id: "fixture-real-contract", daily: [{ ...counts, date: "2026-10-12" }], by_feature: [{ ...counts, key: "review" }], by_model: [{ ...counts, key: "fixture-model" }], aggregation_scope: "显式 API 测试样本，不代表生产用量" };
 const envelope = (data: unknown) => ({ data, meta: { request_id: "governance-fixture" } });
 const failure = (code: string) => ({ error: { code, message: code }, meta: { request_id: "governance-failure" } });
@@ -290,7 +290,7 @@ test("C7-05 audit filters and pagination use canonical users, and detail renders
     return route.fulfill({ json: envelope({ items: [audit], page: Number(url.searchParams.get("page") ?? 1), page_size: 10, total: 11 }) });
   });
   await page.route(`**/api/v1/admin/audit-logs/${logId}`, (route) => route.fulfill({ json: envelope(audit) }));
-  await page.goto("/admin/logs");
+  await page.goto("/admin/logs?source=business");
   await page.getByRole("combobox", { name: "操作时角色", exact: true }).selectOption("teacher");
   await page.getByRole("combobox", { name: "对象类型", exact: true }).selectOption("course");
   await page.getByLabel("操作类型", { exact: true }).fill("course.publish");
@@ -317,7 +317,7 @@ test("C7-05 audit filters and pagination use canonical users, and detail renders
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
   await page.getByRole("button", { name: "重置", exact: true }).click();
   await expect(page.getByLabel("操作类型", { exact: true })).toHaveValue("");
-  await expect(page).toHaveURL(/\/admin\/logs$/);
+  await expect(page).toHaveURL(/\/admin\/logs\?source=business$/);
   // Reset also clears an unsubmitted draft when the URL is already empty.
   await page.getByLabel("操作类型", { exact: true }).fill("course.end");
   await page.getByRole("button", { name: "重置", exact: true }).click();
@@ -387,17 +387,51 @@ for (const target of ["course", "access"] as const) {
   });
 }
 
-test("C7 user lookup permission loss hides a previously selected name and email", async ({ page }) => {
+test("C7 an audit directory denial clears the selected user, records and open detail", async ({ page }) => {
   let allowed = true;
   await page.route(/\/api\/v1\/admin\/users(?:\?.*)?$/, (route) => route.fulfill(allowed ? { json: envelope({ items: [teacher], total: 1, page: 1, page_size: 10 }) } : { status: 403, json: failure("ADMIN_REQUIRED") }));
   await page.route(`**/api/v1/admin/users/${teacherId}`, (route) => route.fulfill({ json: envelope(teacher) }));
-  await page.route(/\/api\/v1\/admin\/audit-logs(?:\?.*)?$/, (route) => route.fulfill({ json: envelope({ items: [], total: 0, page: 1, page_size: 10 }) }));
-  await page.goto("/admin/logs");
+  await page.route(/\/api\/v1\/admin\/audit-logs(?:\?.*)?$/, (route) => route.fulfill({ json: envelope({ items: [audit], total: 1, page: 1, page_size: 10 }) }));
+  await page.route(`**/api/v1/admin/audit-logs/${logId}`, (route) => route.fulfill({ json: envelope(audit) }));
+  await page.goto("/admin/logs?source=business");
   const picker = page.getByRole("combobox", { name: "操作人", exact: true });
   await picker.selectOption(teacherId);
   await expect(picker).toHaveValue(teacherId);
+  await page.getByRole("button", { name: "查看日志" }).click();
+  await expect(page.getByRole("heading", { name: "日志详情" })).toBeVisible();
   allowed = false; await page.getByLabel("操作人搜索", { exact: true }).fill("重新查询");
   await expect(page.locator("main").getByRole("alert")).toContainText("无权");
-  await expect(picker.locator("option")).toHaveCount(1);
-  await expect(picker.locator("option")).not.toContainText(teacher.email ?? "");
+  await expect(picker).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText(audit.reason);
+  await expect(page).not.toHaveURL(/log=/);
+  allowed = true;
+  await page.getByRole("button", { name: "重新验证管理权限" }).click();
+  await expect(page.getByRole("button", { name: "查看日志" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "日志详情" })).toHaveCount(0);
+});
+
+test("C7 an audit detail denial clears its parent list", async ({ page }) => {
+  await users(page);
+  await page.route(/\/api\/v1\/admin\/audit-logs(?:\?.*)?$/, (route) => route.fulfill({ json: envelope({ items: [audit], total: 1, page: 1, page_size: 10 }) }));
+  await page.route(`**/api/v1/admin/audit-logs/${logId}`, (route) => route.fulfill({ status: 403, json: failure("ADMIN_REQUIRED") }));
+  await page.goto("/admin/logs?source=business");
+  await expect(page.locator("main")).toContainText(audit.reason);
+  await page.getByRole("button", { name: "查看日志" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("无权");
+  await expect(page.locator("main")).not.toContainText(audit.reason);
+  await expect(page).not.toHaveURL(/log=/);
+});
+
+test("C7 a revoked user lookup removes previously visible AI costs", async ({ page }) => {
+  let allowed = true;
+  await page.route(/\/api\/v1\/admin\/users(?:\?.*)?$/, (route) => route.fulfill(allowed ? { json: envelope({ items: [teacher], total: 1, page: 1, page_size: 10 }) } : { status: 403, json: failure("ADMIN_REQUIRED") }));
+  await page.route("**/api/v1/admin/ai-usage**", (route) => route.fulfill({ json: envelope(usage) }));
+  await page.goto("/admin/ai-usage");
+  await expect(page.getByRole("heading", { name: "用量汇总" })).toBeVisible();
+  allowed = false;
+  await page.getByLabel("使用者搜索", { exact: true }).fill("核对");
+  await expect(page.locator("main").getByRole("alert")).toContainText("无权");
+  await expect(page.getByRole("heading", { name: "用量汇总" })).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText("0.030000");
+  await expect(page.getByRole("combobox", { name: "使用者" })).toHaveCount(0);
 });

@@ -1,11 +1,11 @@
 # C1-02 / C1-03 notification and action-item API boundary
 
-The C inbox is a typed consumer of A4 facts. A's real notification query, delivery,
-read mutation and action-item services are not connected: all four default port
-methods return explicit 503 errors. C does not insert notification rows, deliver
-messages, mutate A tables or mark an action item complete. The existing home
-summary still reports notification/action-item counts as unavailable (`null`);
-these are not zero counts. The existing `daily_*` implementation is unchanged.
+The C inbox reads A4 notifications and assigned actions. The home summary uses
+the same recipient-scoped queries for its unread and pending counts. On
+`develop` and `C_task`, the missing A4 provider returns 503 to the inbox pages
+and the affected home counts are `null`. `A_task` supplies the database
+implementation, migrations and default dependency used in the integration test
+below. Action items close through their owning workflow.
 
 ## Routes and ownership
 
@@ -28,7 +28,7 @@ A-owned dependency and does not accept demo identities in production.
 
 ## A4 integration contract
 
-`get_inbox_port()` defaults to `UnavailableInboxPort`. A provides `notifications`,
+`A_task` binds `get_inbox_port()` to `DatabaseInboxPort`. A provides `notifications`,
 `action_items`, `mark_read` and `mark_all_read`. Queries must authorize the current
 recipient, apply all filters before pagination and return newest-first/id-stable
 ordering and exact totals. Notification counts and inbox version describe one
@@ -99,9 +99,16 @@ PostgreSQL locking coverage. The eight browser contract cases in
 `e2e/c-inbox-api.spec.ts` passed **8/8** on the final rerun, included in the current
 new API suite's **45/45 passed** result. Filtering-control locator corrections
 use observed accessible combobox roles; product assertions remain unchanged.
-The inbox fixture explicitly uses SQLite even when another suite is configured
-for PostgreSQL; no PostgreSQL result is claimed. The current-batch production
-build and daily **4/4** rerun passed. Implementation and handoff are published in
-[merged PR #11](https://github.com/ZZJ1977/groupproof/pull/11), with latest CI/review tracked
-in [the delivery record](C_DELIVERY.md). C1 acceptance still requires A's actual
-notification/action providers and staging validation of the delivered unified identity.
+The original relational fixture uses SQLite. The current-batch production
+build and daily **4/4** rerun passed. The initial implementation is in
+[merged PR #11](https://github.com/ZZJ1977/groupproof/pull/11).
+
+On 2026-11-11, `tests/test_c_inbox_provider_postgres.py` passed with C's HTTP
+routes and A's default provider from `A_task@81a9580`. A's unmodified migrations
+0001–0018 ran on an empty disposable PostgreSQL 16 database. Two verified
+students used separate session cookies with CSRF protection. The case covers
+homepage counts and links, two notification pages, single and bulk reads,
+retry and stale-snapshot handling, cross-recipient access, processing links
+and closure through A's action service. The test runs when the provider and
+disposable PostgreSQL are available. Staging still needs the integrated A4
+schema, adapter and a deployed browser run.

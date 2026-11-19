@@ -25,6 +25,8 @@ from app.modules.a.ai.provider import (
 from app.modules.a.ai.schemas import (
     EvidenceMatchInput,
     EvidenceMatchResult,
+    ImplementationAnalysisInput,
+    ImplementationAnalysisResult,
     RequirementExtractionInput,
     RequirementExtractionResult,
     RiskExplanationInput,
@@ -32,6 +34,7 @@ from app.modules.a.ai.schemas import (
     TaskSuggestionInput,
     TaskSuggestionResult,
 )
+from app.modules.a.ai.usage import metered, note_provider_call, note_provider_usage
 
 
 def ai_unavailable() -> ApiError:
@@ -46,11 +49,13 @@ def _run[ResultT: BaseModel](
 ) -> ResultT:
     try:
         provider = provider or get_provider()
+        note_provider_call(provider)
         raw = call_with_retry(
             lambda: provider.generate(
                 feature, payload.model_dump(mode="json"), timeout=DEFAULT_TIMEOUT_SECONDS
             )
         )
+        note_provider_usage(provider)
         return result_model.model_validate(
             {**raw, "provider": provider.name, "is_placeholder": provider.is_placeholder}
         )
@@ -58,6 +63,7 @@ def _run[ResultT: BaseModel](
         raise ai_unavailable() from exc
 
 
+@metered("extract_requirements")
 def extract_requirements(
     payload: RequirementExtractionInput, *, provider: AIProvider | None = None
 ) -> RequirementExtractionResult:
@@ -74,6 +80,7 @@ def extract_requirements(
     return result
 
 
+@metered("suggest_tasks")
 def suggest_tasks(
     payload: TaskSuggestionInput, *, provider: AIProvider | None = None
 ) -> TaskSuggestionResult:
@@ -86,6 +93,7 @@ def suggest_tasks(
     return result
 
 
+@metered("match_evidence")
 def match_evidence(
     payload: EvidenceMatchInput, *, provider: AIProvider | None = None
 ) -> EvidenceMatchResult:
@@ -98,7 +106,35 @@ def match_evidence(
     return result
 
 
+@metered("explain_risk")
 def explain_risk(
     payload: RiskExplanationInput, *, provider: AIProvider | None = None
 ) -> RiskExplanationResult:
     return _run("explain_risk", payload, RiskExplanationResult, provider)
+
+
+@metered("analyze_implementation")
+def analyze_implementation(
+    payload: ImplementationAnalysisInput, *, provider: AIProvider | None = None
+) -> ImplementationAnalysisResult:
+    result = _run("analyze_implementation", payload, ImplementationAnalysisResult, provider)
+    known_requirements = {r.id for r in payload.requirements}
+    texts = {f.path: f.text for f in payload.files}
+    seen: set = set()
+    for finding in result.findings:
+        if finding.requirement_id not in known_requirements or finding.requirement_id in seen:
+            raise ai_unavailable()
+        seen.add(finding.requirement_id)
+        # 声称已实现或部分实现，必须给出出处；出处必须是真实存在的文件和原文。
+        if finding.status in ("implemented", "partial") and not finding.evidence:
+            raise ai_unavailable()
+        for item in finding.evidence:
+            text = texts.get(item.path)
+            if text is None or _squash(item.quote) not in _squash(text):
+                raise ai_unavailable()
+    return result
+
+
+def _squash(value: str) -> str:
+    """忽略空白差异后再比对引文，避免因缩进或换行不同误判。"""
+    return "".join(value.split())

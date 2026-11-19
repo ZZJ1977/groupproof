@@ -26,6 +26,7 @@ from app.modules.c.course_files_storage import (
     resolve_receipt,
     signed_link,
 )
+from app.modules.c.notification_delivery import notify_file_publication
 
 
 def file_in_course(session: Session, course_id: UUID, file_id: UUID) -> CourseFile:
@@ -328,6 +329,8 @@ def publish_version(
     file_id: UUID,
     command: PublishCourseFileVersion,
     key: str,
+    *,
+    writer=None,
 ) -> dict:
     course_access(session, user, course_id, write=True)
     row = file_in_course(session, course_id, file_id)
@@ -354,6 +357,16 @@ def publish_version(
     previous = row.official_version_no
     _cas(session, row, command.expected_version, official_version_no=version.version_no)
     _record(session, row, version, user, "published", command.reason, previous)
+    notify_file_publication(
+        session,
+        writer,
+        actor_id=user.id,
+        version_id=version.id,
+        name=row.name,
+        version_no=version.version_no,
+        scope_id=course_id,
+        kind="course",
+    )
     return finish_request(session, request, file_data(session, row))
 
 

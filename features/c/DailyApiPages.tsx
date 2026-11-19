@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { BookOpen, CheckSquare, Folder } from "lucide-react";
 import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
@@ -9,12 +10,19 @@ import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-c
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { useUrlQuery } from "./use-url-query";
+import { MyAccessRequests } from "./GovernanceApiPages";
 
 const client = createCClient();
 const buttonClass = "rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50";
 const inputClass = "rounded-md border border-slate-300 px-3 py-2 text-sm";
 // Values are message keys under pages.daily.categories.*
 const categoryLabels = { all: "all", development: "development", evidence: "evidence", discussion: "discussion" } as const;
+const activityLabels = {
+  task_progress: "更新任务进度或状态", task_note_saved: "保存实现说明", file_version_uploaded: "登记项目文件版本",
+  github_commit: "GitHub 提交", github_pull_request: "GitHub 拉取请求", github_ci_run: "GitHub CI 运行",
+  evidence_submitted: "提交候选证据", evidence_adopted: "采纳证据", evidence_withdrawn: "撤回证据",
+  evidence_source_changed: "证据来源变化", discussion_created: "发布讨论", discussion_replied: "回复讨论",
+};
 
 function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
   const t = useTranslations("pages.daily");
@@ -70,7 +78,30 @@ export function HomeApiPage() {
       </div>
       <Link className="gp-link mt-4 inline-block" href="/activity">{td("viewActivity")}</Link>
     </>}
+    <MyAccessRequests key={userId} />
   </>;
+}
+
+function GithubAuthorForm() {
+  const [login, setLogin] = useState("");
+  const change = useMutation({
+    mutationFn: (value: string | null) => client.setGithubLogin(value),
+    retry: false,
+    onSuccess: (reply) => setLogin(reply.login ?? ""),
+  });
+  return <details className="my-4">
+    <summary className="cursor-pointer font-medium">设置个人 GitHub 用户名</summary>
+    <form className="mt-3" onSubmit={(event) => { event.preventDefault(); if (login.trim() && !change.isPending) change.mutate(login.trim()); }}>
+      <p className="mb-2 text-sm">填写本人使用的 GitHub 用户名，供下次项目同步时匹配作者。此设置只用于作者归属，仓库访问权限由项目绑定管理。</p>
+      <label className="block">GitHub 用户名<input className={`${inputClass} ml-2`} value={login} maxLength={120} autoCapitalize="none" spellCheck={false}
+        disabled={change.isPending} onChange={(event) => { change.reset(); setLogin(event.target.value); }} /></label>
+      <div className="my-2 flex gap-2"><button className={buttonClass} disabled={change.isPending || !login.trim()}>保存用户名</button>
+        <button className={buttonClass} type="button" disabled={change.isPending} onClick={() => change.mutate(null)}>清除作者映射</button></div>
+      {change.isPending && <p role="status">正在保存…</p>}
+      {change.isSuccess && <p role="status">{change.data.login ? `已保存 GitHub 用户名 @${change.data.login}。` : "已清除 GitHub 用户名映射。"}</p>}
+      {change.isError && <p role="alert">{change.error instanceof CApiError ? change.error.message : "保存失败，请重试。"}</p>}
+    </form>
+  </details>;
 }
 
 export function ActivityApiPage() {
@@ -90,6 +121,7 @@ export function ActivityApiPage() {
   return <>
     <PageHeader title={t("title")} description={td("activityDesc")} />
     <p className="mb-4 text-sm text-slate-600">{td("activityNote")}</p>
+    {data && <GithubAuthorForm key={userId} />}
     <div className="gp-tabs mb-4" aria-label={td("categoryLabel")}>{Object.entries(categoryLabels).map(([value, label]) => <button className={`gp-tab ${category === value ? "active" : ""}`} type="button" key={value} aria-pressed={category === value} onClick={() => updateQuery({ category: value === "all" ? null : value, page: null })}>{td(`categories.${label}`)}</button>)}</div>
     <form key={query.toString()} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault(); const input = new FormData(event.currentTarget);
@@ -109,7 +141,7 @@ export function ActivityApiPage() {
         const prefix = `/projects/${item.project_id}/`;
         const href = item.href.startsWith(prefix) && !/[\\\u0000-\u001f]/.test(item.href) ? item.href : null;
         return <article key={item.id} className="border-b border-slate-100 pb-3">
-          <p className="mb-1 text-xs text-slate-500">{td(`categories.${categoryLabels[item.category]}`)} · {item.project_name}</p>
+          <p className="mb-1 text-xs text-slate-500">{activityLabels[item.event_type] ?? td(`categories.${categoryLabels[item.category]}`)} · {item.project_name}</p>
           {href ? <Link className="gp-link" href={href}>{item.title}</Link> : <span>{item.title}</span>}
           <p className="mt-1 text-xs text-slate-500"><time dateTime={item.occurred_at}>{formatDate(item.occurred_at, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></p>
         </article>;

@@ -11,10 +11,63 @@ from app.api.responses import success
 from app.db.models import Milestone, ProjectMember, Task, User
 from app.db.session import get_session
 from app.modules.c.permissions import get_project_access
+from app.modules.d.integrity import enter_verification, latest_check, run_check
 from app.modules.d.models import Risk, RiskEvent
+from app.modules.d.verification import latest_verification, run_verification
 
 router = APIRouter(prefix="/api/d", tags=["d"])
 risk_router = APIRouter(prefix="/api/v1/projects", tags=["d-risks"])
+acceptance_router = APIRouter(prefix="/api/v1/projects", tags=["d-acceptance"])
+
+
+@acceptance_router.get("/{project_id}/tasks/{task_id}/integrity-check")
+def read_integrity_check(
+    project_id: UUID,
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": latest_check(session, project_id, task_id, user)}
+
+
+@acceptance_router.post("/{project_id}/tasks/{task_id}/integrity-check")
+def create_integrity_check(
+    project_id: UUID,
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": run_check(session, project_id, task_id, user)}
+
+
+@acceptance_router.post("/{project_id}/tasks/{task_id}/enter-verification")
+def submit_for_verification(
+    project_id: UUID,
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": enter_verification(session, project_id, task_id, user)}
+
+
+@acceptance_router.get("/{project_id}/tasks/{task_id}/verification")
+def read_verification(
+    project_id: UUID,
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": latest_verification(session, project_id, task_id, user)}
+
+
+@acceptance_router.post("/{project_id}/tasks/{task_id}/verification")
+def create_verification(
+    project_id: UUID,
+    task_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": run_verification(session, project_id, task_id, user)}
 
 
 @router.get("/ready", include_in_schema=False)

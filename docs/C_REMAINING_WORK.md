@@ -1,5 +1,8 @@
 # C implementation status and remaining work
 
+2026-11-11: see the [weekly report and 35-item C checklist](weekly/2026-11-09-C.md)
+for the latest branch review, delivered integrations and remaining team dependencies.
+
 ## Current correction — 2026-10-14
 
 2026-11-01 follow-up: PR #17 is merged and C is synchronized with `develop`

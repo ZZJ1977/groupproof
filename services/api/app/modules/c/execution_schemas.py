@@ -38,6 +38,9 @@ class TaskDependencyView(BaseModel):
 
 
 class TaskExecutionView(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    temporary_read: bool = False
     task_id: UUID
     project_id: UUID
     status: TaskStatus

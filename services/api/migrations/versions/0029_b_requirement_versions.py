@@ -1,7 +1,7 @@
 """B-5 requirement management: numbers, versions, criteria to re-check.
 
-Revision ID: 0023
-Revises: 0022
+Revision ID: 0029
+Revises: 0028
 
 - b_project_counters / b_requirement_codes: R-001 style numbers, never reused;
 - b_requirement_versions: every saved state; after the freeze a reason is required;
@@ -15,8 +15,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0023"
-down_revision: str | None = "0022"
+revision: str = "0029"
+down_revision: str | None = "0028"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
