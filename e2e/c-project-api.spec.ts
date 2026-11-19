@@ -376,6 +376,40 @@ test("C5-02 project upload verifies bytes before registration and reuses the rec
   expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
 });
 
+for (const failureCase of ["different bytes of the same size", "missing stored object"] as const) {
+  test(`C5-02 rejects ${failureCase} and uploads again before appending a version`, async ({ page }) => {
+    await contextRoute(page);
+    const { payload, stage } = await storageRoutes(page, "project", projectId);
+    if (failureCase === "missing stored object") stage.storedBytes = null;
+    else {
+      stage.storedBytes = Buffer.from(payload.buffer);
+      stage.storedBytes[0] ^= 1;
+    }
+    let appends = 0;
+    await page.route(`**${base}/files**`, (route) => {
+      if (route.request().method() === "POST") {
+        appends++;
+        return success(route, file);
+      }
+      return success(route, new URL(route.request().url()).pathname.endsWith(`/${fileId}`) ? file : fileRows(file));
+    });
+    await page.goto(`/projects/${projectId}/files?file=${fileId}`);
+    await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
+    await page.getByLabel("版本说明", { exact: true }).fill("追加说明");
+    const submit = page.getByRole("button", { name: "上传并保存草稿", exact: true });
+    await submit.click();
+    const message = failureCase === "missing stored object" ? "还没有收到文件" : "存储内容与所选文件不一致";
+    await expect(page.getByRole("alert").filter({ hasText: message })).toBeVisible();
+    expect(appends).toBe(0);
+    await expect(page.getByRole("button", { name: "申请下载 v1", exact: true })).toBeEnabled();
+    stage.storedBytes = payload.buffer;
+    await submit.click();
+    await expect(page.getByText("文件草稿版本已保存。", { exact: true })).toBeVisible();
+    expect(appends).toBe(1);
+    expect(stage).toMatchObject({ issued: 2, put: 2, checked: 2 });
+  });
+}
+
 test("C5-02 permissions revoked during upload prevent file registration and hide the editor", async ({ page }) => {
   await contextRoute(page);
   const { payload, stage } = await storageRoutes(page, "project", projectId);
@@ -428,6 +462,34 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await expect(secondHistory).toContainText("设为正式 · 确认课程要求的最终内容");
   expect(attempts).toHaveLength(2); expect(attempts[0].key).toBeTruthy(); expect(attempts[1]).toEqual(attempts[0]);
   expect(attempts[0].body).toEqual({ version_id: v2Id, expected_version: 2, reason: "确认课程要求的最终内容" });
+});
+
+test("C5-02 returning to an evidence file reference discards a pending download for another version", async ({ page }) => {
+  await contextRoute(page);
+  await page.route(`**${base}/files**`, (route) => new URL(route.request().url()).pathname.endsWith(`/${fileId}`) ? success(route, file) : success(route, fileRows(file)));
+  const signature = `${base}/files/${fileId}/versions/${v2Id}/link`;
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(`**${signature}?**`, async (route) => {
+    await pending;
+    return success(route, { version_id: v2Id, purpose: "download", url: "https://fixture.invalid/v2", expires_at: new Date(Date.now() + 60_000).toISOString() });
+  });
+  await page.goto(`/projects/${projectId}/files?file=${fileId}&version=${v1Id}`);
+  const oldVersion = page.getByRole("article", { name: "证据引用的版本 v1" });
+  await expect(oldVersion).toBeFocused();
+  await page.getByRole("button", { name: "查看版本", exact: true }).first().click();
+  const requested = page.waitForRequest((request) => new URL(request.url()).pathname === signature);
+  await page.getByRole("button", { name: "申请下载 v2", exact: true }).click();
+  await requested;
+  const responded = page.waitForResponse((response) => new URL(response.url()).pathname === signature);
+  try {
+    await page.goBack();
+    await expect(oldVersion).toBeFocused();
+  } finally {
+    release();
+  }
+  await (await responded).finished();
+  await expect(page.getByRole("link", { name: "下载文件", exact: true })).toHaveCount(0);
 });
 
 test("C5 signed links are validated, read-only files remain readable, and revocation clears previous content", async ({ page }) => {

@@ -39,8 +39,59 @@ async function setup(page: Page, readContext: () => Schema["CProjectContextDTO"]
   await page.route(`**${base}/evidence?**`, (route) => success(route, emptyEvidence));
   await page.route(`**${base}/tasks/${tid}/note?**`, (route) => success(route, note));
   await page.route(`**${base}/plan/tasks/${tid}/versions`, (route) => success(route, []));
+  await page.route(`**${base}/tasks/${tid}/verification/history`, (route) => success(route, []));
   await page.route(`**/api/v1/tasks/${tid}/execution`, (route) => success(route, execution));
 }
+
+const verificationRun = {
+  id: id(880), project_id: pid, task_id: tid, result: "passed", status: "completed", created_at: stamp,
+  invalidated_reason: null, formal_outcome_id: id(881), responsible_ids: [aid],
+  decisions: [{ actor_id: aid, decision: "confirmed", responsibility_share: 100, reason: "逐项核实后确认" }],
+  criteria: [{ criterion_id: cid, text: "请求符合契约", result: "passed", reason: "PR 已合并", remediation: null, evidence: [{ id: eid, version: 2 }] }],
+};
+
+test("C2-02 task verification reads criterion results and responsible decisions", async ({ page }) => {
+  test.setTimeout(90_000);
+  await setup(page);
+  await page.route(`**${base}/tasks/${tid}/verification/history`, route => success(route, [verificationRun]));
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=verification`);
+  await expect(page.getByText("已生成正式成果", { exact: true })).toBeVisible();
+  await expect(page.getByText("成员甲 · 已确认，承担 100% · 逐项核实后确认")).toBeVisible();
+  await expect(page.getByText("PR 已合并", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "查看证据（v2）" })).toHaveAttribute("href", `/projects/${pid}/evidence?evidence=${eid}`);
+  await expect(page.getByRole("link", { name: "打开验收与负责人确认" })).toHaveAttribute("href", `/projects/${pid}/tasks/${tid}/verification`);
+});
+
+test("C3 task verification refresh removes superseded formal results and conceals denied history", async ({ page }) => {
+  await setup(page);
+  let invalidated = false;
+  await page.route(`**${base}/tasks/${tid}/verification/history`, route => success(route, [{
+    ...verificationRun,
+    invalidated_reason: invalidated ? "证据已撤回" : null,
+    formal_outcome_id: invalidated ? null : verificationRun.formal_outcome_id,
+  }]));
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=verification`);
+  await expect(page.getByText("已生成正式成果", { exact: true })).toBeVisible();
+  invalidated = true;
+  await page.getByRole("button", { name: "刷新任务" }).click();
+  await expect(page.getByText("已失效：证据已撤回", { exact: true })).toBeVisible();
+  await expect(page.getByText("已生成正式成果", { exact: true })).toHaveCount(0);
+  await page.route(`**${base}/tasks/${tid}/verification/history`, route => failure(route, 403));
+  await page.getByRole("button", { name: "刷新任务" }).click();
+  await expect(page.getByText("PR 已合并", { exact: true })).toHaveCount(0);
+});
+
+test("C2-02 task verification rejects history belonging to another task and retries", async ({ page }) => {
+  await setup(page);
+  let wrongTask = true;
+  await page.route(`**${base}/tasks/${tid}/verification/history`, route => success(route, [{ ...verificationRun, task_id: wrongTask ? id(999) : tid }]));
+  await page.goto(`/projects/${pid}/tasks/${tid}?tab=verification`);
+  await expect(page.getByText("PR 已合并", { exact: true })).toHaveCount(0);
+  await expect(page.locator("main").getByRole("alert").first()).toBeVisible();
+  wrongTask = false;
+  await page.getByRole("button", { name: "刷新任务" }).click();
+  await expect(page.getByText("PR 已合并", { exact: true })).toBeVisible();
+});
 
 test("C7-07 a scoped reader opens one task or evidence without the project catalogue", async ({ page }) => {
   await setup(page);
@@ -294,7 +345,7 @@ test("C2 start/progress use server permissions and CAS; 100 percent retains in-p
   await page.reload();
   await expect(page.getByRole("button", { name: "执行历史", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "任务验收", exact: true }).click();
-  await expect(page.getByText(/验收查询和结论服务尚未接入/)).toBeVisible();
+  await expect(page.getByText("尚无验收记录。", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "任务讨论", exact: true }).click();
   await expect(page.getByText("没有符合条件的讨论", { exact: true })).toBeVisible();
   state = { ...state, can_update_progress: false, read_only: true };
