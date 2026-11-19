@@ -38,6 +38,7 @@ from app.modules.d import (
     reporting,
     risk_checks,
     teacher_overview,
+    teacher_workspace,
     verification,
 )
 from app.modules.d.models import (
@@ -114,6 +115,7 @@ def db():
         "project_reopens",
         "a_github_repo_links",
         "a_feishu_chat_links",
+        "a_action_items",
         "reports",
         "report_snapshots",
         "report_artifacts",
@@ -1173,3 +1175,24 @@ def test_week7_project_settings_archive_gate_and_reopen_provenance(db, scope, mo
     copied_id = UUID(full.data["new_project_id"])
     assert db.scalar(select(Task).where(Task.project_id == copied_id)).title == scope.task.title
     assert db.scalar(select(Task).where(Task.project_id == copied_id)).status == "not_started"
+
+
+def test_week7_teacher_group_listing_and_lazy_detail(db, scope, monkeypatch):
+    scope.user.global_role = "teacher"
+    db.commit()
+    request = SimpleNamespace(state=SimpleNamespace(request_id="teacher-week7"))
+    page = teacher_workspace.teacher_groups(
+        scope.course.id, request, 1, 20, "name", "", db, scope.user
+    )
+    assert page.data["total"] == 1
+    assert page.data["items"][0]["tasks"] == 1
+    monkeypatch.setattr(
+        teacher_workspace, "get_project_access", lambda *a, **k: SimpleNamespace(staff=True)
+    )
+    module_rows = teacher_workspace.teacher_modules(scope.project.id, request, db, scope.user)
+    assert len(module_rows.data) == 1
+    detail = teacher_workspace.teacher_module_detail(
+        scope.project.id, scope.task.module_id, request, db, scope.user
+    )
+    assert detail.data["tasks"][0]["formal_acceptance"] == 0
+    assert detail.data["tasks"][0]["formal_evidence"] == 0
