@@ -27,11 +27,12 @@ from app.modules.d.reporting import router as d_report_router
 from app.modules.d.router import acceptance_router as d_acceptance_router
 from app.modules.d.router import risk_router as d_risk_router
 from app.modules.d.router import router as d_router
+from app.modules.d.teacher_course import project_router as d_teacher_template_router
+from app.modules.d.teacher_course import router as d_teacher_course_router
 from app.modules.d.teacher_overview import router as d_teacher_overview_router
+from app.modules.d.teacher_reports import router as d_teacher_reports_router
 from app.modules.d.teacher_workspace import project_router as d_teacher_project_router
 from app.modules.d.teacher_workspace import router as d_teacher_workspace_router
-from app.modules.d.teacher_reports import router as d_teacher_reports_router
-from app.modules.d.teacher_course import router as d_teacher_course_router
 from app.modules.tasks.router import router as tasks_router
 from app.observability import init_sentry
 
@@ -104,6 +105,7 @@ app.include_router(d_teacher_workspace_router)
 app.include_router(d_teacher_project_router)
 app.include_router(d_teacher_reports_router)
 app.include_router(d_teacher_course_router)
+app.include_router(d_teacher_template_router)
 app.include_router(d_acceptance_router)
 app.include_router(examples_router)
 app.include_router(tasks_router)

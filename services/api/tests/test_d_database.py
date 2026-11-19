@@ -54,6 +54,7 @@ from app.modules.d.models import (
     CourseGrade,
     CourseRuleConfirmation,
     CourseRuleVersion,
+    CourseTemplateApplication,
     CriterionResult,
     FormalOutcome,
     IntegrityCheck,
@@ -121,6 +122,7 @@ def db():
         "project_reopens",
         "course_rule_versions",
         "course_rule_confirmations",
+        "course_template_applications",
         "teacher_report_comments",
         "course_grades",
         "a_github_repo_links",
@@ -1147,6 +1149,22 @@ def test_week7_project_settings_archive_gate_and_reopen_provenance(db, scope, mo
     db.add(
         ProjectMember(id=uuid4(), project_id=scope.project.id, user_id=scope.user.id, role="leader")
     )
+    db.add(
+        CourseRuleVersion(
+            course_id=scope.course.id,
+            version_no=1,
+            actor_id=scope.user.id,
+            reason="Template",
+            effective_at=datetime.now(UTC),
+            rules={
+                "template": {
+                    "milestones": [
+                        {"name": "New review", "required_materials": ["Demo"], "weight": 100}
+                    ]
+                }
+            },
+        )
+    )
     db.commit()
     result = project_lifecycle.reopen_project(
         scope.project.id,
@@ -1159,6 +1177,13 @@ def test_week7_project_settings_archive_gate_and_reopen_provenance(db, scope, mo
     )
     new_id = UUID(result.data["new_project_id"])
     assert db.get(Project, new_id).lifecycle == "active"
+    assert db.scalar(select(Milestone).where(Milestone.project_id == new_id)).title == "New review"
+    assert (
+        db.scalar(
+            select(CourseTemplateApplication).where(CourseTemplateApplication.project_id == new_id)
+        ).template["milestones"][0]["weight"]
+        == 100
+    )
     assert scope.project.lifecycle == "archived"
     assert (
         db.scalar(select(ProjectReopen).where(ProjectReopen.new_project_id == new_id)).reason

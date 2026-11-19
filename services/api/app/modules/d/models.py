@@ -464,8 +464,21 @@ class CourseRuleConfirmation(Base):
     version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"), index=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"))
     actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
-    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     __table_args__ = (UniqueConstraint("version_id", "project_id"),)
+
+
+class CourseTemplateApplication(Base):
+    """Immutable rule version and template attached to a newly created project."""
+
+    __tablename__ = "course_template_applications"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"))
+    template: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class TeacherReportComment(Base):

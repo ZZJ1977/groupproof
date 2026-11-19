@@ -16,10 +16,32 @@ from app.db.session import get_session
 from app.modules.a.models import Notification
 from app.modules.c.governance_models import CourseLifecycleDecision
 from app.modules.c.permissions import get_project_access
-from app.modules.d.models import CourseRuleConfirmation, CourseRuleVersion, ProjectArchive
+from app.modules.d.models import (
+    CourseRuleConfirmation,
+    CourseRuleVersion,
+    CourseTemplateApplication,
+    ProjectArchive,
+)
 from app.modules.d.teacher_workspace import allowed_project_ids, course_staff
 
 router = APIRouter(prefix="/api/v1/courses", tags=["d-teacher-course"])
+project_router = APIRouter(prefix="/api/v1/projects", tags=["d-teacher-course"])
+
+
+@project_router.get("/{project_id}/applied-course-template")
+def applied_template(
+    project_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    get_project_access(session, user, project_id)
+    row = session.scalar(
+        select(CourseTemplateApplication).where(CourseTemplateApplication.project_id == project_id)
+    )
+    return success(
+        {"version_id": str(row.version_id), "template": row.template} if row else None, request
+    )
 
 
 class CourseSettingsInput(BaseModel):

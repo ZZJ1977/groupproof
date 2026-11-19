@@ -35,6 +35,8 @@ from app.modules.a.models import FeishuChatLink, GithubRepoLink
 from app.modules.c.permissions import get_project_access
 from app.modules.d.models import (
     ContributionSnapshot,
+    CourseRuleVersion,
+    CourseTemplateApplication,
     ProjectArchive,
     ProjectReopen,
     Report,
@@ -421,6 +423,32 @@ def reopen_project(
                     snapshot_json=plan.snapshot_json,
                 )
             )
+    elif old.course_id:
+        rule = session.scalar(
+            select(CourseRuleVersion)
+            .where(CourseRuleVersion.course_id == old.course_id)
+            .order_by(CourseRuleVersion.version_no.desc())
+            .limit(1)
+        )
+        template = rule.rules.get("template") if rule else None
+        if template:
+            session.add(
+                CourseTemplateApplication(project_id=new.id, version_id=rule.id, template=template)
+            )
+            for index, item in enumerate(template["milestones"]):
+                session.add(
+                    Milestone(
+                        id=uuid4(),
+                        project_id=new.id,
+                        title=item["name"],
+                        description="必交材料："
+                        + "、".join(item["required_materials"])
+                        + f"；权重：{item['weight']}%",
+                        status="not_started",
+                        progress_percent=0,
+                        sort_order=index,
+                    )
+                )
     session.add(
         ProjectReopen(
             source_project_id=old.id,
