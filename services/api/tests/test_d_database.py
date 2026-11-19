@@ -37,7 +37,9 @@ from app.modules.d import (
     report_tasks,
     reporting,
     risk_checks,
+    teacher_course,
     teacher_overview,
+    teacher_reports,
     teacher_workspace,
     verification,
 )
@@ -49,6 +51,9 @@ from app.modules.d.models import (
     ContributionItem,
     ContributionItemTask,
     ContributionSnapshot,
+    CourseGrade,
+    CourseRuleConfirmation,
+    CourseRuleVersion,
     CriterionResult,
     FormalOutcome,
     IntegrityCheck,
@@ -60,6 +65,7 @@ from app.modules.d.models import (
     ReportReview,
     ReportSnapshot,
     Risk,
+    TeacherReportComment,
     VerificationRun,
 )
 
@@ -113,9 +119,15 @@ def db():
         "contribution_archives",
         "project_archives",
         "project_reopens",
+        "course_rule_versions",
+        "course_rule_confirmations",
+        "teacher_report_comments",
+        "course_grades",
         "a_github_repo_links",
         "a_feishu_chat_links",
         "a_action_items",
+        "a_notifications",
+        "c_course_lifecycle_decisions",
         "reports",
         "report_snapshots",
         "report_artifacts",
@@ -1196,3 +1208,120 @@ def test_week7_teacher_group_listing_and_lazy_detail(db, scope, monkeypatch):
     )
     assert detail.data["tasks"][0]["formal_acceptance"] == 0
     assert detail.data["tasks"][0]["formal_evidence"] == 0
+
+
+def test_week7_teacher_rules_confirm_and_end(db, scope, monkeypatch):
+    scope.user.global_role = "teacher"
+    db.commit()
+    request = SimpleNamespace(state=SimpleNamespace(request_id="course-week7"))
+    template = teacher_course.TemplateInput(
+        milestones=[teacher_course.MilestoneTemplate(name="Review", weight=100)],
+        reason="First teaching template",
+    )
+    response = teacher_course.change_template(scope.course.id, template, request, db, scope.user)
+    assert response.data["version"] == 1
+    settings = teacher_course.CourseSettingsInput(
+        name="Updated course",
+        grouping_mode="free",
+        min_group_size=1,
+        max_group_size=5,
+        reason="Change group size",
+    )
+    response = teacher_course.change_settings(scope.course.id, settings, request, db, scope.user)
+    assert response.data["version"] == 2
+    assert response.data["rules"]["template"]["milestones"][0]["name"] == "Review"
+    versions = list(db.scalars(select(CourseRuleVersion).order_by(CourseRuleVersion.version_no)))
+    assert versions[0].rules["template"] == versions[1].rules["template"]
+    monkeypatch.setattr(
+        teacher_course,
+        "get_project_access",
+        lambda *a, **k: SimpleNamespace(project=scope.project, course=scope.course, leader=True),
+    )
+    teacher_course.confirm_rules(
+        scope.course.id, versions[1].id, scope.project.id, request, db, scope.user
+    )
+    assert db.scalar(select(CourseRuleConfirmation)).actor_id == scope.user.id
+    ended = teacher_course.end_course(
+        scope.course.id,
+        teacher_course.EndInput(reason="Semester finished"),
+        request,
+        db,
+        scope.user,
+    )
+    assert ended.data["status"] == "ended"
+    assert scope.project.lifecycle == "archived"
+    assert db.scalar(select(ProjectArchive)).snapshot["course_end_reason"] == "Semester finished"
+    with pytest.raises(ApiError) as error:
+        teacher_course.change_template(scope.course.id, template, request, db, scope.user)
+    assert error.value.code == "COURSE_READ_ONLY"
+
+
+def test_week7_grade_uses_finalized_report_contribution_basis(db, scope, monkeypatch):
+    scope.user.global_role = "teacher"
+    calculation = ContributionCalculation(
+        project_id=scope.project.id,
+        formula_version="test-v1",
+        basis_version="test",
+        calculated_by=scope.user.id,
+    )
+    db.add(calculation)
+    db.flush()
+    contribution_snapshot = ContributionSnapshot(
+        project_id=scope.project.id,
+        calculation_id=calculation.id,
+        version_no=1,
+        status="frozen",
+        created_by=scope.user.id,
+    )
+    db.add(contribution_snapshot)
+    db.flush()
+    db.add(
+        ContributionItem(
+            snapshot_id=contribution_snapshot.id,
+            user_id=scope.user.id,
+            task_credit=100,
+            collaboration_credit=0,
+            share=100,
+            acceptance_rate=100,
+            status="formal",
+        )
+    )
+    report = Report(project_id=scope.project.id, created_by=scope.user.id, status="finalized")
+    db.add(report)
+    db.flush()
+    snapshot = ReportSnapshot(
+        report_id=report.id,
+        version_no=1,
+        status="finalized",
+        contribution_snapshot_id=contribution_snapshot.id,
+        data_snapshot={"sections": {}, "evidence_records": []},
+    )
+    db.add(snapshot)
+    db.commit()
+    monkeypatch.setattr(
+        teacher_reports,
+        "get_project_access",
+        lambda *a, **k: SimpleNamespace(teacher=True, staff=True, course=scope.course),
+    )
+    request = SimpleNamespace(state=SimpleNamespace(request_id="grade-week7"))
+    teacher_reports.comment_report(
+        scope.project.id,
+        teacher_reports.CommentInput(body="Needs stronger evidence"),
+        request,
+        db,
+        scope.user,
+    )
+    teacher_reports.grade_report(
+        scope.project.id,
+        teacher_reports.GradeInput(score=87, comment="Good overall"),
+        request,
+        db,
+        scope.user,
+    )
+    grade = db.scalar(select(CourseGrade))
+    assert grade.report_snapshot_id == snapshot.id
+    assert (
+        db.get(ContributionArchive, grade.contribution_archive_id).snapshot_id
+        == contribution_snapshot.id
+    )
+    assert db.scalar(select(TeacherReportComment)).body == "Needs stronger evidence"

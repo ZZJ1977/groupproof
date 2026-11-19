@@ -445,6 +445,53 @@ class ProjectReopen(Base):
     __table_args__ = (CheckConstraint("copy_scope IN ('full','baseline')"),)
 
 
+class CourseRuleVersion(Base):
+    __tablename__ = "course_rule_versions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    rules: Mapped[dict] = mapped_column(DocumentJSON)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("course_id", "version_no"),)
+
+
+class CourseRuleConfirmation(Base):
+    __tablename__ = "course_rule_confirmations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("version_id", "project_id"),)
+
+
+class TeacherReportComment(Base):
+    __tablename__ = "teacher_report_comments"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CourseGrade(Base):
+    __tablename__ = "course_grades"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    report_snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    contribution_archive_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_archives.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    score: Mapped[float] = mapped_column(Numeric(5, 2))
+    comment: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("score >= 0 AND score <= 100"),)
+
+
 class Report(Base):
     """Mutable report identity whose generated versions are immutable snapshots."""
 

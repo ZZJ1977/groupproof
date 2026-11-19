@@ -59,11 +59,25 @@ def latest_contribution(session: Session, project_id: UUID) -> ContributionSnaps
 
 
 def archive_contribution(
-    session: Session, project_id: UUID, source_kind: str, source_id: UUID
+    session: Session,
+    project_id: UUID,
+    source_kind: str,
+    source_id: UUID,
+    snapshot_id: UUID | None = None,
 ) -> ContributionArchive | None:
-    snapshot = latest_contribution(session, project_id)
+    snapshot = (
+        session.get(ContributionSnapshot, snapshot_id)
+        if snapshot_id
+        else latest_contribution(session, project_id)
+    )
     if snapshot is None:
         return None
+    if snapshot.project_id != project_id:
+        raise ApiError(
+            422,
+            "CONTRIBUTION_SNAPSHOT_INVALID",
+            "Contribution snapshot belongs to another project.",
+        )
     existing = session.scalar(
         select(ContributionArchive).where(
             ContributionArchive.source_kind == source_kind,
