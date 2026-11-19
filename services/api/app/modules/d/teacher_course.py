@@ -11,7 +11,16 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.api.errors import ApiError
 from app.api.responses import success
-from app.db.models import Course, CourseMember, Project, ProjectGroup, ProjectMember, User
+from app.db.models import (
+    Course,
+    CourseMember,
+    GroupMember,
+    Milestone,
+    Project,
+    ProjectGroup,
+    ProjectMember,
+    User,
+)
 from app.db.session import get_session
 from app.modules.a.models import Notification
 from app.modules.c.governance_models import CourseLifecycleDecision
@@ -26,6 +35,104 @@ from app.modules.d.teacher_workspace import allowed_project_ids, course_staff
 
 router = APIRouter(prefix="/api/v1/courses", tags=["d-teacher-course"])
 project_router = APIRouter(prefix="/api/v1/projects", tags=["d-teacher-course"])
+
+
+class CourseProjectInput(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/{course_id}/groups/{group_id}/template-projects", status_code=201)
+def create_template_project(
+    course_id: UUID,
+    group_id: UUID,
+    payload: CourseProjectInput,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    course = session.scalar(select(Course).where(Course.id == course_id).with_for_update())
+    group = session.scalar(
+        select(ProjectGroup).where(ProjectGroup.id == group_id).with_for_update()
+    )
+    if course is None or group is None or group.course_id != course_id:
+        raise ApiError(404, "GROUP_NOT_FOUND", "Course group not found.")
+    leader_member = session.scalar(
+        select(GroupMember.id)
+        .where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == user.id,
+            GroupMember.left_at.is_(None),
+        )
+        .limit(1)
+    )
+    if user.status != "active" or group.leader_id != user.id or leader_member is None:
+        raise ApiError(403, "PROJECT_CREATE_DENIED", "Only the group leader may create a project.")
+    if course.status != "active":
+        raise ApiError(403, "COURSE_READ_ONLY", "Only active courses accept new projects.")
+    existing = session.scalar(
+        select(Project.id)
+        .where(Project.group_id == group_id, Project.lifecycle == "active")
+        .limit(1)
+    )
+    if existing:
+        raise ApiError(409, "GROUP_PROJECT_EXISTS", "This group already has an active project.")
+    rule = latest_rule(session, course_id)
+    template = rule.rules.get("template") if rule else None
+    if not template:
+        raise ApiError(409, "COURSE_TEMPLATE_MISSING", "Set a course template first.")
+    project = Project(
+        id=uuid4(),
+        course_id=course_id,
+        group_id=group_id,
+        name=payload.name.strip(),
+        description=payload.description,
+        setup_status="draft",
+        lifecycle="active",
+        final_deadline=course.project_deadline,
+    )
+    session.add(project)
+    session.flush()
+    member_ids = set(
+        session.scalars(
+            select(GroupMember.user_id).where(
+                GroupMember.group_id == group_id, GroupMember.left_at.is_(None)
+            )
+        )
+    )
+    member_ids.add(group.leader_id)
+    for member_id in member_ids:
+        session.add(
+            ProjectMember(
+                id=uuid4(),
+                project_id=project.id,
+                user_id=member_id,
+                role="leader" if member_id == group.leader_id else "member",
+            )
+        )
+    apply_template(session, project.id, rule, template)
+    session.commit()
+    return success({"project_id": str(project.id), "template_version": rule.version_no}, request)
+
+
+def apply_template(session: Session, project_id: UUID, rule: CourseRuleVersion, template: dict):
+    session.add(
+        CourseTemplateApplication(project_id=project_id, version_id=rule.id, template=template)
+    )
+    for index, item in enumerate(template["milestones"]):
+        session.add(
+            Milestone(
+                id=uuid4(),
+                project_id=project_id,
+                title=item["name"],
+                description="必交材料："
+                + "、".join(item["required_materials"])
+                + f"；权重：{item['weight']}%",
+                status="not_started",
+                progress_percent=0,
+                sort_order=index,
+            )
+        )
 
 
 @project_router.get("/{project_id}/applied-course-template")

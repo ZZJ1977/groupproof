@@ -36,11 +36,11 @@ from app.modules.c.permissions import get_project_access
 from app.modules.d.models import (
     ContributionSnapshot,
     CourseRuleVersion,
-    CourseTemplateApplication,
     ProjectArchive,
     ProjectReopen,
     Report,
 )
+from app.modules.d.teacher_course import apply_template
 
 router = APIRouter(prefix="/api/v1/projects", tags=["d-project-lifecycle"])
 course_router = APIRouter(prefix="/api/v1/courses", tags=["d-project-lifecycle"])
@@ -432,23 +432,7 @@ def reopen_project(
         )
         template = rule.rules.get("template") if rule else None
         if template:
-            session.add(
-                CourseTemplateApplication(project_id=new.id, version_id=rule.id, template=template)
-            )
-            for index, item in enumerate(template["milestones"]):
-                session.add(
-                    Milestone(
-                        id=uuid4(),
-                        project_id=new.id,
-                        title=item["name"],
-                        description="必交材料："
-                        + "、".join(item["required_materials"])
-                        + f"；权重：{item['weight']}%",
-                        status="not_started",
-                        progress_percent=0,
-                        sort_order=index,
-                    )
-                )
+            apply_template(session, new.id, rule, template)
     session.add(
         ProjectReopen(
             source_project_id=old.id,
