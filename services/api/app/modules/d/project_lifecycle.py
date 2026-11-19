@@ -352,7 +352,7 @@ def reopen_project(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    access = get_project_access(session, user, project_id, lock=True)
+    access = get_project_access(session, user, project_id, lock=True, allow_readonly=True)
     if not (access.leader or access.teacher) or access.project.lifecycle != "archived":
         raise ApiError(
             403, "PROJECT_REOPEN_DENIED", "Only an archived project's leader or teacher may reopen."

@@ -150,6 +150,10 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
             "contribution_members": len(shares),
         },
         "sections": sections,
+        "evidence_records": [
+            {"id": str(item.id), "task_id": str(item.task_id), "title": item.title}
+            for item in evidence
+        ],
     }
 
 
@@ -306,7 +310,9 @@ def refresh_report(
         )
         session.add(version)
         session.flush()
-        archive_contribution(session, project_id, "report", version.id)
+        archive_contribution(
+            session, project_id, "report", version.id, version.contribution_snapshot_id
+        )
         report.status = "generating"
         report.includes_appendix = payload.includes_appendix
         report.lock_version += 1
