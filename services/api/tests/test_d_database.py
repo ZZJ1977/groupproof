@@ -20,8 +20,10 @@ from app.db.models import (
     AcceptanceCriterion,
     Course,
     FunctionalModule,
+    GroupMember,
     Milestone,
     Project,
+    ProjectGroup,
     ProjectMember,
     Task,
     TaskAssignee,
@@ -87,6 +89,7 @@ def db():
         "courses",
         "course_staff",
         "groups",
+        "group_members",
         "projects",
         "functional_modules",
         "requirements",
@@ -1350,3 +1353,57 @@ def test_week7_grade_uses_finalized_report_contribution_basis(db, scope, monkeyp
         == contribution_snapshot.id
     )
     assert db.scalar(select(TeacherReportComment)).body == "Needs stronger evidence"
+
+
+def test_week7_new_course_project_binds_current_template(db, scope):
+    group = ProjectGroup(
+        id=uuid4(), course_id=scope.course.id, leader_id=scope.user.id, name="Fresh group"
+    )
+    db.add(group)
+    db.flush()
+    db.add(GroupMember(id=uuid4(), group_id=group.id, user_id=scope.user.id, role="leader"))
+    db.add(
+        CourseRuleVersion(
+            course_id=scope.course.id,
+            version_no=1,
+            actor_id=scope.user.id,
+            reason="Required milestone",
+            effective_at=datetime.now(UTC),
+            rules={
+                "template": {
+                    "milestones": [{"name": "Demo", "required_materials": ["Video"], "weight": 100}]
+                }
+            },
+        )
+    )
+    db.commit()
+    request = SimpleNamespace(state=SimpleNamespace(request_id="new-course-project"))
+    response = teacher_course.create_template_project(
+        scope.course.id,
+        group.id,
+        teacher_course.CourseProjectInput(name="New project"),
+        request,
+        db,
+        scope.user,
+    )
+    project_id = UUID(response.data["project_id"])
+    assert response.data["template_version"] == 1
+    assert db.scalar(select(Milestone).where(Milestone.project_id == project_id)).title == "Demo"
+    assert (
+        db.scalar(
+            select(CourseTemplateApplication).where(
+                CourseTemplateApplication.project_id == project_id
+            )
+        ).template["milestones"][0]["weight"]
+        == 100
+    )
+    with pytest.raises(ApiError) as error:
+        teacher_course.create_template_project(
+            scope.course.id,
+            group.id,
+            teacher_course.CourseProjectInput(name="Duplicate"),
+            request,
+            db,
+            scope.user,
+        )
+    assert error.value.code == "GROUP_PROJECT_EXISTS"
