@@ -101,11 +101,15 @@ def test_portable_uuid_columns_preserve_numeric_looking_hex(db):
     )
     db.add(user)
     db.flush()
+    dialect = db.get_bind().dialect.name
+    assert dialect in {"sqlite", "postgresql"}
+    type_expression = "typeof(id)" if dialect == "sqlite" else "pg_typeof(id)::text"
+    expected_type = "text" if dialect == "sqlite" else "uuid"
     assert (
         db.execute(
-            text("SELECT typeof(id) FROM users WHERE username='uuid-scientific'")
+            text(f"SELECT {type_expression} FROM users WHERE username='uuid-scientific'")
         ).scalar_one()
-        == "text"
+        == expected_type
     )
     db.expunge_all()
     assert db.scalar(select(User).where(User.username == "uuid-scientific")).id == identifier
