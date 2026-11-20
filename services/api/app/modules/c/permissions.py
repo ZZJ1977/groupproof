@@ -132,12 +132,11 @@ def get_project_access(
     if project.group_id and (group is None or group.course_id != project.course_id):
         raise ApiError(409, "INVALID_PROJECT_CONTEXT", "Project group is inconsistent.")
     leader = member and (group.leader_id == user.id if group else membership.role == "leader")
-    if (
-        lock
-        and not allow_readonly
-        and (project.lifecycle != "active" or (course is not None and course.status == "ended"))
-    ):
-        raise ApiError(403, "PROJECT_READ_ONLY", "This project is read-only.")
+    if lock and not allow_readonly:
+        if course is not None and course.status == "ended":
+            raise ApiError(403, "COURSE_READ_ONLY", "The course has ended.")
+        if project.lifecycle != "active":
+            raise ApiError(403, "PROJECT_READ_ONLY", "This project is read-only.")
     latest_plan = one(
         select(PlanVersion)
         .where(PlanVersion.project_id == project.id)
