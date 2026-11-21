@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
 import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
 import { buttonVariants } from "@/components/ui/button";
+import { projectRequest } from "@/features/github-binding/integration-request";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
@@ -30,6 +31,37 @@ function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
       ? "你目前没有权限读取这些数据。"
       : error instanceof CApiError ? error.message : "数据暂不可用，请重试。";
   return <div role="alert" className="gp-panel p-4"><p>{message}</p><button className={`${buttonClass} mt-3`} type="button" onClick={retry}>重试</button></div>;
+}
+
+function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; userId: string }) {
+  const repos = useQuery({
+    queryKey: ["project-integration-repos", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<unknown[]>(`/api/v1/a/projects/${projectId}/github/repos`, { signal }),
+    retry: false,
+  });
+  const chats = useQuery({
+    queryKey: ["project-integration-chats", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<unknown[]>(`/api/v1/a/projects/${projectId}/feishu/chats`, { signal }),
+    retry: false,
+  });
+  const githubLabel = repos.isPending
+    ? "GitHub 状态读取中"
+    : repos.isError
+      ? "GitHub 状态暂不可用"
+      : repos.data.length > 0
+        ? `GitHub 已连接 · ${repos.data.length} 个仓库`
+        : "GitHub 未连接";
+  const feishuLabel = chats.isPending
+    ? "飞书状态读取中"
+    : chats.isError
+      ? "飞书状态暂不可用"
+      : chats.data.length > 0
+        ? `飞书已接入 · ${chats.data.length} 个群`
+        : "飞书未接入";
+  return <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+    <Link className="gp-link" href={`/projects/${encodeURIComponent(projectId)}/settings#github-integration`}>{githubLabel}</Link>
+    <Link className="gp-link" href={`/projects/${encodeURIComponent(projectId)}/settings#feishu-integration`}>{feishuLabel}</Link>
+  </div>;
 }
 
 /** Canonical queries only; workspace data and demo roles are never a data source. */
@@ -64,6 +96,7 @@ export function HomeApiPage() {
             <div className="flex flex-wrap items-center justify-between gap-2"><strong>{project.name}</strong><StatusBadge status={project.lifecycle} /></div>
             <p className="my-2 text-xs text-slate-600">任务进度：{project.progress === null ? "暂不可计算" : `${project.progress}%`}</p>
             {project.progress !== null && <ProgressBar value={project.progress} />}
+            <ProjectIntegrationStatus projectId={project.id} userId={userId} />
             <Link className="gp-link mt-2 inline-block text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>
           </div>)}</div>
           {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
@@ -71,7 +104,7 @@ export function HomeApiPage() {
         <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 门课程</p>
           <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div><strong>{course.name}</strong><span className="ml-2"><StatusBadge status={course.status} /></span></div>
-            <Link className="gp-link text-sm" href={`/courses/${encodeURIComponent(course.id)}/groups`}>查看课程</Link>
+            <Link className="gp-link text-sm" href={course.href}>查看课程</Link>
           </div>)}</div>
           {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
         </Panel>

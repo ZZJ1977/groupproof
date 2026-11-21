@@ -5,7 +5,6 @@ const me = "c-url-fixture"; // user id from the loopback session fixture
 const project = "00000000-0000-0000-0000-0000000000c3";
 const meta = { request_id: "b-e2e" };
 const ok = (route: Route, data: unknown, status = 200) => route.fulfill({ status, json: { data, meta } });
-const fail = (route: Route, status: number, code: string) => route.fulfill({ status, json: { error: { code, message: code }, meta } });
 const person = (id: string, name: string) => ({ id, name });
 const base = `**/api/v1/projects/${project}`;
 
@@ -20,6 +19,25 @@ async function mockSetup(page: Page, step: number, status = "draft") {
   await page.route(`${base}/overview`, (route) => ok(route, { ...overview, setup_status: status }));
 }
 
+async function mockEmptyRequirementList(page: Page) {
+  await page.route(`${base}/requirements?*`, (route) => ok(route, { items: [], total: 0, page: 1, page_size: 20, modules: [] }));
+}
+
+test("需求工作区无资料也可手动录入，无冲突时不显示冲突入口", async ({ page }) => {
+  await mockSetup(page, 1);
+  await mockEmptyRequirementList(page);
+  await page.route(`${base}/setup/requirements`, (route) => ok(route, board()));
+
+  await page.goto(`/projects/${project}/requirements`);
+
+  await expect(page.getByRole("heading", { name: "需求工作区" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "添加资料" })).toHaveAttribute("href", `/projects/${project}/setup#project-materials`);
+  await expect(page.getByRole("button", { name: "开始分析" })).toBeVisible();
+  await expect(page.getByLabel("新模块名称")).toBeVisible();
+  await expect(page.getByRole("button", { name: "冲突处理" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "保存并继续" })).toHaveCount(0);
+});
+
 test("B3-05 开始分析后显示处理中，完成后显示需求和出处", async ({ page }) => {
   await mockSetup(page, 3);
   let phase: "idle" | "processing" | "done" = "idle";
@@ -32,7 +50,8 @@ test("B3-05 开始分析后显示处理中，完成后显示需求和出处", as
     return ok(route, board({ latest_run: run("succeeded"), modules: [moduleRow()], requirements: [req("q1", "发布二手商品")] }));
   });
   await page.route(`${base}/analysis`, (route) => { phase = "processing"; return ok(route, run("processing"), 202); });
-  await page.goto(`/projects/${project}/setup`);
+  await mockEmptyRequirementList(page);
+  await page.goto(`/projects/${project}/requirements`);
   await page.getByRole("button", { name: "开始分析" }).click();
   await expect(page.getByText("正在分析资料，处理中…")).toBeVisible();
   await expect(page.getByText("发布二手商品")).toBeVisible({ timeout: 10_000 });
@@ -49,25 +68,25 @@ test("B3-05 AI 不可用时提示并可以手动录入", async ({ page }) => {
   await page.route(`${base}/setup/requirements`, (route) => ok(route, board({ latest_run: unavailable, modules, requirements })));
   await page.route(`${base}/modules`, (route) => { const row = { ...moduleRow(), origin: "manual", requirement_count: 0, name: route.request().postDataJSON().name }; modules.push(row); return ok(route, row, 201); });
   await page.route(`${base}/requirements`, (route) => { const body = route.request().postDataJSON(); const row = req("q9", body.title, { origin: "manual", edited_by_human: true, sources: [] }); requirements.push(row); return ok(route, row, 201); });
-  await page.goto(`/projects/${project}/setup`);
+  await mockEmptyRequirementList(page);
+  await page.goto(`/projects/${project}/requirements`);
   await expect(page.getByText("AI 暂不可用，请在下面手动录入模块和需求，流程可以照常走完。")).toBeVisible();
   await page.getByLabel("新模块名称").fill("账号模块");
   await page.getByRole("button", { name: "添加模块" }).click();
   await page.getByLabel("需求标题").fill("用户可以注册");
   await page.getByRole("button", { name: "添加需求" }).click();
   await expect(page.getByText("用户可以注册")).toBeVisible();
-  await expect(page.getByText("手工录入")).toBeVisible();
+  await expect(page.getByRole("listitem").getByText("手工录入", { exact: true })).toBeVisible();
 });
 
-test("B3-06 有未处理冲突时不能继续；不写理由不能提交处理", async ({ page }) => {
+test("B3-06 有未处理冲突时显示独立入口；不写理由不能提交处理", async ({ page }) => {
   await mockSetup(page, 4);
   const conflict = { id: "c1", left: req("q1", "商品需审核"), right: req("q2", "商品直接上架"), description: "两份资料对上架流程说法不一致", status: "open", resolution: null };
   await page.route(`${base}/setup/requirements`, (route) => ok(route, board({ setup_step: 4, modules: [moduleRow()], requirements: [conflict.left, conflict.right], conflicts: [conflict], open_conflicts: 1 })));
-  await page.route(`${base}/setup/advance`, (route) => fail(route, 409, "CONFLICTS_UNRESOLVED"));
-  await page.goto(`/projects/${project}/setup`);
+  await mockEmptyRequirementList(page);
+  await page.goto(`/projects/${project}/requirements`);
+  await page.getByRole("button", { name: "冲突处理" }).click();
   await expect(page.getByText("两份资料对上架流程说法不一致")).toBeVisible();
-  await page.getByRole("button", { name: "保存并继续" }).click();
-  await expect(page.getByText("还有冲突没有处理，处理完才能继续。")).toBeVisible();
   const resolve = page.getByRole("button", { name: "确认处理" });
   await expect(resolve).toBeDisabled();
   await page.getByLabel("理由（必填）").fill("以课程要求为准");
@@ -83,7 +102,9 @@ test("B3-07 清单未满足时“请大家确认”不可用", async ({ page }) 
     { key: "modules_have_owners", label: "每个模块都有负责人", kind: "rule", passed: false, detail: "交易模块", checked_by: null },
     { key: "requirements_reviewed", label: "组员已逐条看过需求清单", kind: "manual", passed: false, detail: null, checked_by: null },
   ] }));
-  await page.goto(`/projects/${project}/setup`);
+  await mockEmptyRequirementList(page);
+  await page.goto(`/projects/${project}/requirements`);
+  await page.getByRole("button", { name: "基线确认" }).click();
   await expect(page.getByText("每个模块都有负责人（未满足）：交易模块")).toBeVisible();
   await expect(page.getByRole("button", { name: "请大家确认" })).toBeDisabled();
 });
@@ -102,7 +123,9 @@ test("B3-08 待确认时本人可以确认；组长强推必须写原因；冻�
   await page.route(`${base}/baselines/current`, (route) => ok(route, baseline()));
   await page.route(`${base}/baselines/b1/confirmations/${me}`, (route) => { decisions.push(route.request().postDataJSON()); return ok(route, baseline()); });
   await page.route(`${base}/baselines/b1/force-freeze`, (route) => { frozen = true; return ok(route, baseline()); });
-  await page.goto(`/projects/${project}/setup`);
+  await mockEmptyRequirementList(page);
+  await page.goto(`/projects/${project}/requirements`);
+  await page.getByRole("button", { name: "基线确认" }).click();
   await expect(page.getByText("还需确认：我、李同学")).toBeVisible();
   await page.getByRole("button", { name: "确认基线" }).click();
   await expect.poll(() => decisions).toEqual([{ decision: "confirm" }]);

@@ -552,5 +552,13 @@
   "课程尚未发布规则，请联系任课教师发布后再创建项目。": "The course rules have not been published. Ask your instructor to publish them before creating a project.",
   "课程规则 v{0} · 当前 {1} 人，要求 {2}–{3} 人": "Course rules v{0} · {1} members; {2}–{3} required",
   "前往小组完善成员": "Manage group members",
+  "需求工作区": "Requirements workspace",
+  "手动整理、AI 分析和基线确认都是独立操作，不需按顺序走完向导。": "Manual organization, AI analysis, and baseline confirmation are independent actions; there is no required wizard order.",
+  "添加资料": "Add materials",
+  "整理需求": "Organize requirements",
+  "资料可以随时补充；AI 用于辅助整理，不会阻止手动录入。": "Materials can be added at any time. AI assists with organization and never blocks manual entry.",
+  "当前没有待处理冲突。": "There are no open conflicts.",
+  "需求清单": "Requirements list",
+  "查找、编辑并追踪已保存需求的版本和证据链。": "Find, edit, and trace versions and evidence for saved requirements.",
   "重试": "Retry"
 }

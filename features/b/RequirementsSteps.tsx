@@ -31,28 +31,6 @@ function useBoard(projectId: string) {
   return { query, refresh };
 }
 
-function Advance({ projectId, from, onDone, disabled }: { projectId: string; from: 2 | 3 | 4; onDone: () => void; disabled?: boolean }) {
-  const tr = useUiText();
-  const errorText = useBErrorMessage();
-  const cache = useQueryClient();
-  const { userId } = useWorkspace();
-  const [notice, setNotice] = useState<Notice>();
-  const go = useMutation({
-    mutationFn: () => bRequirementsApi.advance(projectId, from),
-    onSuccess: () => { void cache.invalidateQueries({ queryKey: ["b-project-setup", userId, projectId] }); onDone(); },
-    onError: (error) => setNotice({ tone: "error", text: errorText(error) }),
-  });
-  return <div className="flex flex-col items-end gap-2">
-    {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-    <button type="button" className={button} disabled={disabled || go.isPending} onClick={() => go.mutate()}>{go.isPending ? tr("正在保存…") : tr("保存并继续")}</button>
-  </div>;
-}
-
-/** Materials step footer (step 2 → 3). */
-export function MaterialsContinue({ projectId, onDone }: { projectId: string; onDone: () => void }) {
-  return <Advance projectId={projectId} from={2} onDone={onDone} />;
-}
-
 function RunStatus({ board }: { board: BRequirementsBoard }) {
   const tr = useUiText();
   const run = board.latest_run;
@@ -99,8 +77,8 @@ function RequirementRow({ projectId, row, board, onSaved }: { projectId: string;
   </li>;
 }
 
-/** Step 3 (B3-05): run the analysis or enter modules/requirements by hand. */
-export function RequirementsStep({ projectId, onDone }: { projectId: string; onDone: () => void }) {
+/** Requirements workspace: AI analysis is optional and manual entry is always available. */
+export function RequirementsStep({ projectId }: { projectId: string }) {
   const tr = useUiText();
   const errorText = useBErrorMessage();
   const { query, refresh } = useBoard(projectId);
@@ -144,7 +122,6 @@ export function RequirementsStep({ projectId, onDone }: { projectId: string; onD
         <div className="flex justify-end"><button type="submit" className={secondary} disabled={addRequirement.isPending || !draft.title.trim()}>{tr("添加需求")}</button></div>
       </form>}
     </Panel>}
-    {board.editable && <Advance projectId={projectId} from={3} onDone={onDone} disabled={running} />}
   </div>;
 }
 
@@ -177,8 +154,8 @@ function ConflictCard({ projectId, conflict, editable, onSaved }: { projectId: s
   </Panel>;
 }
 
-/** Step 4 (B3-06): every conflict needs a decision and a reason before continuing. */
-export function ConflictsStep({ projectId, onDone }: { projectId: string; onDone: () => void }) {
+/** Conflict workspace: rendered only when the requirements workspace has open conflicts. */
+export function ConflictsStep({ projectId }: { projectId: string }) {
   const tr = useUiText();
   const errorText = useBErrorMessage();
   const { query, refresh } = useBoard(projectId);
@@ -189,7 +166,6 @@ export function ConflictsStep({ projectId, onDone }: { projectId: string; onDone
     {board.conflicts.length === 0 ? <Panel><EmptyState title={tr("没有发现冲突")} description={tr("可以直接进入基线确认。")} /></Panel>
       : board.conflicts.map((conflict) => <ConflictCard key={conflict.id} projectId={projectId} conflict={conflict} editable={board.editable} onSaved={refresh} />)}
     {board.open_conflicts > 0 && <p className="text-right text-xs text-amber-700">{tr("还有 {0} 个冲突没有处理，处理完才能继续。", { 0: board.open_conflicts })}</p>}
-    {board.editable && <Advance projectId={projectId} from={4} onDone={onDone} />}
   </div>;
 }
 

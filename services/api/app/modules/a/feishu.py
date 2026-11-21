@@ -188,7 +188,7 @@ class FeishuClient:
         return bytes(data)
 
     def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]:
-        """列出机器人所在的群（只读），用于让用户从下拉列表里选群，而不是手动输入群 ID。"""
+        """列出机器人所在的群（只读），用于校验用户提交的群聊 ID。"""
         params: dict[str, Any] = {"page_size": PAGE_SIZE}
         if page_token:
             params["page_token"] = page_token
@@ -346,7 +346,9 @@ def link_chat(
         return existing
     if all(chat.chat_id != chat_id for chat in _list_bot_chats(reader)):
         raise ApiError(
-            422, "FEISHU_CHAT_NOT_AVAILABLE", "机器人当前无法读取此群，请刷新可绑定的群列表。"
+            422,
+            "FEISHU_CHAT_NOT_AVAILABLE",
+            "机器人当前无法访问此群，请确认机器人已加入并检查群聊 ID。",
         )
     link = FeishuChatLink(id=uuid4(), project_id=project_id, chat_id=chat_id, linked_by_id=actor.id)
     session.add(link)
@@ -365,7 +367,7 @@ def link_chat(
 def list_available_chats(
     session: Session, actor: User, project_id: UUID, reader: FeishuReader | None
 ) -> list[FeishuChatItem]:
-    """项目负责人查看机器人所在的群，供绑定时选择。最多返回 200 个群，防止无限分页。"""
+    """项目负责人查看机器人所在的群，供诊断与兼容旧客户端。最多返回 200 个群。"""
     permissions.require_project_leader(session, actor, project_id, write=False)
     return _list_bot_chats(reader)
 

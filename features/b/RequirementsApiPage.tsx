@@ -7,7 +7,8 @@ import { AlertTriangle, GitCompare, History, Network, PenLine, Search } from "lu
 import { EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { BApiError } from "@/lib/api/b-client";
 import { bManageApi, type BRequirementDetail } from "@/lib/api/b-manage";
-import type { BPriority } from "@/lib/api/b-requirements";
+import { bRequirementsApi, type BPriority } from "@/lib/api/b-requirements";
+import { BaselineStep, ConflictsStep, RequirementsStep } from "@/features/b/RequirementsSteps";
 import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
@@ -36,14 +37,28 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
   const errorText = useBErrorMessage();
   const { userId } = useWorkspace();
   const { filters, setFilters, clearFilters } = useUrlFilters(filterSchema);
+  const [workspaceSection, setWorkspaceSection] = useState<"work" | "conflicts" | "baseline">("work");
   const [draft, setDraft] = useState({ code: filters.code, q: filters.q });
   useEffect(() => setDraft({ code: filters.code, q: filters.q }), [filters.code, filters.q]);
   const query = { code: filters.code || undefined, q: filters.q || undefined, source: filters.source || undefined, module: filters.module || undefined, status: filters.status || undefined, page: filters.page, page_size: PAGE_SIZE };
   const list = useQuery({ queryKey: ["b-req-list", userId, projectId, query], queryFn: () => bManageApi.list(projectId, query), ...queryPolicy });
+  const board = useQuery({ queryKey: ["b-requirements", userId, projectId], queryFn: () => bRequirementsApi.board(projectId), ...queryPolicy });
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
   return <div>
-    <PageHeader title={tr("需求管理")} description={tr("按编号、名称、来源、模块和状态查找需求；筛选条件写在链接里，可以直接分享。")} actions={<Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>} />
-    <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+    <PageHeader title={tr("需求工作区")} description={tr("手动整理、AI 分析和基线确认都是独立操作，不需按顺序走完向导。")} actions={<><Link href={`/projects/${projectId}/setup#project-materials`} className={secondary}>{tr("添加资料")}</Link><Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link></>} />
+    <Panel className="mt-5">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <button type="button" aria-pressed={workspaceSection === "work"} className={workspaceSection === "work" ? button : secondary} onClick={() => setWorkspaceSection("work")}>{tr("整理需求")}</button>
+        {!board.isPending && (board.data?.open_conflicts ?? 0) > 0 && <button type="button" aria-pressed={workspaceSection === "conflicts"} className={workspaceSection === "conflicts" ? button : secondary} onClick={() => setWorkspaceSection("conflicts")}>{tr("冲突处理")}<StatusBadge tone="amber" label={String(board.data?.open_conflicts ?? 0)} /></button>}
+        <button type="button" aria-pressed={workspaceSection === "baseline"} className={workspaceSection === "baseline" ? button : secondary} onClick={() => setWorkspaceSection("baseline")}>{tr("基线确认")}</button>
+      </div>
+      <p className="mt-3 text-xs text-slate-500">{tr("资料可以随时补充；AI 用于辅助整理，不会阻止手动录入。")}</p>
+    </Panel>
+    {board.isError && <div role="alert" className="mt-4"><Feedback tone="error">{errorText(board.error)}</Feedback></div>}
+    {workspaceSection === "conflicts" && (board.data?.open_conflicts ?? 0) === 0 ? <div className="mt-4"><Feedback tone="info">{tr("当前没有待处理冲突。")}</Feedback></div> : null}
+    {workspaceSection === "conflicts" && (board.data?.open_conflicts ?? 0) > 0 && <div className="mt-4"><ConflictsStep projectId={projectId} /></div>}
+    {workspaceSection === "baseline" && <div className="mt-4"><BaselineStep projectId={projectId} /></div>}
+    {workspaceSection === "work" && <><div className="mt-4"><RequirementsStep projectId={projectId} /></div><h2 className="mt-8 text-xl font-semibold text-slate-900">{tr("需求清单")}</h2><p className="mt-1 text-sm text-slate-500">{tr("查找、编辑并追踪已保存需求的版本和证据链。")}</p><div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="space-y-3">
         <Panel>
           <form className="grid grid-cols-2 gap-2 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); setFilters({ code: draft.code.trim() || null, q: draft.q.trim() || null, page: null }); }}>
@@ -77,7 +92,7 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
           </Panel>}
       </div>
       <div>{filters.req ? <RequirementPanel key={filters.req} projectId={projectId} requirementId={filters.req} tab={filters.tab} onTab={(tab) => setFilters({ tab })} /> : <Panel><EmptyState title={tr("选择一条需求")} description={tr("查看详情、修改记录和它关联的任务与证据。")} /></Panel>}</div>
-    </div>
+    </div></>}
   </div>;
 }
 
