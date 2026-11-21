@@ -473,6 +473,13 @@
   "nav": {
     "global": "全局",
     "currentProject": "当前项目",
+  "projectGroups": {
+    "overviewGroup": "总览",
+    "planGroup": "规划",
+    "collaborateGroup": "协作",
+    "reviewGroup": "验收与成果",
+    "settingsGroup": "设置"
+  },
     "home": "首页",
     "myCourses": "我的课程",
     "actionItems": "待处理事项",

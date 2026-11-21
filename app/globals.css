@@ -103,6 +103,14 @@ button { cursor: pointer; }
 .gp-sidebar.admin .gp-brand-mark { border-color: #4b8dff; }
 .gp-nav { padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
 .gp-nav-section { color: #9aa7ba; font-size: 11px; font-weight: 700; padding: 18px 12px 7px; }
+.gp-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.gp-nav-group-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 34px; width: 100%; border: 0; border-radius: 6px; padding: 0 10px 0 12px; background: transparent; color: #8290a4; font-size: 11px; font-weight: 720; letter-spacing: .02em; text-align: left; }
+.gp-nav-group-toggle:hover { background: #f7f9fc; color: #42526b; }
+.gp-nav-group-toggle:focus-visible { outline: 2px solid #80aafc; outline-offset: 1px; }
+.gp-nav-group-chevron { transition: transform .16s ease; }
+.gp-nav-group-chevron.open { transform: rotate(180deg); }
+.gp-nav-group-items { display: flex; flex-direction: column; gap: 2px; }
+.gp-nav-group-items .gp-nav-link { min-height: 36px; padding-left: 19px; }
 .gp-nav-link { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 39px; padding: 0 12px; border-radius: 6px; color: #53627a; font-weight: 540; }
 .gp-nav-link:hover { background: #f5f8fd; color: #214876; }
 .gp-nav-link.active { background: #eaf2ff; color: var(--gp-blue); font-weight: 670; }

@@ -473,6 +473,13 @@
   "nav": {
     "global": "全域",
     "currentProject": "目前專案",
+  "projectGroups": {
+    "overviewGroup": "總覽",
+    "planGroup": "規劃",
+    "collaborateGroup": "協作",
+    "reviewGroup": "驗收與成果",
+    "settingsGroup": "設定"
+  },
     "home": "首頁",
     "myCourses": "我的課程",
     "actionItems": "待處理事項",
