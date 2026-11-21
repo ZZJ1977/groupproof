@@ -44,6 +44,7 @@ const JoinCourseApiPage = dynamic(() => import("@/features/b/CoursesApiPages").t
 const GroupsApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupsApiPage));
 const GroupDetailApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupDetailApiPage));
 const ChangeLeaderApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.ChangeLeaderApiPage));
+const IndependentProjectPage = dynamic(() => import("@/features/b/IndependentProjectPage").then(module => module.IndependentProjectPage));
 const NewProjectApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.NewProjectApiPage));
 const ProjectOverviewApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectOverviewApiPage));
 const ProjectSetupApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectSetupApiPage));
@@ -72,7 +73,7 @@ export function RouteDispatcher() {
   const canonicalProject = resolveCanonicalRouteContext(pathname).projectId;
 
   // 布局按路由选择；访问资格单独判断（阶段 01），最终授权由 FastAPI 在数据接口执行
-  const kind = screen >= 51 ? "admin" : screen >= 41 ? "teacher" : "student";
+  const kind = screen === 50 && pathname.startsWith("/courses/") ? "student" : screen >= 51 ? "admin" : screen >= 41 ? "teacher" : "student";
   // These pages use the authenticated API's authorization, not demo role state.
   // Mount by the actual route ID; never translate seed IDs into canonical IDs.
   // Version links address C's publication history even when B provides the course files index.
@@ -97,6 +98,7 @@ export function RouteDispatcher() {
     if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
   }
   if (apiMode("projects") === "real") {
+    if (screen === 35 && !courseId) realContent = <IndependentProjectPage />;
     if (screen === 35 && courseId) realContent = <NewProjectApiPage courseId={courseId} />;
     if (screen === 7 && projectId) realContent = <ProjectOverviewApiPage projectId={projectId} />;
     if (screen === 8 && projectId) realContent = <ProjectSetupApiPage projectId={projectId} />;

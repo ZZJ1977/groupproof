@@ -40,7 +40,7 @@ export function HomeApiPage() {
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
     <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<div className="flex flex-wrap items-center gap-2">
-      <Link href="/courses?intent=create-project" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>
+      <Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>
       <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>
       <button className={buttonVariants({ variant: "ghost" })} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}><RefreshCw size={15} />刷新统计</button>
     </div>} />
@@ -66,7 +66,7 @@ export function HomeApiPage() {
             {project.progress !== null && <ProgressBar value={project.progress} />}
             <Link className="gp-link mt-2 inline-block text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>
           </div>)}</div>
-          {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/courses?intent=create-project" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
+          {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
         </Panel>
         <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 门课程</p>
           <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">

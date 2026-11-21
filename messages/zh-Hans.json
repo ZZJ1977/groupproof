@@ -582,7 +582,7 @@
       "emptyCourses": "暂无课程",
       "emptyCoursesDesc": "使用课程码加入课程后，会显示在这里。",
       "createProject": "创建项目",
-      "emptyProjectHint": "加入课程后，与同学组队创建项目。",
+      "emptyProjectHint": "创建独立项目，无需先加入课程。",
       "emptyCourseHint": "使用任课教师提供的邀请码加入课程。"
     },
     "notifications": {
@@ -737,7 +737,10 @@
       "approve": "批准",
       "createProjectTitle": "创建项目",
       "chooseProjectCourse": "选择项目所属课程。",
-      "joinBeforeCreate": "先加入课程，再与同学组队创建项目。"
+      "joinBeforeCreate": "先加入课程，再与同学组队创建项目。",
+      "createCourseProjectTitle": "创建课程项目",
+      "viewRules": "查看课程规则",
+      "viewFiles": "课程文件"
     },
     "shared": {
       "retry": "重试",
@@ -763,6 +766,17 @@
       "verificationNotConnected": "验收服务暂未接入，请返回任务页面查看已保存的提交。",
       "dailyUnavailable": "日常入口数据暂不可用",
       "dailyUnavailableDesc": "首页、通知、待办及动态服务尚未接入，请稍后重试。"
+    },
+    "independentProject": {
+      "title": "创建项目",
+      "description": "无需加入课程即可创建独立项目，你将自动成为项目组长。",
+      "back": "返回首页",
+      "name": "项目名称",
+      "summary": "项目简介（选填）",
+      "creating": "正在创建…",
+      "courseTitle": "课程项目",
+      "courseDescription": "如果项目属于课程作业，可以选择已加入的课程，按课程规则组队创建。",
+      "courseAction": "创建课程项目"
     }
   },
   "b": {
