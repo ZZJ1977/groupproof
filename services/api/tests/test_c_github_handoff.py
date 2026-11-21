@@ -30,10 +30,14 @@ def test_synced_activity_attribution_and_evidence_change(db, scope, changed_kind
         pytest.skip("A's deleted-commit window requires PostgreSQL timestamptz")
     actor = scope.users["author"]
     scope.plan.snapshot_json = {"tasks": [{"id": str(scope.task.id), "code": "T-012"}]}
-    github_activity.set_github_login(db, actor, "dev1")
-    commit = upstream.commit("a" * 40, "Implement #T-012", login="dev1")
+    identity = upstream.verify_account(db, actor, 101)
+    commit = upstream.commit("a" * 40, "Implement #T-012", login="dev1", github_user_id=101)
     other = upstream.commit("b" * 40, "Other member")
-    network = upstream.FakeGithub([commit, other], [upstream.pull(7, "Feature")], [upstream.run(3)])
+    network = upstream.FakeGithub(
+        [commit, other],
+        [upstream.pull(7, "Feature", github_user_id=101)],
+        [upstream.run(3, github_user_id=101)],
+    )
     totals = upstream.sync(db, scope, network)
     assert totals["associated"] == 1
     port = GithubActivityPort(github_activity.DatabaseGithubActivityPort(lambda: nullcontext(db)))
@@ -72,13 +76,22 @@ def test_synced_activity_attribution_and_evidence_change(db, scope, changed_kind
     )
     formal = evidence.decide(db, scope, candidate)
     assert formal["effective"]
+    stored = db.get(Evidence, UUID(formal["id"]))
+    frozen = evidence_data(db, stored, history=True)
+
+    db.delete(identity)
+    db.flush()
+    assert personal(category="development").total == 0
+    assert query_activities(*reader, "github", port)["total"] == 4
+    upstream.sync(db, scope, network)
+    assert evidence_data(db, stored, history=True) == frozen
+
     if changed_kind == "commit":
         # GitHub confirms the old SHA is gone within the comparison window.
         network._commits = [other]
     else:
-        network._pulls = [upstream.pull(7, "New title", merged=True)]
+        network._pulls = [upstream.pull(7, "New title", merged=True, github_user_id=101)]
     assert upstream.sync(db, scope, network)["deleted_sources"] == int(changed_kind == "commit")
-    stored = db.get(Evidence, UUID(formal["id"]))
     changed = evidence_data(db, stored, history=True)
     assert changed["source_changed"] and not changed["effective"]
     assert len(changed["source_snapshots"]) == 2
@@ -97,6 +110,9 @@ def test_synced_activity_attribution_and_evidence_change(db, scope, changed_kind
     detail = get_activity(*reader, "github", source_id, port)
     assert detail["availability"] == ("deleted" if changed_kind == "commit" else "available")
 
+    upstream.verify_account(db, actor, 101)
+    upstream.sync(db, scope, network)
+    assert personal(category="development").total == 3 - int(changed_kind == "commit")
     membership = db.scalar(
         select(ProjectMember).where(
             ProjectMember.project_id == scope.project.id, ProjectMember.user_id == actor.id

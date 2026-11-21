@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import nullcontext
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import a_fixtures as fixtures
 import httpx
@@ -14,6 +15,7 @@ from sqlalchemy import select
 from app.api.errors import ApiError
 from app.modules.a import feishu
 from app.modules.a.models import FeishuChatLink, FeishuMessage
+from app.modules.a.router import BindFeishuChatRequest, bind_feishu_chat
 from app.modules.c.activity_ports import ActivitySourceQuery
 
 db = fixtures.db
@@ -69,6 +71,55 @@ class FakeReader:
         index = int(page_token) if page_token else 0
         items, next_index = self.pages[index]
         return items, (str(next_index) if next_index is not None else None)
+
+
+class VisibleChatReader:
+    def __init__(self, *chat_ids):
+        self.chat_ids = chat_ids
+        self.calls = 0
+
+    def list_bot_chats(self, page_token):
+        assert page_token is None
+        self.calls += 1
+        return [feishu.FeishuChatItem(chat_id, "测试群") for chat_id in self.chat_ids], None
+
+
+def link_visible_chat(session, actor, project_id, chat_id):
+    return feishu.link_chat(session, actor, project_id, chat_id, VisibleChatReader(chat_id))
+
+
+def test_binding_api_checks_bot_visibility_but_reuses_existing_link(db, scope, monkeypatch):
+    reader = VisibleChatReader("oc_other1234")
+    monkeypatch.setattr(feishu, "get_feishu_reader", lambda: reader)
+    request = SimpleNamespace(state=SimpleNamespace(request_id="test-request"))
+
+    def bind(actor):
+        return bind_feishu_chat(
+            scope.project.id, BindFeishuChatRequest(chat_id=CHAT), request, db, actor
+        )
+
+    with pytest.raises(ApiError) as denied:
+        bind(scope.users["member"])
+    assert denied.value.status_code == 403
+    assert reader.calls == 0
+
+    with pytest.raises(ApiError) as missing:
+        bind(scope.users["leader"])
+    assert missing.value.code == "FEISHU_CHAT_NOT_AVAILABLE"
+    assert reader.calls == 1
+    assert db.scalar(select(FeishuChatLink).where(FeishuChatLink.chat_id == CHAT)) is None
+
+    monkeypatch.setattr(feishu, "get_feishu_reader", lambda: None)
+    with pytest.raises(ApiError) as unconfigured:
+        bind(scope.users["leader"])
+    assert unconfigured.value.status_code == 503
+
+    reader.chat_ids = (CHAT,)
+    monkeypatch.setattr(feishu, "get_feishu_reader", lambda: reader)
+    assert bind(scope.users["leader"]).data.chat_id == CHAT
+    monkeypatch.setattr(feishu, "get_feishu_reader", lambda: None)
+    assert bind(scope.users["leader"]).data.chat_id == CHAT
+    assert reader.calls == 2
 
 
 def _items(*raw):
@@ -150,26 +201,26 @@ def test_settings_missing_means_not_connected(monkeypatch):
 
 def test_only_project_leader_can_link_and_link_is_idempotent(db, scope):
     with pytest.raises(ApiError) as exc:
-        feishu.link_chat(db, scope.users["member"], scope.project.id, CHAT)
+        link_visible_chat(db, scope.users["member"], scope.project.id, CHAT)
     assert exc.value.status_code == 403
 
     with pytest.raises(ApiError) as exc:
-        feishu.link_chat(db, scope.users["outsider"], scope.project.id, CHAT)
+        link_visible_chat(db, scope.users["outsider"], scope.project.id, CHAT)
     assert exc.value.status_code == 404
 
     with pytest.raises(ApiError) as exc:
-        feishu.link_chat(db, scope.users["leader"], scope.project.id, "not a chat!")
+        link_visible_chat(db, scope.users["leader"], scope.project.id, "not a chat!")
     assert exc.value.status_code == 422
 
-    first = feishu.link_chat(db, scope.users["leader"], scope.project.id, CHAT)
-    second = feishu.link_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    first = link_visible_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    second = link_visible_chat(db, scope.users["leader"], scope.project.id, CHAT)
     assert first.id == second.id
     assert db.scalar(select(FeishuChatLink).where(FeishuChatLink.chat_id == CHAT)) is not None
 
 
 def test_sync_stores_snapshot_and_is_idempotent(db, scope):
     leader = scope.users["leader"]
-    feishu.link_chat(db, leader, scope.project.id, CHAT)
+    link_visible_chat(db, leader, scope.project.id, CHAT)
     reader = FakeReader(
         [
             (
@@ -200,7 +251,7 @@ def test_sync_stores_snapshot_and_is_idempotent(db, scope):
 
 
 def test_sync_is_leader_only(db, scope):
-    feishu.link_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    link_visible_chat(db, scope.users["leader"], scope.project.id, CHAT)
     reader = FakeReader([([], None)])
     with pytest.raises(ApiError) as exc:
         feishu.sync_project(db, scope.users["member"], scope.project.id, reader)
@@ -209,7 +260,7 @@ def test_sync_is_leader_only(db, scope):
 
 
 def test_sync_without_credentials_is_503(db, scope):
-    feishu.link_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    link_visible_chat(db, scope.users["leader"], scope.project.id, CHAT)
     with pytest.raises(ApiError) as exc:
         feishu.sync_project(db, scope.users["leader"], scope.project.id, None)
     assert exc.value.status_code == 503
@@ -217,7 +268,7 @@ def test_sync_without_credentials_is_503(db, scope):
 
 def test_failed_page_never_marks_messages_deleted(db, scope):
     leader = scope.users["leader"]
-    feishu.link_chat(db, leader, scope.project.id, CHAT)
+    link_visible_chat(db, leader, scope.project.id, CHAT)
     feishu.sync_project(
         db, leader, scope.project.id, FakeReader([(_items(_raw_text("om_1", "原文", T1)), None)])
     )
@@ -234,7 +285,7 @@ def test_failed_page_never_marks_messages_deleted(db, scope):
 
 def test_sync_refuses_to_partially_commit_past_page_cap(db, scope, monkeypatch):
     leader = scope.users["leader"]
-    feishu.link_chat(db, leader, scope.project.id, CHAT)
+    link_visible_chat(db, leader, scope.project.id, CHAT)
     monkeypatch.setattr(feishu, "MAX_PAGES_PER_CHAT", 2)
 
     endless = FakeReader([([], 1), ([], 2), ([], 3)])
@@ -248,7 +299,7 @@ def test_sync_refuses_to_partially_commit_past_page_cap(db, scope, monkeypatch):
 
 def _seed(db, scope, count=3):
     leader = scope.users["leader"]
-    feishu.link_chat(db, leader, scope.project.id, CHAT)
+    link_visible_chat(db, leader, scope.project.id, CHAT)
     raw = [_raw_text(f"om_{i}", f"消息 {i} 登录", T1 + i * 1000) for i in range(count)]
     feishu.sync_project(db, leader, scope.project.id, FakeReader([(_items(*raw), None)]))
 
@@ -325,7 +376,7 @@ def test_port_empty_include_ids_matches_nothing(db, scope):
 
 def test_port_deleted_message_has_no_content(db, scope):
     leader = scope.users["leader"]
-    feishu.link_chat(db, leader, scope.project.id, CHAT)
+    link_visible_chat(db, leader, scope.project.id, CHAT)
     feishu.sync_project(
         db,
         leader,
@@ -406,7 +457,7 @@ def test_list_available_chats_without_credentials_is_503(db, scope):
 
 
 def test_members_can_see_linked_chats_outsiders_cannot(db, scope):
-    feishu.link_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    link_visible_chat(db, scope.users["leader"], scope.project.id, CHAT)
     links = feishu.list_linked_chats(db, scope.users["member"], scope.project.id)
     assert [link.chat_id for link in links] == [CHAT]
     with pytest.raises(ApiError) as exc:

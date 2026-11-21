@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { AlertCircle, Info, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
+import { AlertCircle, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
 import { Feedback, PageHeader, Panel, SaveState, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAccountSession } from "@/components/account-session";
 import { authClient, ApiError, type MeDTO, type SessionDTO } from "@/lib/api/auth-client";
 import { useMe, useAcceptanceTest } from "@/features/account/use-me";
+import { GithubIdentityPanel } from "@/features/account/GithubIdentityPanel";
 import { deriveProgress, ProgressStatusChip } from "@/features/account/registration-progress";
 
 type FieldErrors = Record<string, string>;
@@ -105,8 +106,8 @@ function ProfilePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO
   return (
     <div>
       <PageHeader eyebrow={t("eyebrow")} title={t("title")} description={t("description")} icon={UserRound} />
-      <div className="gp-grid-2">
-        <Panel title={t("title")}>
+      <div className="max-w-[42rem]">
+        <Panel>
           <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(false); }}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="gp-field">
@@ -151,7 +152,16 @@ function ProfilePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO
               {fieldError(errors, "schoolEmail", t) && <span className="text-[#e54955]" role="alert">{fieldError(errors, "schoolEmail", t)}</span>}
             </label>
             {errors.version && <Feedback tone="error">{t("errors.version_conflict")}</Feedback>}
-            <div className="flex items-center justify-end gap-3 border-t border-[#e7edf5] pt-4">
+            <details className="rounded-md border border-border bg-[var(--gp-canvas)] px-3 py-2 text-sm text-[var(--gp-ink-soft)]">
+              <summary className="cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-primary">{t("noticesTitle")}</summary>
+              <ul className="mt-2 list-disc space-y-1 pl-5 leading-6">
+                <li>{t("declarativeNotice")}</li>
+                <li>{t("notices.schoolEmail")}</li>
+                <li>{t("notices.teacher")}</li>
+                <li>{t("notices.password")}</li>
+              </ul>
+            </details>
+            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
               <SaveState state={saveState} />
               <Button variant="outline" type="button" onClick={() => void submit(true)}>{tc("saveAndExit")}</Button>
               <Button type="submit">{tc("saveAndContinue")}</Button>
@@ -159,41 +169,6 @@ function ProfilePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO
             {info && <Feedback tone="success">{info}</Feedback>}
           </form>
         </Panel>
-        <div className="gp-stack">
-          {/* 注意事项提示（2026-10-10：基本资料页移除修改密码，安全设置集中在“账号安全”页） */}
-          <Panel title={t("noticesTitle")}>
-            <ul className="space-y-2 text-[12px] leading-6 text-[#6f7f95]">
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("declarativeNotice")}
-              </li>
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("notices.schoolEmail")}
-              </li>
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("notices.teacher")}
-              </li>
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("notices.password")}
-              </li>
-            </ul>
-          </Panel>
-          {me.user.googleEmailBound && <Panel title={t("googleBound")}>
-            <div className="gp-row text-[12px]">
-              <span className="flex items-center gap-2">
-                <span className="font-bold text-[#4285f4]">G</span>
-                {t("googleBound")}
-              </span>
-              <StatusBadge status="confirmed" label={t("bound")} />
-            </div>
-          </Panel>}
-          <Panel title={t("identity")}>
-            <p className="text-[12px] leading-6 text-[#6f7f95]">{t("identityNotice")}</p>
-          </Panel>
-        </div>
       </div>
     </div>
   );
@@ -345,6 +320,7 @@ function SecurityPanel({ session, me, refetch }: { session: SessionDTO; me: MeDT
           )}
         </Panel>
         <GooglePanel session={session} me={me} refetch={refetch} />
+        {session.accountState === "active" && session.sessionScope === "full" && <GithubIdentityPanel key={me.user.id} userId={me.user.id} csrfToken={session.csrfToken ?? ""} />}
         <PasswordPanel session={session} me={me} />
         <p className="text-[11px] text-[#8d9aad]">{tc("appName")}</p>
       </div>

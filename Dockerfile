@@ -13,6 +13,8 @@ FROM base AS builder
 # rewrites 兑底在构建时固化目标地址：容器内必须指向服务名 api（运行时代理优先读环境变量）
 ARG API_INTERNAL_URL=http://localhost:8000
 ENV API_INTERNAL_URL=$API_INTERNAL_URL
+ARG NEXT_PUBLIC_API_FEATURES
+ENV NEXT_PUBLIC_API_FEATURES=$NEXT_PUBLIC_API_FEATURES
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

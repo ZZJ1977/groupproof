@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { BookOpen, CheckSquare, Folder } from "lucide-react";
 import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
@@ -78,32 +77,11 @@ export function HomeApiPage() {
   </>;
 }
 
-function GithubAuthorForm() {
-  const [login, setLogin] = useState("");
-  const change = useMutation({
-    mutationFn: (value: string | null) => client.setGithubLogin(value),
-    retry: false,
-    onSuccess: (reply) => setLogin(reply.login ?? ""),
-  });
-  return <details className="my-4">
-    <summary className="cursor-pointer font-medium">设置个人 GitHub 用户名</summary>
-    <form className="mt-3" onSubmit={(event) => { event.preventDefault(); if (login.trim() && !change.isPending) change.mutate(login.trim()); }}>
-      <p className="mb-2 text-sm">填写本人使用的 GitHub 用户名，供下次项目同步时匹配作者。此设置只用于作者归属，仓库访问权限由项目绑定管理。</p>
-      <label className="block">GitHub 用户名<input className={`${inputClass} ml-2`} value={login} maxLength={120} autoCapitalize="none" spellCheck={false}
-        disabled={change.isPending} onChange={(event) => { change.reset(); setLogin(event.target.value); }} /></label>
-      <div className="my-2 flex gap-2"><button className={buttonClass} disabled={change.isPending || !login.trim()}>保存用户名</button>
-        <button className={buttonClass} type="button" disabled={change.isPending} onClick={() => change.mutate(null)}>清除作者映射</button></div>
-      {change.isPending && <p role="status">正在保存…</p>}
-      {change.isSuccess && <p role="status">{change.data.login ? `已保存 GitHub 用户名 @${change.data.login}。` : "已清除 GitHub 用户名映射。"}</p>}
-      {change.isError && <p role="alert">{change.error instanceof CApiError ? change.error.message : "保存失败，请重试。"}</p>}
-    </form>
-  </details>;
-}
-
 export function ActivityApiPage() {
   const { userId } = useWorkspace();
   const { query, updateQuery } = useUrlQuery();
   const t = useTranslations("core.activity");
+  const githubText = useTranslations("account.githubIdentity");
   const rawCategory = query.get("category") ?? "all";
   const category = Object.hasOwn(categoryLabels, rawCategory) ? rawCategory as keyof typeof categoryLabels : "all";
   const rawPage = Number(query.get("page") ?? 1);
@@ -115,7 +93,7 @@ export function ActivityApiPage() {
   return <>
     <PageHeader title={t("title")} description="查看自己的任务、文件版本、证据、讨论，以及项目中已同步并归属本人的 GitHub 活动。" />
     <p className="mb-4 text-sm text-slate-600">日期按 UTC 自然日筛选。个人飞书记录仍待发送者身份匹配。</p>
-    {data && <GithubAuthorForm key={userId} />}
+    {data && <Link className="gp-link mb-4 inline-block text-sm" href="/account/security#github-identity">{githubText("manage")}</Link>}
     <div className="gp-tabs mb-4" aria-label="动态分类">{Object.entries(categoryLabels).map(([value, label]) => <button className={`gp-tab ${category === value ? "active" : ""}`} type="button" key={value} aria-pressed={category === value} onClick={() => updateQuery({ category: value === "all" ? null : value, page: null })}>{label}</button>)}</div>
     <form key={query.toString()} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault(); const input = new FormData(event.currentTarget);

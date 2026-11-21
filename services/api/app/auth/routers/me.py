@@ -36,6 +36,8 @@ class ProfilePatch(BaseModel):
     college: str | None = None
     requestedIdentity: str | None = None
     schoolEmail: str | None = None
+    githubUsername: str | None = None
+    feishuAccount: str | None = None
     expectedVersion: int
 
 
@@ -100,6 +102,8 @@ def _me_payload(context: AuthContext, db: DbSession) -> dict:
             "username": user.username,
             "studentId": user.student_id,
             "college": user.college,
+            "githubUsername": user.github_username,
+            "feishuAccount": user.feishu_account,
             "requestedIdentity": user.requested_identity,
             "roles": list(user.roles or []),  # 只读：实际角色由服务端授予
             "preferredLocale": user.preferred_locale or "zh-Hans",

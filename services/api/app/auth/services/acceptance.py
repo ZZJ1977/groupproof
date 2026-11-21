@@ -50,7 +50,7 @@ def _unique_username(db: DbSession) -> str:
 
 def create_test_account(db: DbSession) -> tuple[User, IssuedSession]:
     """开通全新测试账户并签发受限会话（与真实建档同一落库路径）。"""
-    from .pre_registration import issue_onboarding_session
+    from .pre_registration import issue_registration_session
     from .sessions import current_facts
 
     settings = get_settings()
@@ -79,7 +79,7 @@ def create_test_account(db: DbSession) -> tuple[User, IssuedSession]:
     db.add(credential)
     db.flush()
     facts = current_facts(db, user)
-    issued = issue_onboarding_session(db, user, facts)
+    issued = issue_registration_session(db, user, facts)
     from . import audit
 
     audit.record(

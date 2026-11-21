@@ -15,6 +15,7 @@ from app.auth.routers import admin as auth_admin_router
 from app.auth.routers import auth as auth_router
 from app.auth.routers import c_admin as auth_c_admin_router
 from app.auth.routers import capabilities as auth_capabilities_router
+from app.auth.routers import github as auth_github_router
 from app.auth.routers import me as auth_me_router
 from app.db.session import engine
 from app.modules.a.router import router as a_router
@@ -113,5 +114,6 @@ app.include_router(tasks_router)
 app.include_router(auth_capabilities_router.router)
 app.include_router(auth_router.router)
 app.include_router(auth_me_router.router)
+app.include_router(auth_github_router.router)
 app.include_router(auth_admin_router.router)
 app.include_router(auth_c_admin_router.router)

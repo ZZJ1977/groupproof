@@ -144,7 +144,7 @@ export interface paths {
         get?: never;
         /**
          * Set My Github Login
-         * @description 声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。
+         * @description 维护旧版客户端自行声明的 GitHub 用户名。
          */
         put: operations["set_my_github_login_api_v1_a_me_github_login_put"];
         post?: never;
@@ -713,6 +713,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/email/registrations/{tx_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Email Registration Profile */
+        get: operations["read_email_registration_profile_api_v1_auth_email_registrations__tx_id__profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/email/registrations/{tx_id}/resend": {
         parameters: {
             query?: never;
@@ -741,6 +758,23 @@ export interface paths {
         put?: never;
         /** Verify Email Registration */
         post: operations["verify_email_registration_api_v1_auth_email_registrations__tx_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/github/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Callback */
+        get: operations["github_callback_api_v1_auth_github_callback_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1345,6 +1379,41 @@ export interface paths {
         get: operations["personal_activity_api_v1_me_activity_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/identities/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Github Identity */
+        get: operations["get_github_identity_api_v1_me_identities_github_get"];
+        put?: never;
+        post?: never;
+        /** Unlink Github Identity */
+        delete: operations["unlink_github_identity_api_v1_me_identities_github_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/identities/github/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Github Identity */
+        post: operations["link_github_identity_api_v1_me_identities_github_link_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4552,10 +4621,25 @@ export interface components {
         };
         /** EmailRegistrationCompleteIn */
         EmailRegistrationCompleteIn: {
+            /** College */
+            college?: string | null;
+            /** Confirmpassword */
+            confirmPassword: string;
+            /** Feishuaccount */
+            feishuAccount?: string | null;
+            /** Githubusername */
+            githubUsername?: string | null;
+            /** Name */
+            name: string;
             /** Password */
             password: string;
-            /** Username */
-            username: string;
+            /**
+             * Requestedidentity
+             * @enum {string}
+             */
+            requestedIdentity: "student" | "teacher";
+            /** Studentid */
+            studentId?: string | null;
         };
         /** EmailRegistrationIn */
         EmailRegistrationIn: {
@@ -5143,6 +5227,20 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** GithubIdentityStatus */
+        GithubIdentityStatus: {
+            /** Available */
+            available: boolean;
+            /** Login */
+            login: string | null;
+            /** Verifiedat */
+            verifiedAt: string | null;
+        };
+        /** GithubLinkStart */
+        GithubLinkStart: {
+            /** Authorizeurl */
+            authorizeUrl: string;
+        };
         /** GithubLoginDTO */
         GithubLoginDTO: {
             /** Login */
@@ -5588,6 +5686,10 @@ export interface components {
             college?: string | null;
             /** Expectedversion */
             expectedVersion: number;
+            /** Feishuaccount */
+            feishuAccount?: string | null;
+            /** Githubusername */
+            githubUsername?: string | null;
             /** Name */
             name?: string | null;
             /** Requestedidentity */
@@ -8881,6 +8983,37 @@ export interface operations {
             };
         };
     };
+    read_email_registration_profile_api_v1_auth_email_registrations__tx_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tx_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resend_email_registration_api_v1_auth_email_registrations__tx_id__resend_post: {
         parameters: {
             query?: never;
@@ -8939,6 +9072,37 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_callback_api_v1_auth_github_callback_get: {
+        parameters: {
+            query?: {
+                code?: string;
+                error?: string;
+                state?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -10665,6 +10829,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_github_identity_api_v1_me_identities_github_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubIdentityStatus"];
+                };
+            };
+        };
+    };
+    unlink_github_identity_api_v1_me_identities_github_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    link_github_identity_api_v1_me_identities_github_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubLinkStart"];
                 };
             };
         };

@@ -118,6 +118,15 @@ def db():
 
 @pytest.fixture()
 def scope(db):
+    return build_scope(db)
+
+
+def _persist_user(db, user):
+    db.add(user)
+    return user
+
+
+def build_scope(db, *, persist_user=_persist_user):
     users = {}
     for name, role in [
         ("author", "student"),
@@ -130,7 +139,7 @@ def scope(db):
         ("admin", "admin"),
     ]:
         identity = uuid4()
-        users[name] = User(
+        user = User(
             id=identity,
             name=name,
             username=f"c-{identity}",
@@ -145,7 +154,7 @@ def scope(db):
                 verification_method="documented_manual_review",
             ),
         )
-        db.add(users[name])
+        users[name] = persist_user(db, user)
     db.flush()
     course = Course(
         id=uuid4(),

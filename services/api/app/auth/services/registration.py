@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
+from unicodedata import category
 
 from ..config import get_settings
+from ..errors import AppError
 from ..models import (
     AcademicIdentityCheck,
     EmailChallenge,
@@ -86,6 +89,29 @@ def profile_field_errors(
         elif not student_id_valid(student_id or "", normalized_email):
             errors["studentId"] = "invalid_student_id"
     return errors
+
+
+def normalize_collaboration_accounts(
+    github_username: str | None, feishu_account: str | None
+) -> tuple[str | None, str | None]:
+    """校验本人申报的资料字段，不创建第三方账号映射或参与身份核验。"""
+    errors: dict[str, str] = {}
+    github_input = (github_username or "").strip()
+    github = github_input.removeprefix("@")
+    if github_input and (
+        len(github) > 39 or not re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*", github)
+    ):
+        errors["githubUsername"] = "invalid_github_username"
+
+    feishu = (feishu_account or "").strip()
+    if len(feishu) > 120 or any(
+        category(char) in {"Cc", "Cf", "Cs", "Zl", "Zp"} for char in (feishu_account or "")
+    ):
+        errors["feishuAccount"] = "invalid_feishu_account"
+
+    if errors:
+        raise AppError("VALIDATION_ERROR", 400, field_errors=errors)
+    return github.lower() or None, feishu or None
 
 
 def review_basis(user: User, binding: SchoolEmailBinding | None) -> dict[str, Any]:
