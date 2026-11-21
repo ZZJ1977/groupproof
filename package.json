@@ -20,6 +20,8 @@
     "test:c5-freeze-staging": "playwright test -c playwright.c-storage-staging.config.ts course-freeze.staging.ts",
     "api:generate": "node scripts/generate-api-client.mjs",
     "test:api-config": "tsx scripts/api-config-smoke.ts",
+    "check:workspace-isolation": "tsx scripts/check-workspace-isolation.ts",
+    "test:workspace-real": "playwright test -c playwright.workspace-real.config.ts",
     "test:api-client": "tsx scripts/api-client-smoke.ts",
     "check:access": "tsx scripts/check-access.mjs",
     "check:versioning": "tsx scripts/check-versioning.mjs",
