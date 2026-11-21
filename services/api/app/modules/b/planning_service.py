@@ -242,8 +242,13 @@ def _latest_plan(session: Session, project_id: UUID, *, lock: bool = False) -> P
     return session.scalar(statement.execution_options(populate_existing=True))
 
 
+def _baseline_required(project: Project) -> bool:
+    """Course projects need a formal requirement baseline; independent projects do not."""
+    return project.course_id is not None
+
+
 def _require_baseline(project: Project) -> None:
-    if project.setup_status != "frozen":
+    if _baseline_required(project) and project.setup_status != "frozen":
         raise ApiError(409, "BASELINE_NOT_FROZEN", "需求基线冻结后才能制定任务计划。")
 
 
@@ -298,7 +303,7 @@ def plan_frozen() -> ApiError:
 
 
 def _writer(session: Session, user: User, project_id: UUID):
-    """Member + writable project + frozen baseline + draft plan (project row locked first)."""
+    """Member + writable project + policy-ready baseline + draft plan (project row locked first)."""
     relation = lock_project_for_write(session, user, project_id)
     project = relation.project
     _require_baseline(project)
@@ -1191,11 +1196,13 @@ def plan_view(session: Session, user: User, project_id: UUID) -> PlanDTO:
     plan = _latest_plan(session, project_id)
     facts = _facts(session, project_id)
     members = _members(session, project_id)
+    baseline_required = _baseline_required(project)
     baseline_frozen = project.setup_status == "frozen"
-    issues = _issues(session, project_id, facts) if baseline_frozen else []
+    baseline_ready = baseline_frozen or not baseline_required
+    issues = _issues(session, project_id, facts) if baseline_ready else []
     confirmations = _confirmations(session, plan, facts, members)
     mine = next((c for c in confirmations if c.user.id == user.id), None)
-    writable = relation.member and not relation.read_only and baseline_frozen
+    writable = relation.member and not relation.read_only and baseline_ready
     modules = session.scalars(
         select(FunctionalModule)
         .where(FunctionalModule.project_id == project_id)
@@ -1227,6 +1234,7 @@ def plan_view(session: Session, user: User, project_id: UUID) -> PlanDTO:
         version_no=plan.version_no if plan else 0,
         status=status,  # type: ignore[arg-type]
         lock_version=plan.lock_version if plan else 0,
+        baseline_required=baseline_required,
         baseline_frozen=baseline_frozen,
         baseline_version_no=baseline_no,
         frozen_at=plan.frozen_at if plan else None,

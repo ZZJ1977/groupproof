@@ -95,7 +95,8 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
         <Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>
       </>} />
     <div className="mt-4 space-y-3">
-      {!data.baseline_frozen && <Feedback tone="warning">{tr("需求基线冻结后才能制定任务计划。")}<Link className="ml-2 underline" href={`/projects/${projectId}/setup`}>{tr("前往项目初始化")}</Link></Feedback>}
+      {data.baseline_required && !data.baseline_frozen && <Feedback tone="warning">{tr("课程项目需要先确认需求基线，才能制定正式任务计划。")}<Link className="ml-2 underline" href={`/projects/${projectId}/requirements`}>{tr("前往需求工作区")}</Link></Feedback>}
+      {!data.baseline_required && !data.baseline_frozen && <Feedback tone="info">{tr("个人项目不要求冻结需求基线，可以直接制定任务计划。需求可随项目推进继续补充。")}<Link className="ml-2 underline" href={`/projects/${projectId}/requirements`}>{tr("整理需求（可选）")}</Link></Feedback>}
       {frozen && <Feedback tone="info">{tr("计划已冻结，任务只读。{0}", { 0: data.can_lead ? tr("需要修改时请解锁并写明原因。") : tr("需要修改时请联系组长解锁。") })}</Feedback>}
       {notice && <div data-testid="plan-notice" role={notice.tone === "error" ? "alert" : "status"}><Feedback tone={notice.tone}>{notice.text}{notice.items && notice.items.length > 0 && <ul className="mt-1 list-disc pl-5">{notice.items.map((item) => <li key={item}>{item}</li>)}</ul>}</Feedback></div>}
       {unlockOpen && <Panel title={tr("解锁任务计划")}>
@@ -237,7 +238,8 @@ function SuggestionsPanel({ projectId, plan, onNotice, onChanged }: { projectId:
   const tr = useUiText();
   const errorText = useBErrorMessage();
   const { userId } = useWorkspace();
-  const list = useQuery({ queryKey: ["b-plan-suggestions", userId, projectId], queryFn: () => bPlanningApi.suggestions(projectId), enabled: plan.baseline_frozen, ...queryPolicy });
+  const baselineReady = plan.baseline_frozen || !plan.baseline_required;
+  const list = useQuery({ queryKey: ["b-plan-suggestions", userId, projectId], queryFn: () => bPlanningApi.suggestions(projectId), enabled: baselineReady, ...queryPolicy });
   const fail = (error: unknown) => onNotice({ tone: "error", text: errorText(error) });
   const generate = useMutation({
     mutationFn: () => bPlanningApi.generate(projectId),
@@ -246,7 +248,7 @@ function SuggestionsPanel({ projectId, plan, onNotice, onChanged }: { projectId:
   });
   const adopt = useMutation({ mutationFn: (id: string) => bPlanningApi.adopt(projectId, id, 1), onSuccess: async (task) => { onNotice({ tone: "success", text: tr("已采纳为 {0}，请补充负责人和权重。", { 0: task.code ?? tr("任务") }) }); await onChanged(); }, onError: fail });
   const dismiss = useMutation({ mutationFn: (id: string) => bPlanningApi.dismiss(projectId, id), onSuccess: () => onChanged(), onError: fail });
-  if (!plan.baseline_frozen) return null;
+  if (!baselineReady) return null;
   const items = list.data ?? [];
   return <Panel title={tr("AI 任务建议")} action={plan.can_edit && <button type="button" className={secondary} disabled={generate.isPending} onClick={() => generate.mutate()}><Sparkles size={14} />{generate.isPending ? tr("生成中…") : tr("生成建议")}</button>}>
     <p className="mb-2 text-xs text-slate-500">{tr("建议只列在这里，不会自动进入计划，也不会改动已有任务；逐条采纳或忽略。")}</p>

@@ -14,7 +14,7 @@ export type BConfirmState = "confirmed" | "stale" | "pending";
 export type BPlanOption = { id: string; name: string; code?: string | null; module_id?: string | null };
 export type BPlan = {
   project_id: string; id: string | null; version_no: number; status: "none" | "draft" | "frozen"; lock_version: number;
-  baseline_frozen: boolean; baseline_version_no: number | null; frozen_at: string | null;
+  baseline_required: boolean; baseline_frozen: boolean; baseline_version_no: number | null; frozen_at: string | null;
   tasks: BPlanTask[]; issues: BPlanIssue[];
   confirmations: { user: BPerson; state: BConfirmState; confirmed_at: string | null; task_count: number }[];
   my_task_versions: Record<string, number>; my_state: BConfirmState | null;

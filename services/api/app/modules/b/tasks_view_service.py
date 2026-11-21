@@ -201,9 +201,10 @@ def list_tasks(
 
     matched_ids = {t.id for t in matched}
     verified = relation.member and has_verified_school_email(session, user)
+    baseline_ready = project.course_id is None or project.setup_status == "frozen"
     project_open = (
         project.lifecycle == "active"
-        and project.setup_status == "frozen"
+        and baseline_ready
         and (relation.course is None or relation.course.status == "active")
     )
     people = _people(session, {u for ids in facts.assignees.values() for u in ids})
