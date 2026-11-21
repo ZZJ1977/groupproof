@@ -96,7 +96,7 @@ def test_create_copies_members_deadline_and_template(setup, b_engine):
     response = create(api, group_id)
     assert response.status_code == 201, response.text
     data = response.json()["data"]
-    assert data["href"] == f"/projects/{data['project_id']}/setup"
+    assert data["href"] == f"/projects/{data['project_id']}"
     with Session(b_engine) as session:
         project = session.get(Project, data["project_id"])
         course = session.get(Course, world.course_id)
