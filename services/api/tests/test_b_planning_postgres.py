@@ -140,6 +140,24 @@ def confirm(api, world, user):
 # ---------------------------------------------------------------- B5-01
 
 
+def test_personal_project_can_plan_without_a_frozen_baseline(b_engine):
+    with Session(b_engine) as session:
+        world = build_b_world(session)
+        project = session.get(Project, world.project_id)
+        project.course_id = None
+        project.group_id = None
+        project.setup_status = "not_initialized"
+        session.commit()
+    with b_api(b_engine) as api:
+        modules, _ = seed(api, world)
+        view = plan(api, world)
+        assert view["baseline_required"] is False
+        assert view["baseline_frozen"] is False
+        assert view["can_edit"] is True
+        response = create(api, world, body(modules))
+        assert response.status_code == 201, response.text
+
+
 def test_plan_needs_a_frozen_baseline_and_members(b_engine):
     with Session(b_engine) as session:
         world = build_b_world(session)
@@ -147,6 +165,7 @@ def test_plan_needs_a_frozen_baseline_and_members(b_engine):
     with b_api(b_engine) as api:
         modules, _ = seed(api, world)
         assert plan(api, world)["status"] == "none"
+        assert plan(api, world)["baseline_required"] is True
         assert plan(api, world)["can_edit"] is False
         assert error(create(api, world, body(modules))) == "BASELINE_NOT_FROZEN"
         freeze_baseline(b_engine, world)

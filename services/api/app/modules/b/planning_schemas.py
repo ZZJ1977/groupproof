@@ -124,6 +124,7 @@ class PlanDTO(BaseModel):
     version_no: int
     status: PlanStatus
     lock_version: int
+    baseline_required: bool
     baseline_frozen: bool
     baseline_version_no: int | None
     frozen_at: datetime | None
