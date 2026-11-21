@@ -60,7 +60,7 @@
 | 26 | 成员贡献详情 | `/projects/project-1/contribution/member-1` |
 | 27 | 报告预览 | `/projects/project-1/reports` |
 | 28 | 报告导出 | `/projects/project-1/reports/export` |
-| 29 | 项目设置 | `/projects/project-1/settings` |
+| 29 | 项目设置（真实项目含 GitHub 仓库与飞书群聊集成） | `/projects/project-1/settings` |
 | 30 | 个人动态 / 我的记录 | `/activity` |
 | 31 | 我的课程 | `/courses` |
 | 32 | 加入课程 | `/courses/join` |
@@ -97,12 +97,15 @@
 | 个人中心基本资料 | `/account/profile` | 有会话且未停用 | 只操作本人；字段白名单 + expectedVersion |
 | 学校邮箱绑定/验证/更换 | `/account/email` | 有会话且未停用 | 发送前需满足资料要求；换绑独立流程 |
 | 身份确认（学生/教师）（2026-10-10 更名，原“完成 / 教师审核”） | `/account/status` | 有会话 | 只显示本人必要信息与核验摘要；含教师审核进度与刷新入口 |
-| 账号安全（可选阶段；登录邮箱补验/改密） | `/account/security` | 有会话 | 历史未验证登录邮箱的受限补验入口（2026-10-09）；可选不计入注册必填进度（2026-10-10） |
+| 账号安全（登录邮箱补验、改密、GitHub 授权） | `/account/security` | 有会话 | 补验历史账号的登录邮箱。已激活账号可选绑定个人 GitHub，以关联项目活动 |
 | 密码重置 | `/reset-password` | 公开 | 邮件链接 fragment 令牌，页面内即刻清除后经 POST 提交（2026-10-09） |
 | 旧资料页别名 | `/onboarding/profile` | 同门禁 | 重定向 `/account/profile` |
 | 旧邮箱验证页别名 | `/onboarding/email-verification` | 同门禁 | 重定向 `/account/email` |
 | 语言 Cookie 接口 | `POST /api/locale` | 公开 | 服务端写 `gp_locale`（白名单值） |
-| 注册三步/找回密码弹窗 | `/login` 内 | 公开 | 邮箱→验证码→建档；忘记密码统一安全反馈（2026-10-09） |
+| 旧 GitHub 仓库绑定入口 | `/github/<项目 UUID>` | 同项目门禁 | 跳转项目设置的 GitHub 仓库面板 |
+| 旧飞书群聊绑定入口 | `/feishu/<项目 UUID>` | 同项目门禁 | 跳转项目设置的飞书群聊面板 |
+| 学校邮箱注册／找回密码弹窗 | `/login` 内 | 公开 | 学校邮箱 → 验证码；验证成功后打开注册资料页；忘记密码保持统一反馈 |
+| 注册资料页 | `/register/profile?tx=<id>` | 有效的已验证事务及同一浏览器 Cookie | 带入已验证学校邮箱，填写身份资料及密码。学生完成后进入工作区，教师进入身份审核 |
 | 未知路由 | — | — | 404，不加载工作区 |
 
 认证与账户接口（Google OAuth、session、/me、/admin 治理）经同源代理 `/api/v1/*` 访问 FastAPI，契约见 [`docs/development-stages/13-接口交接表.md`](./docs/development-stages/13-接口交接表.md)。

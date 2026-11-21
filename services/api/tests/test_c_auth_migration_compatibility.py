@@ -22,10 +22,10 @@ import test_c_files as files
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import MetaData, Table, create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.auth.models import AuthAuditEvent, OAuthTransaction, TeacherApplication
 from app.db.models import TaskAssignee, User
@@ -120,8 +120,31 @@ def snapshot(engine, columns):
 
 def seed_retained_history(engine):
     """Use actual C services to persist historical records on the old schema."""
+    historical_users = Table("users", MetaData(), autoload_with=engine)
+    historical_fields = load_only(*(getattr(User, name) for name in historical_users.c.keys()))
+
+    def persist_historical_user(session, user):
+        # Seed against the actual 0013 table. The current User mapper also knows 0033 columns.
+        session.execute(
+            historical_users.insert(),
+            {
+                "id": user.id,
+                "name": user.name,
+                "username": user.username,
+                "email": user.email,
+                "college": user.college,
+                "global_role": user.global_role,
+                "status": user.status,
+            },
+        )
+        historical_user = session.get(User, user.id, options=(historical_fields,))
+        binding = user.email_binding
+        user.email_binding = None
+        historical_user.email_binding = binding
+        return historical_user
+
     with Session(engine, expire_on_commit=False) as session:
-        scope = evidence.scope.__wrapped__(session)
+        scope = evidence.build_scope(session, persist_user=persist_historical_user)
         author = scope.users["author"]
         scope.task.status = "not_started"
         session.add(TaskAssignee(task_id=scope.task.id, user_id=author.id, role="responsible"))
@@ -296,7 +319,7 @@ def test_upgrade_0013_through_d_and_google_preserves_c_history(migration_databas
     assert D_TABLES <= set(inspect(engine).get_table_names())
     assert snapshot(engine, columns) == before
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0032"
+    assert current_revision(engine) == "0034"
     assert RISK_TABLES <= set(inspect(engine).get_table_names())
     assert snapshot(engine, columns) == before
     with Session(engine) as session:
@@ -310,9 +333,9 @@ def test_upgrade_0013_through_d_and_google_preserves_c_history(migration_databas
 def test_clean_database_rebuild_has_one_head_and_matches_models(migration_database):
     engine, config = migration_database.engine, migration_database.config
     assert inspect(engine).get_table_names() == []
-    assert ScriptDirectory.from_config(config).get_heads() == ["0032"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0034"]
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0032"
+    assert current_revision(engine) == "0034"
     inspector = inspect(engine)
     assert D_TABLES <= set(inspector.get_table_names())
     assert RISK_TABLES <= set(inspector.get_table_names())
@@ -323,6 +346,9 @@ def test_clean_database_rebuild_has_one_head_and_matches_models(migration_databa
     columns = {column["name"]: column for column in inspector.get_columns("oauth_transactions")}
     assert columns["purpose"]["nullable"] is False and "login" in columns["purpose"]["default"]
     assert columns["user_id"]["nullable"] is True
+    user_columns = {column["name"]: column for column in inspector.get_columns("users")}
+    for field in ("github_username", "feishu_account"):
+        assert user_columns[field]["nullable"] is True
     assert any(
         fk["constrained_columns"] == ["user_id"]
         and fk["referred_table"] == "users"
@@ -332,4 +358,4 @@ def test_clean_database_rebuild_has_one_head_and_matches_models(migration_databa
     command.check(config)
     # Re-running head is a no-op, not a duplicate D/OAuth schema installation.
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0032"
+    assert current_revision(engine) == "0034"

@@ -163,7 +163,7 @@ def _latest_code(email: str) -> str:
 
 def _register_account(client: TestClient) -> tuple[str, str]:
     """完成登录邮箱注册，返回 (login_email, username)；密码统一 PASSWORD。"""
-    login_email = f"{_unique('reg')}@test.example"
+    login_email = f"{_unique('reg')}@student.must.edu.mo"
     started = client.post(
         "/api/v1/auth/email/registrations", json={"email": login_email, "locale": "en"}
     )
@@ -173,12 +173,18 @@ def _register_account(client: TestClient) -> tuple[str, str]:
         f"/api/v1/auth/email/registrations/{tx_id}/verify", json={"code": _latest_code(login_email)}
     )
     assert verified.status_code == 200
-    username = _unique("user")
     completed = client.post(
         f"/api/v1/auth/email/registrations/{tx_id}/complete",
-        json={"username": username, "password": PASSWORD},
+        json={
+            "name": "Test Student",
+            "studentId": _unique("sid"),
+            "requestedIdentity": "student",
+            "password": PASSWORD,
+            "confirmPassword": PASSWORD,
+        },
     )
-    assert completed.status_code in (200, 201)
+    assert completed.status_code == 201
+    username = client.get("/api/v1/me").json()["data"]["user"]["username"]
     return login_email, username
 
 
@@ -388,6 +394,33 @@ def test_unverified_email_conflict_still_creates_account(client: TestClient, oid
     assert response.status_code == 302
     assert response.headers["location"] == "/account/profile"
     assert _count("SELECT count(*) FROM users") == users_before + 1
+
+
+def test_password_registration_cannot_replace_a_google_account(client: TestClient, oidc_provider):
+    email = f"{_unique('reg')}@student.must.edu.mo"
+    state = _start_login(client)
+    code = _mint_code(oidc_provider, state, sub=_unique("sub"), email=email.upper())
+    assert _callback(client, code=code, state=state).status_code == 302
+    client.post("/api/v1/auth/logout")
+    users_before = _count("SELECT count(*) FROM users")
+
+    started = client.post("/api/v1/auth/email/registrations", json={"email": email})
+    assert started.status_code == 200
+    route = "/api/v1/auth/email/registrations/" + started.json()["data"]["id"]
+    assert client.post(route + "/verify", json={"code": _latest_code(email)}).status_code == 200
+    completed = client.post(
+        route + "/complete",
+        json={
+            "name": "Test Student",
+            "studentId": _unique("sid"),
+            "requestedIdentity": "student",
+            "password": PASSWORD,
+            "confirmPassword": PASSWORD,
+        },
+    )
+    assert completed.status_code == 409
+    assert completed.json()["error"]["code"] == "EMAIL_CONFLICT"
+    assert _count("SELECT count(*) FROM users") == users_before
 
 
 # --- 7. 关联 Google：成功 / 近期认证过期 / sub 已被他人绑定 ---

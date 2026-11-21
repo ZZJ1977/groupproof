@@ -37,6 +37,28 @@ services:
       DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
       REDIS_URL: redis://redis:6379/0
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-dev}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      # Local Docker may reuse the same mail provider as Railway. Secrets stay in
+      # the ignored .env file and are forwarded only to the API container.
+      MAIL_MODE: ${MAIL_MODE:-capture}
+      MAIL_PUBLIC_ENABLED: ${MAIL_PUBLIC_ENABLED:-false}
+      MAIL_FROM: ${MAIL_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS_MODE: ${SMTP_TLS_MODE:-starttls}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-15}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
       # 本地默认用 AI 固定假结果；文件存储填了 Supabase 变量才启用
       AI_PROVIDER: ${AI_PROVIDER:-fake}
       SUPABASE_URL: ${SUPABASE_URL:-}
@@ -102,6 +124,7 @@ services:
       args:
         # 构建期 rewrites 兑底地址（容器网络内固定为服务名）；运行时代理另读 API_INTERNAL_URL
         API_INTERNAL_URL: ${API_DOCKER_INTERNAL_URL:-http://api:8000}
+        NEXT_PUBLIC_API_FEATURES: ${NEXT_PUBLIC_API_FEATURES:-}
     environment:
       NEXT_PUBLIC_APP_ENV: ${NEXT_PUBLIC_APP_ENV:-development}
       NEXT_PUBLIC_ENABLE_MOCKS: ${NEXT_PUBLIC_ENABLE_MOCKS:-true}

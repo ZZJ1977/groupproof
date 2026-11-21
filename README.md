@@ -25,6 +25,20 @@ npm run dev                                # 前端（或 docker compose up -d w
 
 Open [http://localhost:3000](http://localhost:3000). Sign-in supports password accounts and Google OIDC; configure `GOOGLE_*` to enable Google. Email registration, school-email verification, and password recovery need a mail channel. Local development defaults to the isolated `capture` channel; production can use SMTP or a transactional HTTPS API such as Resend. The demo role selector only appears in the isolated demo mode (`NEXT_PUBLIC_APP_MODE=mock`).
 
+## GitHub and Feishu integrations
+
+| Feature | GroupProof entry | API service configuration |
+| --- | --- | --- |
+| GitHub repository | Project settings. The project lead connects a repository available to the installed GitHub App. | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_SLUG` |
+| Feishu group | Project settings. The project lead connects a group visible to the Feishu bot. | `FEISHU_APP_ID`, `FEISHU_APP_SECRET` |
+| Personal GitHub identity | Account security. Each member can authorize their own account for attribution of project GitHub activity. | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` from a GitHub OAuth App |
+
+Set the variables in the ignored local `.env` or in the deployment's API service. For the personal OAuth App, set its authorization callback URL to the GroupProof Web origin (`APP_ORIGIN`) followed by `/api/v1/auth/github/callback`. With local Docker defaults this is `http://localhost:3000/api/v1/auth/github/callback`. Keep OAuth credentials separate for environments with different Web origins. Personal authorization uses the GitHub account ID and does not request repository access. School-email signup works independently from these integrations.
+
+Repository installations and bot membership determine which provider resources the GroupProof deployment can connect. Install the GitHub App only on repositories intended for GroupProof, and invite its Feishu bot only to groups intended for GroupProof. After a member authorizes GitHub, the next repository sync applies attribution to the activity it reads.
+
+To browse database-backed projects from the local home page and view real activity, include `daily=real` in `NEXT_PUBLIC_API_FEATURES` and rebuild the Web image.
+
 ## Checks
 
 ```bash
@@ -36,15 +50,15 @@ npm run check:access     # 权限矩阵断言（lib/access/policy.ts）
 npm run check:i18n       # 简体/繁体/英文词条 key 与插值参数一致性
 npm run check:auth       # 需开发服务器：匿名直链/旧链接兼容/登录页文案/404/语言恢复（CHECK_AUTH_API=1 加 API 负面用例）
 cd services/api && python -m pytest -q  # 统一后端（需隔离 PostgreSQL，先执行 alembic upgrade head）
-npm run check:auth-browser  # 真实 Chrome：注册三步/登录/找回/重置、键盘与窄屏（需开发服务器+后端）
+npm run check:auth-browser  # 浏览器认证回归（需开发服务器、隔离数据库和捕获邮件的后端）
 ```
 
 With the development server and backend running: `CHECK_HTTP=1 npm run check:routes` and `CHECK_AUTH_API=1 npm run check:auth`.
 
 ## Current scope
 
-- Real: Google OIDC login, server sessions (revocable/rotating), registration gate (profile → school email verification → teacher review), account center, admin teacher review/disable, audit, i18n (zh-Hans / zh-Hant / en), server-side page gating and protected business API authorization.
-- Mock (browser-local, behind real gating): the 56 design pages' business data (courses, projects, tasks, evidence, AI, GitHub/Feishu, file metadata, exports).
+- Real: Google OIDC login, server sessions (revocable/rotating), school-email signup (verify school email → complete profile and set password), teacher review, account center, admin teacher review/disable, audit, i18n (zh-Hans / zh-Hant / en), server-side page gating and protected business API authorization. Existing and Google accounts complete any outstanding onboarding steps in the account center.
+- Business workspace: existing feature switches determine where design pages still use browser-local demo data. GitHub and Feishu settings for persisted projects use the integration APIs when the providers are configured.
 
 See [frontend status](FRONTEND_STATUS.md), [API README](services/api/README.md) and [unification status](docs/plans/2026-10-12-unified-auth-resend-status.md) for implementation details and known limitations. Google entry visibility does not imply configured OAuth credentials; real mail requires a verified sender and the public-mail switch.
 

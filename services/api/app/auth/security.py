@@ -185,11 +185,10 @@ _COMMON_PASSWORDS = {
 }
 
 
-def validate_password(value: str) -> str:
-    """新设/重置密码策略：15–128 字符，允许长口令/空格/Unicode 与粘贴，
-    不强制复杂组合；禁止常见弱口令。"""
+def validate_password(value: str, *, minimum: int = PASSWORD_MIN) -> str:
+    """允许空格和 Unicode，不强制字符组合，拒绝常见弱密码。"""
     raw = value or ""
-    if len(raw) < PASSWORD_MIN or len(raw) > PASSWORD_MAX or not raw.strip():
+    if len(raw) < minimum or len(raw) > PASSWORD_MAX or not raw.strip():
         raise ValueError("password_policy")
     if raw.lower() in _COMMON_PASSWORDS:
         raise ValueError("password_too_common")

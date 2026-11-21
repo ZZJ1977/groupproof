@@ -14,6 +14,7 @@ import { resolveRoute } from "@/lib/routes";
 import { useWorkspace } from "@/lib/workspace";
 import { useTranslations } from "next-intl";
 import { apiMode } from "@/lib/api/config";
+import { resolveCanonicalRouteContext } from "@/lib/ux/navigation";
 
 const ActivityApiPage = dynamic(() => import("@/features/c/ActivityApiPages").then((module) => module.ActivityApiPage));
 const ProjectFilesApiPage = dynamic(() => import("@/features/c/ProjectFilesApiPage").then((module) => module.ProjectFilesApiPage));
@@ -53,6 +54,7 @@ export function RouteDispatcher() {
   const route = resolveRoute(pathname, search.get("view"));
   if (!route) return <WorkspaceShell kind={role === "admin" ? "admin" : role === "teacher" || role === "ta" ? "teacher" : "student"}><div className="py-24 text-center"><h1 className="text-[24px] font-semibold">{tc("notFound.title")}</h1><Link href="/home" className="gp-link mt-4 inline-block">{tc("notFound.home")}</Link></div></WorkspaceShell>;
   const { screen, projectId, taskId, milestoneId, memberId, courseId, groupId } = route;
+  const canonicalProject = resolveCanonicalRouteContext(pathname).projectId;
 
   // 布局按路由选择；访问资格单独判断（阶段 01），最终授权由 FastAPI 在数据接口执行
   const kind = screen >= 51 ? "admin" : screen >= 41 ? "teacher" : "student";
@@ -77,7 +79,8 @@ export function RouteDispatcher() {
   if ([42, 43, 44].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <TeacherWorkspaceApiPage courseId={courseId} groupId={groupId} screen={screen as 42 | 43 | 44} />;
   if (screen === 45 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherReportsApiPage courseId={courseId} />;
   if ([38, 40, 46, 47].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <CourseRulesApiPage courseId={courseId} teacher={screen >= 46} settingsView={screen === 46} />;
-  if (screen === 29 && projectId && apiMode("cworkspace") === "real") realContent = <ProjectSettingsApiPage projectId={projectId} reopenView={false} />;
+  if (screen === 29 && canonicalProject) realContent = <ProjectSettingsApiPage projectId={canonicalProject} reopenView={false} />;
+  if ([21, 22].includes(screen) && canonicalProject) realContent = <ActivityApiPage projectId={canonicalProject} sourceType={screen === 21 ? "github" : "feishu"} />;
   if (screen === 39 && courseId && apiMode("cworkspace") === "real") realContent = <CourseReopenApiPage courseId={courseId} />;
   // D's acceptance and contribution pages always read persisted API records.
   if ((screen === 16 || screen === 17) && projectId && taskId) realContent = <AcceptanceApiPage projectId={projectId} taskId={taskId} screen={screen} />;
@@ -86,7 +89,6 @@ export function RouteDispatcher() {
     if (screen === 18 && projectId) realContent = <RiskApiPage projectId={projectId} />;
     if ([14, 15].includes(screen) && projectId && taskId) realContent = <ExecutionApiPage projectId={projectId} taskId={taskId} submission={screen === 15} />;
     else if (screen === 20 && projectId) realContent = <EvidenceApiPage projectId={projectId} />;
-    else if ([21, 22].includes(screen) && projectId) realContent = <ActivityApiPage projectId={projectId} sourceType={screen === 21 ? "github" : "feishu"} />;
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
   }

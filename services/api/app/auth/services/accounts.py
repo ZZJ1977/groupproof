@@ -26,9 +26,18 @@ from ..security import (
     within_recent_auth,
 )
 from . import audit
-from .registration import profile_field_errors, review_basis
+from .registration import normalize_collaboration_accounts, profile_field_errors, review_basis
 
-PROFILE_FIELDS = ("name", "username", "studentId", "college", "requestedIdentity", "schoolEmail")
+PROFILE_FIELDS = (
+    "name",
+    "username",
+    "studentId",
+    "college",
+    "requestedIdentity",
+    "schoolEmail",
+    "githubUsername",
+    "feishuAccount",
+)
 
 
 def _bump(user: User) -> None:
@@ -120,6 +129,10 @@ def update_profile(
     if errors:
         raise AppError("VALIDATION_ERROR", 400, field_errors=errors)
 
+    github_username, feishu_account = normalize_collaboration_accounts(
+        payload.get("githubUsername"), payload.get("feishuAccount")
+    )
+
     # 一致性与唯一性：规范用户名唯一（数据库唯一约束兜底）
     normalized_username = normalize_username(username or "")
     existing = db.execute(
@@ -139,6 +152,10 @@ def update_profile(
     user.student_id = (student_id or "").strip() or None
     if "college" in payload:
         user.college = (payload.get("college") or "").strip() or None
+    if "githubUsername" in payload:
+        user.github_username = github_username
+    if "feishuAccount" in payload:
+        user.feishu_account = feishu_account
     if requested_identity and not user.requested_identity:
         user.requested_identity = requested_identity
     elif requested_identity:

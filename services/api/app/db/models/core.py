@@ -56,6 +56,9 @@ class User(TimestampMixin, LockVersionMixin, Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
     student_id: Mapped[str | None] = mapped_column(String(80), unique=True)
     college: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # 本人申报的协作账号资料，独立于外部身份授权及贡献归属映射。
+    github_username: Mapped[str | None] = mapped_column(String(39), nullable=True)
+    feishu_account: Mapped[str | None] = mapped_column(String(120), nullable=True)
     global_role: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=sa_text("'student'")
     )

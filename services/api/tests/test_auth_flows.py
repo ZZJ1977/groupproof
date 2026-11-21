@@ -65,33 +65,220 @@ def _latest_code(email: str) -> str:
     raise AssertionError(f"no captured code for {email}")
 
 
-def _register_account(client: TestClient) -> tuple[str, str]:
-    """完成邮箱注册前验证 + 建档，返回 (username, password)。"""
-    login_email = f"{_unique('reg')}@test.example"
+def _start_registration(client: TestClient, login_email: str) -> str:
     started = client.post(
         "/api/v1/auth/email/registrations", json={"email": login_email, "locale": "en"}
     )
-    assert started.status_code in (200, 202)
-    tx_id = started.json()["data"]["id"]
+    assert started.status_code == 200
     assert started.json()["meta"]["request_id"]
+    return started.json()["data"]["id"]
 
+
+def _verify_registration(client: TestClient, tx_id: str, login_email: str) -> None:
     verified = client.post(
         f"/api/v1/auth/email/registrations/{tx_id}/verify", json={"code": _latest_code(login_email)}
     )
     assert verified.status_code == 200
     assert verified.json()["data"]["verified"] is True
 
-    username = _unique("user")
+
+def _profile_input(identity: str = "student") -> dict:
+    return {
+        "name": "中文姓名",
+        "requestedIdentity": identity,
+        "studentId": _unique("s") if identity == "student" else None,
+        "college": "FST",
+        "password": PASSWORD,
+        "confirmPassword": PASSWORD,
+    }
+
+
+def _register_account(client: TestClient, identity: str = "student") -> tuple[str, str]:
+    domain = "student.must.edu.mo" if identity == "student" else "must.edu.mo"
+    login_email = f"{_unique('reg')}@{domain}"
+    tx_id = _start_registration(client, login_email)
+    _verify_registration(client, tx_id, login_email)
     completed = client.post(
         f"/api/v1/auth/email/registrations/{tx_id}/complete",
-        json={"username": username, "password": PASSWORD},
+        json=_profile_input(identity),
     )
-    assert completed.status_code in (200, 201)
+    assert completed.status_code == 201
     payload = completed.json()["data"]
     assert payload["authenticated"] is True
-    assert payload["sessionScope"] == "onboarding"
+    assert payload["sessionScope"] == ("full" if identity == "student" else "onboarding")
     assert payload["csrfToken"]
-    return username, PASSWORD
+    return login_email, PASSWORD
+
+
+@pytest.mark.parametrize("domain", ["example.com", "student.must.edu.mo.example.com"])
+def test_registration_requires_a_school_address_before_sending(client: TestClient, domain: str):
+    email = f"{_unique('reg')}@{domain}"
+    response = client.post("/api/v1/auth/email/registrations", json={"email": email})
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["fieldErrors"] == {"email": "school_email_domain"}
+
+
+def test_registration_profile_requires_verification_and_the_same_browser(client: TestClient):
+    email = f"{_unique('reg')}@student.must.edu.mo"
+    started = client.post("/api/v1/auth/email/registrations", json={"email": email})
+    assert started.status_code == 200
+    assert started.json()["data"]["status"] == "captured"
+    route = "/api/v1/auth/email/registrations/" + started.json()["data"]["id"]
+    assert client.get(route + "/profile").status_code == 400
+    assert client.post(route + "/complete", json=_profile_input()).status_code == 400
+
+    _verify_registration(client, started.json()["data"]["id"], email)
+    with TestClient(app) as other_browser:
+        assert other_browser.get(route + "/profile").status_code == 403
+        assert other_browser.post(route + "/complete", json=_profile_input()).status_code == 403
+    details = client.get(route + "/profile")
+    assert details.status_code == 200
+    assert "no-store" in details.headers["Cache-Control"]
+    assert details.json()["data"] == {"email": email, "allowedIdentities": ["student"]}
+    session = client.get("/api/v1/auth/session")
+    assert session.json()["data"]["authenticated"] is False
+
+
+def test_registration_form_recovers_from_field_errors_and_completes_once(client: TestClient):
+    email = f"{_unique('reg')}@student.must.edu.mo"
+    tx_id = _start_registration(client, email)
+    _verify_registration(client, tx_id, email)
+    complete_path = f"/api/v1/auth/email/registrations/{tx_id}/complete"
+    bad = client.post(
+        complete_path,
+        json={
+            **_profile_input("teacher"),
+            "password": "too few",
+            "confirmPassword": "does not match",
+        },
+    )
+    assert bad.status_code == 400
+    fields = bad.json()["error"]["details"]["fieldErrors"]
+    assert fields["schoolEmail"] == "email_domain_not_allowed"
+    assert fields["password"] == "password_policy"
+    assert fields["confirmPassword"] == "password_mismatch"
+
+    form = {**_profile_input(), "password": "8 chars!", "confirmPassword": "8 chars!"}
+    assert client.post(complete_path, json=form).status_code == 201
+    repeated = client.post(complete_path, json=form)
+    assert repeated.status_code == 200
+    assert repeated.json()["data"] == {"status": "already_completed"}
+    assert "set-cookie" not in repeated.headers
+
+
+def test_registration_profile_cannot_use_expired_verification(client: TestClient):
+    email = f"{_unique('reg')}@student.must.edu.mo"
+    tx_id = _start_registration(client, email)
+    _verify_registration(client, tx_id, email)
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "UPDATE pre_registration_requests SET creation_grant_expires_at = "
+                "now() - interval '1 minute' WHERE id = :tx_id"
+            ),
+            {"tx_id": tx_id},
+        )
+        db.commit()
+    route = f"/api/v1/auth/email/registrations/{tx_id}"
+    for response in [
+        client.get(route + "/profile"),
+        client.post(route + "/complete", json=_profile_input()),
+    ]:
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "CODE_EXPIRED"
+
+
+def test_collaboration_profile_accounts_can_be_saved_updated_and_cleared(client: TestClient):
+    email = f"{_unique('reg')}@must.edu.mo"
+    tx_id = _start_registration(client, email)
+    _verify_registration(client, tx_id, email)
+    completed = client.post(
+        f"/api/v1/auth/email/registrations/{tx_id}/complete",
+        json={
+            **_profile_input("teacher"),
+            "githubUsername": " @Demo-Teacher ",
+            "feishuAccount": " 李老师 ",
+        },
+    )
+    assert completed.status_code == 201
+    assert completed.json()["data"]["accountState"] == "review_required"
+    csrf = completed.json()["data"]["csrfToken"]
+    user = client.get("/api/v1/me").json()["data"]["user"]
+    assert user["githubUsername"] == "demo-teacher"
+    assert user["feishuAccount"] == "李老师"
+    with SessionLocal() as db:
+        assert (
+            db.scalar(
+                text("SELECT login FROM a_github_user_links WHERE user_id = :user_id"),
+                {"user_id": user["id"]},
+            )
+            is None
+        )
+
+    updated = client.patch(
+        "/api/v1/me/profile",
+        json={"expectedVersion": user["version"], "githubUsername": "", "feishuAccount": "lark42"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["data"]["registration"]["accountState"] == "review_required"
+    current = client.get("/api/v1/me").json()["data"]["user"]
+    assert current["githubUsername"] is None
+    assert current["feishuAccount"] == "lark42"
+
+
+def test_collaboration_profile_fields_reject_invalid_accounts_before_saving(client: TestClient):
+    email = f"{_unique('reg')}@student.must.edu.mo"
+    tx_id = _start_registration(client, email)
+    _verify_registration(client, tx_id, email)
+    complete_path = f"/api/v1/auth/email/registrations/{tx_id}/complete"
+    invalid = {"githubUsername": "https://github.example/demo", "feishuAccount": "account\n"}
+    expected_errors = {
+        "githubUsername": "invalid_github_username",
+        "feishuAccount": "invalid_feishu_account",
+    }
+    rejected = client.post(complete_path, json={**_profile_input(), **invalid})
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["details"]["fieldErrors"] == expected_errors
+
+    # The verified grant can be retried and older clients can omit both fields.
+    completed = client.post(complete_path, json=_profile_input())
+    assert completed.status_code == 201
+    user = client.get("/api/v1/me").json()["data"]["user"]
+    assert user["githubUsername"] is None
+    assert user["feishuAccount"] is None
+    rejected = client.patch(
+        "/api/v1/me/profile",
+        json={"expectedVersion": user["version"], **invalid},
+        headers={"X-CSRF-Token": completed.json()["data"]["csrfToken"]},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["details"]["fieldErrors"] == expected_errors
+
+
+def test_registration_rejects_duplicate_email_and_student_id(client: TestClient):
+    email = f"{_unique('reg')}@student.must.edu.mo"
+    tx_id = _start_registration(client, email)
+    _verify_registration(client, tx_id, email)
+    form = _profile_input()
+    assert (
+        client.post(f"/api/v1/auth/email/registrations/{tx_id}/complete", json=form).status_code
+        == 201
+    )
+
+    for next_email, next_form, expected_field in [
+        (email, _profile_input(), {"schoolEmail": "email_taken"}),
+        (f"{_unique('reg')}@student.must.edu.mo", form, {"studentId": "student_id_taken"}),
+    ]:
+        with TestClient(app) as browser:
+            tx_id = _start_registration(browser, next_email)
+            _verify_registration(browser, tx_id, next_email)
+            conflict = browser.post(
+                f"/api/v1/auth/email/registrations/{tx_id}/complete", json=next_form
+            )
+            assert conflict.status_code == 409
+            assert conflict.json()["error"]["details"]["fieldErrors"] == expected_field
+            assert browser.get("/api/v1/auth/session").json()["data"]["authenticated"] is False
 
 
 def test_capabilities_report_restricted_mail_without_public_switch(client: TestClient) -> None:
@@ -114,24 +301,25 @@ def test_registration_session_and_registration_state(client: TestClient) -> None
     me = client.get("/api/v1/me")
     assert me.status_code == 200
     payload = me.json()["data"]
-    # 未完成资料/学校邮箱验证前停留在注册流程内，不得进入业务
-    assert payload["registration"]["accountState"] in {"profile_required", "email_required"}
-    assert payload["registration"]["canEnterWorkspace"] is False
+    assert payload["registration"]["accountState"] == "active"
+    assert payload["registration"]["canEnterWorkspace"] is True
+    assert payload["registration"]["schoolEmailVerified"] is True
+    assert payload["registration"]["loginEmailVerified"] is True
 
 
 def test_password_login_and_error_envelope(client: TestClient) -> None:
-    username, password = _register_account(client)
+    login_email, password = _register_account(client)
 
     client.post("/api/v1/auth/logout")  # 清除注册会话
     login = client.post(
-        "/api/v1/auth/password/login", json={"identifier": username, "password": password}
+        "/api/v1/auth/password/login", json={"identifier": login_email, "password": password}
     )
     assert login.status_code == 200
     assert login.json()["data"]["authenticated"] is True
 
     wrong = client.post(
         "/api/v1/auth/password/login",
-        json={"identifier": username, "password": "wrong-password-000"},
+        json={"identifier": login_email, "password": "wrong-password-000"},
     )
     assert wrong.status_code == 401
     error = wrong.json()
@@ -182,7 +370,10 @@ def test_business_access_requires_full_session(client: TestClient) -> None:
     anonymous = business_client.get("/whoami")
     assert anonymous.status_code == 401
 
-    _register_account(client)
+    _register_account(client, "teacher")
+    state = client.get("/api/v1/auth/session").json()["data"]
+    assert state["accountState"] == "review_required"
+    assert state["nextAction"]["href"] == "/account/status"
     for cookie in client.cookies.jar:
         business_client.cookies.set(cookie.name, cookie.value)
     blocked = business_client.get("/whoami")
@@ -192,47 +383,6 @@ def test_business_access_requires_full_session(client: TestClient) -> None:
 
 def test_full_registration_activates_business_access(client: TestClient) -> None:
     _register_account(client)
-    session_payload = client.get("/api/v1/auth/session").json()["data"]
-    csrf = session_payload["csrfToken"]
-    version = client.get("/api/v1/me").json()["data"]["user"]["version"]
-
-    username = _unique("student")
-    school_email = f"{_unique('s')}@student.must.edu.mo"
-    updated = client.patch(
-        "/api/v1/me/profile",
-        json={
-            "name": "Test Student",
-            "username": username,
-            "studentId": f"S{uuid.uuid4().hex[:8]}",
-            "college": "FST",
-            "requestedIdentity": "student",
-            "schoolEmail": school_email,
-            "expectedVersion": version,
-        },
-        headers={"X-CSRF-Token": csrf},
-    )
-    assert updated.status_code == 200
-
-    challenge = client.post(
-        "/api/v1/me/school-email/challenges",
-        json={"purpose": "school_email_verify"},
-        headers={"X-CSRF-Token": csrf},
-    )
-    assert challenge.status_code == 200
-    # capture 模式不会投递到真实邮箱，接口须如实标记，前端据此不显示“已发送”
-    assert challenge.json()["data"]["sendStatus"] == "captured"
-    challenge_id = challenge.json()["data"]["challengeId"]
-
-    verified = client.post(
-        "/api/v1/me/school-email/verify",
-        json={"challengeId": challenge_id, "code": _latest_code(school_email)},
-        headers={"X-CSRF-Token": csrf},
-    )
-    assert verified.status_code == 200
-    payload = verified.json()["data"]
-    assert payload["registration"]["accountState"] == "active"
-    assert payload["registration"]["canEnterWorkspace"] is True
-
     business_app = _business_app()
 
     business_client = TestClient(business_app)

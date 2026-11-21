@@ -4579,18 +4579,76 @@
       },
       "EmailRegistrationCompleteIn": {
         "properties": {
+          "college": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "College"
+          },
+          "confirmPassword": {
+            "title": "Confirmpassword",
+            "type": "string"
+          },
+          "feishuAccount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feishuaccount"
+          },
+          "githubUsername": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Githubusername"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
           "password": {
             "title": "Password",
             "type": "string"
           },
-          "username": {
-            "title": "Username",
+          "requestedIdentity": {
+            "enum": [
+              "student",
+              "teacher"
+            ],
+            "title": "Requestedidentity",
             "type": "string"
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studentid"
           }
         },
         "required": [
-          "username",
-          "password"
+          "name",
+          "requestedIdentity",
+          "password",
+          "confirmPassword"
         ],
         "title": "EmailRegistrationCompleteIn",
         "type": "object"
@@ -5955,6 +6013,57 @@
         "title": "GithubActivityPageDTO",
         "type": "object"
       },
+      "GithubIdentityStatus": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          },
+          "verifiedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifiedat"
+          }
+        },
+        "required": [
+          "available",
+          "login",
+          "verifiedAt"
+        ],
+        "title": "GithubIdentityStatus",
+        "type": "object"
+      },
+      "GithubLinkStart": {
+        "properties": {
+          "authorizeUrl": {
+            "title": "Authorizeurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorizeUrl"
+        ],
+        "title": "GithubLinkStart",
+        "type": "object"
+      },
       "GithubLoginDTO": {
         "properties": {
           "login": {
@@ -7059,6 +7168,28 @@
           "expectedVersion": {
             "title": "Expectedversion",
             "type": "integer"
+          },
+          "feishuAccount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feishuaccount"
+          },
+          "githubUsername": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Githubusername"
           },
           "name": {
             "anyOf": [
@@ -10601,7 +10732,7 @@
     },
     "/api/v1/a/me/github-login": {
       "put": {
-        "description": "声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。",
+        "description": "维护旧版客户端自行声明的 GitHub 用户名。",
         "operationId": "set_my_github_login_api_v1_a_me_github_login_put",
         "parameters": [
           {
@@ -14273,6 +14404,7 @@
             "name": "tx_id",
             "required": true,
             "schema": {
+              "maxLength": 64,
               "title": "Tx Id",
               "type": "string"
             }
@@ -14309,6 +14441,47 @@
           }
         },
         "summary": "Complete Email Registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/email/registrations/{tx_id}/profile": {
+      "get": {
+        "operationId": "read_email_registration_profile_api_v1_auth_email_registrations__tx_id__profile_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tx_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "title": "Tx Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Email Registration Profile",
         "tags": [
           "auth"
         ]
@@ -14411,6 +14584,62 @@
         "summary": "Verify Email Registration",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/github/callback": {
+      "get": {
+        "operationId": "github_callback_api_v1_auth_github_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Error",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Github Callback",
+        "tags": [
+          "me"
         ]
       }
     },
@@ -17436,6 +17665,60 @@
         "tags": [
           "c",
           "c-daily"
+        ]
+      }
+    },
+    "/api/v1/me/identities/github": {
+      "delete": {
+        "operationId": "unlink_github_identity_api_v1_me_identities_github_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Unlink Github Identity",
+        "tags": [
+          "me"
+        ]
+      },
+      "get": {
+        "operationId": "get_github_identity_api_v1_me_identities_github_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubIdentityStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Github Identity",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/identities/github/link": {
+      "post": {
+        "operationId": "link_github_identity_api_v1_me_identities_github_link_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubLinkStart"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Link Github Identity",
+        "tags": [
+          "me"
         ]
       }
     },

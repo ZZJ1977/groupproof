@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Feedback, ProgressBar } from "@/components/common";
 import { LanguageSwitcher } from "@/components/language-switcher";
-import { authClient, ApiError, type CapabilitiesDTO, type SessionDTO } from "@/lib/api/auth-client";
+import { authClient, ApiError, type CapabilitiesDTO, type RegistrationTxDTO, type SessionDTO } from "@/lib/api/auth-client";
+import { sanitizeReturnTo } from "@/lib/auth/return-to";
 
 const FEATURES = [
   { icon: Mail, titleKey: "feature1Title", subKey: "feature1Sub" },
@@ -18,25 +19,6 @@ const FEATURES = [
   { icon: Activity, titleKey: "feature3Title", subKey: "feature3Sub" },
   { icon: ShieldCheck, titleKey: "feature4Title", subKey: "feature4Sub" },
 ] as const;
-
-/** 与后端 safe_return_to 同一规则：只接受站内路径，拒绝 //host、反斜杠、编码绕过，以及认证/账户相关前缀。 */
-function safeLocalTarget(value: string | null): string | null {
-  if (!value) return null;
-  const candidate = value.trim();
-  if (!candidate.startsWith("/") || candidate.startsWith("//") || candidate.includes("\\")) return null;
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(candidate);
-  } catch {
-    return null;
-  }
-  if (decoded.includes("\\") || decoded.startsWith("//")) return null;
-  const path = candidate.split(/[?#]/, 1)[0];
-  for (const prefix of ["/api", "/login", "/account", "/onboarding"]) {
-    if (path === prefix || path.startsWith(`${prefix}/`)) return null;
-  }
-  return candidate;
-}
 
 function GoogleMark() {
   return (
@@ -56,12 +38,7 @@ function useErrorText() {
     if (error instanceof ApiError) {
       const firstField = Object.values(error.fieldErrors)[0];
       const key = firstField ? `errors.${firstField}` : `errors.${error.code}`;
-      let message: string;
-      try {
-        message = t(key);
-      } catch {
-        message = t("errors.SERVICE_UNAVAILABLE");
-      }
+      const message = t(t.has(key) ? key : "errors.SERVICE_UNAVAILABLE");
       return { message, requestId: error.requestId, retryAfter: error.retryAfterSeconds };
     }
     return { message: t("errors.SERVICE_UNAVAILABLE"), requestId: null, retryAfter: null };
@@ -93,7 +70,7 @@ function LoginCard() {
   const [redirecting, setRedirecting] = useState(false);
   const startedRef = useRef(false);
   const error = search.get("error");
-  const returnTo = safeLocalTarget(search.get("returnTo"));
+  const returnTo = sanitizeReturnTo(search.get("returnTo") ?? "");
 
   const [caps, setCaps] = useState<CapabilitiesDTO | null>(null);
   const [capsFailed, setCapsFailed] = useState(false);
@@ -119,6 +96,12 @@ function LoginCard() {
     const next = session.accountState === "active" ? (returnTo ?? session.nextAction?.href ?? "/home") : (session.nextAction?.href ?? "/account/profile");
     router.push(next);
     router.refresh();
+  };
+
+  const goToRegistrationProfile = (txId: string) => {
+    const query = new URLSearchParams({ tx: txId });
+    if (returnTo) query.set("returnTo", returnTo);
+    router.push(`/register/profile?${query}`);
   };
 
   // 从 Google 页面按“返回”时浏览器会从 bfcache 恢复本页，按钮必须复位
@@ -262,140 +245,126 @@ function LoginCard() {
         </div>
       </div>
 
-      <RegisterDialog open={registerOpen} onOpenChange={setRegisterOpen} onDone={goAfterAuth} locale={locale} />
+      <RegisterDialog open={registerOpen} onOpenChange={setRegisterOpen} onTestEntry={goAfterAuth} onVerified={goToRegistrationProfile} locale={locale} />
       <ForgotDialog open={forgotOpen} onOpenChange={setForgotOpen} locale={locale} />
     </section>
   );
 }
 
-/** 注册窗口：三步（登录邮箱 → 邮箱验证码 → 用户名/密码），验证后一次性建档 */
-function RegisterDialog({ open, onOpenChange, onDone, locale }: { open: boolean; onOpenChange: (open: boolean) => void; onDone: (session: SessionDTO) => void; locale: string }) {
+function RegisterDialog({ open, onOpenChange, onTestEntry, onVerified, locale }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onTestEntry: (session: SessionDTO) => void;
+  onVerified: (txId: string) => void;
+  locale: string;
+}) {
   const tr = useTranslations("auth.register");
   const errorText = useErrorText();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [txId, setTxId] = useState<string | null>(null);
-  const [masked, setMasked] = useState<string | null>(null);
+  const [tx, setTx] = useState<RegistrationTxDTO | null>(null);
   const [resendAt, setResendAt] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<{ message: string; requestId: string | null; retryAfter: number | null } | null>(null);
+  const activeRequest = useRef<AbortController | null>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
+  const codeInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (seconds <= 0) return;
-    const timer = window.setTimeout(() => setSeconds(seconds - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [seconds]);
+    if (!resendAt) return;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+      setSeconds(remaining);
+      if (remaining === 0) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendAt]);
 
-  const setField = (setter: (value: string) => void) => (event: { target: { value: string } }) => {
-    setter(event.target.value);
+  useEffect(() => {
+    if (open) (tx ? codeInput : emailInput).current?.focus();
+  }, [open, tx]);
+
+  useEffect(() => () => activeRequest.current?.abort(), []);
+
+  const updateCountdown = (next: number | null) => {
+    setResendAt(next);
+    setSeconds(next ? Math.max(0, Math.ceil((next - Date.now()) / 1000)) : 0);
+  };
+
+  const resetVerification = () => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    setPending(false);
+    setTx(null);
+    setCode("");
+    updateCountdown(null);
     setError(null);
   };
 
-  const sendCode = async () => {
+  const changeOpen = (next: boolean) => {
+    if (!next) {
+      resetVerification();
+      setEmail("");
+    }
+    onOpenChange(next);
+  };
+
+  const runRequest = async <T,>(send: (signal: AbortSignal) => Promise<T>, receive: (data: T) => void, isResend = false) => {
+    if (activeRequest.current) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setPending(true);
     setError(null);
     try {
-      const tx = await authClient.startEmailRegistration(email.trim(), locale);
-      if ("testEntry" in tx) {
-        // 验收临时密令（仅测试模式）：已开通测试账户，直达信息完善页
-        onOpenChange(false);
-        onDone(tx);
+      const data = await send(controller.signal);
+      if (!controller.signal.aborted) receive(data);
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        const feedback = errorText(err);
+        if (isResend && feedback.retryAfter) updateCountdown(Date.now() + feedback.retryAfter * 1000);
+        setError(feedback);
+      }
+    } finally {
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setPending(false);
+      }
+    }
+  };
+
+  const receiveTransaction = (next: RegistrationTxDTO) => {
+    setTx(next);
+    setCode("");
+    updateCountdown(next.resendAvailableAt ? Date.parse(next.resendAvailableAt) : null);
+  };
+
+  const sendCode = () => runRequest(
+    (signal) => authClient.startEmailRegistration(email.trim(), locale, signal),
+    (result) => {
+      if ("testEntry" in result) {
+        changeOpen(false);
+        onTestEntry(result);
         return;
       }
-      setTxId(tx.id);
-      setMasked(tx.email);
-      setResendAt(tx.resendAvailableAt ? new Date(tx.resendAvailableAt).getTime() : null);
-      setSeconds(tx.resendAvailableAt ? Math.max(1, Math.ceil((new Date(tx.resendAvailableAt).getTime() - Date.now()) / 1000)) : 0);
-      setStep(2);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const resend = async () => {
-    if (!txId) return;
-    setPending(true);
-    setError(null);
-    try {
-      const tx = await authClient.resendEmailRegistration(txId, locale);
-      setSeconds(tx.resendAvailableAt ? Math.max(1, Math.ceil((new Date(tx.resendAvailableAt).getTime() - Date.now()) / 1000)) : 0);
-      setResendAt(tx.resendAvailableAt ? new Date(tx.resendAvailableAt).getTime() : null);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const verifyCode = async () => {
-    if (!txId) return;
-    setPending(true);
-    setError(null);
-    try {
-      await authClient.verifyEmailRegistration(txId, code.trim());
-      setStep(3);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const complete = async (event: { preventDefault: () => void }) => {
-    event.preventDefault();
-    if (!txId) return;
-    if (password !== confirm) {
-      setError({ message: tr("mismatch"), requestId: null, retryAfter: null });
-      return;
-    }
-    setPending(true);
-    setError(null);
-    try {
-      const result = await authClient.completeEmailRegistration(txId, username.trim(), password);
-      onOpenChange(false);
-      if ("authenticated" in result) {
-        onDone(result);
-      } else {
-        // 建档成功但响应曾丢失：提示登录继续（不重复创建）
-        setError({ message: tr("alreadyCompleted"), requestId: null, retryAfter: null });
-      }
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const changeEmail = () => {
-    // 修改邮箱：回到步骤 1 重新建立验证（旧事务/建档资格不再使用）
-    setStep(1);
-    setTxId(null);
-    setCode("");
-    setError(null);
-  };
+      receiveTransaction(result);
+    },
+  );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{tr("title")} · {tr("stepOf", { step, total: 3 })}</DialogTitle>
-          <DialogDescription>{step === 1 ? tr("step1Desc") : step === 2 ? tr("step2Desc") : tr("step3Desc")}</DialogDescription>
+          <DialogTitle>{tr("title")} · {tr("stepOf", { step: tx ? 2 : 1, total: 2 })}</DialogTitle>
+          <DialogDescription>{tr(tx ? "step2Desc" : "step1Desc")}</DialogDescription>
         </DialogHeader>
 
-        {step === 1 && (
-          <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void sendCode(); }}>
+        {!tx && (
+          <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); if (email.trim()) void sendCode(); }}>
             <label className="gp-field">
               {tr("email")}
-              <Input value={email} onChange={setField(setEmail)} inputMode="email" autoComplete="email" aria-label={tr("email")} placeholder={tr("emailPlaceholder")} />
+              <Input ref={emailInput} value={email} onChange={(event) => { setEmail(event.target.value); setError(null); }} inputMode="email" autoComplete="email" placeholder={tr("emailPlaceholder")} readOnly={pending} />
             </label>
-            <p className="text-[11px] leading-5 text-[#8d9aad]">{tr("commonEmailNote")}</p>
             {error && <ErrorNote {...error} />}
             <Button type="submit" className="w-full" loading={pending} disabled={!email.trim()}>
               {tr("sendCode")}
@@ -403,59 +372,52 @@ function RegisterDialog({ open, onOpenChange, onDone, locale }: { open: boolean;
           </form>
         )}
 
-        {step === 2 && (
-          <div className="space-y-3">
-            <p className="text-[12px] text-[#52627b]">{tr("sentTo", { email: masked ?? email })}</p>
+        {tx && (
+          <form className="space-y-3" onSubmit={(event) => {
+            event.preventDefault();
+            if (code.length !== 6) return;
+            void runRequest(
+              (signal) => authClient.verifyEmailRegistration(tx.id, code, signal),
+              (result) => {
+                if (!result.verified) throw new ApiError(400, { code: "CHALLENGE_INVALID" });
+                changeOpen(false);
+                onVerified(tx.id);
+              },
+            );
+          }}>
+            {tx.status === "captured" ?
+              <Feedback tone="warning">{tr("captured")}</Feedback> :
+              <p className="text-[12px] text-[#52627b]" role="status">{tr("sentTo", { email: tx.email })}</p>}
             <label className="gp-field">
               <span className="sr-only">{tr("code")}</span>
               <Input
+                ref={codeInput}
                 className="h-12 text-center text-[22px] tracking-[0.35em]"
                 value={code}
-                onChange={(event) => setField(setCode)({ target: { value: event.target.value.replace(/\D/g, "").slice(0, 6) } })}
+                onChange={(event) => { setCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setError(null); }}
                 inputMode="numeric"
                 maxLength={6}
                 autoComplete="one-time-code"
-                aria-label={tr("code")}
+                readOnly={pending}
                 placeholder="000000"
               />
             </label>
             {error && <ErrorNote {...error} />}
-            <Button className="w-full" onClick={() => void verifyCode()} loading={pending} disabled={code.length !== 6}>
+            <Button type="submit" className="w-full" loading={pending} disabled={code.length !== 6}>
               {tr("verifyCode")}
             </Button>
             <div className="flex items-center justify-between text-[12px]">
-              <button type="button" className="gp-link" onClick={changeEmail}>
+              <button type="button" className="gp-link" onClick={resetVerification}>
                 {tr("changeEmail")}
               </button>
-              <button type="button" className="gp-link disabled:text-[#98a4b5]" disabled={seconds > 0 || pending} onClick={() => void resend()}>
+              <button type="button" className="gp-link disabled:text-[#98a4b5]" disabled={seconds > 0 || pending} onClick={() => void runRequest(
+                (signal) => authClient.resendEmailRegistration(tx.id, locale, signal),
+                receiveTransaction,
+                true,
+              )}>
                 {seconds > 0 ? tr("resendWait", { seconds }) : tr("resend")}
               </button>
             </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <form className="space-y-3" onSubmit={complete}>
-            <div className="rounded-[7px] bg-[#f5f8fd] p-3 text-[12px] text-[#52627b]">
-              {tr("verifiedEmail")}：<span className="font-semibold">{masked ?? email}</span>
-            </div>
-            <label className="gp-field">
-              {tr("username")}
-              <Input value={username} onChange={setField(setUsername)} autoComplete="username" aria-label={tr("username")} />
-            </label>
-            <label className="gp-field">
-              {tr("password")}
-              <Input type="password" value={password} onChange={setField(setPassword)} autoComplete="new-password" aria-label={tr("password")} />
-            </label>
-            <label className="gp-field">
-              {tr("confirmPassword")}
-              <Input type="password" value={confirm} onChange={setField(setConfirm)} autoComplete="new-password" aria-label={tr("confirmPassword")} />
-            </label>
-            <p className="text-[11px] leading-5 text-[#8d9aad]">{tr("passwordPolicyNote")}</p>
-            {error && <ErrorNote {...error} />}
-            <Button type="submit" className="w-full" loading={pending} disabled={!username.trim() || !password || !confirm}>
-              {tr("submit")}
-            </Button>
           </form>
         )}
       </DialogContent>
