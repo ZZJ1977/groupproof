@@ -88,9 +88,25 @@ function LoginCard() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loginState, setLoginState] = useState<"idle" | "pending">("idle");
-  const [loginError, setLoginError] = useState<{ message: string; requestId: string | null; retryAfter: number | null } | null>(null);
+  const [loginError, setLoginError] = useState<{ message: string; requestId: string | null; retryAfter: number | null; code?: string } | null>(null);
+  const [loginRetryAt, setLoginRetryAt] = useState<number | null>(null);
+  const [loginRetrySeconds, setLoginRetrySeconds] = useState(0);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+
+  useEffect(() => {
+    if (loginRetryAt === null) return;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((loginRetryAt - Date.now()) / 1000));
+      setLoginRetrySeconds(remaining);
+      if (remaining === 0) {
+        window.clearInterval(timer);
+        setLoginRetryAt(null);
+        setLoginError((current) => current?.code === "RATE_LIMITED" ? null : current);
+      }
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [loginRetryAt]);
 
   const goAfterAuth = (session: SessionDTO) => {
     const next = session.accountState === "active" ? (returnTo ?? session.nextAction?.href ?? "/home") : (session.nextAction?.href ?? "/account/profile");
@@ -134,14 +150,19 @@ function LoginCard() {
 
   const submitPasswordLogin = async (event: { preventDefault: () => void }) => {
     event.preventDefault();
-    if (loginState === "pending") return;
+    if (loginState === "pending" || (loginRetryAt !== null && Date.now() < loginRetryAt)) return;
     setLoginState("pending");
     setLoginError(null);
     clearUrlError();
     try {
       goAfterAuth(await authClient.passwordLogin(identifier.trim(), password));
     } catch (err) {
-      setLoginError(errorText(err));
+      const feedback = errorText(err);
+      setLoginError({ ...feedback, code: err instanceof ApiError ? err.code : undefined });
+      if (err instanceof ApiError && err.code === "RATE_LIMITED" && feedback.retryAfter !== null && Number.isFinite(feedback.retryAfter) && feedback.retryAfter > 0) {
+        setLoginRetryAt(Date.now() + feedback.retryAfter * 1_000);
+        setLoginRetrySeconds(Math.ceil(feedback.retryAfter));
+      }
       setLoginState("idle");
     }
   };
@@ -192,8 +213,8 @@ function LoginCard() {
           {tp("password")}
           <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" aria-label={tp("password")} />
         </label>
-        {loginError && <ErrorNote {...loginError} />}
-        <Button type="submit" className="w-full" loading={loginState === "pending"}>{tp("submit")}</Button>
+        {loginError && <ErrorNote {...loginError} retryAfter={loginError.code === "RATE_LIMITED" && loginRetryAt !== null ? loginRetrySeconds : loginError.retryAfter} />}
+        <Button type="submit" className="w-full" loading={loginState === "pending"} disabled={loginRetrySeconds > 0}>{tp("submit")}</Button>
       </form>
       <div className="mt-3 flex items-center justify-center gap-3 text-[12px] text-[#8794a7]">
         {showForgot && (

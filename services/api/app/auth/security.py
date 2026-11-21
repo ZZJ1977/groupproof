@@ -160,38 +160,19 @@ import bcrypt  # noqa: E402
 from argon2 import PasswordHasher  # noqa: E402
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError  # noqa: E402
 
-PASSWORD_MIN = 15  # 新设/重置密码（方案 §8.1 建议）；历史密码按原哈希验证，不受新策略拒绝
-PASSWORD_MAX = 128
+PASSWORD_MIN = 8  # 注册、修改与重置统一规则；历史密码继续按原哈希验证
 PASSWORD_MAX_BYTES = 72  # 仅历史 bcrypt 凭据的验证边界
 BCRYPT_ROUNDS = 12
 _argon = PasswordHasher(
     time_cost=2, memory_cost=19 * 1024, parallelism=1
 )  # OWASP 起始参数 m=19MiB,t=2,p=1
 
-# 本地常见弱口令黑名单（不依赖外部泄露库，不回传原密码）
-_COMMON_PASSWORDS = {
-    "password",
-    "password1",
-    "password123",
-    "12345678",
-    "123456789",
-    "1234567890",
-    "qwertyuiop",
-    "iloveyou",
-    "admin12345",
-    "letmein123",
-    "welcome123",
-    "abc123456",
-}
 
-
-def validate_password(value: str, *, minimum: int = PASSWORD_MIN) -> str:
-    """允许空格和 Unicode，不强制字符组合，拒绝常见弱密码。"""
+def validate_password(value: str) -> str:
+    """只要求至少八个字符；保留原始 Unicode 和空格，不限制字符组合及最大长度。"""
     raw = value or ""
-    if len(raw) < minimum or len(raw) > PASSWORD_MAX or not raw.strip():
+    if len(raw) < PASSWORD_MIN:
         raise ValueError("password_policy")
-    if raw.lower() in _COMMON_PASSWORDS:
-        raise ValueError("password_too_common")
     return raw
 
 

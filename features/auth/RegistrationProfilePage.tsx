@@ -19,6 +19,7 @@ const pageWidth = "mx-auto w-full max-w-[1160px] px-4 sm:px-8";
 const sectionPadding = "px-5 py-6 sm:px-8 sm:py-8 lg:px-9 lg:py-9";
 const field = "flex min-w-0 flex-col gap-2 text-sm font-medium text-[var(--gp-ink-soft)]";
 const control = "h-12 w-full rounded-lg px-3.5 text-sm";
+const identities = ["student", "teacher"] as const;
 
 export function RegistrationProfilePage({ txId, returnTo }: { txId: string | null; returnTo: string | null }) {
   const t = useTranslations("registrationProfile");
@@ -72,6 +73,7 @@ function RegistrationProfileForm({ txId, profile, loginHref, returnTo }: {
   const t = useTranslations("registrationProfile");
   const profileText = useTranslations("account.profile");
   const [identity, setIdentity] = useState(profile.allowedIdentities[0]);
+  const identityMatchesEmail = profile.allowedIdentities.includes(identity);
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -106,7 +108,7 @@ function RegistrationProfileForm({ txId, profile, loginHref, returnTo }: {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending || blocked || !identity) return;
+    if (pending || blocked || !identity || !identityMatchesEmail) return;
     const form = event.currentTarget;
     const fields = new FormData(form);
     const value = (name: string) => String(fields.get(name) ?? "");
@@ -178,10 +180,15 @@ function RegistrationProfileForm({ txId, profile, loginHref, returnTo }: {
               <label className={field}>
                 <span id="signup-identity-label">{t("identity")}</span>
                 <select name="requestedIdentity" aria-labelledby="signup-identity-label" className={`${control} border border-[#dbe3ee] bg-white text-[var(--gp-ink)] focus-visible:border-[#80aafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e9f1ff] disabled:bg-slate-50`} value={identity ?? ""}
-                  onChange={(event) => { setIdentity(event.currentTarget.value === "teacher" ? "teacher" : "student"); clearField("requestedIdentity"); }}
-                  {...invalidProps("requestedIdentity", identity === "teacher" ? "signup-teacher-note" : undefined)}>
-                  {profile.allowedIdentities.map((role) => <option key={role} value={role}>{t(role)}</option>)}
+                  onChange={(event) => { setIdentity(event.currentTarget.value === "teacher" ? "teacher" : "student"); clearField("requestedIdentity"); clearField("schoolEmail"); }}
+                  {...invalidProps("requestedIdentity", [identity === "teacher" ? "signup-teacher-note" : "", !identityMatchesEmail ? "signup-identity-email-note" : ""].filter(Boolean).join(" "))}
+                  aria-invalid={!identityMatchesEmail || Boolean(errors.requestedIdentity) || undefined}>
+                  {identities.map((role) => <option key={role} value={role}>{t(role)}</option>)}
                 </select>
+                {!identityMatchesEmail && <span id="signup-identity-email-note" role="status" className="text-sm font-normal leading-6 text-[var(--gp-danger)]">
+                  {t("identityEmailMismatch", { identity: t(identity) })}{" "}
+                  <Link href={loginHref} className="gp-link underline">{t("changeSchoolEmail")}</Link>
+                </span>}
                 {errorFor("requestedIdentity")}
               </label>
               {identity === "student" && <label className={field}>
@@ -226,7 +233,7 @@ function RegistrationProfileForm({ txId, profile, loginHref, returnTo }: {
 
       <div className="flex flex-col-reverse items-stretch justify-between gap-3 border-t border-border bg-slate-50/60 px-5 py-4 sm:flex-row sm:items-center sm:px-8 sm:py-5 lg:px-9">
         <Link href={loginHref} className="gp-link py-2 text-center text-sm">{t("backToLogin")}</Link>
-        <Button size="lg" className="min-h-12 px-6 text-sm" type="submit" disabled={blocked || pending || !identity} aria-busy={pending || undefined}>
+        <Button size="lg" className="min-h-12 px-6 text-sm" type="submit" disabled={blocked || pending || !identity || !identityMatchesEmail} aria-busy={pending || undefined}>
           {pending ? t("submitting") : t("submit")}<ArrowRight size={16} aria-hidden="true" />
         </Button>
       </div>
