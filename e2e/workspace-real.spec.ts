@@ -26,6 +26,10 @@ async function setup(page: Page) {
       ? { status: 503, json: { error: { code: "SERVICE_UNAVAILABLE", message: "首页服务暂不可用，请重试。" }, meta: { request_id: "workspace-real-failed" } } }
       : { json: envelope(state.summary) });
   });
+  await page.route("**/api/v1/me/courses**", (route) => route.fulfill(state.failHome
+    ? { status: 503, json: { error: { code: "SERVICE_UNAVAILABLE", message: "课程服务暂不可用" }, meta: { request_id: "courses-failed" } } }
+    : { json: envelope({ items: state.summary.courses.map(course => ({ ...course, code: "ACTUAL", semester: "2026", college: "CS", role: "student", joined_at: "2026-11-01", teacher: null, formation_deadline: null, project_deadline: null, group: null, project: null, pending_count: 0 })), total: state.summary.courses.length, page: 1, page_size: 10, counts: { all: state.summary.course_count, active: state.summary.course_count, ended: 0 }, pending_joins: [] }) }));
+  await page.route("**/api/v1/projects/project-1/overview", (route) => route.fulfill({ status: 404, json: { error: { code: "PROJECT_NOT_FOUND", message: "项目不存在" }, meta: { request_id: "missing-project" } } }));
   await page.route("**/api/v1/me/notifications**", (route) => route.fulfill({ json: envelope({
     items: [], total: 0, total_all: 0, unread_total: 0, page: 1, page_size: 10,
     inbox_version: 0, snapshot_id: "00000000-0000-0000-0000-000000000103",
@@ -79,15 +83,15 @@ test("empty API responses leave every student workspace entry free of demonstrat
   await noDemoData(page);
   await page.goto("/courses");
   await expect(page.getByRole("heading", { name: "我的课程", exact: true })).toBeVisible();
-  await expect(page.getByText("暂无课程", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "用邀请码加入课程", exact: true })).toBeVisible();
   await noDemoData(page);
   await page.goto("/courses/join");
-  await expect(page.getByText("暂时无法通过邀请码加入课程", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "下一步" })).toHaveCount(0);
+  await expect(page.getByLabel("输入教师提供的邀请码")).toBeVisible();
+  await expect(page.getByRole("button", { name: /下一步/ })).toBeEnabled();
   await expect(page.getByText(/加入课程前需要验证学校邮箱/)).toHaveCount(0);
   await noDemoData(page);
   await page.goto("/projects/project-1");
-  await expect(page.getByText("该功能暂不可用", { exact: true })).toBeVisible();
+  await expect(page.locator("main").getByRole("status")).toContainText("项目不存在");
   await noDemoData(page);
   for (const [path, emptyText] of [
     ["/notifications", "没有符合条件的通知"],
@@ -128,8 +132,41 @@ test("actual records remain visible, while failed refresh shows an error without
   await expect(page.getByText("真实接口课程", { exact: true })).toBeVisible();
   state.failHome = true;
   await page.reload();
-  await expect(page.getByRole("alert").filter({ hasText: "暂时无法读取课程，请稍后重试。" })).toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toBeVisible();
   await expect(page.getByText("真实接口课程", { exact: true })).toHaveCount(0);
   await expect(page.getByText("暂无课程", { exact: true })).toHaveCount(0);
   await noDemoData(page);
+});
+
+
+test("clearing demonstration data keeps creation and enrollment actions available", async ({ page }) => {
+  await setup(page);
+  await page.goto("/home");
+  await expect(page.locator(".gp-stat-value")).toHaveText(["0", "0", "0", "0"]);
+  const header = page.locator(".gp-page-header");
+  await expect(header.getByRole("link", { name: "创建项目", exact: true })).toHaveAttribute("href", "/courses?intent=create-project");
+  await expect(header.getByRole("link", { name: "加入课程", exact: true })).toHaveAttribute("href", "/courses/join");
+  await expect(page.getByRole("link", { name: "创建项目", exact: true })).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "加入课程", exact: true })).toHaveCount(2);
+  await header.getByRole("link", { name: "创建项目", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "创建项目", exact: true })).toBeVisible();
+  await expect(page.getByText("先加入课程，再与同学组队创建项目。", { exact: true })).toBeVisible();
+  await page.locator(".gp-page-header").getByRole("link", { name: "加入课程", exact: true }).click();
+  await expect(page.getByLabel("输入教师提供的邀请码")).toBeVisible();
+  await expect(page.getByRole("button", { name: /下一步/ })).toBeEnabled();
+  await noDemoData(page);
+});
+
+test("empty workspace actions remain usable on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  await page.goto("/home");
+  await expect(page.locator(".gp-stat-value")).toHaveText(["0", "0", "0", "0"]);
+  const actions = page.locator(".gp-page-header");
+  await expect(actions.getByRole("link", { name: "创建项目", exact: true })).toBeVisible();
+  await expect(actions.getByRole("link", { name: "加入课程", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await actions.getByRole("link", { name: "加入课程", exact: true }).click();
+  await expect(page.getByLabel("输入教师提供的邀请码")).toBeVisible();
+  await expect(page.getByRole("button", { name: /下一步/ })).toBeVisible();
 });

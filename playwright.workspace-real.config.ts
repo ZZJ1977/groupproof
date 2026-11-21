@@ -4,16 +4,17 @@ import { defineConfig } from "@playwright/test";
 // below come from isolated loopback/browser fixtures; no live account is modified.
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "workspace-real.spec.ts",
+  testMatch: ["workspace-real.spec.ts", "b-*-real.spec.ts"],
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   timeout: 90_000,
+  // Dynamic business pages compile on first use in the isolated Next dev server.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: "http://127.0.0.1:13008",
     locale: "zh-CN",
-    channel: process.platform === "darwin" ? "chrome" : undefined,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -25,7 +26,8 @@ export default defineConfig({
     },
     {
       command: "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 13008",
-      url: "http://127.0.0.1:13008/healthz",
+      // Compile the real same-origin session proxy before any CSRF-protected writes.
+      url: "http://127.0.0.1:13008/api/v1/auth/session",
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
