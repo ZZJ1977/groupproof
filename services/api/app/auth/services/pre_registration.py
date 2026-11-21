@@ -280,7 +280,7 @@ def complete_registration(
     if password != confirm_password:
         errors["confirmPassword"] = "password_mismatch"
     try:
-        validate_password(password, minimum=8)
+        validate_password(password)
     except ValueError as exc:
         errors["password"] = str(exc)
     if errors:
