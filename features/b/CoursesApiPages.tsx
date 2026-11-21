@@ -41,10 +41,10 @@ export function MyCoursesApiPage() {
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
   return <div>
     <PageHeader
-      title={createIntent ? t("createProjectTitle") : t("title")}
+      title={createIntent ? t("createCourseProjectTitle") : t("title")}
       description={createIntent ? t("chooseProjectCourse") : t("description")}
       actions={<div className="flex flex-wrap gap-2">
-        {!createIntent && <Link href="/courses?intent=create-project" className={button}><Plus size={15} />{t("createProjectTitle")}</Link>}
+        {!createIntent && <Link href="/projects/new" className={button}><Plus size={15} />{t("createProjectTitle")}</Link>}
         <Link href="/courses/join" className={createIntent ? button : secondary}><Plus size={15} />{t("join")}</Link>
       </div>}
     />
@@ -60,7 +60,7 @@ export function MyCoursesApiPage() {
       : data && data.items.length ? <div className="space-y-3">{data.items.map((course) => <Panel key={course.id}>
         <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900">{course.name}</h2><p className="mt-1 text-xs text-slate-500">{t("teacherLine", { teacher: course.teacher?.name ?? t("toBeAssigned"), code: course.code, semester: course.semester })}</p></div><StatusBadge tone={course.status === "active" ? "green" : "gray"} label={course.status === "active" ? t("statusActive") : course.status === "ended" ? t("statusEnded") : t("statusNotStarted")} /></div>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"><span>{course.group ? t("currentGroup", { name: course.group.name }) : t("noGroup")}</span><span>{t("formationDeadline", { date: dateOnly(course.formation_deadline, ts("notSet")) })}</span><span>{t("projectDeadline", { date: dateOnly(course.project_deadline, ts("notSet")) })}</span>{course.pending_count > 0 && <span className="text-amber-600">{t("pendingCount", { count: course.pending_count })}</span>}</div>
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm"><Link href={course.project ? `/projects/${course.project.id}` : course.group ? `/courses/${course.id}/projects/new` : `/courses/${course.id}/groups`} className="font-medium text-[var(--gp-action)] hover:underline">{course.project ? t("enterProject") : course.group ? t("createProject") : t("startGrouping")} <ArrowRight size={14} className="inline" /></Link></div>
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm"><Link href={`/courses/${course.id}/rules`} className="gp-link">{t("viewRules")}</Link><Link href={`/courses/${course.id}/files`} className="gp-link">{t("viewFiles")}</Link><Link href={course.project ? `/projects/${course.project.id}` : course.group ? `/courses/${course.id}/projects/new` : `/courses/${course.id}/groups`} className="font-medium text-[var(--gp-action)] hover:underline">{course.project ? t("enterProject") : course.group ? t("createProject") : t("startGrouping")} <ArrowRight size={14} className="inline" /></Link></div>
       </Panel>)}</div>
       : <Panel><EmptyState title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")} description={createIntent ? t("joinBeforeCreate") : undefined} action={<Link href="/courses/join" className={button}>{t("joinWithCode")}</Link>} /></Panel>}
     {data && pages > 1 && <nav aria-label={ts("pagination")} className="mt-4 flex items-center justify-end gap-2 text-sm"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>{ts("prev")}</button><span>{ts("pagerOf", { page: filters.page, pages })}</span><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>{ts("next")}</button></nav>}

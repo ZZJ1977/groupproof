@@ -144,13 +144,14 @@ test("clearing demonstration data keeps creation and enrollment actions availabl
   await page.goto("/home");
   await expect(page.locator(".gp-stat-value")).toHaveText(["0", "0", "0", "0"]);
   const header = page.locator(".gp-page-header");
-  await expect(header.getByRole("link", { name: "创建项目", exact: true })).toHaveAttribute("href", "/courses?intent=create-project");
+  await expect(header.getByRole("link", { name: "创建项目", exact: true })).toHaveAttribute("href", "/projects/new");
   await expect(header.getByRole("link", { name: "加入课程", exact: true })).toHaveAttribute("href", "/courses/join");
   await expect(page.getByRole("link", { name: "创建项目", exact: true })).toHaveCount(2);
   await expect(page.getByRole("link", { name: "加入课程", exact: true })).toHaveCount(2);
   await header.getByRole("link", { name: "创建项目", exact: true }).click();
   await expect(page.getByRole("heading", { name: "创建项目", exact: true })).toBeVisible();
-  await expect(page.getByText("先加入课程，再与同学组队创建项目。", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("项目名称", { exact: true })).toBeVisible();
+  await page.goto("/home");
   await page.locator(".gp-page-header").getByRole("link", { name: "加入课程", exact: true }).click();
   await expect(page.getByLabel("输入教师提供的邀请码")).toBeVisible();
   await expect(page.getByRole("button", { name: /下一步/ })).toBeEnabled();

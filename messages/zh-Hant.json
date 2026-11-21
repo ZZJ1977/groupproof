@@ -582,7 +582,7 @@
       "emptyCourses": "暫無課程",
       "emptyCoursesDesc": "使用課程碼加入課程後，會顯示在這裡。",
       "createProject": "建立專案",
-      "emptyProjectHint": "加入課程後，與同學組隊建立專案。",
+      "emptyProjectHint": "建立獨立專案，無需先加入課程。",
       "emptyCourseHint": "使用授課教師提供的邀請碼加入課程。"
     },
     "notifications": {
@@ -737,7 +737,10 @@
       "approve": "批准",
       "createProjectTitle": "建立專案",
       "chooseProjectCourse": "選擇專案所屬課程。",
-      "joinBeforeCreate": "先加入課程，再與同學組隊建立專案。"
+      "joinBeforeCreate": "先加入課程，再與同學組隊建立專案。",
+      "createCourseProjectTitle": "建立課程專案",
+      "viewRules": "查看課程規則",
+      "viewFiles": "課程檔案"
     },
     "shared": {
       "retry": "重試",
@@ -763,6 +766,17 @@
       "verificationNotConnected": "驗收服務暫未接入，請返回任務頁面檢視已儲存的提交。",
       "dailyUnavailable": "日常入口資料暫不可用",
       "dailyUnavailableDesc": "首頁、通知、待辦及動態服務尚未接入，請稍後重試。"
+    },
+    "independentProject": {
+      "title": "建立專案",
+      "description": "無需加入課程即可建立獨立專案，你將自動成為專案組長。",
+      "back": "返回首頁",
+      "name": "專案名稱",
+      "summary": "專案簡介（選填）",
+      "creating": "正在建立…",
+      "courseTitle": "課程專案",
+      "courseDescription": "如果專案屬於課程作業，可以選擇已加入的課程，按課程規則組隊建立。",
+      "courseAction": "建立課程專案"
     }
   },
   "b": {

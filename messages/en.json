@@ -582,7 +582,7 @@
       "emptyCourses": "No courses yet",
       "emptyCoursesDesc": "Join a course with a course code to see it here.",
       "createProject": "Create project",
-      "emptyProjectHint": "Join a course, then form a group to create a project.",
+      "emptyProjectHint": "Create an independent project without joining a course.",
       "emptyCourseHint": "Use the invitation code provided by your instructor to join a course."
     },
     "notifications": {
@@ -737,7 +737,10 @@
       "approve": "Approve",
       "createProjectTitle": "Create project",
       "chooseProjectCourse": "Choose the course for your project.",
-      "joinBeforeCreate": "Join a course first, then form a group to create a project."
+      "joinBeforeCreate": "Join a course first, then form a group to create a project.",
+      "createCourseProjectTitle": "Create course project",
+      "viewRules": "View course rules",
+      "viewFiles": "Course files"
     },
     "shared": {
       "retry": "Retry",
@@ -763,6 +766,17 @@
       "verificationNotConnected": "The verification service is not connected yet. Go back to the task page to see saved submissions.",
       "dailyUnavailable": "Daily data is unavailable",
       "dailyUnavailableDesc": "Home, notification, action item and activity services are not connected yet. Please try again later."
+    },
+    "independentProject": {
+      "title": "Create project",
+      "description": "Create an independent project without joining a course. You become the project leader.",
+      "back": "Back to home",
+      "name": "Project name",
+      "summary": "Description (optional)",
+      "creating": "Creating…",
+      "courseTitle": "Course project",
+      "courseDescription": "For coursework, select a course you have joined and create a team project under its rules.",
+      "courseAction": "Create course project"
     }
   },
   "b": {
