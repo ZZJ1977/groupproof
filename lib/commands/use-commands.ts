@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { mockService } from "@/lib/api/mock-service";
 import { scopedWorkspaceKey, useWorkspace } from "@/lib/workspace";
-import { seedData } from "@/mocks/seed";
 import type { BaselineRevision, Course, CourseRuleRevision, MockData, Project } from "@/types/domain";
 import { createCommandRunner, type Command, type CommandOutcome, type WorkspaceRepository } from "./core";
 import { archiveProject, reopenProject, updateProjectSettings, type ArchiveProjectInput, type ReopenProjectInput, type UpdateProjectSettingsInput } from "./project";
@@ -73,24 +72,27 @@ export function useCommands() {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<string | null>(null);
   // 缓存键按用户隔离（与 WorkspaceProvider 一致），否则命令结果不回写当前用户视图
-  const { userId } = useWorkspace();
+  const { userId, mockWorkspace } = useWorkspace();
   const workspaceQueryKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
 
   const runner = useMemo(() => createCommandRunner({
     repository: mockRepository,
-    currentActorId: () => (queryClient.getQueryData<MockData>(workspaceQueryKey) ?? seedData).currentUserId,
+    currentActorId: () => queryClient.getQueryData<MockData>(workspaceQueryKey)?.currentUserId ?? userId,
     onSaved: (next) => queryClient.setQueryData(workspaceQueryKey, next),
-  }), [queryClient, workspaceQueryKey]);
+  }), [queryClient, workspaceQueryKey, userId]);
 
   const bind = useCallback(<I, O>(command: Command<I, O>, name: string) =>
     async (input: I): Promise<CommandOutcome<O>> => {
+      if (!mockWorkspace) {
+        return { ok: false, error: { code: "INVALID_STATE", message: "当前操作尚未接入真实服务，请稍后重试。" } };
+      }
       setPending(name);
       try {
         return await runner(command, input);
       } finally {
         setPending(null);
       }
-    }, [runner]);
+    }, [runner, mockWorkspace]);
 
   return {
     archiveProject: bind(archiveProject, "project.archive") as (input: ArchiveProjectInput) => Promise<CommandOutcome<Project>>,

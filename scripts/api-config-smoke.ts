@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { parseFeatureOverrides, resolveApiMode } from "../lib/api/config";
+import { apiFeatures, parseFeatureOverrides, resolveApiEnvironment, resolveApiMode } from "../lib/api/config";
 
 assert.deepEqual(parseFeatureOverrides("workspace=real,tasks:mock,ignored=real"), {
   workspace: "real",
@@ -21,5 +21,27 @@ assert.equal(
   "real",
 );
 assert.equal(resolveApiMode("tasks", { globalMocksEnabled: true, productionLock: false }), "mock");
+
+// Missing/empty configuration starts from real data, including local development.
+for (const appEnv of [undefined, "", "development", "test"]) {
+  for (const enableMocks of [undefined, "", "false"]) {
+    const options = resolveApiEnvironment({ appEnv, enableMocks });
+    for (const feature of apiFeatures) assert.equal(resolveApiMode(feature, options), "real");
+  }
+}
+// Demo fixtures remain an explicit opt-in for isolated development and test harnesses.
+for (const appEnv of ["development", "test"]) {
+  assert.equal(resolveApiMode("workspace", resolveApiEnvironment({ appEnv, enableMocks: "true" })), "mock");
+  assert.equal(resolveApiMode("workspace", resolveApiEnvironment({ appEnv, features: "workspace=mock" })), "mock");
+}
+// A stale Railway flag or per-feature override can never enable demo data on a deployed site.
+for (const appEnv of ["staging", "production", " STAGING ", " Production "]) {
+  const options = resolveApiEnvironment({
+    appEnv,
+    enableMocks: "true",
+    features: apiFeatures.map((feature) => `${feature}=mock`).join(","),
+  });
+  for (const feature of apiFeatures) assert.equal(resolveApiMode(feature, options), "real");
+}
 
 console.log("API feature configuration parsing passed");

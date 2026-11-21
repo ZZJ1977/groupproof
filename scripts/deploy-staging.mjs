@@ -155,7 +155,14 @@ async function deploy(serviceId, label) {
   throw new Error(`${label} did not become ready`);
 }
 await deploy(apiId, "Unified API");
-await setVariables(webId, { API_INTERNAL_URL: "http://groupproof.railway.internal:8000", NEXT_PUBLIC_APP_ENV: "staging" });
+await setVariables(webId, {
+  API_INTERNAL_URL: "http://groupproof.railway.internal:8000",
+  NEXT_PUBLIC_APP_ENV: "staging",
+  NEXT_PUBLIC_APP_MODE: "real",
+  NEXT_PUBLIC_ENABLE_MOCKS: "false",
+  NEXT_PUBLIC_API_FEATURES: "",
+  NEXT_PUBLIC_API_BASE_URL: "",
+});
 await deploy(webId, "Web");
 const session = await fetch(`${origin}/api/v1/auth/session`, { signal: AbortSignal.timeout(30_000) });
 assert.equal(session.status, 200);

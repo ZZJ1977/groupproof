@@ -92,6 +92,11 @@ jobs:
       - name: Check route mapping
         run: npm run check:routes
 
+      - name: Check real workspace configuration and cache isolation
+        run: |
+          npm run test:api-config
+          npm run check:workspace-isolation
+
       - name: Check generated API client is up to date
         run: |
           npm run api:generate
@@ -228,6 +233,9 @@ jobs:
 
       - name: Run C shell without demo data
         run: npx playwright test --config playwright.c-shell.config.ts
+
+      - name: Verify staging never loads demo workspaces
+        run: npm run test:workspace-real
 
       - name: Check C business commands and generated client
         run: |

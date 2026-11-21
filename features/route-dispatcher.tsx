@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { CoreView } from "@/features/core/CoreView";
 import ProjectCoreView from "@/features/project-core/ProjectCoreView";
 import { ProjectSupportView } from "@/features/project-support/ProjectSupportView";
@@ -39,6 +40,7 @@ const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
 const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.HomeApiPage));
 const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
+const MyCoursesApiPage = dynamic(() => import("@/features/course/MyCoursesApiPage").then((module) => module.MyCoursesApiPage));
 
 function AccessDenied({ message }: { message?: string }) {
   const t = useTranslations("errors");
@@ -50,7 +52,7 @@ export function RouteDispatcher() {
   const pathname = usePathname();
   const search = useSearchParams();
   const tc = useTranslations("common");
-  const { role, userId } = useWorkspace();
+  const { role, userId, mockWorkspace } = useWorkspace();
   const route = resolveRoute(pathname, search.get("view"));
   if (!route) return <WorkspaceShell kind={role === "admin" ? "admin" : role === "teacher" || role === "ta" ? "teacher" : "student"}><div className="py-24 text-center"><h1 className="text-[24px] font-semibold">{tc("notFound.title")}</h1><Link href="/home" className="gp-link mt-4 inline-block">{tc("notFound.home")}</Link></div></WorkspaceShell>;
   const { screen, projectId, taskId, milestoneId, memberId, courseId, groupId } = route;
@@ -70,6 +72,7 @@ export function RouteDispatcher() {
   }
   let realContent;
   if (screen === 4 && apiMode("daily") === "real") realContent = <HomeApiPage />;
+  if (screen === 31 && !mockWorkspace) realContent = <MyCoursesApiPage />;
   if (screen === 30 && apiMode("daily") === "real") realContent = <PersonalActivityApiPage />;
   if (screen === 5 && apiMode("inbox") === "real") realContent = <NotificationsApiPage />;
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
@@ -107,6 +110,15 @@ export function RouteDispatcher() {
     const shell = role === "admin" ? "admin" : role === "teacher" || role === "ta" ? "teacher" : "student";
     return <WorkspaceShell kind={shell}><AccessDenied /></WorkspaceShell>;
   }
+
+  // Unconnected legacy screens must not manufacture objects or successful writes.
+  if (!mockWorkspace) return <WorkspaceShell kind={kind}>
+    <PageHeader title={screen === 32 ? "加入课程" : "页面暂不可用"} />
+    <Panel><EmptyState title={screen === 32 ? "暂时无法通过邀请码加入课程" : "该功能暂不可用"}
+      description={screen === 32 ? "请联系任课教师确认课程安排。" : "请稍后再试，你已有的资料会保留。"} />
+      <Link href="/home" className="gp-link mt-4 inline-block">返回首页</Link>
+    </Panel>
+  </WorkspaceShell>;
 
   let content;
   if ([4, 5, 6, 30].includes(screen)) content = <CoreView screen={screen} />;
