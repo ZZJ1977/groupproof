@@ -338,7 +338,7 @@ def create_project(
                 recipient=member.user_id,
                 category="project",
                 title=f"小组「{group.name}」创建了项目「{name}」",
-                description="请进入项目完成初始化。",
+                description="请进入项目完善设置并开始协作。",
                 target={"kind": "project", "id": project.id, "project_id": project.id},
                 dedupe_key=f"b:project-created:{project.id}",
             )
@@ -357,7 +357,7 @@ def create_project(
         },
         request=request,
     )
-    return CreatedProjectDTO(project_id=project.id, href=f"/projects/{project.id}/setup")
+    return CreatedProjectDTO(project_id=project.id, href=f"/projects/{project.id}")
 
 
 # ---------------------------------------------------------------- B3-02 overview
