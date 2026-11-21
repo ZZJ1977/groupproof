@@ -53,7 +53,7 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
   return <main className="mx-auto max-w-4xl space-y-5 p-6"><h1 className="text-2xl font-semibold">{reopenView ? "重新开启项目" : "项目设置"}</h1>
     {error && <p role="alert" className="text-red-700">{error}</p>}{notice && <p role="status">{notice}</p>}
     <p>状态：{settings?.lifecycle ?? "读取中"}</p>
-    {!reopenView && <><section className="space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">基本设置</h2>
+    {!reopenView && <><section id="project-details" className="scroll-mt-20 space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">基本设置</h2>
       <input aria-label="项目名称" className="w-full rounded border p-2" value={form.name} readOnly={!writable} onChange={(event) => setForm({ ...form, name: event.target.value })} />
       <input aria-label="项目类型" className="w-full rounded border p-2" value={form.project_type} readOnly={!writable} onChange={(event) => setForm({ ...form, project_type: event.target.value })} />
       <input aria-label="项目语言" className="w-full rounded border p-2" value={form.language} readOnly={!writable} onChange={(event) => setForm({ ...form, language: event.target.value })} />

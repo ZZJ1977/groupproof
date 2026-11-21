@@ -37,6 +37,7 @@
     "check:overview": "tsx scripts/check-overview.mjs",
     "check:e2e": "tsx scripts/check-e2e.mjs",
     "check:ux": "tsx scripts/check-ux.mjs",
+    "check:student-workspace": "tsx scripts/check-student-workspace.mjs",
     "check:browser": "tsx scripts/check-browser.mjs",
     "check:auth": "node scripts/check-auth.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",

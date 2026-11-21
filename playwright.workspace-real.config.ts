@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
 // below come from isolated loopback/browser fixtures; no live account is modified.
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["workspace-real.spec.ts", "b-*-real.spec.ts"],
+  testMatch: ["workspace-real.spec.ts", "b-*-real.spec.ts", "c-shell-api.spec.ts"],
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),

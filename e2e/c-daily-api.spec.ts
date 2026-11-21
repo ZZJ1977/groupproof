@@ -25,6 +25,7 @@ test("project settings authorizes provider binding by project membership and lea
   const envelope = (data: unknown) => ({ data, meta: { request_id: "integration-fixture" } });
   let isLeader = true;
   let bound = false;
+  let synced = 0;
   await page.route(`**${base}/c-context`, (route) => route.fulfill({ json: envelope({
     project: { id: projectId, lifecycle: "active" },
     actor: { is_member: true, is_leader: isLeader },
@@ -33,9 +34,6 @@ test("project settings authorizes provider binding by project membership and lea
   await page.route(`**${base}/settings`, (route) => route.fulfill({ json: envelope({ name: "项目集成", visibility: "members", lifecycle: "active" }) }));
   await page.route(`**${base}/reopens`, (route) => route.fulfill({ json: envelope([]) }));
   await page.route(`**${providers}/github/repos`, (route) => route.fulfill({ json: envelope([]) }));
-  await page.route(`**${providers}/feishu/available-chats`, (route) => route.fulfill({
-    json: envelope([{ chat_id: "oc_fixture", name: "测试项目群" }]),
-  }));
   await page.route(`**${providers}/feishu/chats`, (route) => {
     const request = route.request();
     if (request.method() === "POST") {
@@ -46,19 +44,26 @@ test("project settings authorizes provider binding by project membership and lea
     }
     return route.fulfill({ json: envelope(bound ? [{ chat_id: "oc_fixture", linked_at: activity.occurred_at }] : []) });
   });
+  await page.route(`**${providers}/feishu/sync`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().headers()["x-csrf-token"]).toBe("c-contract-fixture-csrf");
+    synced += 1;
+    return route.fulfill({ json: envelope({ chats: 1, created: 3, updated: 0, deleted: 0, seen: 3 }) });
+  });
   await page.goto(`/feishu/${projectId}`, { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(`/projects/${projectId}/settings#feishu-integration`);
   await expect(page.getByRole("button", { name: "绑定仓库" })).toBeVisible();
-  await page.getByRole("button", { name: "读取可绑定的群" }).click();
-  await page.getByLabel("选择飞书群").selectOption("oc_fixture");
-  await page.getByRole("button", { name: "绑定飞书群", exact: true }).click();
+  await page.getByLabel("飞书群聊 ID").fill("oc_fixture");
+  await page.getByRole("button", { name: "接入并同步", exact: true }).click();
+  await expect(page.getByText("已接入飞书群并同步 3 条消息。", { exact: true })).toBeVisible();
+  expect(synced).toBe(1);
   await expect(page.getByRole("link", { name: "查看协作记录" })).toHaveAttribute("href", `/projects/${projectId}/collaboration`);
 
   isLeader = false;
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByText(/群 oc_fixture/)).toBeVisible();
   await expect(page.getByRole("button", { name: "绑定仓库" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "读取可绑定的群" })).toHaveCount(0);
+  await expect(page.getByLabel("飞书群聊 ID")).toHaveCount(0);
 });
 
 test("C7-07 submits only the requested task scope and refreshes the applicant's own requests", async ({ page }) => {
@@ -94,9 +99,15 @@ test("C7-07 submits only the requested task scope and refreshes the applicant's 
 test("C1-01 canonical home refreshes real counts and preserves project/course IDs", async ({ page }) => {
   let completed = 1;
   await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: { data: { ...summary, my_completed_tasks: completed }, meta: { request_id: "home-fixture" } } }));
+  await page.route(`**/api/v1/a/projects/${projectId}/github/repos`, (route) => route.fulfill({ json: { data: [{
+    owner: "ZZJ1977", repo: "groupproof", default_branch: "main", linked_at: activity.occurred_at, last_synced_at: activity.occurred_at,
+  }], meta: { request_id: "home-github" } } }));
+  await page.route(`**/api/v1/a/projects/${projectId}/feishu/chats`, (route) => route.fulfill({ json: { data: [], meta: { request_id: "home-feishu" } } }));
   await page.goto("/home");
   await expect(page.getByText("数据库项目", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "进入项目", exact: true })).toHaveAttribute("href", `/projects/${projectId}`);
+  await expect(page.getByRole("link", { name: "GitHub 已连接 · 1 个仓库", exact: true })).toHaveAttribute("href", `/projects/${projectId}/settings#github-integration`);
+  await expect(page.getByRole("link", { name: "飞书未接入", exact: true })).toHaveAttribute("href", `/projects/${projectId}/settings#feishu-integration`);
   await expect(page.getByRole("link", { name: "查看课程", exact: true })).toHaveAttribute("href", `/courses/${courseId}/rules`);
   const completedCard = page.locator(".gp-stat").filter({ hasText: "我的已完成任务" });
   await expect(completedCard.locator(".gp-stat-value")).toHaveText("1");

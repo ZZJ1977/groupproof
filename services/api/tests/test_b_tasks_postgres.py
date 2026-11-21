@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.db.models import FunctionalModule, Task
+from app.db.models import FunctionalModule, Project, Task
 from tests.b_fixtures import b_api, build_b_world
 from tests.test_b_planning_postgres import (
     add_milestone,
@@ -191,6 +191,24 @@ def test_tree_keeps_ancestors_of_matches(world_api):
 
 
 # ---------------------------------------------------------------- B6-02 board
+
+
+def test_personal_project_execution_readiness_does_not_require_a_baseline(b_engine):  # noqa: F811
+    with Session(b_engine) as session:
+        world = build_b_world(session)
+        project = session.get(Project, world.project_id)
+        project.course_id = None
+        project.group_id = None
+        project.setup_status = "not_initialized"
+        session.commit()
+    with b_api(b_engine) as api:
+        modules, _ = seed(api, world)
+        api.as_user(world.leader_id)
+        row = created(api, world, body(modules, assignee_ids=[str(world.leader_id)]))
+        freeze(api, world)
+        item = {item["id"]: item for item in tasks(api, world, view="board")["items"]}[row["id"]]
+        assert item["blocked_reason"] is None
+        assert item["transitions"][0]["to"] == "in_progress"
 
 
 def test_board_moves_follow_c_rules_and_go_through_c(world_api, b_engine):  # noqa: F811

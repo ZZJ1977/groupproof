@@ -473,6 +473,13 @@
   "nav": {
     "global": "Global",
     "currentProject": "Current project",
+  "projectGroups": {
+    "overviewGroup": "Overview",
+    "planGroup": "Plan",
+    "collaborateGroup": "Collaborate",
+    "reviewGroup": "Review & outcomes",
+    "settingsGroup": "Settings"
+  },
     "home": "Home",
     "myCourses": "My courses",
     "actionItems": "Action items",
