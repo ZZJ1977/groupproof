@@ -11,7 +11,7 @@ import { bGroupsApi } from "@/lib/api/b-groups";
 import { bProjectsApi, type BMaterial, type BProjectDraft, type BProjectSetup } from "@/lib/api/b-projects";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
-import { BaselineStep, ConflictsStep, MaterialsContinue, RequirementsStep } from "@/features/b/RequirementsSteps";
+import { ProjectSetupCenter } from "@/features/b/ProjectSetupCenter";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
 import { useUiText } from "@/lib/i18n/use-ui-text";
 
@@ -113,7 +113,6 @@ export function NewProjectApiPage({ courseId }: { courseId: string }) {
   </div>;
 }
 
-const entryAction = { setup: { label: "去初始化", path: "setup" }, baseline: { label: "查看基线", path: "setup" }, readonly: { label: "查看项目", path: "setup" } } as const;
 const setupLabel: Record<string, string> = { not_initialized: "未初始化", draft: "初始化中", pending_confirmation: "等待组员确认", frozen: "基线已冻结" };
 
 /** Page 07 (B3-02): entry by project state plus live server-side stats. */
@@ -124,14 +123,14 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
   if (overview.isPending) return <Loading />;
   if (overview.isError) return <LoadError error={overview.error} onRetry={() => void overview.refetch()} />;
   const project = overview.data;
-  const action = entryAction[project.entry];
   const stats = project.stats;
   const progressText = stats.progress_status === "available" ? `${stats.progress}%` : stats.progress_status === "no_weighted_tasks" ? tr("暂无任务") : tr("任务结构异常");
   return <div>
     <PageHeader title={project.name} description={project.description ?? tr("未填写简介")}
       actions={<div className="flex items-center gap-2">
         {project.entry === "readonly" && <StatusBadge tone="gray" label={project.lifecycle === "archived" ? tr("已归档 · 只读") : tr("已定稿 · 只读")} />}
-        <Link className={project.entry === "readonly" ? secondary : button} href={`/projects/${projectId}/${action.path}`}>{tr(action.label)} <ArrowRight size={15} /></Link>
+        <Link className={secondary} href={`/projects/${projectId}/settings`}>{tr("项目设置")}</Link>
+        {project.entry !== "readonly" && <Link className={button} href={`/projects/${projectId}/planning`}>{tr("开始规划")} <ArrowRight size={15} /></Link>}
       </div>} />
     <div className="mt-5 grid gap-3 md:grid-cols-4">
       <Stat label={tr("任务")} value={stats.task_count} sub={tr("已完成 {0}", { 0: stats.completed_count })} />
@@ -140,6 +139,7 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
       <Stat label={tr("里程碑")} value={stats.milestone_count} sub={project.next_milestone ? tr("下一个：{0}", { 0: project.next_milestone.title }) : undefined} />
     </div>
     {stats.progress_status === "available" && <ProgressBar className="mt-3" value={stats.progress ?? 0} />}
+    <ProjectSetupCenter projectId={projectId} overview={project} />
     <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel title={tr("项目状态")}><dl className="space-y-2 text-sm">
         <div className="flex gap-3"><dt className="w-24 text-slate-500">{tr("初始化")}</dt><dd>{tr("{0}（第 {1} 步）", { 0: tr(setupLabel[project.setup_status]) ?? project.setup_status, 1: project.setup_step })}</dd></div>
@@ -147,43 +147,32 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
         {project.next_milestone && <div className="flex gap-3"><dt className="w-24 text-slate-500">{tr("下一个里程碑")}</dt><dd>{project.next_milestone.title} · {dateOnly(project.next_milestone.deadline, tr("未设置"))}</dd></div>}
         {!project.can_edit && <p className="flex items-center gap-1 pt-2 text-xs text-slate-500"><Lock size={13} />{tr("你可以查看，但不能修改这个项目。")}</p>}
       </dl></Panel>
-      <Panel title={tr("成员")}><ul className="divide-y divide-slate-100 text-sm">{project.members.map((member) => <li key={member.id} className="py-2">{member.name ?? tr("未命名")}</li>)}</ul></Panel>
+      <div id="project-members" className="scroll-mt-20"><Panel title={tr("成员")}><ul className="divide-y divide-slate-100 text-sm">{project.members.map((member) => <li key={member.id} className="py-2">{member.name ?? tr("未命名")}</li>)}</ul></Panel></div>
     </div>
   </div>;
 }
 
-const setupSteps = ["基本信息", "资料", "需求分析", "冲突处理", "基线确认"];
 const extractLabel: Record<BMaterial["extract_status"], { tone: "green" | "amber" | "red" | "gray"; text: string }> = {
   ready: { tone: "green", text: "正文已就绪" }, pending: { tone: "amber", text: "正文提取中" }, failed: { tone: "red", text: "正文提取失败" }, unavailable: { tone: "gray", text: "正文暂不可用" },
 };
 
-/** Page 08 (B3-03 ~ B3-08): basic info, materials, requirements, conflicts, baseline. */
+/** Legacy /setup deep link now opens the non-blocking setup center and preserves editable project details/materials. */
 export function ProjectSetupApiPage({ projectId }: { projectId: string }) {
   const tr = useUiText();
   const { userId } = useWorkspace();
-  const cache = useQueryClient();
   const setup = useQuery({ queryKey: ["b-project-setup", userId, projectId], queryFn: () => bProjectsApi.setup(projectId), ...queryPolicy });
-  const [step, setStep] = useState<number | null>(null);
-  if (setup.isPending) return <Loading />;
+  const overview = useQuery({ queryKey: ["b-project-overview", userId, projectId], queryFn: () => bProjectsApi.overview(projectId), ...queryPolicy });
+  if (setup.isPending || overview.isPending) return <Loading />;
   if (setup.isError) return <LoadError error={setup.error} onRetry={() => void setup.refetch()} />;
+  if (overview.isError) return <LoadError error={overview.error} onRetry={() => void overview.refetch()} />;
   const data = setup.data;
-  // Reopening the page continues where the group left off; a frozen project opens on its baseline.
-  const reached = data.setup_status === "frozen" || data.setup_status === "pending_confirmation" ? 5 : Math.min(Math.max(data.setup_step, 1), 5);
-  const current = step ?? reached - 1;
-  const next = (index: number) => () => { void cache.invalidateQueries({ queryKey: ["b-project-setup", userId, projectId] }); setStep(index); };
   return <div>
-    <PageHeader title={tr("项目初始化")} description={`${data.name} · ${tr(setupLabel[data.setup_status]) ?? data.setup_status}`} actions={<Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>} />
-    <div className="mx-auto mt-5 max-w-[860px] space-y-4">
-      <ol className="flex flex-wrap gap-2 text-xs" aria-label={tr("初始化步骤")}>{setupSteps.map((title, index) => <li key={title} className="flex-1">
-        <button type="button" disabled={index >= reached} onClick={() => setStep(index)} aria-current={index === current ? "step" : undefined} title={index >= reached ? tr("请先完成前面的步骤") : undefined}
-          className={`w-full rounded border px-3 py-2 text-left ${index === current ? "border-blue-500 bg-blue-50 font-semibold text-blue-700" : index >= reached ? "cursor-not-allowed border-slate-100 text-slate-300" : "border-slate-200 text-slate-600"}`}>{index + 1}. {tr(title)}</button>
-      </li>)}</ol>
-      {!data.can_edit && current < 2 && <Feedback tone="info">{data.setup_status === "frozen" ? tr("需求基线已冻结，初始化信息只能查看。") : data.setup_status === "pending_confirmation" ? tr("基线正在等待组员确认，暂时不能修改。") : tr("你可以查看初始化信息，但不能修改。")}</Feedback>}
-      {current === 0 && <BasicInfoStep projectId={projectId} data={data} onSaved={() => setStep(1)} />}
-      {current === 1 && <><MaterialsStep projectId={projectId} data={data} />{data.can_edit && <MaterialsContinue projectId={projectId} onDone={next(2)} />}</>}
-      {current === 2 && <RequirementsStep projectId={projectId} onDone={next(3)} />}
-      {current === 3 && <ConflictsStep projectId={projectId} onDone={next(4)} />}
-      {current === 4 && <BaselineStep projectId={projectId} />}
+    <PageHeader title={data.name} description={`${tr("项目设置中心")} · ${tr(setupLabel[data.setup_status]) ?? data.setup_status}`} actions={<Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>} />
+    <ProjectSetupCenter projectId={projectId} overview={overview.data} initialSetup={data} />
+    <div className="mx-auto mt-5 max-w-[960px] space-y-4">
+      {!data.can_edit && <Feedback tone="info">{data.setup_status === "frozen" ? tr("需求基线已冻结，项目信息只能查看。") : data.setup_status === "pending_confirmation" ? tr("基线正在等待组员确认，暂时不能修改。") : tr("你可以查看项目信息，但不能修改。")}</Feedback>}
+      <div id="project-details" className="scroll-mt-20"><BasicInfoStep projectId={projectId} data={data} onSaved={() => void overview.refetch()} /></div>
+      <div id="project-materials" className="scroll-mt-20"><MaterialsStep projectId={projectId} data={data} /></div>
     </div>
   </div>;
 }
@@ -216,7 +205,7 @@ function BasicInfoStep({ projectId, data, onSaved }: { projectId: string; data: 
       </div>
       <div><label className={label} htmlFor="b-setup-description">{tr("项目简介")}</label><textarea id="b-setup-description" className={input} rows={4} maxLength={5000} value={form.description} onChange={set("description")} /></div>
     </fieldset>
-    {data.can_edit && <div className="flex justify-end"><button type="submit" className={button} disabled={save.isPending || !form.name.trim()}>{save.isPending ? tr("正在保存…") : tr("保存并下一步")}</button></div>}
+    {data.can_edit && <div className="flex justify-end"><button type="submit" className={button} disabled={save.isPending || !form.name.trim()}>{save.isPending ? tr("正在保存…") : tr("保存基本信息")}</button></div>}
   </form></Panel>;
 }
 
