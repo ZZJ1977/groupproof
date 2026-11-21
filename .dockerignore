@@ -10,8 +10,7 @@ coverage
 out
 Dockerfile*
 
-.next-dev
-.next-review
+.next-*
 **/.venv
 **/__pycache__
 **/.pytest_cache
@@ -21,4 +20,5 @@ Dockerfile*
 **/*临时密令.md
 .DS_Store
 
-.next-e2e
+test-results
+playwright-report
