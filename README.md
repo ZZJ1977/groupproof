@@ -62,7 +62,7 @@ With the development server and backend running: `CHECK_HTTP=1 npm run check:rou
 ## Current scope
 
 - Real: Google OIDC login, server sessions (revocable/rotating), school-email signup (verify school email → complete profile and set password), teacher review, account center, admin teacher review/disable, audit, i18n (zh-Hans / zh-Hant / en), server-side page gating and protected business API authorization. Existing and Google accounts complete any outstanding onboarding steps in the account center.
-- Business workspace: real data is the default. The student course entry reads authorized courses from the existing summary (latest 10); joining by invitation and legacy planning pages without real adapters show unavailable states. GitHub and Feishu settings for persisted projects use the integration APIs when the providers are configured.
+- Business workspace: real data is the default. The student workspace preserves creation and enrollment actions with empty data. Course invitation, groups, course projects, setup, requirements, planning, task views, milestones and membership changes use authenticated APIs; external services report their actual availability. GitHub and Feishu settings for persisted projects use the integration APIs when the providers are configured.
 
 See [frontend status](FRONTEND_STATUS.md), [API README](services/api/README.md) and [unification status](docs/plans/2026-10-12-unified-auth-resend-status.md) for implementation details and known limitations. Google entry visibility does not imply configured OAuth credentials; real mail requires a verified sender and the public-mail switch.
 

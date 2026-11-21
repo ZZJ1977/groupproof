@@ -161,6 +161,7 @@ jobs:
       EMAIL_CHALLENGE_HMAC_KEY: ci-only-isolated-test-key
       C_TEST_DATABASE_URL: postgresql+psycopg://groupproof:groupproof@127.0.0.1:5432/groupproof
       C_EXECUTION_TEST_DATABASE_URL: postgresql+psycopg://groupproof:groupproof@127.0.0.1:5432/groupproof
+      B_TEST_DATABASE_URL: postgresql+psycopg://groupproof:groupproof@127.0.0.1:5432/groupproof
     defaults:
       run:
         working-directory: services/api
@@ -234,7 +235,7 @@ jobs:
       - name: Run C shell without demo data
         run: npx playwright test --config playwright.c-shell.config.ts
 
-      - name: Verify staging never loads demo workspaces
+      - name: Verify real student workflows and demo-data isolation
         run: npm run test:workspace-real
 
       - name: Check C business commands and generated client

@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { CoreView } from "@/features/core/CoreView";
 import ProjectCoreView from "@/features/project-core/ProjectCoreView";
 import { ProjectSupportView } from "@/features/project-support/ProjectSupportView";
@@ -40,7 +39,21 @@ const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
 const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.HomeApiPage));
 const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
-const MyCoursesApiPage = dynamic(() => import("@/features/course/MyCoursesApiPage").then((module) => module.MyCoursesApiPage));
+const MyCoursesApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.MyCoursesApiPage));
+const JoinCourseApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.JoinCourseApiPage));
+const GroupsApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupsApiPage));
+const GroupDetailApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupDetailApiPage));
+const ChangeLeaderApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.ChangeLeaderApiPage));
+const NewProjectApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.NewProjectApiPage));
+const ProjectOverviewApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectOverviewApiPage));
+const ProjectSetupApiPage = dynamic(() => import("@/features/b/ProjectsApiPages").then((module) => module.ProjectSetupApiPage));
+const RequirementsApiPage = dynamic(() => import("@/features/b/RequirementsApiPage").then((module) => module.RequirementsApiPage));
+const PlanningApiPage = dynamic(() => import("@/features/b/PlanningApiPage").then((module) => module.PlanningApiPage));
+const TasksApiPage = dynamic(() => import("@/features/b/TasksApiPage").then((module) => module.TasksApiPage));
+const MilestonesApiPage = dynamic(() => import("@/features/b/MilestonesApiPage").then((module) => module.MilestonesApiPage));
+const MilestoneDetailApiPage = dynamic(() => import("@/features/b/MilestonesApiPage").then((module) => module.MilestoneDetailApiPage));
+const LeaveGroupApiPage = dynamic(() => import("@/features/b/MembershipApiPages").then((module) => module.LeaveGroupApiPage));
+const MemberChangesApiPage = dynamic(() => import("@/features/b/MemberChangesApiPage").then((module) => module.MemberChangesApiPage));
 
 function AccessDenied({ message }: { message?: string }) {
   const t = useTranslations("errors");
@@ -52,7 +65,7 @@ export function RouteDispatcher() {
   const pathname = usePathname();
   const search = useSearchParams();
   const tc = useTranslations("common");
-  const { role, userId, mockWorkspace } = useWorkspace();
+  const { role, userId } = useWorkspace();
   const route = resolveRoute(pathname, search.get("view"));
   if (!route) return <WorkspaceShell kind={role === "admin" ? "admin" : role === "teacher" || role === "ta" ? "teacher" : "student"}><div className="py-24 text-center"><h1 className="text-[24px] font-semibold">{tc("notFound.title")}</h1><Link href="/home" className="gp-link mt-4 inline-block">{tc("notFound.home")}</Link></div></WorkspaceShell>;
   const { screen, projectId, taskId, milestoneId, memberId, courseId, groupId } = route;
@@ -72,7 +85,26 @@ export function RouteDispatcher() {
   }
   let realContent;
   if (screen === 4 && apiMode("daily") === "real") realContent = <HomeApiPage />;
-  if (screen === 31 && !mockWorkspace) realContent = <MyCoursesApiPage />;
+  if (apiMode("courses") === "real") {
+    if (screen === 31) realContent = <MyCoursesApiPage />;
+    if (screen === 32) realContent = <JoinCourseApiPage />;
+  }
+  if (apiMode("groups") === "real") {
+    if (screen === 33 && courseId) realContent = <GroupsApiPage courseId={courseId} />;
+    if (screen === 34 && courseId && groupId) realContent = <GroupDetailApiPage courseId={courseId} groupId={groupId} />;
+    if (screen === 36 && courseId && groupId) realContent = <ChangeLeaderApiPage courseId={courseId} groupId={groupId} />;
+    if (screen === 37 && courseId && groupId) realContent = <LeaveGroupApiPage courseId={courseId} groupId={groupId} />;
+    if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
+  }
+  if (apiMode("projects") === "real") {
+    if (screen === 35 && courseId) realContent = <NewProjectApiPage courseId={courseId} />;
+    if (screen === 7 && projectId) realContent = <ProjectOverviewApiPage projectId={projectId} />;
+    if (screen === 8 && projectId) realContent = <ProjectSetupApiPage projectId={projectId} />;
+    if (screen === 9 && projectId) realContent = <RequirementsApiPage projectId={projectId} />;
+    if (screen === 10 && projectId) realContent = <PlanningApiPage projectId={projectId} />;
+    if (screen === 19 && projectId && milestoneId) realContent = <MilestoneDetailApiPage projectId={projectId} milestoneId={milestoneId} />;
+  }
+  if ([11, 12, 13].includes(screen) && projectId && apiMode("tasks") === "real") realContent = <TasksApiPage projectId={projectId} view={screen === 12 ? "board" : screen === 13 ? "list" : "tree"} />;
   if (screen === 30 && apiMode("daily") === "real") realContent = <PersonalActivityApiPage />;
   if (screen === 5 && apiMode("inbox") === "real") realContent = <NotificationsApiPage />;
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
@@ -95,6 +127,7 @@ export function RouteDispatcher() {
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
   }
+  if (screen === 18 && projectId && apiMode("projects") === "real") realContent = <><MilestonesApiPage projectId={projectId} />{apiMode("cworkspace") === "real" && <div className="mt-6"><RiskApiPage projectId={projectId} /></div>}</>;
   if (screen === 50 && courseId && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;
   if (screen >= 53 && apiMode("governance") === "real") {
@@ -110,15 +143,6 @@ export function RouteDispatcher() {
     const shell = role === "admin" ? "admin" : role === "teacher" || role === "ta" ? "teacher" : "student";
     return <WorkspaceShell kind={shell}><AccessDenied /></WorkspaceShell>;
   }
-
-  // Unconnected legacy screens must not manufacture objects or successful writes.
-  if (!mockWorkspace) return <WorkspaceShell kind={kind}>
-    <PageHeader title={screen === 32 ? "加入课程" : "页面暂不可用"} />
-    <Panel><EmptyState title={screen === 32 ? "暂时无法通过邀请码加入课程" : "该功能暂不可用"}
-      description={screen === 32 ? "请联系任课教师确认课程安排。" : "请稍后再试，你已有的资料会保留。"} />
-      <Link href="/home" className="gp-link mt-4 inline-block">返回首页</Link>
-    </Panel>
-  </WorkspaceShell>;
 
   let content;
   if ([4, 5, 6, 30].includes(screen)) content = <CoreView screen={screen} />;

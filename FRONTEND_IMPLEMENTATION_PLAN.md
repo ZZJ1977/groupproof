@@ -62,8 +62,8 @@
 | 28 | 报告导出 | `/projects/project-1/reports/export` |
 | 29 | 项目设置（真实项目含 GitHub 仓库与飞书群聊集成） | `/projects/project-1/settings` |
 | 30 | 个人动态 / 我的记录 | `/activity` |
-| 31 | 我的课程（真实模式读取授权摘要，最多最近 10 门） | `/courses` |
-| 32 | 加入课程（真实接口接入前显示暂不可用） | `/courses/join` |
+| 31 | 我的课程（真实分页列表；?intent=create-project 选择项目课程） | `/courses` |
+| 32 | 加入课程（真实邀请码预览、确认加入或申请审批） | `/courses/join` |
 | 33 | 课程内组队 | `/courses/course-1/groups` |
 | 34 | 小组成员管理 | `/courses/course-1/groups/group-1` |
 | 35 | 创建课程项目 | `/courses/course-1/projects/new` |

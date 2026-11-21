@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { BookOpen, CheckSquare, Folder } from "lucide-react";
+import { BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
 import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
+import { buttonVariants } from "@/components/ui/button";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
@@ -38,7 +39,11 @@ export function HomeApiPage() {
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
-    <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<button className={buttonClass} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}>刷新统计</button>} />
+    <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<div className="flex flex-wrap items-center gap-2">
+      <Link href="/courses?intent=create-project" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>
+      <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>
+      <button className={buttonVariants({ variant: "ghost" })} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}><RefreshCw size={15} />刷新统计</button>
+    </div>} />
     {result.isFetching && <p role="status">正在读取首页…</p>}
     {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
     {data && <>
@@ -61,14 +66,14 @@ export function HomeApiPage() {
             {project.progress !== null && <ProgressBar value={project.progress} />}
             <Link className="gp-link mt-2 inline-block text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>
           </div>)}</div>
-          {!data.projects.length && <EmptyState title={t("emptyProjects")} />}
+          {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/courses?intent=create-project" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
         </Panel>
         <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 门课程</p>
           <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div><strong>{course.name}</strong><span className="ml-2"><StatusBadge status={course.status} /></span></div>
-            <Link className="gp-link text-sm" href={`/courses/${encodeURIComponent(course.id)}/rules`}>查看课程</Link>
+            <Link className="gp-link text-sm" href={`/courses/${encodeURIComponent(course.id)}/groups`}>查看课程</Link>
           </div>)}</div>
-          {!data.courses.length && <EmptyState title={t("emptyCourses")} />}
+          {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
         </Panel>
       </div>
       <Link className="gp-link mt-4 inline-block" href="/activity">查看个人动态</Link>
