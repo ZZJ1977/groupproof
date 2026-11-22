@@ -451,6 +451,12 @@
     }
   },
   "shell": {
+    "adminEnvironment": {
+      "label": "Data environment",
+      "description": "Switch the data environment used by the admin console",
+      "develop": "develop / Staging",
+      "main": "main / Production"
+    },
     "searchPlaceholder": "Search courses, projects or tasks...",
     "searchNoResult": "No matches",
     "searchTypeProject": "Project",

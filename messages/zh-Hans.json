@@ -451,6 +451,12 @@
     }
   },
   "shell": {
+    "adminEnvironment": {
+      "label": "数据环境",
+      "description": "切换管理后台读取和操作的数据环境",
+      "develop": "develop / Staging",
+      "main": "main / Production"
+    },
     "searchPlaceholder": "搜索课程、项目或任务...",
     "searchNoResult": "无匹配结果",
     "searchTypeProject": "项目",
