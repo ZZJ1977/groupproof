@@ -780,6 +780,13 @@
       "dailyUnavailable": "Daily data is unavailable",
       "dailyUnavailableDesc": "Home, notification, action item and activity services are not connected yet. Please try again later."
     },
+    "daily": {
+      "notificationSaveFailed": "Notifications could not be saved. Try again. The current state was not changed.",
+      "notificationsNotConnected": "The notification service is not connected yet, so real notifications cannot be read or handled.",
+      "demoNotifications": "These are local demo notifications.",
+      "notificationPagination": "Notification pagination",
+      "pagerOf": "Page {page} of {pages}"
+    },
     "independentProject": {
       "title": "Create project",
       "description": "Create an independent project without joining a course. You become the project leader.",

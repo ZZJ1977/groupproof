@@ -780,6 +780,13 @@
       "dailyUnavailable": "日常入口数据暂不可用",
       "dailyUnavailableDesc": "首页、通知、待办及动态服务尚未接入，请稍后重试。"
     },
+    "daily": {
+      "notificationSaveFailed": "通知保存失败，请重试；当前状态未变更。",
+      "notificationsNotConnected": "通知服务尚未接入，暂时无法读取或处理真实通知。",
+      "demoNotifications": "当前为本地演示通知。",
+      "notificationPagination": "通知分页",
+      "pagerOf": "第 {page}/{pages} 页"
+    },
     "independentProject": {
       "title": "创建项目",
       "description": "无需加入课程即可创建独立项目，你将自动成为项目组长。",
