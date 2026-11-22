@@ -201,3 +201,49 @@ class ImplementationFinding(AIModel):
 
 class ImplementationAnalysisResult(AIResultMeta):
     findings: list[ImplementationFinding]
+
+
+# ------------------------------------------------ 通用活动摘要（首期由 GitHub commit 使用）
+
+
+class ActivityFileChange(AIModel):
+    path: str = Field(min_length=1, max_length=500)
+    status: Literal["added", "modified", "deleted", "renamed", "unknown"] = "unknown"
+    additions: int = Field(default=0, ge=0, le=1_000_000)
+    deletions: int = Field(default=0, ge=0, le=1_000_000)
+    patch: str | None = Field(default=None, max_length=6000)
+
+
+class ActivitySummaryInput(AIModel):
+    """平台无关的来源输入；不把项目业务名词硬编码进提示词。"""
+
+    project_id: UUID
+    platform: str = Field(min_length=1, max_length=40)
+    record_kind: str = Field(min_length=1, max_length=40)
+    source_revision: str = Field(min_length=1, max_length=255)
+    actor_name: str = Field(min_length=1, max_length=240)
+    actor_login: str | None = Field(default=None, max_length=120)
+    occurred_at: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=240)
+    body: str = Field(default="", max_length=30000)
+    metadata: dict[str, str | int | float | bool | None] = Field(
+        default_factory=dict, max_length=40
+    )
+    files: list[ActivityFileChange] = Field(default_factory=list, max_length=80)
+    diff_truncated: bool = False
+
+
+class ActivityEvidence(AIModel):
+    source: Literal["title", "body", "metadata", "files"]
+    quote: str = Field(min_length=1, max_length=300)
+
+
+class ActivitySummaryResult(AIResultMeta):
+    headline: str = Field(min_length=1, max_length=240)
+    implementation: str = Field(min_length=1, max_length=600)
+    impact: str | None = Field(default=None, max_length=600)
+    verification: list[str] = Field(default_factory=list, max_length=8)
+    risks: list[str] = Field(default_factory=list, max_length=8)
+    evidence: list[ActivityEvidence] = Field(default_factory=list, max_length=8)
+    confidence: float = Field(ge=0, le=1)
+    insufficient_context: list[str] = Field(default_factory=list, max_length=8)

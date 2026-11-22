@@ -23,6 +23,7 @@ from app.db.models import User
 from app.db.session import get_session
 from app.modules.a import (
     access_grants,
+    activity_summary,
     ai,
     code_analysis,
     feishu,
@@ -33,6 +34,7 @@ from app.modules.a import (
     projects,
     storage,
 )
+from app.modules.a import search as global_search
 from app.modules.a.ai import usage as ai_usage
 
 router = APIRouter(tags=["a"])
@@ -172,7 +174,12 @@ def bind_feishu_chat(
     session: Database,
     user: CurrentUser,
 ):
-    link = feishu.link_chat(session, user, project_id, payload.chat_id)
+    reader = feishu.get_feishu_reader()
+    try:
+        link = feishu.link_chat(session, user, project_id, payload.chat_id, reader)
+    finally:
+        if isinstance(reader, feishu.FeishuClient):
+            reader.close()
     session.commit()
     return success(FeishuChatLinkDTO(project_id=project_id, chat_id=link.chat_id), request)
 
@@ -546,6 +553,38 @@ class GithubActivityPageDTO(BaseModel):
     page_size: int
 
 
+class ActivityEvidenceDTO(BaseModel):
+    source: Literal["title", "body", "metadata", "files"]
+    quote: str
+
+
+class ActivitySummaryDTO(BaseModel):
+    source_id: UUID
+    status: Literal["not_generated", "pending", "ready", "failed", "unsupported"]
+    source_revision: str
+    prompt_version: str
+    input_hash: str
+    headline: str | None = None
+    implementation: str | None = None
+    impact: str | None = None
+    verification: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    evidence: list[ActivityEvidenceDTO] = Field(default_factory=list)
+    confidence: float | None = None
+    insufficient_context: list[str] = Field(default_factory=list)
+    provider: str | None = None
+    model: str | None = None
+    is_placeholder: bool = False
+    needs_human_review: bool = True
+    error_code: str | None = None
+    generated_at: datetime | None = None
+
+
+class ActivitySummaryBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_ids: list[UUID] = Field(min_length=1, max_length=20)
+
+
 @router.get(
     "/api/v1/a/projects/{project_id}/github/activity",
     response_model=SuccessResponse[GithubActivityPageDTO],
@@ -567,13 +606,94 @@ def list_github_activity(
     )
     return success(
         GithubActivityPageDTO(
-            items=[GithubActivityDTO.model_validate(row, from_attributes=True) for row in rows],
+            items=[
+                GithubActivityDTO.model_validate(row, from_attributes=True).model_copy(
+                    update={"author_user_id": verified_author_id}
+                )
+                for row, verified_author_id in rows
+            ],
             total=total,
             page=page,
             page_size=page_size,
         ),
         request,
     )
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/github/activity/summaries",
+    response_model=SuccessResponse[list[ActivitySummaryDTO]],
+    dependencies=[Depends(_private)],
+)
+def list_github_activity_summaries(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    source_ids: list[UUID] = Query(default_factory=list),
+):
+    return success(
+        [
+            ActivitySummaryDTO(**item)
+            for item in activity_summary.list_summaries(session, user, project_id, source_ids)
+        ],
+        request,
+    )
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary",
+    response_model=SuccessResponse[ActivitySummaryDTO],
+    dependencies=[Depends(_private)],
+)
+def get_github_activity_summary(
+    project_id: UUID,
+    activity_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    return success(
+        ActivitySummaryDTO(**activity_summary.get_summary(session, user, project_id, activity_id)),
+        request,
+    )
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary",
+    response_model=SuccessResponse[ActivitySummaryDTO],
+    dependencies=[Depends(_private)],
+)
+def generate_github_activity_summary(
+    project_id: UUID,
+    activity_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    result = activity_summary.generate_summary(session, user, project_id, activity_id)
+    session.commit()
+    return success(ActivitySummaryDTO(**result), request)
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/activity/summaries",
+    response_model=SuccessResponse[list[ActivitySummaryDTO]],
+    dependencies=[Depends(_private)],
+)
+def generate_github_activity_summaries(
+    project_id: UUID,
+    payload: ActivitySummaryBatchRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    result = [
+        activity_summary.generate_summary(session, user, project_id, source_id)
+        for source_id in payload.source_ids
+    ]
+    session.commit()
+    return success([ActivitySummaryDTO(**item) for item in result], request)
 
 
 class GithubLoginRequest(BaseModel):
@@ -593,7 +713,7 @@ class GithubLoginDTO(BaseModel):
 def set_my_github_login(
     payload: GithubLoginRequest, request: Request, session: Database, user: CurrentUser
 ):
-    """声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。"""
+    """维护旧版客户端自行声明的 GitHub 用户名。"""
     link = github_activity.set_github_login(session, user, payload.login)
     session.commit()
     return success(GithubLoginDTO(login=link.login if link else None), request)
@@ -719,3 +839,19 @@ def revoke_access_grant(
     grant = access_grants.revoke_grant(session, user, grant_id, payload.reason)
     session.commit()
     return success(AccessGrantDTO.model_validate(grant, from_attributes=True), request)
+
+
+@router.get(
+    "/api/v1/search",
+    response_model=SuccessResponse[global_search.GlobalSearchResponseDTO],
+    dependencies=[Depends(_private)],
+)
+def search_workspace_endpoint(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=12, ge=1, le=30),
+):
+    """按当前登录用户的真实权限范围检索课程、项目、任务、证据与项目文件。"""
+    return success(global_search.search_workspace(session, user, q, limit=limit), request)

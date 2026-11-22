@@ -1,26 +1,109 @@
 # GroupProof V1 前端交付状态
 
-更新日期：2026-11-12
+更新日期：2026-11-22
+
+## 2026-11-22 原工作区统一与全流程上线闭环完善
+
+- **统一主干与 Admin 工作台合流**：将 `develop` 最新主干（含 B 学生/教师工作区真实 API、学生端开放画布统一改版、GitHub AI 活动摘要迁移 `0047`）与 `admin-backend`（用户目录摘要与身份详情抽屉、OpenRouter 业务场景用量看板、双环境切换）统一合流至原工作区 `groupproof`，Admin 工作台路由 `/admin` 分配独立页面编号 `62` 以避免与教师班级页 `57` 冲突。
+- **全局搜索真实化**：后端新增 `GET /api/v1/search`，严格按当前活跃账号的真实权限范围检索课程、项目、任务、证据与逻辑文件（管理员仅检索课程与用户治理目录，绝不泄露项目内部内容；同课公开项目仅返回项目总览入口而不暴露内部任务/证据/文件）。顶栏搜索框替换原“请使用页面内筛选”禁用态，支持防抖查询、分类标签、键盘上下选择/回车跳转及三语文案。
+- **教师与学生课程资料互通（消除双库脱节）**：新增学生端 `StudentCourseFilesApiPage`（`/courses/:courseId/files`），对接 `GET /api/v1/courses/{id}/materials` 与分版本下载接口，支持文件夹筛选、关键词检索及按分组状态自动过滤可见范围；同时保留 `?version=` 深度链接对接 C 历史发布版本。教师发布课程规则时同步写入 D `course_rule_versions`，打通“教师建班并发布规则 → 学生立项”链路。
+- **项目初始化资料正文自动提取**：打通 B 模块 `MaterialTextPort` 到 A4-05 `read_receipt_text` 的持久化提取适配（`PersistedMaterialTextPort`），支持 `.pdf`、`.docx`、`.md`、`.txt` 分段提取与 SHA-256 指纹校验；同时新增服务端内联校验与提取回退路由 `POST /api/v1/projects/{id}/materials/upload-inline` 及前端 `.md` 等扩展名 MIME 自动推断，即使本地未配置外部 Supabase 对象存储也能直接完成文档正文提取供需求分析使用，加密/损坏/无文字层文件明确返回失败原因。
+- **贡献快照冻结、CSRF 统一加固与报告真实导出（PDF / DOCX）**：新增 `POST /api/v1/projects/{id}/contribution/freeze` 与前端“确认并冻结贡献快照”操作，打通“任务人工验收 → 贡献计算与冻结 → 结项报告生成/审批定稿 → 项目归档”全链路；统一修复 D 模块风险、贡献、协作说明、申诉、教师评阅与课程规则页面的 `fetchWithSession` CSRF 携带；升级 D4 报告导出渲染器（DOCX 增加项目统计汇总表、分段排版与正式证据明细表；PDF 修复 40 字符长标题截断，增加汇总栏、层级字号与页脚页码；开发环境无独立 Celery/Redis Worker 时自动执行毫秒级进程内回退）。
+- **跨模块课程冻结文件引用、容器自迁移与受控管理员开通**：B 需求基线冻结快照（`_snapshot`）自动固化当前课程已发布 `c_course_files` 与 `b_course_material_items` 的精确版本引用，冻结项目设置页与项目归档快照完整保留可追溯下载/查看入口；`services/api` 容器启动脚本默认幂等执行 `alembic upgrade head` 并以 `/readyz` 作为健康检查；新增 `python -m scripts.bootstrap_admin` CLI 支持密码和/或 Google 身份幂等开通初始管理员；新增 12 阶段全生命周期端到端测试 `tests/test_full_lifecycle_e2e.py` 全绿通过。
+
+## 2026-11-22 学生端统一工作台与 GitHub AI 摘要
+
+- 学生端统一使用开放画布、轻量分区、连续列表行和按需详情抽屉：共享令牌与基础组件位于 `app/globals.css`、`components/common.tsx` 和 `components/workspace-shell.tsx`；学生工作区通过 `gp-student-workspace` 统一覆盖，不新增一套角色导航或改变现有路由。
+- 首页、个人动态和项目活动页已迁移到同一套列表/状态/详情语言。普通内容不再重复包裹厚重卡片；摘要、决策和设置区域仍保留表面容器。列表支持 URL 筛选、键盘聚焦/Enter 打开、Escape 关闭详情抽屉，以及加载、空数据、失败和权限失效状态。
+- GitHub 活动首屏改为“提交者 + 实现内容 + 时间/状态”；原始提交、完整正文、文件差异、证据引用和历史只在详情抽屉展示。PR、CI 继续作为原始来源证据，不冒充 AI 实现摘要。
+- 新增通用活动摘要契约：输入包含平台、记录类型、作者、标题、正文、元数据、文件变更和截断标记；提示词版本为 `activity-summary-v1`。输出必须能引用输入证据，结果标记 `AI 已生成 · 待人工确认`，不写入正式任务/证据状态。
+- GitHub commit 首期支持文件级差异同步（限制文件数、patch 总量并脱敏常见密钥）；文件详情读取失败时保留原始提交并明确上下文不足。摘要缓存按来源版本、提示词版本和输入哈希区分，失败不会清空来源。
+- 后端新增迁移 `0047_a_activity_summaries` 和四个摘要接口（列表状态、单条状态、单条生成、批量生成）；前端 API 类型与 OpenAPI 已重新生成。`0047` 接在远端 develop 已有的 B 模块迁移 `0046` 之后，避免与 `0042_b_staff_permissions` 产生同 revision 冲突。默认 `AI_PROVIDER=fake` 只用于开发/测试，真实摘要需配置 OpenRouter 等正式提供方和用量策略。
+- 本轮验证：`npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:routes`、`npm run check:student-ui`、针对性后端 AI/GitHub/OpenAPI 测试通过；迁移头为 `0047`。真实 PostgreSQL 升级、外部 GitHub App 权限和正式 AI 凭据仍需在部署环境单独验收。
+
+## 2026-11-22：`admin-backend` 管理后台真实治理接线与工作台刷新
+
+- 接入 `services/api` 的真实治理读取端口：账号目录、教师审核、课程草稿/发布/结束、认证审计、共享业务审计、AI 用量和临时只读授权复用统一身份、PostgreSQL 迁移与现有 `/api/v1/admin` / `/api/v1/c-admin` 契约。
+- 沿用 `/admin/*` 路由、真实治理 API、权限和环境 Cookie，新增后台专用浅色工作台主题：平台管理 / 运行分析分组导航、紧凑顶部栏、圆角卡片、统一焦点态和窄屏折叠菜单；用户目录支持抽屉详情、快捷状态筛选与摘要卡片。
+- AI 用量页增加按 GitHub 提交分析、证据/群聊追踪、需求解析、任务规划、风险解释的场景卡片，并继续显示真实请求、Token、费用、未计价和 Token 不完整记录；无样本时显示“暂无样本”，不生成估算趋势。
+- 环境切换在同一后台顶部完成；新增结构检查 `scripts/check-admin-ui.mjs` 与 `scripts/check-admin-pages.mjs`。
+
+## 2026-11-21 独立项目与学生入口复核
+
+- 首页创建入口改为 `/projects/new`，直接调用独立项目服务，不要求课程或小组。课程项目保留单独入口，沿用课程规则。
+- 恢复课程卡片的课程规则入口，增加学生课程文件路由别名；修复链接按钮颜色与窄宽换行。
+- 逐项核对范围、验证与仍存在的外部服务边界见 [学生端入口复核](docs/plans/2026-11-21-student-entry-audit.md)。
+
+## 2026-11-21 保留功能的工作区清理修复
+
+- 首页标题与项目/课程空状态补回“创建项目”“加入课程”；创建入口 `/courses?intent=create-project` 先选择课程，零课程时引导加入。
+- 保留原 56 页路由。恢复邀请码预览/入课、小组创建/加入/组长转让、课程项目创建、项目总览/初始化、需求/基线、任务规划、树/看板/列表、里程碑和成员变更；按最小学生功能子集复用 B 分支实现，未整合教师台改版。
+- B 写请求使用真实会话、CSRF、幂等键与版本锁；迁移 0035–0041 只接续当前数据结构，不导入演示数据。项目课程关系与操作权限由服务端校验。
+- B 验收适配接入 D 的持久人工确认结果与失效事务；AI 通过不能代替人工确认。材料正文提取尚未接通的端口仍返回准确不可用状态；不编造提取结果。
+- 设计、路径及验收要求见 [恢复说明](docs/plans/2026-11-21-workspace-function-restoration.md)。前端 lint、typecheck、生产构建、56 路由与三语词条检查通过；47 个浏览器场景已覆盖（完整批次 43 通过，3 项失败诊断后定向重跑通过，另增 1 项窄屏通过）。浏览器使用隔离接口替身，不修改线上账号。
+- 后端课程/组队/项目 45 项与需求/规划/任务/里程碑/成员流程 56 项 PostgreSQL 用例通过；另通过规则约束、A 权限、D 人工验收及 C 证据失效联动、写入锁与异步分析期间课程结束回归，批次有重复覆盖，不相加作独立用例数。空库及 0034 → 0041 → 0034 → 0041 迁移通过，接口路径与原有 schema 无删除。
+
+## 2026-11-21 工作区清理演示数据
+
+- 工作区默认使用真实接口，Staging 与 Production 无条件关闭 Mock；Docker 构建参数、Compose 与 Staging 部署脚本统一传入前端配置，避免运行时变量与已编译页面不一致。
+- 进入真实工作区时自动删除旧演示 localStorage（旧键、按用户分隔的键及迁移备份），保留账号、语言和其他缓存。真实模式不加载 seed 模块，不允许旧本地命令重新生成演示数据。样本仅供显式隔离测试使用。
+- 首页、课程、通知、待处理和个人动态读取真实接口；请求失败显示错误和重试，不伪装为空数据。首页摘要展示最近 10 项；课程列表接入完整分页接口。清理时误加的通用页面拦截已撤掉，课程加入、组队、项目创建与后续学生流程接入真实 B 服务，详见上方恢复记录。
+- 路由保持原有 56 页映射；清理不代表尚未接入的业务操作已经完成。验证命令：`npm run check:workspace-isolation`、`npm run test:api-config`、`npm run test:workspace-real`，以及常规 lint/typecheck/build/routes。
+- 实际验证：配置与缓存隔离检查、lint、typecheck、生产构建、56 路由检查和 3 项浏览器回归通过。浏览器覆盖旧缓存清理、刷新、学生入口、真实数据保留及服务错误恢复。
+- Staging 早期种子数据已在私有备份后按精确 ID、关联闭包与逐表指纹清理：18 张业务表的 19 行及 2 个种子账号，共 21 行。事务验证当前账号与会话未改变；清理后课程、项目、任务均为 0。本地数据库原本没有上述业务或种子数据。
+
+## 2026-11-21 GitHub 与飞书集成
+
+- 真实项目在项目设置中集中管理仓库与群聊。组长可绑定并触发同步，其他项目成员可查看。仓库来自已安装的 GitHub App，群聊来自飞书机器人可见范围。
+- 首页每个项目直接显示 GitHub 仓库和飞书群的真实接入数量，并跳转到对应设置区。读取失败显示“状态暂不可用”，不会被误报为“未接入”。
+- GitHub 保持仅填写仓库 URL 的产品入口；飞书改为仅填写 `oc_...` 群聊 ID。飞书提交后依次执行机器人在群校验、项目绑定和首次消息同步，不暴露应用凭证、租户令牌或权限配置。
+- 已激活的账号可在账号安全中授权或解除个人 GitHub 绑定。仓库同步时使用 GitHub 返回的账号 ID 将活动对应到当前项目成员。解除授权后停止显示该人员归属。个人动态链接到同一授权入口。
+- 注册只填写学校邮箱、身份资料和密码。飞书接入使用项目群聊。各环境的外部服务凭据见 [配置说明](README.md#github-and-feishu-integrations)。
+- 本地浏览器验收覆盖注册独立于外部授权、个人绑定入口、旧链接跳转及组长与成员的操作差异。GitHub 回调和飞书群校验使用隔离数据库与外部接口测试替身。实际平台授权和同步需要配置凭据后验收。
+- Staging 真实数据验收：`GroupProof` 项目已绑定 `ZZJ1977/groupproof` 且读取到 500 个文件、263 条开发活动；飞书机器人已校验并绑定唯一项目群。飞书历史消息同步仍受开放平台消息读取权限未发布限制，当前保持明确失败状态，不写入伪造消息。
+
+## 2026-11-21 学校邮箱注册与资料页
+
+- 身份下拉框始终显示“学生 / 老师”，默认选择与已验证学校邮箱匹配的身份。切换到老师时隐藏学号并说明审核流程；身份与邮箱不匹配时即时提示更换学校邮箱，暂停提交。服务端邮箱校验与教师审核规则沿用现有实现。
+- 新建密码账号先在登录页验证学校邮箱，再进入独立资料页填写姓名、身份、学号（仅学生）、学院（选填）和两次密码。已验证的学校邮箱直接用作登录邮箱及学校邮箱。注册、修改和重置密码统一只要求至少 8 个字符，移除常见口令与 128 字符上限；注册时保留两次密码一致校验。
+- 已有账号的 `/account/profile` 同步新版双栏布局，账户导航改为顶部紧凑进度。移除用户名输入，保留已有登录凭据；显示实际学校邮箱验证状态，已有密码通过账号安全管理。保存按服务端下一步进入邮箱验证、教师审核或工作区，版本冲突需明确重新载入资料。
+- 登录触发限流时按服务端截止时间倒计时，冷却期间禁用按钮并拦截重复提交，到期恢复登录；服务端限流规则保持有效。
+- 本轮补充验证：7 项浏览器用例覆盖身份切换、已有账号资料保存、邮箱/审核跳转、并发版本冲突、360px 布局与登录冷却；13 项密码策略用例覆盖最短长度、长密码、Unicode 及历史哈希兼容。浏览器用例使用隔离接口替身，不修改真实用户资料。
+- 有效的验证码验证事务绑定发起注册的浏览器，过期后引导重新注册。学生资料通过服务端校验后进入工作区；教师继续在账号状态页提交审核。既有账号和 Google 登录继续使用个人中心，基本资料页将提示折叠在表单内。
+- 注册资料页与顶栏使用同一内容宽度。桌面上并排显示身份资料与密码，窄屏按顺序堆叠。
+- 隔离邮件捕获环境的浏览器验收覆盖学生注册及邮箱重登、教师注册后审核门禁、360px 窄屏、密码确认不匹配、验证码填写和重新加载资料页。邮件投递由部署的邮件提供方负责，浏览器验收使用本地捕获箱。
+
+## 2026-11-19 C 项目文件与课程文件
+
+- 登记文件版本前，浏览器比对所选文件的 SHA-256 与存储端重新读取字节计算的回执。内容不一致或存储未收到文件时，保留旧版本，允许重新上传。
+- 签名链接显示在申请它的版本下。切换引用或用浏览器后退后，之前请求的链接不会出现在新选中的版本。课程文件引用无效时，页面提示返回文件列表。
+- [项目文件验收](docs/modules/c/C_PROJECT_FILES.md#verify-c5-02-on-staging)覆盖上传两版、第三次中断和刷新后下载。[冻结项目验收](docs/modules/c/C_COURSE_FILES.md#verify-a-frozen-project-on-staging)要求从 B 的冻结项目进入历史版本；B 的冻结快照仍缺文件和版本引用。
+
+## 2026-11-16 C 接入 D 的任务验收
+
+- 第 14 页任务验收 Tab 读取 D 的验收历史，显示逐条标准、证据版本、负责人决定及失效原因，并可跳到完整性检查和负责人确认页。刷新时重新读取，拒绝跨任务响应，权限收回后隐藏旧结果。
+- C 证据变更在原事务中作废 D 结果。显式作废的结果禁止再次确认，新报告只引用当前有效的冻结贡献，旧报告保留已有快照。
+- B 的任务版本/复核路由尚待合入共享环境，冻结课程文件版本引用与真实对象存储传输仍待联调。实际验证记录见 [C 任务清单](docs/modules/c/2026-11-09-C-weekly.md)。
 
 ## 2026-11-12 C 接入 A 的共享服务
 
 - 个人动态与项目活动展示 GitHub 的 Commit、PR 和 CI；可为本人声明作者映射。飞书消息详情可读取脱敏长文本，核验附件后可保存候选证据。
 - 管理员可创建账号、恢复账号、处理教师审核，按事件角色和结果筛选 A4 共享日志，按时间和功能读取 AI 用量。费用缺失时显示缺失条数。
 - 首页可申请临时只读访问，批准后可进入指定任务或证据。课程文件链接可指定精确版本，访问失效后提示对应版本不可用。
-- 实际对象存储传输、B 的冻结课程文件引用、D 的验收和证据失效消费仍需联调。[C 任务清单](docs/weekly/2026-11-09-C.md)
+- 实际对象存储传输、B 的冻结课程文件引用、D 的验收和证据失效消费仍需联调。[C 任务清单](docs/modules/c/2026-11-09-C-weekly.md)
 
 ## 2026-10-15：C 复用 A 的认证审计与教师审核历史
 
 - 日志页增加独立认证日志入口，读取 A 已保存的真实审计事件，支持筛选、分页和只读详情；全站业务日志仍使用原提供方，来源范围明确区分。
 - 教师审核页增加待审核、已通过、已拒绝和全部状态查询，展示保存的申请依据与处理结果；当前邮箱状态另列，历史记录不显示再次决定按钮。
-- 两项功能复用统一认证和已有数据库记录，没有新增表或第三方接入。接口、检查结果及限制见 [C 交付记录](docs/C_DELIVERY.md)。
+- 两项功能复用统一认证和已有数据库记录，没有新增表或第三方接入。接口、检查结果及限制见 [C 交付记录](docs/modules/c/C_DELIVERY.md)。
 
 ## 2026-10-14：C 审计问题修复
 
 - 统一认证已合并后，C 写权限改读当前学校邮箱绑定；管理员状态筛选和初始版本为 0 的账号停用修复。业务客户端默认走同源代理，代理保留幂等请求头。
 - 真实工作区不再回退演示数据，项目/课程导航沿用真实 UUID；未读角标读取通知服务，拒绝后清除旧数。全局搜索等待真实查询服务，使用页面内筛选。
 - 补齐任务描述、历史作者和教师/助教提及、回复/个人动态的具体记录定位、带原因的证据来源检查。来源未接通时保留输入并报不可用。
-- 本批验证、原始审计与未交付依赖见 [C 交付记录](docs/C_DELIVERY.md) 和 [审计](docs/reviews/2026-10-14-c-function-audit.md)。页面路由不变；不等于线上 35 项任务已验收。
+- 本批验证、原始审计与未交付依赖见 [C 交付记录](docs/modules/c/C_DELIVERY.md) 和 审计（历史归档：`docs/reviews/2026-10-14-c-function-audit.md`）。页面路由不变；不等于线上 35 项任务已验收。
 
 ## 2026-10-12：团队统一认证测试交付
 
@@ -34,7 +117,7 @@
 - C 的 18 个页面现有独立真实 API 分支：04–06、14–15、20–24、30、50–56。按 `daily`、`inbox`、`cworkspace`、`coursefiles`、`cidentity`、`governance` 功能开关逐步启用；原路由和演示模式保留。页面按当前会话隔离查询，拒绝访问后隐藏旧数据，真实分支不退回 seed 数据。
 - 任务页面接入状态、带原因进度、版本说明、候选证据、任务讨论与真实执行历史；证据/协作/资料页面接入查询、版本与决定接口。课程文件有发布和历史版本，管理页有身份停用/教师审核、课程状态、审计/用量查询、访问审批。
 - 当时身份管理复用 `server/`；PR #14 后已改用 `services/api/app/auth` 统一身份。上传字节、GitHub/飞书授权及同步、通知送达、AI 用量来源、访问授权执行以及 D 验收仍是交接依赖。不可把“页面已接 API”当作真实外部服务已上线或全任务验收通过。
-- 新页面采用真实 HTTP 契约的浏览器测试，与后端 PostgreSQL 权限/并发测试分开记录。开关、交互与验收边界见 [C 页面交接](docs/C_REAL_PAGES.md)；任务逐项状态和实际验证结果见 [C 交付记录](docs/C_DELIVERY.md)。
+- 新页面采用真实 HTTP 契约的浏览器测试，与后端 PostgreSQL 权限/并发测试分开记录。开关、交互与验收边界见 [C 页面交接](docs/modules/c/C_REAL_PAGES.md)；任务逐项状态和实际验证结果见 [C 交付记录](docs/modules/c/C_DELIVERY.md)。
 
 ## 2026-10-10 迭代：注册进度与「登入」按钮（阶段配色/文案/可选账号安全/会话升级进入业务）
 
@@ -43,9 +126,9 @@
 - **可选账号安全**：不计入必填进度、不阻碍正常进入、不要求再改一次密码/绑定 Google（新注册即满足：可用密码凭据+登录邮箱已验证，或纯 Google 可信认证事实）。
 - **状态提示与「登入」按钮**：前三项全部完成时黄色“待完善基本资料”替换为绿色完成态“完成注册”，否则显示实际待办（待完善基本资料/待验证学校邮箱/待提交/审核中/审核未通过/账户已停用）；状态提示下新增「登入」按钮：前三项未完成时灰色且真实 `disabled`（旁注尚缺阶段），完成后绿底白字可点击（账号安全可选未完成不影响）；点击后调用 `POST /api/v1/auth/session/refresh` 重新核验资格并升级/轮换会话，进入 `/home` 或经校验的 returnTo；失败留页解释、401 引导重新认证。
 - **后端配套**：`derive_facts` 新增 `identityConfirmed`/`securityComplete`/`requiredCompletedCount`，`canEnterWorkspace` 与 guard 门禁同口径；修复 `session/refresh` 轮换时**不写回新 Cookie**的缺陷（旧 Cookie/旧 CSRF 立即失效会造成断链）；修复 `BUSINESS_DATA_FILE` 只认环境变量不读 `.env` 的缺口（业务接口 503）。
-- **验证（2026-10-10 实际运行）**：server pytest **114 项**（新增 `test_registration_progress` 7 项：事实派生/教师审核门槛/会话轮换写回/可选安全/失效退回）、`lint/typecheck/build`、`check:i18n`（466 键）、`CHECK_HTTP=1 check:routes`、`check:auth`、`check:auth-browser`（19 项）、`check:browser`（33 项）、`check:ux`（16 项）、新增 `check-registration-progress`（**42 项真实 Chrome**，含状态截图 8 张）。细节、截图与遗留项见[阶段报告](./docs/development-stages/stage-reports/2026-10-10-注册进度与登入按钮.md)。
-- **验收临时密令（同日附加，用户验收便利）**：`ACCEPTANCE_TEST_TOKEN`（当前 `202610`，仅非 real；real 配置即启动失败）——注册“登录邮箱”框输入直达信息完善页（全新测试账户+真实会话，不跳过必填阶段），验证码框输入同一密令直通学校邮箱/登录邮箱验证；退出重登用资料页的 `testXXXXXX` + 密令。**验收后删除该配置即移除**。顺带修复：邮箱格式错误 500→400 字段错误（4 处）、`getAuthSession` 截断响应崩页→可重试服务不可用。验证：server pytest **118 项**（新增 `test_acceptance_entry` 4 项）、`check-registration-progress` **47 项**（新增 R8 密令场景）、lint/typecheck/build 通过。详见[报告](./docs/development-stages/stage-reports/2026-10-10-验收临时密令.md)。
-- **验收反馈 4 项（同日）**：① 资料页“修改密码”面板替换为“注意事项提示”（4 条三语；改密入口保留在“账号安全”页）；② 个人中心侧栏语言选择器删除，仅留页面右上角；③ 修复顶栏语言名重复显示（`language-switcher` 紧凑模式双 span）；④ 清空 `gp_dev` 已注册用户信息（清理前 94 用户/187 会话/619 审计；保留迁移 0003 与验收密令，清库后实测密令注册仍可用）。验证：lint/typecheck/build、i18n **470 键**、`check-registration-progress` **51 项**（含 4 项新 UI 断言）。详见[报告](./docs/development-stages/stage-reports/2026-10-10-资料页优化与语言去重及清库.md)。
+- **验证（2026-10-10 实际运行）**：server pytest **114 项**（新增 `test_registration_progress` 7 项：事实派生/教师审核门槛/会话轮换写回/可选安全/失效退回）、`lint/typecheck/build`、`check:i18n`（466 键）、`CHECK_HTTP=1 check:routes`、`check:auth`、`check:auth-browser`（19 项）、`check:browser`（33 项）、`check:ux`（16 项）、新增 `check-registration-progress`（**42 项真实 Chrome**，含状态截图 8 张）。细节、截图与遗留项见阶段报告（历史归档：`./docs/development-stages/stage-reports/2026-10-10-注册进度与登入按钮.md`）。
+- **验收临时密令（同日附加，用户验收便利）**：`ACCEPTANCE_TEST_TOKEN`（当前 `202610`，仅非 real；real 配置即启动失败）——注册“登录邮箱”框输入直达信息完善页（全新测试账户+真实会话，不跳过必填阶段），验证码框输入同一密令直通学校邮箱/登录邮箱验证；退出重登用资料页的 `testXXXXXX` + 密令。**验收后删除该配置即移除**。顺带修复：邮箱格式错误 500→400 字段错误（4 处）、`getAuthSession` 截断响应崩页→可重试服务不可用。验证：server pytest **118 项**（新增 `test_acceptance_entry` 4 项）、`check-registration-progress` **47 项**（新增 R8 密令场景）、lint/typecheck/build 通过。详见报告（历史归档：`./docs/development-stages/stage-reports/2026-10-10-验收临时密令.md`）。
+- **验收反馈 4 项（同日）**：① 资料页“修改密码”面板替换为“注意事项提示”（4 条三语；改密入口保留在“账号安全”页）；② 个人中心侧栏语言选择器删除，仅留页面右上角；③ 修复顶栏语言名重复显示（`language-switcher` 紧凑模式双 span）；④ 清空 `gp_dev` 已注册用户信息（清理前 94 用户/187 会话/619 审计；保留迁移 0003 与验收密令，清库后实测密令注册仍可用）。验证：lint/typecheck/build、i18n **470 键**、`check-registration-progress` **51 项**（含 4 项新 UI 断言）。详见报告（历史归档：`./docs/development-stages/stage-reports/2026-10-10-资料页优化与语言去重及清库.md`）。
 
 ## 2026-10-09 迭代：注册故障修复（R0）与独立邮箱注册/密码恢复（R1）
 
@@ -53,23 +136,23 @@
 - **R1 独立邮箱注册**：三步闭环（登录邮箱→真实验证码→用户名/密码建档），`pre_registration_requests` 限时一次性建档资格+浏览器事务绑定+服务端限流；旧无验证码注册路径 410 封堵；登录邮箱（允许 QQ 等）与学校邮箱分别存储验证状态；新密码 Argon2id、历史 bcrypt 兼容并登录升级。
 - **R1 密码恢复/历史账户**：忘记密码（统一安全反馈、已验证登录邮箱限定）+ 重置（令牌单次消费/凭据版本绑定/撤销旧会话与恢复凭据）；历史未验证登录邮箱会话限 onboarding 并提供 `/account/security` 受限补验，不可被他人经注册/找回接管。
 - **UI**：注册弹窗三步（进度/脱敏邮箱/倒计时重发/改邮箱）、忘记密码弹窗、`/reset-password` 公开页（fragment 令牌即刻清除）、能力感知（Google 未配置隐藏）、错误含请求编号与限流倒计时；三语词条 439 键。
-- **验证（2026-10-09 实际运行）**：server pytest **107 项**、迁移 0001–0003 真实 PostgreSQL、curl 经代理三步注册/找回/重置端到端、`check:auth`、`check:auth-browser`（19 项真实 Chrome）、`check:browser`（33 项）、lint/typecheck/build、业务断言无回归；E01–E22 矩阵见[阶段报告](./docs/development-stages/stage-reports/2026-10-09-注册故障修复与独立邮箱注册.md)（E21 真实收件未验证）。
+- **验证（2026-10-09 实际运行）**：server pytest **107 项**、迁移 0001–0003 真实 PostgreSQL、curl 经代理三步注册/找回/重置端到端、`check:auth`、`check:auth-browser`（19 项真实 Chrome）、`check:browser`（33 项）、lint/typecheck/build、业务断言无回归；E01–E22 矩阵见阶段报告（历史归档：`./docs/development-stages/stage-reports/2026-10-09-注册故障修复与独立邮箱注册.md`）（E21 真实收件未验证）。
 - 顺带修复真实回归：命令层缓存键按用户隔离、工作区加载可恢复回退、768px 顶栏溢出。
 
 ## 2026-10-08 迭代：登录鉴权、注册闭环、用户数据库与全站语言
 
 ## 2026-10-08 迭代：登录鉴权、注册闭环、用户数据库与全站语言
 
-- **真实身份服务**：新增 `server/`（FastAPI + PostgreSQL + Alembic）。Google OIDC（Authlib、PKCE S256、state/nonce 事务）、可撤销/轮换会话、注册资格派生（disabled → profile → email → teacher review → active）、学校邮箱验证码（HMAC/一次性/限流/原子绑定）、教师申请审核、停用、审计；接口与字段见 [`server/README.md`](./server/README.md)、[`server/docs/DB_FIELD_DICTIONARY.md`](./server/docs/DB_FIELD_DICTIONARY.md) 与[接口交接表](./docs/development-stages/13-接口交接表.md)。`APP_MODE=real` 缺真实配置直接启动失败，不退回 Mock。
+- **真实身份服务**：新增 `server/`（FastAPI + PostgreSQL + Alembic）。Google OIDC（Authlib、PKCE S256、state/nonce 事务）、可撤销/轮换会话、注册资格派生（disabled → profile → email → teacher review → active）、学校邮箱验证码（HMAC/一次性/限流/原子绑定）、教师申请审核、停用、审计；接口与字段见 `server/README.md`（历史归档：`./server/README.md`）、`server/docs/DB_FIELD_DICTIONARY.md`（历史归档：`./server/docs/DB_FIELD_DICTIONARY.md`） 与接口交接表（历史归档：`./docs/development-stages/13-接口交接表.md`）。`APP_MODE=real` 缺真实配置直接启动失败，不退回 Mock。
 - **页面门禁与登录页**：`app/[[...slug]]/page.tsx` 服务端按路由分类守卫（守卫先于业务 Provider）；登录页含 Google 入口与「已注册账户登录」窗口（用户名/邮箱 + 密码注册/登录，bcrypt 入库，2026-10-08 新增；旧“完善个人资料/验证邮箱”入口及 onboarding 链接已移除），旧 `/onboarding/*` 跳 `/account/*` 并经相同门禁；未知路由 404 不加载工作区。
 - **个人中心**：`/account/profile|email|status`（受限注册与已激活共用）；资料白名单 + 字段级错误 + `expectedVersion`；学校邮箱发码/验证/重发/换绑独立流程；状态页区分“学校邮箱已验证”与“学校实名未核验”（首期保持申报标记）；移除“稍后完成进首页”。
 - **会话与缓存**：工作区头像菜单改个人中心/我的记录/真实退出（撤销会话 + 清理缓存）；演示角色选择器仅 `NEXT_PUBLIC_APP_MODE=mock` 出现；业务缓存按 userId 隔离；停用/退出/换权即时生效。
 - **全站语言**：简体 `zh-Hans` / 繁體 `zh-Hant` / English `en`（next-intl，无语言 URL 前缀）。解析优先级：`gp_locale` Cookie > 账户 `preferredLocale` > Accept-Language > zh-Hans；切换保留页面/步骤/未保存输入；HTML lang/日期格式跟随 locale（时区 Asia/Macau）。词条覆盖登录、个人中心、工作区壳、首页/通知/待处理/个人动态、共享状态组件与错误码（331 键 ×3，`npm run check:i18n` 校验一致）；业务视图内部文案待继续提取（见“已知限制”）。
-- **验证（2026-10-08 实际运行）**：`server` pytest 89 项（含账号密码注册/登录 11 项）（隔离 PostgreSQL + 测试 OIDC + 邮件捕获；D01–D08、A 系列、权限矩阵）；`lint/typecheck/build`、`check:routes`（含 `CHECK_HTTP=1` 鉴权语义）、`CHECK_AUTH_API=1 check:auth`、14 套业务断言（529 项）与 `check:browser`（33）全部通过。证据与遗留项见[迭代总结](./docs/development-stages/stage-reports/2026-10-08-登录鉴权注册与语言.md)与[账号密码登录总结](./docs/development-stages/stage-reports/2026-10-08-账号密码登录.md)。
+- **验证（2026-10-08 实际运行）**：`server` pytest 89 项（含账号密码注册/登录 11 项）（隔离 PostgreSQL + 测试 OIDC + 邮件捕获；D01–D08、A 系列、权限矩阵）；`lint/typecheck/build`、`check:routes`（含 `CHECK_HTTP=1` 鉴权语义）、`CHECK_AUTH_API=1 check:auth`、14 套业务断言（529 项）与 `check:browser`（33）全部通过。证据与遗留项见迭代总结（历史归档：`./docs/development-stages/stage-reports/2026-10-08-登录鉴权注册与语言.md`）与账号密码登录总结（历史归档：`./docs/development-stages/stage-reports/2026-10-08-账号密码登录.md`）。
 
 ## 已完成（历史，2026-10-06）
 
-- 已按《UI 设计合集》纳入全部 56 页。逐页名称和实际 URL 见 [`FRONTEND_IMPLEMENTATION_PLAN.md`](./FRONTEND_IMPLEMENTATION_PLAN.md#56-页路由映射)。其中任务树、看板、列表对应同一任务数据集的三种视图。
+- 已按《UI 设计合集》纳入全部 56 页。逐页名称和实际 URL 见 [`FRONTEND_IMPLEMENTATION_PLAN.md`](./docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md#56-页路由映射)。其中任务树、看板、列表对应同一任务数据集的三种视图。
 - 基础入口 01–06、个人动态 30；项目启动、任务、里程碑与验收 07–20；开发协作、贡献、报告与设置 21–29；课程与小组 31–40；教师端 41–50；Admin 51–56。
 - Next.js App Router、TypeScript strict、Tailwind CSS、本地 shadcn/ui 风格控件、Lucide 图标、TanStack Query、React Hook Form + Zod、next-intl 中文环境。
 - 学生/组长、教师/助教、Admin 三套导航和前端角色入口。桌面优先，并在窄屏使用抽屉导航和可横向滚动的密集表格。
@@ -80,13 +163,13 @@
 
 - [`mocks/seed.ts`](./mocks/seed.ts) 使用稳定 ID 关联 Course → Group → Project → Requirement → Functional Module → Task/Subtask → Acceptance Criterion → Evidence → Verification → Contribution → Report，并包含通知、待处理、GitHub、飞书、教师和审计样本。
 - [`lib/api/mock-service.ts`](./lib/api/mock-service.ts) 以 Promise 提供数据读取，浏览器 `localStorage`（按 userId 隔离）保存演示状态；[`lib/workspace.tsx`](./lib/workspace.tsx) 提供 TanStack Query 缓存、集合级新增/更新/移除。相关任务/证据/标准变更会使当前验收结果失效。
-- 登录/注册/会话/邮箱验证/教师审核已为真实服务；AI 分析/验收、GitHub/飞书同步、文件上传记录、报告生成仍为浏览器本地模拟（仅在真实 active 会话后挂载）。业务权限展示为前端门禁，最终授权由 FastAPI 在数据接口执行（业务接口迁移中）。
+- 登录/注册/会话/邮箱验证/教师审核已为真实服务；需求分析/验收、飞书同步、文件上传记录、报告生成仍为浏览器本地模拟（仅在真实 active 会话后挂载）。GitHub 仓库/活动读取、项目绑定和 commit 摘要已提供 FastAPI 真实适配路径，但只有部署环境配置 GitHub App、数据库迁移和 AI 提供方后才会产生真实外部数据。业务权限展示为前端门禁，最终授权由 FastAPI 在数据接口执行（其余业务接口仍在迁移中）。
 
 ## 权限资格层（2026-10-06，阶段 01）
 
 - 新增 [`lib/access/policy.ts`](./lib/access/policy.ts)：只读纯函数 `can(data, actorId, action, target)` 统一判断账号角色、资源关系与操作资格；组长按目标 `Group.leaderId` 或无小组项目 `ownerId` 判断，助教按 `Course.assistantGrants` 授权，默认只读。权限仍为前端演示门禁，不构成真实鉴权。
 - 助教改为独立演示账号 `ta-1`（归属 `course-1`）；`Project.ownerId` 与项目 `visibility` 已入领域类型与种子（`project-1` 为课程内可见）。旧浏览器缓存需清空 `groupproof-v1-workspace` 后才能看到新种子字段。
-- 项目页（07–29）统一按 `project.summary.read` / `project.content.read` 选择视图：仅有公开总览资格时展示 `ProjectSummary` DTO（id/name/description/progress/lifecycle）。B 页面写入口（08–10、23、29、35、38–40、46–47）已接操作资格门禁；其他模块写入口待迁移，清单见 [`docs/development-stages/01-写入口迁移清单.md`](./docs/development-stages/01-写入口迁移清单.md)。
+- 项目页（07–29）统一按 `project.summary.read` / `project.content.read` 选择视图：仅有公开总览资格时展示 `ProjectSummary` DTO（id/name/description/progress/lifecycle）。B 页面写入口（08–10、23、29、35、38–40、46–47）已接操作资格门禁；其他模块写入口待迁移，清单见 `docs/development-stages/01-写入口迁移清单.md`（历史归档：`./docs/development-stages/01-写入口迁移清单.md`）。
 - 权限矩阵断言测试：`npm run check:access`（53 项）；阶段记录见 [阶段总览](./docs/development-stages/README.md)。
 
 ## 版本模型（2026-10-06，阶段 02）
@@ -101,7 +184,7 @@
 - 页面 29 归档已走命令；`useCommands` 提供有类型操作与 pending；保存失败不更新缓存。断言测试 `npm run check:commands`。
 - 阶段 04 起课程设置/规则草稿/规则发布/助教授权均走命令（`lib/commands/course.ts`）；规则草稿与已发布版本分离，学生总览读取最新已发布版本；断言测试 `npm run check:course-rules`。
 - 阶段 05–08：课程项目创建、需求基线、初始化六步、任务规划与发布均走命令（`lib/commands/`），版本快照/确认/结构校验有独立断言（`check:project-create` / `check:baseline` / `check:setup` / `check:plan`）。
-- 阶段 09–13（2026-10-06）：规则变更真实差异、文件版本、设置/生命周期、总览统计均完成命令化/选择器化；`npm run check:rule-change / files / lifecycle / overview / e2e` 覆盖；后端接口契约见 [`docs/development-stages/13-接口交接表.md`](./docs/development-stages/13-接口交接表.md)。13 套断言共 513 项全部通过。
+- 阶段 09–13（2026-10-06）：规则变更真实差异、文件版本、设置/生命周期、总览统计均完成命令化/选择器化；`npm run check:rule-change / files / lifecycle / overview / e2e` 覆盖；后端接口契约见 `docs/development-stages/13-接口交接表.md`（历史归档：`./docs/development-stages/13-接口交接表.md`）。13 套断言共 513 项全部通过。
 
 ## UX 改版（2026-10-06，阶段 14–15 本轮范围）
 
@@ -113,9 +196,9 @@
 ## 待后端与真实集成
 
 - 身份与鉴权已落地（`server/`，2026-10-08）；**未联调**：真实 Google OAuth（缺 GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI 与控制台回调登记）、真实学校邮件投递（缺 SMTP 凭据/发信策略）。代码路径已用隔离测试 OIDC/邮件捕获器验证，未宣称真实联调通过。
-- 业务数据：课程/小组/项目/任务/证据/验收/贡献/报告业务 API 与状态机待迁入 FastAPI（接口契约见 [`docs/development-stages/13-接口交接表.md`](./docs/development-stages/13-接口交接表.md)）；FastAPI 侧授权管线（会话+注册资格+资源权限）已实现并测试，real 模式未接真实业务存储时对应接口返回 SERVICE_UNAVAILABLE（不回退 Mock）。
+- 业务数据：课程/小组/项目/任务/证据/验收/贡献/报告业务 API 与状态机待迁入 FastAPI（接口契约见 `docs/development-stages/13-接口交接表.md`（历史归档：`./docs/development-stages/13-接口交接表.md`））；FastAPI 侧授权管线（会话+注册资格+资源权限）已实现并测试，real 模式未接真实业务存储时对应接口返回 SERVICE_UNAVAILABLE（不回退 Mock）。
 - 存储：PostgreSQL 已用于身份/注册/会话（真实迁移/约束/并发已验证）；文件对象存储、Redis/Celery 后台任务、SSE 进度推送尚未连接。
-- 第三方：GitHub 仓库/Commit/PR/CI 同步、飞书只读协作记录、AI 需求分析和验收仍使用关联 Mock 记录与模拟动作。
+- 第三方：GitHub 仓库/Commit/PR/CI 同步和 commit 摘要已经接入 A 的真实只读适配与缓存；飞书只读协作记录、AI 需求分析和验收仍使用关联 Mock 记录与模拟动作。GitHub/AI 的生产可用性仍取决于部署凭据和迁移验收，不能把本地 fake provider 当作真实模型结果。
 - 导出：PDF 目前调用浏览器打印；Word 下载为 HTML 兼容的 `.doc` 演示文件。正式 PDF/DOCX 生成应由后端或专门导出服务接管。
 
 ## 已知限制与设计差异
@@ -160,13 +243,13 @@ scripts/             56 路由检查
 
 ## 2026-10-10 提交前代码审查
 
-已修复会话/CSRF 同步、停用账号展示、Google 绑定状态、后端 OAuth/改密/教师换绑资格与业务草稿/计划重新发布问题。完整发现、回归结果、迁移要求和验证边界见 [代码审查记录](docs/reviews/2026-10-10-code-review.md)。
+已修复会话/CSRF 同步、停用账号展示、Google 绑定状态、后端 OAuth/改密/教师换绑资格与业务草稿/计划重新发布问题。完整发现、回归结果、迁移要求和验证边界见 代码审查记录（历史归档：`docs/reviews/2026-10-10-code-review.md`）。
 
 ## 2026-10-11 C 任务执行与证据第一批
 
-- 已直接阅读飞书分工、技术规范及 ER 草案正文；冲突裁定和 35 项任务的未完验收清单见 [C 交付记录](docs/C_DELIVERY.md)。使用个人分支 `C_task`，通过 PR 交 A 审查。
+- 已直接阅读飞书分工、技术规范及 ER 草案正文；冲突裁定和 35 项任务的未完验收清单见 [C 交付记录](docs/modules/c/C_DELIVERY.md)。使用个人分支 `C_task`，通过 PR 交 A 审查。
 - 14 页 Tab 与 20 页任务/来源/作者/标准/状态/搜索筛选写入 URL，刷新和前进后退保持一致。15 页切换来源清空旧选择，新证据保持候选状态，原始链接经过校验；没有真实存储时上传明确不可用。
-- `services/api` 新增 C 执行、证据、版本化说明接口和 0007 迁移；OpenAPI 生成类型与客户端已交付。后端使用真实 SQLAlchemy/PostgreSQL 事务，不把 100% 进度当作验收完成；协议和实测见 [执行接口](docs/C_TASK_EXECUTION.md)、[证据接口](docs/C_EVIDENCE.md)。
+- `services/api` 新增 C 执行、证据、版本化说明接口和 0007 迁移；OpenAPI 生成类型与客户端已交付。后端使用真实 SQLAlchemy/PostgreSQL 事务，不把 100% 进度当作验收完成；协议和实测见 [执行接口](docs/modules/c/C_TASK_EXECUTION.md)、[证据接口](docs/modules/c/C_EVIDENCE.md)。
 - **接入边界**：页面仍使用明确的 Mock 工作区；没有把 `project-1` 等演示 ID 映射成虚构数据库 ID。canonical API 的真实登录映射、A 文件/GitHub/飞书适配器、D 验收查询与事件消费尚未交付，正式环境不启用临时身份头。持久化待投递事件不等于 D 已收到并作废验收。
 - 前端 lint/typecheck/build、56 路由检查、43 项 URL 断言、51 项来源断言、18 项客户端断言通过；6 项浏览器测试使用隔离测试身份和 Mock 业务数据通过。既有权限 53 项与流程 40 项断言通过。PostgreSQL 测试、迁移回滚和独立审查修复的最终结果统一记在 C 交付记录。
 - 此批不代表 C1–C7 全部完成；首页/通知/待办真接口、协作列表、文件、管理后台及生产联调仍待后续交付。原 Mock 说明与 D 检查页面的旧数据耦合尚未切换，不能将演示流程算作真实验收。
@@ -177,24 +260,24 @@ scripts/             56 路由检查
 - C6 新增关联任务/需求/模块/里程碑、追加回复与提及、重要原因、不可变讨论快照及 0008 迁移。重要来源变化会在同事务标记旧证据失效；通知和 D 后续处理仍仅为待投递事件。有讨论数据时禁止直接降级删除。
 - 讨论页面复用现有组件，增加放弃修改确认、线程草稿隔离、失败重试、持久重要标记与候选快照；76 项命令断言和 4 项浏览器场景通过。当前页面仍明确为本地演示，真实多人并发由后端 PostgreSQL 测试单独验证。
 - C1 移除待办页任意“完成”入口和首页固定 `+7%`，日常 Tab 写入 URL；2 项浏览器场景通过。首页真实统计仍待 A/B 数据接入。
-- 最终后端 PostgreSQL 全量 271 项通过、零跳过；0008 升级、无漂移检查、空表回退再升级、非空降级保护通过。完整接口和边界见 [讨论交接](docs/C_DISCUSSIONS.md) 与 [C 交付记录](docs/C_DELIVERY.md)。
+- 最终后端 PostgreSQL 全量 271 项通过、零跳过；0008 升级、无漂移检查、空表回退再升级、非空降级保护通过。完整接口和边界见 [讨论交接](docs/modules/c/C_DISCUSSIONS.md) 与 [C 交付记录](docs/modules/c/C_DELIVERY.md)。
 - C3 采纳/撤回现要求原因，检查作者/组长/所属课程教师、项目与计划状态、来源变化和版本；失败保留原因，决策历史可查。103 项命令断言与 4 项浏览器场景通过；本地决策不修改 D 验收数据。
 - C4 活动外链限定为 HTTPS GitHub 域名，伪装域名显示不可用，1 项浏览器场景通过。本轮累计 17 项 C 浏览器场景在各自运行中通过；最终 lint/typecheck/build 和 56 路由检查通过。
 
 ## 2026-10-12 C 剩余工作核对与后续实现
 
-- [剩余工作审计](docs/C_REMAINING_WORK.md) 区分了可继续独立开发的功能和真实接口依赖。不能将已通过 CI 等同于全部验收，也不能把剩余任务都归因于 A/D 尚未交接。
+- [剩余工作审计](docs/modules/c/C_REMAINING_WORK.md) 区分了可继续独立开发的功能和真实接口依赖。不能将已通过 CI 等同于全部验收，也不能把剩余任务都归因于 A/D 尚未交接。
 - C1 通知新增分页、一次保存全部已读、跨时区排序和失败恢复；真实工作区模式不显示 fallback 演示数据。C4 新增 URL 筛选分页、GitHub 任务关联、飞书采纳/忽略/恢复与候选快照，当前仍为本地演示记录。
 - C5 项目文件新增组合筛选分页和有理由的正式版本确认；教师课程文件修正课程权限、草稿替换和原子发布，保留历史与冻结引用。文件字节、签名链接和真实通知仍未接入。
 - C7 用户目录新增 canonical Admin 查询 API 与真实模式只读页面；分页十条、必要字段和错误状态有测试。生产身份与角色映射尚未贯通；AI 页删除虚构趋势和服务健康状态，真实用量接口仍未实现。
-- 后端 PostgreSQL 全量 302 项通过、零跳过；十套 C 命令/客户端脚本共 686 条断言通过；全量 lint、typecheck、build 和 56 路由映射通过。浏览器与远端 CI 最终结果见 [PR #9](https://github.com/ZZJ1977/groupproof/pull/9) 和 [C 交付记录](docs/C_DELIVERY.md)。
+- 后端 PostgreSQL 全量 302 项通过、零跳过；十套 C 命令/客户端脚本共 686 条断言通过；全量 lint、typecheck、build 和 56 路由映射通过。浏览器与远端 CI 最终结果见 [PR #9](https://github.com/ZZJ1977/groupproof/pull/9) 和 [C 交付记录](docs/modules/c/C_DELIVERY.md)。
 
 ## C 后续真实查询与持久化（2026-10-12，PR #9 合并后）
 
 - 首页和个人动态新增 `daily=real` 功能开关：只使用 canonical API 返回的当前用户统计、加权任务进度和实际历史；筛选留在 URL，错误和权限失效不显示旧数据或 seed 回退。通知/待办统计及 GitHub/飞书动态尚未接入，不能显示为零或成功。
 - C4 新增 canonical 活动关联、采纳/忽略/恢复接口及迁移 0009；C5 新增逻辑文件、不可变版本、可信上传回执、授权下载链接、正式指定接口及迁移 0010。相关项目页面仍使用显式 Mock，A 来源/存储端口默认返回 503。
 - 本轮前端 lint、typecheck、生产 build、56 路由映射通过；已有 C 浏览器回归 36 项、新 daily API 页面契约 4 项、C 命令/客户端断言 705 条通过。浏览器使用明确的测试响应，不代表生产身份、实际字节上传、外部同步或完整端到端验收。
-- [C 交付记录](docs/C_DELIVERY.md)、[仍可推进的工作](docs/C_REMAINING_WORK.md) 和三个新接口说明记录真实边界；C7 课程生命周期、访问审批及课程文件持久化仍有不依赖第三方密钥的工作可做。
+- [C 交付记录](docs/modules/c/C_DELIVERY.md)、[仍可推进的工作](docs/modules/c/C_REMAINING_WORK.md) 和三个新接口说明记录真实边界；C7 课程生命周期、访问审批及课程文件持久化仍有不依赖第三方密钥的工作可做。
 
 ## C API 页面与后续修复（2026-10-12，PR #11 合并后）
 
@@ -203,5 +286,5 @@ scripts/             56 路由检查
 - 实现说明历史和证据来源共用当前版本查询；来源冲突可刷新并保留草稿。证据详情读取嵌套的原始快照正文及讨论回复；写入成功后更新命令键，失败重试保留原键。
 - GitHub/飞书页的类型和群组筛选保存在 URL。群组选项仅来自当前授权分页，明确显示此限制；空结果仍保留已选群组，权限失效清空旧选项。
 - 管理详情展示最新记录，版本变化后须明确刷新核对；权限失效或写入返回记录不存在时关闭详情并清理草稿。访问申请会在页面打开期间到期，过期后仍可有理由地拒绝。
-- 本轮检查结果及课程发布/结束的并发保护见 [C 交付记录](docs/C_DELIVERY.md)。完整验收仍需要 A 的身份、来源、存储、通知与授权适配，B 的真实入口/任务编号，以及 D 的验收查询与事件处理。
+- 本轮检查结果及课程发布/结束的并发保护见 [C 交付记录](docs/modules/c/C_DELIVERY.md)。完整验收仍需要 A 的身份、来源、存储、通知与授权适配，B 的真实入口/任务编号，以及 D 的验收查询与事件处理。
 - 本轮受影响浏览器回归 53 项、后端定向 64 项和客户端 55 条断言通过；全量 lint/typecheck、生产构建、56 路由映射通过。全量远端回归以新 PR 的 CI 结果为准。

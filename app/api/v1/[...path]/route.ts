@@ -8,14 +8,12 @@
  * - 后端不可达时返回统一错误封装，不伪造成功。
  */
 import { NextResponse, type NextRequest } from "next/server";
+import { adminApiBase, ADMIN_ENVIRONMENT_COOKIE, normalizeAdminEnvironment } from "@/lib/admin-environment";
 
 export const dynamic = "force-dynamic";
 
-const API_INTERNAL = (process.env.API_INTERNAL_URL ?? "http://localhost:8000").replace(/\/$/, "");
-
 const FORWARDED_REQUEST_HEADERS = [
   "cookie",
-  "origin",
   "x-csrf-token",
   "idempotency-key",
   "content-type",
@@ -28,12 +26,29 @@ const FORWARDED_REQUEST_HEADERS = [
 
 async function proxy(request: NextRequest, pathSegments: string[]) {
   const incoming = new URL(request.url);
-  const target = `${API_INTERNAL}/api/v1/${pathSegments.join("/")}${incoming.search}`;
+  const environment = normalizeAdminEnvironment(request.cookies.get(ADMIN_ENVIRONMENT_COOKIE)?.value);
+  const externalAdminTarget =
+    environment === "main" ? process.env.ADMIN_API_MAIN_URL : process.env.ADMIN_API_DEVELOP_URL;
+  const target = `${adminApiBase(environment)}/api/v1/${pathSegments.join("/")}${incoming.search}`;
+
+  const requestOrigin = request.headers.get("origin");
+  if (externalAdminTarget && requestOrigin && requestOrigin !== incoming.origin) {
+    return NextResponse.json(
+      {
+        error: { code: "ORIGIN_MISMATCH", message: "Cross-origin request denied.", details: null },
+        meta: { request_id: null },
+      },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
 
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  if (requestOrigin && !externalAdminTarget) {
+    headers.set("origin", requestOrigin);
   }
 
   let upstream: Response;

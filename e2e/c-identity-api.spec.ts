@@ -48,6 +48,142 @@ test("C7-01/02 identity filters survive refresh and disabling uses current versi
   await expect(page.getByText("账号已恢复，可重新登录。")).toBeVisible();
 });
 
+test("user directory translates identity states and replays the selected user from the URL", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users");
+
+  await expect(page.locator('[data-identity-role="student"]')).toHaveText("学生");
+  await expect(page.locator('[data-identity-status="enabled"]')).toHaveText("可用");
+  await expect(page.locator('[data-identity-email-status="verified"]')).toHaveText("已验证");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page).toHaveURL(/user=identity-student/);
+});
+
+test("user directory summarizes the current result and resets URL filters", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 7, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users?q=真实&role=student&user=identity-student");
+  await expect(page.getByText("结果总数", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前页可用", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前页已停用", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前页待验证", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "重置筛选", exact: true }).click();
+  await expect(page).not.toHaveURL(/q=|role=|status=|college=|user=/);
+});
+
+test("user detail opens as an accessible drawer and restores focus after Escape", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users");
+  const view = page.getByRole("button", { name: "查看", exact: true });
+  await view.focus();
+  await page.keyboard.press("Enter");
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute("aria-modal", "true");
+  await expect(drawer).toContainText("真实账号");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(view).toBeFocused();
+  await expect(page).not.toHaveURL(/user=/);
+});
+
+test("user detail drawer closes from the mask and stays within a mobile viewport", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } }));
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await page.locator('[data-radix-dialog-overlay]').click({ position: { x: 3, y: 3 } });
+  await expect(drawer).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  const mobileDrawer = page.getByRole("dialog");
+  await expect(mobileDrawer).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(await mobileDrawer.evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(390);
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(mobileDrawer).toHaveCount(0);
+});
+
+test("identity directory exposes a retry and request id for service errors", async ({ page }) => {
+  await session(page);
+  let attempts = 0;
+  await page.route("**/api/v1/c-admin/users?**", (route) => {
+    attempts++;
+    return attempts === 1
+      ? route.fulfill({ status: 503, json: { error: { code: "SERVICE_UNAVAILABLE", details: { retryAfterSeconds: 8 } }, meta: { request_id: "req-identity-503" } } })
+      : route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } });
+  });
+  await page.goto("/admin/users");
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toContainText("暂时不可用");
+  await expect(alert).toContainText("请求编号：req-identity-503");
+  await alert.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
+test("a transient directory read error clears the selected detail but keeps the last list", async ({ page }) => {
+  await session(page);
+  let healthy = true;
+  await page.route("**/api/v1/c-admin/users?**", (route) => healthy
+    ? route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } })
+    : route.fulfill({ status: 503, json: { error: { code: "SERVICE_UNAVAILABLE" }, meta: { request_id: "req-identity-refresh" } } }));
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  healthy = false;
+  await page.getByRole("dialog").getByRole("button", { name: "刷新列表", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toContainText("请求编号：req-identity-refresh");
+  healthy = true;
+  await page.locator("main").getByRole("alert").getByRole("button", { name: "重试", exact: true }).click();
+  await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
+});
+
+test("create account keeps values and shows field-level validation errors", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
+  await page.route("**/api/v1/c-admin/users", (route) => route.fulfill({ status: 422, json: { error: { code: "VALIDATION_ERROR", details: { fieldErrors: { username: "用户名已存在", schoolEmail: "学校邮箱格式不正确" } } }, meta: { request_id: "req-identity-422" } } }));
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "新增账号", exact: true }).click();
+  const username = page.getByLabel("用户名", { exact: true });
+  const schoolEmail = page.getByLabel("学校邮箱", { exact: true });
+  await username.fill("fixture.teacher");
+  await schoolEmail.fill("wrong@example.com");
+  await page.getByLabel("姓名", { exact: true }).fill("李老师");
+  await page.getByRole("button", { name: "确认创建", exact: true }).click();
+  await expect(page.getByText("用户名已存在", { exact: true })).toBeVisible();
+  await expect(page.getByText("学校邮箱格式不正确", { exact: true })).toBeVisible();
+  await expect(page.getByText(/请求编号：req-identity-422/)).toBeVisible();
+  await expect(username).toHaveValue("fixture.teacher");
+  await expect(schoolEmail).toHaveValue("wrong@example.com");
+});
+
+test("blocked account actions and unverified teacher approvals explain the next step", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [{ ...target, canDisable: false }], total: 1, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByText("当前账号暂不可停用", { exact: true })).toBeVisible();
+  await page.getByLabel("处理原因", { exact: true }).fill("核对停用权限");
+  await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeDisabled();
+
+  await page.goto("/admin/teacher-verifications");
+  await page.route("**/api/v1/c-admin/teacher-applications?**", (route) => route.fulfill({ json: { items: [{ ...application, emailVerified: false }], total: 1, page: 1, pageSize: 10 } }));
+  await page.reload();
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByText("学校邮箱尚未验证，验证后才能通过审核。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "通过", exact: true })).toBeDisabled();
+});
+
 test("C7-02 submits the selected identity and school email to A's account service", async ({ page }) => {
   await session(page);
   await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
@@ -119,7 +255,7 @@ test("C7-01 a background version change requires explicit refresh and preserves 
   row = { ...target, version: 4, schoolEmail: "changed@must.edu.mo" };
   // React Query refetches on reconnect without invoking the page's manual refresh handler.
   await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
-  await expect(page.getByText(/changed@must\.edu\.mo/)).toBeVisible();
+  await expect(page.getByRole("dialog").getByText(/changed@must\.edu\.mo/)).toBeVisible();
   await expect(page.getByText("此记录已被其他人修改，请刷新列表并核对后再提交；处理原因已保留。", { exact: true })).toBeVisible();
   await expect(page.getByLabel("处理原因", { exact: true })).toHaveValue("保留正在核对的理由");
   await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeDisabled();

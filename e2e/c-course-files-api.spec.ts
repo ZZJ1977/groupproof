@@ -132,6 +132,50 @@ test("C5-04 course version reference opens the old publication and requests its 
   await expect(page.getByRole("alert").filter({ hasText: "找不到可访问的引用版本" })).toBeVisible();
   await expect(page.getByRole("button", { name: "申请下载 v1" })).toHaveCount(0);
   await expect(page.getByRole("article", { name: "引用的课程资料 v2" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "申请下载 v2" })).toHaveCount(0);
+});
+
+test("C5-04 returning to a frozen reference discards a pending signature for the newer version", async ({ page }) => {
+  const { state } = await setup(page, true);
+  state.file.official_version_no = 2;
+  state.file.versions.forEach((v) => { v.status = v.id === v1Id ? "superseded" : "current"; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const signaturePath = `/api/v1/courses/${courseId}/files/${fileId}/versions/${v2Id}/link`;
+  await page.route(`**${signaturePath}?**`, async (route) => {
+    await gate;
+    return success(route, { version_id: v2Id, purpose: "download", url: state.link, expires_at: new Date(Date.now() + 60_000).toISOString() });
+  });
+  await page.goto(`${path}?file=${fileId}&version=${v1Id}`);
+  await expect(page.getByRole("article", { name: "引用的课程资料 v1" })).toBeFocused();
+  await page.getByRole("button", { name: "查看版本", exact: true }).click();
+  const newer = page.getByRole("article", { name: "引用的课程资料 v2" });
+  const requested = page.waitForRequest((request) => new URL(request.url()).pathname === signaturePath);
+  await newer.getByRole("button", { name: "申请下载 v2" }).click();
+  await requested;
+  const responded = page.waitForResponse((response) => new URL(response.url()).pathname === signaturePath);
+  try {
+    await page.goBack();
+    await expect(page.getByRole("article", { name: "引用的课程资料 v1" })).toBeFocused();
+  } finally {
+    release();
+  }
+  await (await responded).finished();
+  await expect(page.getByRole("link", { name: /下载课程资料/ })).toHaveCount(0);
+  const old = page.getByRole("article", { name: "引用的课程资料 v1" });
+  await old.getByRole("button", { name: "申请下载 v1" }).click();
+  await expect(old.getByRole("link", { name: "下载课程资料 v1" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "下载课程资料 v2" })).toHaveCount(0);
+});
+
+test("C5-04 a version without its file reports the broken reference before reading course data", async ({ page }) => {
+  const { requests } = await setup(page, true);
+  await page.goto(`${path}?version=${v1Id}`);
+  await expect(page.getByRole("button", { name: "返回课程资料列表" })).toBeVisible();
+  await expect(page.getByText("课程资料版本地址无效")).toBeVisible();
+  expect(requests).toHaveLength(0);
+  await page.getByRole("button", { name: "返回课程资料列表" }).click();
+  await expect(page.getByRole("button", { name: "查看版本" })).toBeVisible();
 });
 
 test("C5-02 rejects a completed receipt from another scope before registering a version", async ({ page }) => {
@@ -264,24 +308,24 @@ test("C5-04 unsafe signed links never render and a valid retry remains bound to 
   await page.goto(path); await openDetail(page);
   await page.getByRole("button", { name: "申请下载 v1", exact: true }).click();
   await expect(page.locator("main").getByRole("alert")).toBeVisible();
-  await expect(page.getByRole("link", { name: "下载课程资料", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "下载课程资料 v1", exact: true })).toHaveCount(0);
   state.link = "https://storage.example.test/pinned-v1.pdf?signature=trusted";
   await page.getByRole("button", { name: "申请下载 v1", exact: true }).click();
-  await expect(page.getByRole("link", { name: "下载课程资料", exact: true })).toHaveAttribute("href", state.link);
-  await expect(page.getByRole("link", { name: "下载课程资料", exact: true })).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.getByRole("link", { name: "下载课程资料 v1", exact: true })).toHaveAttribute("href", state.link);
+  await expect(page.getByRole("link", { name: "下载课程资料 v1", exact: true })).toHaveAttribute("rel", "noopener noreferrer");
 });
 
 test("C5-04 denied refresh hides previous lists, detail and signed links", async ({ page }) => {
   const { state } = await setup(page);
   await page.goto(path); await openDetail(page);
   await page.getByRole("button", { name: "申请下载 v1", exact: true }).click();
-  await expect(page.getByRole("link", { name: "下载课程资料", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "下载课程资料 v1", exact: true })).toBeVisible();
   state.listStatus = 403;
   await page.getByRole("button", { name: "刷新课程资料", exact: true }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText("原有资料已隐藏");
   await expect(page.getByRole("table", { name: "课程资料列表" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "申请下载 v1", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "下载课程资料", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "下载课程资料 v1", exact: true })).toHaveCount(0);
 });
 
 test("C5-04 invalid mock course IDs are never sent to the UUID API", async ({ page }) => {

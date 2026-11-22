@@ -42,14 +42,73 @@ npm run dev
 
 开发脚本会启动 PostgreSQL、Redis 和 FastAPI，执行数据库迁移，再启动 Next.js。打开[本地登录页](http://localhost:3000/login)进入应用。若页面能打开但登录服务不可用，可先查看 [API 就绪状态](http://localhost:8000/readyz) 和 `docker compose logs api`。本地开发默认将验证邮件保存到数据库的 `email_outbox` 表。
 
-## 开发入口
+```bash
+docker compose up -d postgres redis api   # 后端（容器启动自动执行 alembic upgrade head）
+npm run dev                                # 前端（或 docker compose up -d --build web）
+```
 
-| 想了解什么 | 从哪里开始 |
-| --- | --- |
-| 页面、角色与导航 | [页面与路由地图](FRONTEND_IMPLEMENTATION_PLAN.md) · [业务页面入口](features/route-dispatcher.tsx) |
-| GitHub、飞书、存储和 AI 接口 | [公共服务与接入说明](docs/A_SHARED_SERVICES.md) |
-| 候选证据怎样采纳、撤回和保留历史 | [证据规则](docs/C_EVIDENCE.md) · [任务执行规则](docs/C_TASK_EXECUTION.md) |
-| 验收、贡献和报告怎样计算 | [验收确认](services/api/app/modules/d/acceptance.py) · [贡献计算](services/api/app/modules/d/contribution.py) · [报告生成](services/api/app/modules/d/reporting.py) |
-| 前后端怎样联调、测试和部署 | [环境与工程检查](docs/DEVELOPMENT.md) · [API 契约](packages/domain/openapi.json) · [部署说明](docs/DEPLOYMENT.md) |
+如需在服务端受控开通初始管理员账号（不开放公开管理员注册）：
 
-团队使用 `A_task`、`B_task`、`C_task`、`D_task` 作为成员开发分支，`develop` 用于集成，`main` 保存发布版本。
+```bash
+cd services/api && python -m scripts.bootstrap_admin \
+  --name "系统管理员" --username admin \
+  --school-email admin@must.edu.mo --password "<强密码>"
+```
+
+Open [http://localhost:3000](http://localhost:3000). Sign-in supports password accounts and Google OIDC; configure `GOOGLE_*` to enable Google. Email registration, school-email verification, and password recovery need a mail channel. Local development defaults to the isolated `capture` channel; production can use SMTP or a transactional HTTPS API such as Resend.
+
+Workspaces use real APIs by default (`NEXT_PUBLIC_ENABLE_MOCKS=false`). Both `staging` and `production` enforce real data even if obsolete Mock flags remain. Entering a real workspace removes the retired browser demo cache without touching account or language settings. Test fixtures are loaded only when Mock is explicitly enabled in an isolated development/test environment. Frontend `NEXT_PUBLIC_*` variables are build-time settings: rebuild the Web image after changing them (`docker compose up -d --build web`).
+
+## GitHub and Feishu integrations
+
+| Feature | GroupProof entry | API service configuration |
+| --- | --- | --- |
+| GitHub repository | Project settings. The project lead connects a repository available to the installed GitHub App. | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_SLUG` |
+| Feishu group | Project settings. The project lead connects a group visible to the Feishu bot. | `FEISHU_APP_ID`, `FEISHU_APP_SECRET` |
+| Personal GitHub identity | Account security. Each member can authorize their own account for attribution of project GitHub activity. | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` from a GitHub OAuth App |
+
+Set the variables in the ignored local `.env` or in the deployment's API service. For the personal OAuth App, set its authorization callback URL to the GroupProof Web origin (`APP_ORIGIN`) followed by `/api/v1/auth/github/callback`. With local Docker defaults this is `http://localhost:3000/api/v1/auth/github/callback`. Keep OAuth credentials separate for environments with different Web origins. Personal authorization uses the GitHub account ID and does not request repository access. School-email signup works independently from these integrations.
+
+Repository installations and bot membership determine which provider resources the GroupProof deployment can connect. Install the GitHub App only on repositories intended for GroupProof, and invite its Feishu bot only to groups intended for GroupProof. After a member authorizes GitHub, the next repository sync applies attribution to the activity it reads.
+
+The home page, activity and inbox read the authenticated user's persisted records. Missing integrations report an unavailable state and never substitute sample data.
+
+## Checks
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+npm run check:routes     # 56 页路由 + Admin 工作台入口；CHECK_HTTP=1 时按匿名鉴权语义核对（redirect: manual）
+npm run check:access     # 权限矩阵断言（lib/access/policy.ts）
+npm run check:i18n       # 简体/繁体/英文词条 key 与插值参数一致性
+npm run check:workspace-isolation # 真实模式、旧演示缓存清理及隔离测试兼容
+npm run test:workspace-real       # Staging 模式下的浏览器回归（隔离接口）
+npm run check:auth       # 需开发服务器：匿名直链/旧链接兼容/登录页文案/404/语言恢复（CHECK_AUTH_API=1 加 API 负面用例）
+cd services/api && python -m pytest -q  # 统一后端（需隔离 PostgreSQL，先执行 alembic upgrade head）
+npm run check:auth-browser  # 浏览器认证回归（需开发服务器、隔离数据库和捕获邮件的后端）
+```
+
+With the development server and backend running: `CHECK_HTTP=1 npm run check:routes` and `CHECK_AUTH_API=1 npm run check:auth`.
+
+## Current scope
+
+- Real: Google OIDC login, server sessions (revocable/rotating), school-email signup (verify school email → complete profile and set password), teacher review, account center, admin teacher review/disable, audit, i18n (zh-Hans / zh-Hant / en), server-side page gating and protected business API authorization. Existing and Google accounts complete any outstanding onboarding steps in the account center.
+- Business workspace: real data is the default. The student workspace preserves creation and enrollment actions with empty data. Course invitation, groups, course projects, setup, requirements, planning, task views, milestones and membership changes use authenticated APIs; external services report their actual availability. GitHub and Feishu settings for persisted projects use the integration APIs when the providers are configured.
+
+See [frontend status](FRONTEND_STATUS.md), [API README](services/api/README.md) and unification status（历史归档：`docs/plans/2026-10-12-unified-auth-resend-status.md`） for implementation details and known limitations. Google entry visibility does not imply configured OAuth credentials; real mail requires a verified sender and the public-mail switch.
+
+## Existing develop backend foundation
+
+`services/api` owns both authentication and business APIs. `server/` is retained as historical reference and is no longer the deployed identity entry point. `API_INTERNAL_URL` points Web's identity gate and runtime `/api/v1` proxy to the unified API. Existing generated clients and business feature switches remain available; migrating authentication does not finish unrelated business integrations.
+
+Existing checks remain available:
+
+```bash
+npm run api:generate
+npm run test:api-config
+npm run test:api-client
+npm run test:e2e
+```
+
+Existing development, deployment and architecture documents remain at [docs/DEVELOPMENT.md](docs/architecture/DEVELOPMENT.md), [docs/DEPLOYMENT.md](docs/architecture/DEPLOYMENT.md) and [docs/TECHNICAL_PLAN.md](docs/architecture/TECHNICAL_PLAN.md).

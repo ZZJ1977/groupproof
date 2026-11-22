@@ -2,9 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { setWorkspaceScope } from "@/lib/api/mock-service";
+import { clearMockWorkspaceStorage, setWorkspaceScope } from "@/lib/api/mock-storage";
 import { workspaceService } from "@/lib/api/workspace-service";
-import { seedData } from "@/mocks/seed";
 import { apiMode } from "@/lib/api/config";
 import { authClient } from "@/lib/api/auth-client";
 import { emptyWorkspace } from "@/lib/empty-workspace";
@@ -38,9 +37,9 @@ const mockWorkspace = apiMode("workspace") === "mock";
 function WorkspaceState({ user, children }: { user: SessionUser; children: ReactNode }) {
   const queryClient = useQueryClient();
   const [loaded, setLoaded] = useState(!mockWorkspace);
-  const initial = useMemo(() => mockWorkspace ? seedData : emptyWorkspace(user.id), [user.id]);
+  const initial = useMemo(() => emptyWorkspace(user.id), [user.id]);
   const identity = useQuery({ queryKey: ["workspace-identity", user.id], queryFn: authClient.me,
-    enabled: !mockWorkspace, retry: false, staleTime: 0 });
+    enabled: !mockWorkspace || !demoMode, retry: false, staleTime: 0 });
   // 查询键与本地存储均按用户隔离，防止退出后旧请求写入新用户缓存（A21）
   setWorkspaceScope(user.id);
   const scopedKey = scopedWorkspaceKey(user.id);
@@ -55,7 +54,10 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
   });
 
   useEffect(() => {
-    if (!mockWorkspace) return;
+    if (!mockWorkspace) {
+      clearMockWorkspaceStorage();
+      return;
+    }
     let active = true;
     void workspaceService
       .getWorkspace()
@@ -65,10 +67,10 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
         setLoaded(true);
       })
       .catch((error) => {
-        // 加载失败可恢复：回落演示种子并结束加载，不永久卡在占位（不静默吞错）
-        console.error("工作区数据加载失败，已回退默认数据：", error);
+        // Never manufacture demo records after a storage or transport failure.
+        console.error("工作区数据加载失败，当前显示空工作区：", error);
         if (!active) return;
-        queryClient.setQueryData(scopedKey, seedData);
+        queryClient.setQueryData(scopedKey, emptyWorkspace(user.id));
         setLoaded(true);
       });
     return () => {
@@ -79,7 +81,7 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
 
   const commit = useCallback((change: (current: MockData) => MockData) => {
     if (!mockWorkspace) return; // Legacy collection writes are demo-only.
-    const current = queryClient.getQueryData<MockData>(scopedKey) ?? seedData;
+    const current = queryClient.getQueryData<MockData>(scopedKey) ?? emptyWorkspace(user.id);
     const next = change(current);
     queryClient.setQueryData(scopedKey, next);
     void workspaceService.saveWorkspace(next);
@@ -138,9 +140,11 @@ function WorkspaceState({ user, children }: { user: SessionUser; children: React
     });
   }, [commit]);
 
+  const authRole = identity.data
+    ? ((["admin", "teacher", "ta"] as Role[]).find((item) => identity.data.user.roles.includes(item)) ?? "student")
+    : undefined;
   return (
-    <WorkspaceContext.Provider value={{ data, role: mockWorkspace ? data.currentRole :
-      (["admin", "teacher", "ta"] as Role[]).find((role) => identity.data?.user.roles.includes(role)) ?? "student",
+    <WorkspaceContext.Provider value={{ data, role: !mockWorkspace ? authRole ?? "student" : !demoMode && authRole ? authRole : data.currentRole,
       loading: !loaded, userId: user.id, userName: user.name, setRole, demoMode: demoMode && mockWorkspace, mockWorkspace, update, add, remove }}>
       {loaded ? children : <div className="flex min-h-screen items-center justify-center text-[13px] text-[#75849a]">…</div>}
     </WorkspaceContext.Provider>

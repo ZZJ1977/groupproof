@@ -147,7 +147,7 @@ Responsive / A11y / UX Review ────────────┘
 ## 当前迭代：先功能、后视觉与动效
 
 - 用户已确定本次先沿用现有 UI 完成功能与接口，再进行专业教学管理台视觉改版，最后补充动效；基础反馈、错误处理、键盘操作和必要响应式随功能完成。原流程图用于说明产出关系，本次功能完善复用已有设计体系。
-- 功能开发入口为 [分阶段开发索引](docs/development-stages/README.md)，产品与架构背景见 [PROJECT_CONTEXT](docs/development-stages/PROJECT_CONTEXT.md)。新 agent 按索引读取背景、指定阶段、依赖文档及相关源码。
+- 功能开发入口为 [分阶段开发索引](docs/development-stages/README.md)，产品与架构背景见 [PROJECT_CONTEXT](docs/architecture/TECHNICAL_PLAN.md)。新 agent 按索引读取背景、指定阶段、依赖文档及相关源码。
 - 01–13 为成员 B 功能与后端接口交付；14–15 在功能验收后交付全项目视觉与动效规范，其他成员的组件及页面代码由对应负责人实现。各阶段当前状态以索引和实际代码证据共同判断。
 - 权限按目标项目/课程关系判断：团队共同编辑并确认责任，组长推进发布；同课程其他小组只读课程公开项目的总览；助教默认只读，由所属教师按具体操作授权。
 - 正式版本与草稿分开，确认绑定版本，课程变更按真实差异处理。当前仍是 Mock 前端与接口设计，真实服务接入状态必须明确。
@@ -197,8 +197,8 @@ Responsive / A11y / UX Review ────────────┘
 
 ## GroupProof 当前工程约定
 
-- 当前工程为 Next.js App Router、React、TypeScript、Tailwind CSS 前端；使用本地 shadcn/ui 风格组件。当前交付范围和限制见 `README.md`、`FRONTEND_IMPLEMENTATION_PLAN.md`、`FRONTEND_STATUS.md`。
-- `FRONTEND_IMPLEMENTATION_PLAN.md` 包含现有 56 页路由映射。修改页面或导航时同步相关映射；记录实际实现状态时更新 `FRONTEND_STATUS.md`。
+- 当前工程统一以原工作区 `/Users/zhuozijie/Desktop/项目/groupproof`（`develop` 分支，迁移头 `0047`）为准，采用 Next.js App Router、React、TypeScript、Tailwind CSS 前端与 `services/api` 统一 FastAPI 认证及业务后端。当前交付范围和限制见 `README.md`、`docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md`、`FRONTEND_STATUS.md`。
+- `docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md` 包含现有 56 页路由映射（另含 `/admin` 管理工作台入口 `screen=62` 及教师扩展页 `57–61`）。修改页面或导航时同步相关映射；记录实际实现状态时更新 `FRONTEND_STATUS.md`。
 - 目录职责：`app/` 放路由与全局样式，`components/` 放布局和通用组件，`features/` 放业务页面，`types/` 放领域类型，`mocks/` 放关联数据，`lib/api/` 放服务适配，`scripts/` 放工程检查。
 - 修改 Tokens 时先检查 `app/globals.css`；新增基础控件时先检查 `components/ui/`。保持现有角色工作区、路由和业务实体关联一致。
 - 已有前端 Mock、浏览器存储及模拟第三方交互的范围以状态文档为准。接入真实服务时明确更新相关边界和验证结果。

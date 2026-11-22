@@ -2,13 +2,15 @@
 
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, BarChart3, CircleAlert, Coins, Gauge, Layers3, ListFilter, RefreshCw, Zap } from "lucide-react";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type SharedAuditQuery, type UsageQuery } from "@/lib/api/c-governance-client";
 import { useWorkspace } from "@/lib/workspace";
 import type { components } from "@/packages/domain/api.generated";
-import { Box, Empty, Header, Notice, Table, formatDateTime } from "@/features/governance/primitives";
+import { Badge, Box, Empty, Header, Metric, Notice, Table, formatDateTime } from "@/features/governance/primitives";
 import styles from "@/features/governance/governance.module.css";
 import { useUrlQuery } from "./use-url-query";
+import { tr } from "@/lib/i18n/tr";
 
 type Schema = components["schemas"];
 const api = createGovernanceClient();
@@ -18,6 +20,13 @@ const courseStatuses = { draft: "草稿", active: "已发布", ended: "已结束
 const requestStatuses = { pending: "待审批", approved: "已批准", rejected: "已拒绝" } as const;
 const auditRoles = { student: "学生", leader: "组长", teacher: "教师", ta: "助教", admin: "管理员", system: "系统" } as const;
 const targetTypes = { user: "用户", course: "课程", project: "项目", task: "任务", evidence: "证据", system: "系统" } as const;
+const usageScenarioDefinitions = [
+  { key: "github-analysis", label: "GitHub 仓库提交分析", description: "根据同步代码与需求核对实现状态", feature: "analyze_implementation" },
+  { key: "chat-tracking", label: "证据与群聊追踪", description: "群聊记录进入证据流后辅助验收匹配", feature: "match_evidence" },
+  { key: "requirement-analysis", label: "需求文档解析", description: "从项目资料提取需求、模块与冲突", feature: "extract_requirements" },
+  { key: "task-planning", label: "任务规划建议", description: "识别未覆盖需求并生成任务建议", feature: "suggest_tasks" },
+  { key: "risk-analysis", label: "风险与进度解释", description: "结合任务进度和风险记录生成解释", feature: "explain_risk" },
+] as const;
 const authActions = {
   "admin.bootstrapped": "初始化管理员", "auth.acceptance_test_entry": "验收测试入口", "auth.email_registered": "邮箱注册完成",
   "auth.google.account_exists": "Google 登录邮箱与已有账号冲突", "auth.google.cancelled": "取消 Google 登录",
@@ -59,7 +68,7 @@ function message(error: Error | null) {
       : error.status === 403 ? "当前账户无权执行此操作。"
         : error.status === 409 && error.code === "VERSION_CONFLICT" ? "记录已变更。请刷新详情后核对，再次提交；填写的理由已保留。"
           : error.status === 503 ? "所需服务尚不可用，请稍后重试。" : error.message;
-    return `${text}${error.requestId ? `（请求编号：${error.requestId}）` : ""}`;
+    return tr("{0}{1}", { 0: text, 1: error.requestId ? tr("（请求编号：{0}）", { 0: error.requestId }) : "" });
   }
   return error?.message || "服务暂不可用，请重试。";
 }
@@ -72,10 +81,10 @@ function Field({ label, children }: { label: string; children: ReactElement<{ id
   return <div className={styles.field}><label htmlFor={id}>{label}</label>{cloneElement(children, { id })}</div>;
 }
 function Pager({ page, total, change }: { page: number; total: number; change: (page: number) => void }) {
-  return <div className={styles.tableFooter}><span>共 {total} 条 · 第 {page} 页</span><div className={styles.actions}><button className={styles.button} type="button" disabled={page <= 1} onClick={() => change(page - 1)}>上一页</button><button className={styles.button} type="button" disabled={page * 10 >= total} onClick={() => change(page + 1)}>下一页</button></div></div>;
+  return <div className={styles.tableFooter}><span>{tr("共 {0} 条 · 第 {1} 页", { 0: total, 1: page })}</span><div className={styles.actions}><button className={styles.button} type="button" disabled={page <= 1} onClick={() => change(page - 1)}>上一页</button><button className={styles.button} type="button" disabled={page * 10 >= total} onClick={() => change(page + 1)}>下一页</button></div></div>;
 }
 function History({ items }: { items: Schema["GovernanceHistoryDTO"][] }) {
-  return <><h3>操作历史</h3>{!items.length ? <Empty>暂无操作历史</Empty> : <ol>{items.map((item) => <li key={item.id}><strong>{item.action} · 版本 {item.version_no}</strong><p>{item.reason}</p><small>{formatDateTime(item.created_at)} · 操作人 {item.actor_id}</small></li>)}</ol>}</>;
+  return <><h3>操作历史</h3>{!items.length ? <Empty>暂无操作历史</Empty> : <ol>{items.map((item) => <li key={item.id}><strong>{tr("{0} · 版本 {1}", { 0: item.action, 1: item.version_no })}</strong><p>{item.reason}</p><small>{tr("{0} · 操作人 {1}", { 0: formatDateTime(item.created_at), 1: item.actor_id })}</small></li>)}</ol>}</>;
 }
 
 /** A synchronous gate closes the double-click gap; retries preserve the original key. */
@@ -125,11 +134,11 @@ function UserSelect({ label, value, onChange, teacherOnly = false, required = fa
     && (!teacherOnly || (selectedUser.data.global_role === "teacher" && selectedUser.data.status === "active" && selectedUser.data.email_verified)) ? selectedUser.data : undefined;
   const combined = retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options;
   return <div className={styles.stack}>
-    <Field label={`${label}搜索`}><input className={styles.input} type="search" maxLength={200} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></Field>
+    <Field label={tr("{0}搜索", { 0: label })}><input className={styles.input} type="search" maxLength={200} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></Field>
     <Field label={label}><select className={styles.select} aria-label={label} value={(includeSystem && value === "system") || combined.some((item) => item.id === value) ? value : ""} required={required} disabled={list.isFetching || list.isError} onChange={(event) => onChange(event.target.value)}><option value="">{required ? "请选择有效教师" : includeSystem ? "全部操作人" : "全部用户"}</option>{includeSystem && list.isSuccess && !list.isFetching && <option value="system">系统操作</option>}{combined.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.email}</option>)}</select></Field>
     {list.isError && <ErrorBox error={list.error} retry={() => void list.refetch()} label="重试用户目录" />}
     {list.isFetching && <p role="status">正在读取用户选项…</p>}
-    {list.isSuccess && !list.isFetching && <><small>{teacherOnly ? "仅可选择已验证邮箱的有效教师。" : "搜索后选择已有用户。"}{!options.length && "当前查询没有可选用户。"}</small><div className={styles.actions}><button type="button" className={styles.button} disabled={page === 1} onClick={() => setPage(page - 1)}>用户上一页</button><span>用户第 {page} 页</span><button type="button" className={styles.button} disabled={page * 10 >= list.data.total} onClick={() => setPage(page + 1)}>用户下一页</button></div></>}
+    {list.isSuccess && !list.isFetching && <><small>{teacherOnly ? "仅可选择已验证邮箱的有效教师。" : "搜索后选择已有用户。"}{!options.length && "当前查询没有可选用户。"}</small><div className={styles.actions}><button type="button" className={styles.button} disabled={page === 1} onClick={() => setPage(page - 1)}>用户上一页</button><span>{tr("用户第 {0} 页", { 0: page })}</span><button type="button" className={styles.button} disabled={page * 10 >= list.data.total} onClick={() => setPage(page + 1)}>用户下一页</button></div></>}
   </div>;
 }
 
@@ -197,8 +206,8 @@ function CoursePanel({ id, onChanged, close, onUnauthorized }: { id: string; onC
   return <Box title="课程详情" action={<button type="button" className={styles.button} onClick={close}>关闭详情</button>}><div className={styles.panelBody}>
     <button className={styles.button} type="button" disabled={command.busy || detail.isFetching} onClick={() => void refresh()}>刷新详情</button>
     {detail.isFetching && <p role="status">正在读取课程详情…</p>}<ErrorBox error={detail.error} />
-    {data && <><h3>{data.name}</h3><p>{data.code} · {data.semester} · {courseStatuses[data.status]} · 版本 {data.lock_version}</p><p>负责教师：{data.owner_id} · 项目截止：{formatDateTime(data.project_deadline ?? undefined)}</p>
-      <p>组队方式：{data.grouping_mode === "free" ? "自由组队" : "审批组队"} · 组员人数：{data.min_group_size}–{data.max_group_size} · 组队截止：{formatDateTime(data.formation_deadline ?? undefined)}</p>
+    {data && <><h3>{data.name}</h3><p>{tr("{0} · {1} · {2} · 版本 {3}", { 0: data.code, 1: data.semester, 2: courseStatuses[data.status], 3: data.lock_version })}</p><p>{tr("负责教师：{0} · 项目截止：{1}", { 0: data.owner_id, 1: formatDateTime(data.project_deadline ?? undefined) })}</p>
+      <p>{tr("组队方式：{0} · 组员人数：{1}–{2} · 组队截止：{3}", { 0: data.grouping_mode === "free" ? "自由组队" : "审批组队", 1: data.min_group_size, 2: data.max_group_size, 3: formatDateTime(data.formation_deadline ?? undefined) })}</p>
       {data.invite_code && <Notice>课程邀请码：<strong>{data.invite_code}</strong>{data.invite_revoked_at ? "（已撤销）" : "。加入课程流程尚待对接，此处不代表加入操作已可用。"}</Notice>}<History items={data.history} /></>}
     {changed && <Notice>课程状态或版本已变化，当前操作已暂停。请刷新详情并核对；填写的理由已保留。</Notice>}
     {notice && <Notice>{notice}</Notice>}
@@ -247,8 +256,8 @@ function AccessPanel({ id, onChanged, close, onUnauthorized }: { id: string; onC
   }
   return <Box title="访问申请详情" action={<button className={styles.button} type="button" onClick={close}>关闭详情</button>}><div className={styles.panelBody}>
     <button className={styles.button} type="button" disabled={detail.isFetching || command.busy} onClick={() => void detail.refetch()}>刷新详情</button>{detail.isFetching && <p role="status">正在读取申请详情…</p>}<ErrorBox error={detail.error} />
-    {data && <><p>申请人：{data.applicant_id}</p><p>申请理由：{data.reason}</p><p>状态：{requestStatuses[data.status]} · 版本 {data.lock_version}</p><p>访问范围：{targetTypes[data.scope.resource_type]} / {data.scope.resource_id} · 只读 · 所属项目 {data.scope.project_id}</p><p>申请截止：{formatDateTime(data.requested_expires_at)}</p>
-      {data.status === "approved" && <Notice>此处显示审批结果；实际访问还需通过权限检查。{data.approval_expired ? "授权期限已过。" : `批准截止：${formatDateTime(data.approved_expires_at ?? undefined)}`}</Notice>}<History items={data.history} /></>}
+    {data && <><p>{tr("申请人：{0}", { 0: data.applicant_id })}</p><p>{tr("申请理由：{0}", { 0: data.reason })}</p><p>{tr("状态：{0} · 版本 {1}", { 0: requestStatuses[data.status], 1: data.lock_version })}</p><p>{tr("访问范围：{0} / {1} · 只读 · 所属项目 {2}", { 0: targetTypes[data.scope.resource_type], 1: data.scope.resource_id, 2: data.scope.project_id })}</p><p>{tr("申请截止：{0}", { 0: formatDateTime(data.requested_expires_at) })}</p>
+      {data.status === "approved" && <Notice>{tr("此处显示审批结果；实际访问还需通过权限检查。{0}", { 0: data.approval_expired ? "授权期限已过。" : tr("批准截止：{0}", { 0: formatDateTime(data.approved_expires_at ?? undefined) }) })}</Notice>}<History items={data.history} /></>}
     {requestExpired && <Notice>申请期限已过，无法批准；可填写理由拒绝此申请。</Notice>}
     {(!data || data.status === "pending") && <form className={styles.stack} onSubmit={submit}><Field label="审批决定"><select className={styles.select} aria-label="审批决定" value={decision} disabled={command.busy} onChange={(event) => setDecision(event.target.value as "approved" | "rejected")}><option value="approved" disabled={requestExpired}>批准只读访问</option><option value="rejected">拒绝</option></select></Field>
       {decision === "approved" && <><Field label="批准截止时间"><input className={styles.input} type="datetime-local" required value={expiry ?? (data ? localTime(data.requested_expires_at) : "")} max={data ? localTime(data.requested_expires_at) : undefined} disabled={command.busy || requestExpired} onChange={(event) => setExpiry(event.target.value)} /></Field><Notice>批准后按申请范围授予只读访问，到期后自动失效。</Notice></>}
@@ -268,7 +277,7 @@ function AccessPage() {
   return <><Header title="访问审批" description="审批精确的项目、任务或证据只读范围；不会扩大申请范围。" action={<button type="button" className={styles.button} onClick={refresh}>刷新申请</button>} />
     <Field label="申请状态"><select className={styles.select} aria-label="申请状态" value={status ?? ""} onChange={(event) => updateQuery({ status: event.target.value || null, page: null, request: null })}><option value="">全部</option>{Object.entries(requestStatuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
     {list.isFetching && <p role="status">正在读取访问申请…</p>}<ErrorBox error={denied ?? list.error} retry={refresh} />
-    {data && <Box><Table><thead><tr><th>申请人</th><th>申请理由</th><th>范围</th><th>状态</th><th>申请截止</th><th>操作</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td>{item.applicant_id}</td><td>{item.reason}</td><td>{item.scope.resource_type} · 只读</td><td>{requestStatuses[item.status]}</td><td>{formatDateTime(item.requested_expires_at)}</td><td><button type="button" className={styles.button} onClick={() => updateQuery({ request: item.id })}>查看申请</button></td></tr>)}</tbody></Table>{!data.items.length && <Empty />}<Pager page={page} total={data.total} change={(next) => updateQuery({ page: String(next), request: null })} /></Box>}
+    {data && <Box><Table><thead><tr><th>申请人</th><th>申请理由</th><th>范围</th><th>状态</th><th>申请截止</th><th>操作</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td>{item.applicant_id}</td><td>{item.reason}</td><td>{tr("{0} · 只读", { 0: item.scope.resource_type })}</td><td>{requestStatuses[item.status]}</td><td>{formatDateTime(item.requested_expires_at)}</td><td><button type="button" className={styles.button} onClick={() => updateQuery({ request: item.id })}>查看申请</button></td></tr>)}</tbody></Table>{!data.items.length && <Empty />}<Pager page={page} total={data.total} change={(next) => updateQuery({ page: String(next), request: null })} /></Box>}
     {!denied && id && !unauthorized(list.error) && <div hidden={!data}><AccessPanel key={`${userId}:${id}`} id={id} onUnauthorized={setDenied} close={() => updateQuery({ request: null })} onChanged={() => { void cache.invalidateQueries({ queryKey: ["c-governance-requests", userId] }); }} /></div>}
   </>;
 }
@@ -276,7 +285,7 @@ function AccessPage() {
 function AuditPanel({ id, close, onDenied }: { id: string; close: () => void; onDenied: (error: CApiError) => void }) {
   const { userId } = useWorkspace();
   const detail = useQuery({ queryKey: ["c-governance-audit", userId, id], queryFn: () => readWithAccessCheck(() => api.auditLog(id), onDenied), ...querySettings });
-  return <Box title="日志详情" action={<button type="button" className={styles.button} onClick={close}>关闭详情</button>}><div className={styles.panelBody}>{detail.isFetching && <p role="status">正在读取日志详情…</p>}<ErrorBox error={detail.error} retry={() => void detail.refetch()} label="重试详情" />{detail.isSuccess && !detail.isFetching && <><p>{detail.data.action} · {detail.data.result} · {formatDateTime(detail.data.occurred_at)}</p><p>操作人：{detail.data.actor_id}</p><p>目标：{detail.data.target_type} / {detail.data.target_id ?? "系统"}</p><p>理由：{detail.data.reason}</p><h3>变更前</h3><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(detail.data.before, null, 2)}</pre><h3>变更后</h3><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(detail.data.after, null, 2)}</pre></>}</div></Box>;
+  return <Box title="日志详情" action={<button type="button" className={styles.button} onClick={close}>关闭详情</button>}><div className={styles.panelBody}>{detail.isFetching && <p role="status">正在读取日志详情…</p>}<ErrorBox error={detail.error} retry={() => void detail.refetch()} label="重试详情" />{detail.isSuccess && !detail.isFetching && <><p>{detail.data.action} · {detail.data.result} · {formatDateTime(detail.data.occurred_at)}</p><p>{tr("操作人：{0}", { 0: detail.data.actor_id })}</p><p>{tr("目标：{0} / {1}", { 0: detail.data.target_type, 1: detail.data.target_id ?? "系统" })}</p><p>{tr("理由：{0}", { 0: detail.data.reason })}</p><h3>变更前</h3><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(detail.data.before, null, 2)}</pre><h3>变更后</h3><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(detail.data.after, null, 2)}</pre></>}</div></Box>;
 }
 
 function BusinessLogsPage() {
@@ -298,7 +307,7 @@ function BusinessLogsPage() {
       <Field label="操作类型"><input className={styles.input} name="action" maxLength={100} defaultValue={filters.action ?? ""} /></Field><Field label="操作结果"><select className={styles.select} name="result" aria-label="操作结果" defaultValue={resultFilter ?? ""}><option value="">全部</option><option value="success">成功</option><option value="failure">失败</option></select></Field>
       <Field label="开始时间"><input className={styles.input} type="datetime-local" name="since" defaultValue={filters.since ? localTime(filters.since) : ""} /></Field><Field label="结束时间"><input className={styles.input} type="datetime-local" name="until" defaultValue={filters.until ? localTime(filters.until) : ""} /></Field><button className={styles.primaryButton} type="submit">查询日志</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ actor: null, actor_role: null, target_type: null, target_id: null, action: null, result: null, since: null, until: null, page: null, log: null }); }}>重置</button>
     </form>{list.isFetching && <p role="status">正在读取审计记录…</p>}<ErrorBox error={list.error} retry={() => void list.refetch()} />
-    {filters.target_id && <Notice>当前对象：{filters.target_id} <button className={styles.button} type="button" onClick={() => updateQuery({ target_id: null, page: null, log: null })}>清除对象筛选</button></Notice>}
+    {filters.target_id && <Notice>{tr("当前对象：{0} ", { 0: filters.target_id })}<button className={styles.button} type="button" onClick={() => updateQuery({ target_id: null, page: null, log: null })}>清除对象筛选</button></Notice>}
     {data && <Box><Table><thead><tr><th>时间</th><th>操作人 / 角色</th><th>操作</th><th>对象</th><th>结果</th><th>理由</th><th>详情</th></tr></thead><tbody>{data.items.map((item) => <tr key={item.id}><td>{formatDateTime(item.occurred_at)}</td><td>{item.actor_id} / {auditRoles[item.actor_role]}</td><td>{item.action}</td><td>{targetTypes[item.target_type]} {item.target_id && <button className={styles.button} type="button" onClick={() => updateQuery({ target_type: item.target_type, target_id: item.target_id, page: null, log: null })}>筛选此对象</button>}</td><td>{item.result === "success" ? "成功" : "失败"}</td><td>{item.reason}</td><td><button className={styles.button} type="button" onClick={() => updateQuery({ log: item.id })}>查看日志</button></td></tr>)}</tbody></Table>{!data.items.length && <Empty />}<Pager page={page} total={data.total} change={(next) => updateQuery({ page: String(next), log: null })} /></Box>}
     {id && data && <AuditPanel key={`${userId}:${id}`} id={id} close={() => updateQuery({ log: null })} onDenied={block} />}
   </>;
@@ -337,7 +346,7 @@ function AuthLogsPage() {
         <UserSelect label="认证操作人" includeSystem value={filters.actor_id ?? ""} onChange={(value) => updateFilters({ auth_actor: value || null })} onUnauthorized={block} />
         <UserSelect label="目标账号" value={filters.target_user_id ?? ""} onChange={(value) => updateFilters({ auth_target: value || null })} onUnauthorized={block} />
       </div>
-      <small>账号选项来自当前用户目录，仅用于筛选已记录的标识，不代表事件发生时的角色或资料。{filters.actor_id && ` 当前操作人筛选：${authActor(filters.actor_id)}。`}{filters.target_user_id && ` 当前目标账号筛选：${filters.target_user_id}。`}</small>
+      <small>{tr("账号选项来自当前用户目录，仅用于筛选已记录的标识，不代表事件发生时的角色或资料。{0}{1}", { 0: filters.actor_id && tr(" 当前操作人筛选：{0}。", { 0: authActor(filters.actor_id) }), 1: filters.target_user_id && tr(" 当前目标账号筛选：{0}。", { 0: filters.target_user_id }) })}</small>
       <form key={formKey} className={styles.filters} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateFilters({ auth_action: inputValue(input, "action") || null, auth_result: inputValue(input, "result") || null, auth_since: isoTime(inputValue(input, "since")) || null, auth_until: isoTime(inputValue(input, "until")) || null }); }}>
         <Field label="认证事件"><select className={styles.select} name="action" defaultValue={filters.action ?? ""}><option value="">全部认证事件</option>{Object.entries(authActions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
         <Field label="认证结果"><select className={styles.select} name="result" defaultValue={filters.result ?? ""}><option value="">全部结果</option><option value="success">成功</option><option value="failure">失败</option></select></Field>
@@ -349,7 +358,7 @@ function AuthLogsPage() {
       {data && <Box><Table><thead><tr><th>时间</th><th>记录的操作人标识</th><th>认证事件</th><th>目标账号标识</th><th>结果</th><th>详情</th></tr></thead><tbody>{data.items.map((row) => <tr key={row.id}><td>{formatDateTime(row.occurred_at)}</td><td>{authActor(row.actor_id)}</td><td>{row.action === "unrecognized" ? "未识别认证事件" : authActions[row.action]}</td><td>{row.target_user_id ?? "未记录"}</td><td>{authResults[row.result]}</td><td><button className={styles.button} type="button" onClick={() => updateQuery({ auth_log: row.id })}>查看认证日志</button></td></tr>)}</tbody></Table>{!data.items.length && <Empty>没有符合条件的认证日志</Empty>}<Pager page={data.page} total={data.total} change={(next) => updateQuery({ auth_page: String(next), auth_log: null })} /></Box>}
       {id && data && <Box title="认证日志详情" action={<button className={styles.button} type="button" onClick={() => updateQuery({ auth_log: null })}>关闭认证详情</button>}><div className={styles.panelBody}>
         {detail.isFetching && <p role="status">正在读取认证日志详情…</p>}<ErrorBox error={detail.error} retry={() => void detail.refetch()} label="重试认证详情" />
-        {item && <><p>来源：认证日志（仅认证与账号管理）</p><p>事件：{item.action === "unrecognized" ? "未识别认证事件" : authActions[item.action]}</p><p>结果：{authResults[item.result]} · {formatDateTime(item.occurred_at)}</p><p>记录的操作人标识：{authActor(item.actor_id)}</p><p>记录的目标账号标识：{item.target_user_id ?? "未记录"}</p><h3>已记录的变更字段名</h3>{item.changed_fields.length ? <ul>{item.changed_fields.map((field, index) => <li key={`${index}:${field}`}>{field}</li>)}</ul> : <p>没有可展示的变更字段名；不能据此判断是否修改过数据。</p>}{item.metadata_redacted && <Notice>部分来源元数据已隐藏，不显示其原始内容。</Notice>}<p>操作时角色：未记录</p><p>操作理由：未记录</p><p>变更前值：未记录</p><p>变更后值：未记录</p></>}
+        {item && <><p>来源：认证日志（仅认证与账号管理）</p><p>{tr("事件：{0}", { 0: item.action === "unrecognized" ? "未识别认证事件" : authActions[item.action] })}</p><p>{tr("结果：{0} · {1}", { 0: authResults[item.result], 1: formatDateTime(item.occurred_at) })}</p><p>{tr("记录的操作人标识：{0}", { 0: authActor(item.actor_id) })}</p><p>{tr("记录的目标账号标识：{0}", { 0: item.target_user_id ?? "未记录" })}</p><h3>已记录的变更字段名</h3>{item.changed_fields.length ? <ul>{item.changed_fields.map((field, index) => <li key={`${index}:${field}`}>{field}</li>)}</ul> : <p>没有可展示的变更字段名；不能据此判断是否修改过数据。</p>}{item.metadata_redacted && <Notice>部分来源元数据已隐藏，不显示其原始内容。</Notice>}<p>操作时角色：未记录</p><p>操作理由：未记录</p><p>变更前值：未记录</p><p>变更后值：未记录</p></>}
       </div></Box>}
     </>}
   </>;
@@ -490,8 +499,17 @@ function LogsPage() {
 }
 
 function costs(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" / ") || "无费用样本"; }
+function metricCost(value: Record<string, string>, unpricedRequests = 0, requests = 0) {
+  const formatted = Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" · ");
+  if (formatted) return formatted;
+  if (unpricedRequests > 0) return "未计价";
+  return requests > 0 ? "无费用样本" : "—";
+}
+function number(value: number) { return new Intl.NumberFormat("zh-CN").format(value); }
+function rate(value: number, total: number) { return total ? `${Math.round((value / total) * 100)}%` : "—"; }
 function UsageTable({ title, items }: { title: string; items: (Schema["UsageBreakdownDTO"] | Schema["UsageDayDTO"])[] }) {
-  return <Box title={title}><Table><thead><tr><th>维度</th><th>请求数</th><th>成功 / 失败</th><th>输入 / 输出 Token</th><th>费用（按币种）</th></tr></thead><tbody>{items.map((item) => <tr key={"key" in item ? item.key : item.date}><td>{"key" in item ? item.key : item.date}</td><td>{item.requests}</td><td>{item.succeeded} / {item.failed}</td><td>{item.input_tokens} / {item.output_tokens}</td><td>{costs(item.cost_by_currency)}{item.unpriced_requests > 0 && ` · ${item.unpriced_requests} 次费用未记录`}{item.incomplete_token_records > 0 && ` · ${item.incomplete_token_records} 次 Token 不完整`}</td></tr>)}</tbody></Table>{!items.length && <Empty>当前范围没有用量样本</Empty>}</Box>;
+  const hasSamples = items.some((item) => item.requests > 0 || item.succeeded > 0 || item.failed > 0 || item.input_tokens > 0 || item.output_tokens > 0 || Object.keys(item.cost_by_currency).length > 0);
+  return <Box title={title}>{hasSamples ? <Table><thead><tr><th>维度</th><th>请求数</th><th>成功 / 失败</th><th>输入 / 输出 Token</th><th>费用（按币种）</th></tr></thead><tbody>{items.map((item) => <tr key={"key" in item ? item.key : item.date}><td>{"key" in item ? item.key : item.date}</td><td>{item.requests}</td><td>{item.succeeded} / {item.failed}</td><td>{item.input_tokens} / {item.output_tokens}</td><td>{costs(item.cost_by_currency)}{item.unpriced_requests > 0 && ` · ${item.unpriced_requests} 次费用未记录`}{item.incomplete_token_records > 0 && ` · ${item.incomplete_token_records} 次 Token 不完整`}</td></tr>)}</tbody></Table> : <Empty>当前范围没有用量样本</Empty>}</Box>;
 }
 function UsagePage() {
   const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
@@ -503,12 +521,93 @@ function UsagePage() {
   const result = useQuery({ queryKey: ["c-governance-usage", userId, filters], queryFn: () => readWithAccessCheck(() => api.usage(filters), setDenied), enabled: !denied, ...querySettings });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   if (denied) return <ErrorBox error={denied} retry={() => window.location.reload()} label="重新验证管理权限" />;
-  return <><Header title="AI 使用情况" description="按 UTC 日期聚合真实请求样本，费用按币种分别统计。" action={<button className={styles.button} type="button" onClick={() => void result.refetch()}>刷新用量</button>} />
-    <div className={styles.actions}>{[7, 30, 90].map((value) => <button key={value} className={styles.button} type="button" aria-pressed={days === value} onClick={() => updateQuery({ days: String(value) })}>最近 {value} 天</button>)}</div>
-    <UserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
-    <form className={styles.filters} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}><Field label="功能"><input className={styles.input} name="feature" maxLength={100} defaultValue={filters.feature ?? ""} /></Field><Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} /></Field><button className={styles.primaryButton} type="submit">查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></form>
+  const maxDailyRequests = Math.max(...(data?.daily.map((item) => item.requests) ?? [0]), 1);
+  const modelRows = data ? [...data.by_model].sort((left, right) => right.requests - left.requests) : [];
+  const featureRows = data ? [...data.by_feature].sort((left, right) => right.requests - left.requests) : [];
+  const maxModelRequests = Math.max(...modelRows.map((item) => item.requests), 1);
+  return <>
+    <Header title="AI 使用情况" description="OpenRouter 模型调用看板，按 UTC 日期聚合真实请求、Token 与费用。" action={<button className={styles.button} type="button" onClick={() => void result.refetch()}><RefreshCw size={15} aria-hidden="true" />刷新用量</button>} />
+    <Box className={styles.usageFilterPanel} title="查询范围" action={<span className={styles.muted}>数据来源：OpenRouter 用量记录</span>}>
+      <div className={styles.panelBody}>
+        <div className={styles.usageToolbar}>
+          <div className={styles.actions} aria-label="时间范围">{[7, 30, 90].map((value) => <button key={value} className={`${styles.button} ${days === value ? styles.primaryButton : ""}`} type="button" aria-pressed={days === value} onClick={() => updateQuery({ days: String(value) })}>{tr("最近 {0} 天", { 0: value })}</button>)}</div>
+          <span className={styles.subtle}>{data ? `${formatDateTime(data.since)} — ${formatDateTime(data.until)} UTC` : "正在读取范围…"}</span>
+        </div>
+        <div className={styles.usageFilterGrid}>
+          <UserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
+          <form className={styles.usageInlineForm} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}>
+            <Field label="功能"><input className={styles.input} name="feature" maxLength={100} defaultValue={filters.feature ?? ""} placeholder="例如：chat" /></Field>
+            <Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} placeholder="例如：provider/model" /></Field>
+            <div className={styles.usageFormActions}><button className={styles.primaryButton} type="submit"><ListFilter size={15} aria-hidden="true" />查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></div>
+          </form>
+        </div>
+      </div>
+    </Box>
     {result.isFetching && <p role="status">正在读取用量…</p>}<ErrorBox error={result.error} retry={() => void result.refetch()} />
-    {data && <><Box title="用量汇总"><div className={styles.panelBody}><p>范围：{formatDateTime(data.since)} 至 {formatDateTime(data.until)}（UTC 日历窗口）</p><p>请求总数：{data.requests} · 成功：{data.succeeded} · 失败：{data.failed}</p><p>输入 Token：{data.input_tokens} · 输出 Token：{data.output_tokens}</p><p>费用：{costs(data.cost_by_currency)}</p>{data.unpriced_requests > 0 && <p>{data.unpriced_requests} 次调用尚无完整计费数据。</p>}{data.incomplete_token_records > 0 && <p>{data.incomplete_token_records} 次调用的 Token 记录不完整。</p>}<p>{data.aggregation_scope}</p></div></Box><UsageTable title="按日期" items={data.daily} /><UsageTable title="按功能" items={data.by_feature} /><UsageTable title="按模型" items={data.by_model} /></>}
+    {data && <>
+      <div className={`${styles.metrics} ${styles.usageMetrics}`} aria-label="用量关键指标">
+        <Metric label="请求总数" value={number(data.requests)} hint={`${number(data.succeeded)} 次成功 · ${number(data.failed)} 次失败`} icon={Activity} />
+        <Metric label="总费用" value={metricCost(data.cost_by_currency, data.unpriced_requests, data.requests)} hint="按币种累计已记录费用" icon={Coins} tone="green" />
+        <Metric label="总 Token" value={number(data.input_tokens + data.output_tokens)} hint={`输入 ${number(data.input_tokens)} · 输出 ${number(data.output_tokens)}`} icon={Layers3} tone="blue" />
+        <Metric label="成功率" value={rate(data.succeeded, data.requests)} hint="按请求结果统计" icon={Gauge} tone="blue" />
+        <Metric label="未计价记录" value={number(data.unpriced_requests)} hint={data.unpriced_requests ? "需要补充费用信息" : "计费记录完整"} icon={CircleAlert} tone={data.unpriced_requests ? "amber" : "green"} />
+      </div>
+      <Box title="用量汇总">
+        <div className={styles.panelBody}>
+          <p>{tr("范围：{0} 至 {1}（UTC 日历窗口）", { 0: formatDateTime(data.since), 1: formatDateTime(data.until) })}</p>
+          <p>{tr("请求总数：{0} · 成功：{1} · 失败：{2}", { 0: data.requests, 1: data.succeeded, 2: data.failed })}</p>
+          <p>{tr("输入 Token：{0} · 输出 Token：{1}", { 0: data.input_tokens, 1: data.output_tokens })}</p>
+          <p>{tr("费用：{0}", { 0: costs(data.cost_by_currency) })}</p>
+          {data.unpriced_requests > 0 && <p>{data.unpriced_requests} 次调用尚无完整计费数据。</p>}
+          {data.incomplete_token_records > 0 && <p>{data.incomplete_token_records} 次调用的 Token 记录不完整。</p>}
+          <p>{data.aggregation_scope}</p>
+        </div>
+      </Box>
+      <div className={styles.twoColumns}>
+        <Box title="调用趋势" action={<Badge tone="blue">{tr("最近 {0} 天", { 0: days })}</Badge>}>
+          <div className={styles.panelBody}>
+            <div className={styles.chartSummary}><span><strong>{number(data.requests)}</strong> 次请求</span><span><strong>{number(data.input_tokens + data.output_tokens)}</strong> Token</span></div>
+            {data.requests === 0 ? <Empty>当前筛选范围没有用量记录</Empty> : <div className={styles.usageChart} role="img" aria-label="按 UTC 日期统计的请求数趋势">{data.daily.map((item) => <div className={styles.usageBarColumn} key={item.date}><div className={styles.usageBarValue}>{item.requests || ""}</div><div className={styles.usageBarTrack}><div className={styles.usageBar} style={{ height: `${Math.max(item.requests ? 8 : 0, (item.requests / maxDailyRequests) * 100)}%` }} /></div><span>{item.date.slice(5)}</span></div>)}</div>}
+          </div>
+        </Box>
+        <Box title="数据质量" action={<Zap size={18} aria-hidden="true" color="#b77a02" />}>
+          <div className={styles.panelBody}>
+            <div className={styles.qualityRow}><span>成功请求</span><strong>{number(data.succeeded)}</strong><div className={styles.qualityTrack}><div className={styles.qualitySuccess} style={{ width: `${data.requests ? (data.succeeded / data.requests) * 100 : 0}%` }} /></div></div>
+            <div className={styles.qualityRow}><span>失败请求</span><strong>{number(data.failed)}</strong><div className={styles.qualityTrack}><div className={styles.qualityFailure} style={{ width: `${data.requests ? (data.failed / data.requests) * 100 : 0}%` }} /></div></div>
+            <div className={styles.qualityRow}><span>Token 不完整</span><strong>{number(data.incomplete_token_records)}</strong><div className={styles.qualityTrack}><div className={styles.qualityWarning} style={{ width: `${data.requests ? (data.incomplete_token_records / data.requests) * 100 : 0}%` }} /></div></div>
+            <p className={styles.chartNote}>{data.aggregation_scope}</p>
+          </div>
+        </Box>
+      </div>
+      <Box title="业务场景分布" action={<Badge tone="blue">按方案映射</Badge>}>
+        <div className={styles.scenarioGrid} aria-label="业务场景用量概览">{usageScenarioDefinitions.map((scenario, index) => {
+          const item = featureRows.find((row) => row.key === scenario.feature);
+          const hasData = Boolean(item && item.requests > 0);
+          return <article className={styles.scenarioCard} data-has-data={hasData} key={`${scenario.key}-card`}>
+            <div className={styles.scenarioCardTop}><span className={styles.scenarioIndex}>{String(index + 1).padStart(2, "0")}</span><Badge tone={hasData ? "green" : "gray"}>{hasData ? "有记录" : "暂无样本"}</Badge></div>
+            <h3>{scenario.label}</h3><p>{scenario.description}</p>
+            <div className={styles.scenarioStats}><div><strong>{item ? number(item.requests) : "—"}</strong><span>请求</span></div><div><strong>{item ? rate(item.succeeded, item.requests) : "—"}</strong><span>成功率</span></div><div><strong>{item ? number(item.input_tokens + item.output_tokens) : "—"}</strong><span>Token</span></div></div>
+          </article>;
+        })}</div>
+        <Table><thead><tr><th>业务场景</th><th>用途</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th></tr></thead><tbody>{usageScenarioDefinitions.map((scenario) => {
+          const item = featureRows.find((row) => row.key === scenario.feature);
+          return <tr key={scenario.key}><td><strong>{scenario.label}</strong><div className={styles.rowMeta}>{item ? `功能键：${scenario.feature}` : scenario.feature === "match_evidence" ? "群聊同步本身不调用模型" : "当前范围暂无调用"}</div></td><td>{scenario.description}</td><td>{item ? number(item.requests) : "—"}</td><td>{item ? rate(item.succeeded, item.requests) : "—"}</td><td>{item ? number(item.input_tokens + item.output_tokens) : "—"}</td><td>{item ? costs(item.cost_by_currency) : "—"}</td></tr>;
+        })}</tbody></Table>
+        <div className={styles.panelBody}><p className={styles.chartNote}>群聊记录同步属于来源接入，会记录同步结果但不会产生 OpenRouter 费用。只有群聊内容进入证据匹配等 AI 流程后，才会计入模型用量。</p></div>
+      </Box>
+      <div className={styles.equalColumns}>
+        <Box title="模型调用分析" action={<Badge tone="purple">OpenRouter</Badge>}>
+          <div className={styles.panelBody}>
+            {!modelRows.length ? <Empty>当前范围没有模型调用记录</Empty> : <div className={styles.breakdownList}>{modelRows.map((item) => <div className={styles.breakdownRow} key={item.key}><div className={styles.breakdownHeader}><span className={styles.breakdownName}>{item.key}</span><strong>{number(item.requests)}</strong></div><div className={styles.breakdownTrack}><div className={styles.breakdownFill} style={{ width: `${(item.requests / maxModelRequests) * 100}%` }} /></div><div className={styles.breakdownMeta}><span>{rate(item.succeeded, item.requests)} 成功率</span><span>{number(item.input_tokens + item.output_tokens)} Token</span><span>{costs(item.cost_by_currency)}</span></div></div>)}</div>}
+          </div>
+        </Box>
+        <Box title="功能分布" action={<BarChart3 size={18} aria-hidden="true" color="#1767e7" />}>
+          {featureRows.length ? <Table><thead><tr><th>功能</th><th>请求</th><th>成功率</th><th>费用</th></tr></thead><tbody>{featureRows.map((item) => <tr key={item.key}><td>{item.key}</td><td>{number(item.requests)}</td><td>{rate(item.succeeded, item.requests)}</td><td>{costs(item.cost_by_currency)}</td></tr>)}</tbody></Table> : <Empty>当前范围没有功能调用记录</Empty>}
+        </Box>
+      </div>
+      <UsageTable title="按功能明细" items={data.by_feature} />
+      <UsageTable title="按日期明细" items={data.daily} />
+    </>}
   </>;
 }
 

@@ -188,7 +188,7 @@ class FeishuClient:
         return bytes(data)
 
     def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]:
-        """列出机器人所在的群（只读），用于让用户从下拉列表里选群，而不是手动输入群 ID。"""
+        """列出机器人所在的群（只读），用于校验用户提交的群聊 ID。"""
         params: dict[str, Any] = {"page_size": PAGE_SIZE}
         if page_token:
             params["page_token"] = page_token
@@ -330,8 +330,10 @@ def _content_hash(msg_type: str, text: str, deleted: bool, attachments=()) -> st
 # ------------------------------------------------------------------ 绑定与同步
 
 
-def link_chat(session: Session, actor: User, project_id: UUID, chat_id: str) -> FeishuChatLink:
-    """项目负责人绑定一个飞书群。重复绑定同一个群是幂等的。"""
+def link_chat(
+    session: Session, actor: User, project_id: UUID, chat_id: str, reader: FeishuReader | None
+) -> FeishuChatLink:
+    """项目负责人绑定机器人可读取的群。重复绑定同一个群是幂等的。"""
     permissions.require_project_leader(session, actor, project_id, write=True)
     if not _CHAT_ID.fullmatch(chat_id or ""):
         raise ApiError(422, "INVALID_FEISHU_CHAT", "飞书群 ID 格式不正确。")
@@ -342,6 +344,12 @@ def link_chat(session: Session, actor: User, project_id: UUID, chat_id: str) -> 
     )
     if existing is not None:
         return existing
+    if all(chat.chat_id != chat_id for chat in _list_bot_chats(reader)):
+        raise ApiError(
+            422,
+            "FEISHU_CHAT_NOT_AVAILABLE",
+            "机器人当前无法访问此群，请确认机器人已加入并检查群聊 ID。",
+        )
     link = FeishuChatLink(id=uuid4(), project_id=project_id, chat_id=chat_id, linked_by_id=actor.id)
     session.add(link)
     session.flush()
@@ -359,8 +367,12 @@ def link_chat(session: Session, actor: User, project_id: UUID, chat_id: str) -> 
 def list_available_chats(
     session: Session, actor: User, project_id: UUID, reader: FeishuReader | None
 ) -> list[FeishuChatItem]:
-    """项目负责人查看机器人所在的群，供绑定时选择。最多返回 200 个群，防止无限分页。"""
+    """项目负责人查看机器人所在的群，供诊断与兼容旧客户端。最多返回 200 个群。"""
     permissions.require_project_leader(session, actor, project_id, write=False)
+    return _list_bot_chats(reader)
+
+
+def _list_bot_chats(reader: FeishuReader | None) -> list[FeishuChatItem]:
     client = _require_reader(reader)
     chats: list[FeishuChatItem] = []
     token: str | None = None

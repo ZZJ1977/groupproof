@@ -1,0 +1,924 @@
+"""B-owned tables. Core course/group/project tables live in app.db.models.core."""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import JSON
+
+from app.db.base import Base
+from app.db.models.core import TimestampMixin
+
+DocumentJSON = JSON().with_variant(JSONB(), "postgresql")
+
+
+class BCommandReceipt(Base):
+    """Idempotency receipts for every B write (one per actor + operation + key)."""
+
+    __tablename__ = "b_command_receipts"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    operation: Mapped[str] = mapped_column(String(100))
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    status_code: Mapped[int] = mapped_column(SmallInteger)
+    response_json: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_id", "operation", "idempotency_key", name="uq_b_command_receipts_key"
+        ),
+    )
+
+
+class BCourseJoinPolicy(Base):
+    """How students join a course: directly with the invite code, or after teacher approval.
+
+    Absent row = ``direct``. Courses have no such setting elsewhere (C's
+    ``grouping_mode`` governs group formation, not course admission).
+    """
+
+    __tablename__ = "b_course_join_policies"
+
+    course_id: Mapped[UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), primary_key=True
+    )
+    mode: Mapped[str] = mapped_column(String(16), server_default=text("'direct'"))
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint("mode IN ('direct', 'approval')", name="ck_b_course_join_policies_mode"),
+    )
+
+
+class BCourseJoinRequest(Base):
+    __tablename__ = "b_course_join_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    message: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'cancelled')",
+            name="ck_b_course_join_requests_status",
+        ),
+        CheckConstraint(
+            "status <> 'rejected' OR length(trim(coalesce(decision_reason, ''))) > 0",
+            name="ck_b_course_join_requests_reject_reason",
+        ),
+        Index(
+            "uq_b_course_join_requests_pending",
+            "course_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+        Index("ix_b_course_join_requests_course_status", "course_id", "status"),
+    )
+
+
+class BGroupInvitation(Base):
+    """B2-03. ``pending`` waits for the invitee (before the formation deadline);
+    ``awaiting_teacher`` waits for a course teacher (after the deadline)."""
+
+    __tablename__ = "b_group_invitations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    inviter_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    invitee_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'awaiting_teacher', 'accepted', 'declined', "
+            "'approved', 'rejected', 'cancelled')",
+            name="ck_b_group_invitations_status",
+        ),
+        CheckConstraint("inviter_id <> invitee_id", name="ck_b_group_invitations_not_self"),
+        Index(
+            "uq_b_group_invitations_open",
+            "group_id",
+            "invitee_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'awaiting_teacher')"),
+            sqlite_where=text("status IN ('pending', 'awaiting_teacher')"),
+        ),
+        Index("ix_b_group_invitations_invitee_status", "invitee_id", "status"),
+    )
+
+
+class BLeaderChangeRequest(Base):
+    """B2-05. Every member except the requester must confirm; the leader switches
+    when the last one does. ``required_user_ids`` is fixed when the request starts."""
+
+    __tablename__ = "b_leader_change_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    previous_leader_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    candidate_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    reason: Mapped[str] = mapped_column(Text)
+    required_user_ids: Mapped[list] = mapped_column(DocumentJSON)
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'cancelled')",
+            name="ck_b_leader_change_requests_status",
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="ck_b_leader_change_requests_reason"),
+        Index(
+            "uq_b_leader_change_requests_pending",
+            "group_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+
+class BLeaderChangeConfirmation(Base):
+    __tablename__ = "b_leader_change_confirmations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_leader_change_requests.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    decision: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("request_id", "user_id", name="uq_b_leader_change_confirmations_user"),
+        CheckConstraint(
+            "decision IN ('confirm', 'reject')", name="ck_b_leader_change_confirmations_decision"
+        ),
+    )
+
+
+class BCourseProjectTemplate(Base):
+    """Per-course milestone template copied into each new project (B3-01).
+
+    ``milestones`` is a list of ``{title, description, deadline}``. Courses had
+    no stored template before; teachers maintain it through B's endpoint.
+    """
+
+    __tablename__ = "b_course_project_templates"
+
+    course_id: Mapped[UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), primary_key=True
+    )
+    milestones: Mapped[list] = mapped_column(DocumentJSON)
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class BProjectDraft(Base):
+    """Server-side wizard draft for page 35, one per group (survives browsers)."""
+
+    __tablename__ = "b_project_drafts"
+
+    group_id: Mapped[UUID] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    payload: Mapped[dict] = mapped_column(DocumentJSON)
+    step: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (CheckConstraint("step BETWEEN 0 AND 10", name="ck_b_project_drafts_step"),)
+
+
+class BProjectSchedule(Base):
+    """B3-03 planned start date (the planned end is ``projects.final_deadline``).
+
+    Kept in a B table so the shared ``projects`` table keeps its columns.
+    """
+
+    __tablename__ = "b_project_schedules"
+
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    start_date: Mapped[date] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BProjectMaterial(Base):
+    """B3-04 project materials: pasted text, or an A4-04 upload whose text comes
+    from A4-05 (``extract_status`` mirrors ``MaterialTextPort``)."""
+
+    __tablename__ = "b_project_materials"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))
+    title: Mapped[str] = mapped_column(String(255))
+    text_content: Mapped[str | None] = mapped_column(Text)
+    receipt_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("a_upload_receipts.id", ondelete="RESTRICT")
+    )
+    extract_status: Mapped[str] = mapped_column(String(16))
+    extract_reason: Mapped[str | None] = mapped_column(String(300))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('text', 'file')", name="ck_b_project_materials_kind"),
+        CheckConstraint(
+            "extract_status IN ('ready', 'pending', 'failed', 'unavailable')",
+            name="ck_b_project_materials_extract",
+        ),
+        CheckConstraint(
+            "(kind = 'text' AND text_content IS NOT NULL AND receipt_id IS NULL) "
+            "OR (kind = 'file' AND receipt_id IS NOT NULL)",
+            name="ck_b_project_materials_source",
+        ),
+        UniqueConstraint("project_id", "receipt_id", name="uq_b_project_materials_receipt"),
+        Index("ix_b_project_materials_project", "project_id", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------- B-4 analysis and baseline
+
+
+class BAnalysisRun(Base):
+    """B3-05 one requirements analysis (A7-03) over the project's materials.
+
+    ``processing`` while it runs; at most one per project at a time.
+    ``unavailable`` means the AI service could not be used (page offers manual entry).
+    """
+
+    __tablename__ = "b_analysis_runs"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'processing'"))
+    material_ids: Mapped[list] = mapped_column(DocumentJSON)
+    summary: Mapped[dict | None] = mapped_column(DocumentJSON)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(String(300))
+    is_placeholder: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'succeeded', 'failed', 'unavailable')",
+            name="ck_b_analysis_runs_status",
+        ),
+        Index(
+            "uq_b_analysis_runs_processing",
+            "project_id",
+            unique=True,
+            postgresql_where=text("status = 'processing'"),
+            sqlite_where=text("status = 'processing'"),
+        ),
+        Index("ix_b_analysis_runs_project", "project_id", "created_at"),
+    )
+
+
+class BRequirementMeta(Base):
+    """Where a requirement came from, so re-analysis replaces only untouched AI items.
+
+    ``excluded`` = dropped by a conflict decision; kept for history, left out of
+    the baseline snapshot. ``ai_key`` fingerprints the AI suggestion so an edited
+    copy is not re-added by the next analysis.
+    """
+
+    __tablename__ = "b_requirement_meta"
+
+    requirement_id: Mapped[UUID] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    origin: Mapped[str] = mapped_column(String(8))
+    edited_by_human: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    excluded: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    ai_key: Mapped[str | None] = mapped_column(String(64))
+    analysis_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("b_analysis_runs.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        CheckConstraint("origin IN ('ai', 'manual')", name="ck_b_requirement_meta_origin"),
+        Index("ix_b_requirement_meta_project", "project_id", "origin"),
+    )
+
+
+class BModuleMeta(Base):
+    """Origin of a functional module (AI suggestion or added by a member)."""
+
+    __tablename__ = "b_module_meta"
+
+    module_id: Mapped[UUID] = mapped_column(
+        ForeignKey("functional_modules.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    origin: Mapped[str] = mapped_column(String(8))
+    edited_by_human: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+    __table_args__ = (
+        CheckConstraint("origin IN ('ai', 'manual')", name="ck_b_module_meta_origin"),
+    )
+
+
+class BBaselineScope(Base):
+    """B3-07 project scope (in / out), written before the baseline is submitted."""
+
+    __tablename__ = "b_baseline_scopes"
+
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    in_scope: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    out_of_scope: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class BBaselineChecklistItem(Base):
+    """B3-07 manual review ticks (the rule-based items are computed, not stored)."""
+
+    __tablename__ = "b_baseline_checklist_items"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    item_key: Mapped[str] = mapped_column(String(40))
+    checked_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "item_key", name="uq_b_baseline_checklist_items_key"),
+    )
+
+
+# ---------------------------------------------------------------- B-5 requirement management
+
+
+class BProjectCounter(Base):
+    """Per-project sequences; requirement numbers only grow and are never reused."""
+
+    __tablename__ = "b_project_counters"
+
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    requirement_seq: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    task_seq: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+
+class BRequirementCode(Base):
+    """B4-01 requirement number (``R-001``), unique inside its project."""
+
+    __tablename__ = "b_requirement_codes"
+
+    requirement_id: Mapped[UUID] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (UniqueConstraint("project_id", "seq", name="uq_b_requirement_codes_seq"),)
+
+
+class BRequirementVersion(Base):
+    """B4-02 one saved state of a requirement; changes after the freeze carry a reason."""
+
+    __tablename__ = "b_requirement_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    reason: Mapped[str | None] = mapped_column(Text)
+    after_freeze: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "version_no", name="uq_b_requirement_versions_no"),
+        CheckConstraint(
+            "NOT after_freeze OR length(trim(coalesce(reason, ''))) > 0",
+            name="ck_b_requirement_versions_reason",
+        ),
+    )
+
+
+class BCriterionRecheck(Base):
+    """B4-02 an acceptance criterion whose requirement changed and needs checking again.
+
+    ``verification_notified`` records whether D accepted the invalidation
+    (``VerificationPort``); while D is unavailable it stays false.
+    """
+
+    __tablename__ = "b_criterion_rechecks"
+
+    criterion_id: Mapped[UUID] = mapped_column(
+        ForeignKey("acceptance_criteria.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    requirement_version_no: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(Text)
+    flagged_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    flagged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    verification_notified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_b_criterion_rechecks_task", "task_id"),)
+
+
+# ---------------------------------------------------------------- B-6 task planning
+
+
+class BTaskMeta(Base):
+    """B5-01 plan facts B keeps per task: number (``T-001``) and content version.
+
+    ``content_version`` counts saved plan definitions; C's ``tasks.lock_version``
+    also moves on execution writes, so it cannot tell a confirmation what changed.
+    """
+
+    __tablename__ = "b_task_meta"
+
+    task_id: Mapped[UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+    content_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    origin: Mapped[str] = mapped_column(String(16), server_default=text("'manual'"))
+    suggestion_id: Mapped[UUID | None] = mapped_column(Uuid)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "seq", name="uq_b_task_meta_seq"),
+        CheckConstraint("origin IN ('manual', 'ai')", name="ck_b_task_meta_origin"),
+    )
+
+
+class BTaskVersion(Base):
+    """B5-01 one saved definition of a task (every save that changes something)."""
+
+    __tablename__ = "b_task_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    plan_version_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("plan_versions.id", ondelete="SET NULL")
+    )
+    version_no: Mapped[int] = mapped_column(Integer)
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("task_id", "version_no", name="uq_b_task_versions_no"),)
+
+
+class BTaskSuggestion(Base):
+    """B5-03 an AI task suggestion; it becomes a task only when someone adopts it.
+
+    ``fingerprint`` = requirement + normalised title, unique per project, so
+    generating twice never lists the same suggestion twice (even after it was
+    adopted or dismissed).
+    """
+
+    __tablename__ = "b_task_suggestions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    acceptance_criteria: Mapped[list] = mapped_column(DocumentJSON)
+    provider: Mapped[str] = mapped_column(String(40))
+    is_placeholder: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    adopted_task_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    handled_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "fingerprint", name="uq_b_task_suggestions_fingerprint"),
+        CheckConstraint(
+            "status IN ('pending', 'adopted', 'dismissed')", name="ck_b_task_suggestions_status"
+        ),
+    )
+
+
+class BPlanConfirmationSnapshot(Base):
+    """B5-04 the task versions a member confirmed; any change makes the confirmation stale."""
+
+    __tablename__ = "b_plan_confirmation_snapshots"
+
+    confirmation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("plan_confirmations.id", ondelete="CASCADE"), primary_key=True
+    )
+    task_versions: Mapped[dict] = mapped_column(DocumentJSON)
+
+
+class BCriterionInvalidation(Base):
+    """B5-02 a request to D to void old results after a criterion changed.
+
+    ``accepted`` is D's answer; false while D is unavailable, so it can be resent.
+    """
+
+    __tablename__ = "b_criterion_invalidations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    criterion_ids: Mapped[list] = mapped_column(DocumentJSON)
+    task_content_version: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_b_criterion_invalidations_task", "task_id"),)
+
+
+# ---------------------------------------------------------------- B-8 milestones
+
+
+class BMilestoneDeliverable(Base):
+    """B7-02 a deliverable of a milestone; only the leader ticks it."""
+
+    __tablename__ = "b_milestone_deliverables"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    milestone_id: Mapped[UUID] = mapped_column(ForeignKey("milestones.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(200))
+    sort_order: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    done: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    done_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # C's file id; no FK so C's own migrations stay independent of B.
+    # B checks the file belongs to the project when it is written.
+    file_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (Index("ix_b_milestone_deliverables_milestone", "milestone_id"),)
+
+
+class BMilestoneDeliverableEvent(Base):
+    """B7-02 every tick and untick, so unticking also leaves a record."""
+
+    __tablename__ = "b_milestone_deliverable_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    deliverable_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_milestone_deliverables.id", ondelete="CASCADE")
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    # C's file id; no FK so C's own migrations stay independent of B.
+    # B checks the file belongs to the project when it is written.
+    file_id: Mapped[UUID | None] = mapped_column(Uuid)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('checked', 'unchecked')", name="ck_b_milestone_deliverable_events_action"
+        ),
+    )
+
+
+class BMilestoneDateChange(Base):
+    """B7-04 a deadline change with its reason."""
+
+    __tablename__ = "b_milestone_date_changes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    milestone_id: Mapped[UUID] = mapped_column(ForeignKey("milestones.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    old_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    new_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(Text)
+    changed_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("length(trim(reason)) > 0", name="ck_b_milestone_date_changes_reason"),
+    )
+
+
+# ---------------------------------------------------------------- B-8 member removal / leaving
+
+
+class BMembershipChangeRequest(Base):
+    """B2-04/B2-06 a removal (by the leader) or a leave (by the member).
+
+    Before the course's formation deadline it applies at once (``applied``);
+    after it the teacher decides (B2-07).
+    """
+
+    __tablename__ = "b_membership_change_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
+    change_type: Mapped[str] = mapped_column(String(16))
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    reason: Mapped[str] = mapped_column(Text)
+    teacher_comment: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "change_type IN ('remove', 'leave')", name="ck_b_membership_change_requests_type"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'needs_info', 'approved', 'rejected', 'applied')",
+            name="ck_b_membership_change_requests_status",
+        ),
+        Index(
+            "uq_b_membership_change_requests_open",
+            "group_id",
+            "member_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'needs_info')"),
+        ),
+    )
+
+
+class BTaskHandover(Base):
+    """B2-04/B2-06 who takes over each unfinished task of the leaving member."""
+
+    __tablename__ = "b_task_handovers"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_membership_change_requests.id", ondelete="CASCADE")
+    )
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    from_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    to_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("request_id", "task_id", name="uq_b_task_handovers_task"),)
+
+
+class BCourseRuleVersion(Base):
+    """Versioned course rules snapshot created and published by teachers."""
+
+    __tablename__ = "b_course_rule_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'draft'"))
+    rules_json: Mapped[dict] = mapped_column(DocumentJSON, default=dict)
+    change_summary: Mapped[str | None] = mapped_column(Text)
+    published_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')", name="ck_rule_version_status"
+        ),
+        UniqueConstraint("course_id", "version_no", name="uq_rule_version_course_no"),
+    )
+
+
+class BCourseFileFolder(Base):
+    """Teacher-managed hierarchical folders for course materials."""
+
+    __tablename__ = "b_course_file_folders"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    parent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("b_course_file_folders.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    sort_order: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_b_course_file_folders_course_id", "course_id"),)
+
+
+class BCourseMaterialItem(TimestampMixin, Base):
+    """Teacher-uploaded course material with visibility scope and versioning."""
+
+    __tablename__ = "b_course_material_items"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    folder_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("b_course_file_folders.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    visibility: Mapped[str] = mapped_column(String(20), server_default=text("'all'"))
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'published'"))
+    latest_version_no: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    mime_type: Mapped[str] = mapped_column(
+        String(200), server_default=text("'application/octet-stream'")
+    )
+    size_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+
+    __table_args__ = (
+        CheckConstraint(
+            "visibility IN ('all', 'grouped', 'staff')", name="ck_b_material_visibility"
+        ),
+        CheckConstraint("status IN ('draft', 'published')", name="ck_b_material_status"),
+        CheckConstraint("latest_version_no > 0", name="ck_b_material_latest_v"),
+        Index("ix_b_course_material_items_course_id", "course_id"),
+        Index("ix_b_course_material_items_folder_id", "folder_id"),
+    )
+
+
+class BCourseMaterialVersion(Base):
+    """Immutable version snapshot of a course material upload."""
+
+    __tablename__ = "b_course_material_versions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    material_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_course_material_items.id", ondelete="CASCADE")
+    )
+    version_no: Mapped[int] = mapped_column(Integer)
+    original_name: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(
+        String(200), server_default=text("'application/octet-stream'")
+    )
+    size_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    checksum: Mapped[str] = mapped_column(String(64), server_default=text("''"))
+    storage_key: Mapped[str | None] = mapped_column(String(500))
+    content_base64: Mapped[str | None] = mapped_column(Text)
+    change_note: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("material_id", "version_no", name="uq_b_material_version"),
+        CheckConstraint("version_no > 0", name="ck_b_material_version_no"),
+        Index("ix_b_course_material_versions_material_id", "material_id"),
+    )
+
+
+class BCourseAnnouncement(TimestampMixin, Base):
+    """Teacher-published course announcements with priority and pinning."""
+
+    __tablename__ = "b_course_announcements"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(16), server_default=text("'normal'"))
+    is_pinned: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'published'"))
+    published_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "priority IN ('normal', 'important', 'urgent')", name="ck_b_announcement_priority"
+        ),
+        CheckConstraint("status IN ('draft', 'published')", name="ck_b_announcement_status"),
+        Index("ix_b_course_announcements_course_id", "course_id"),
+    )
+
+
+class BAnnouncementRead(Base):
+    """Per-student read receipt for a course announcement."""
+
+    __tablename__ = "b_announcement_reads"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    announcement_id: Mapped[UUID] = mapped_column(
+        ForeignKey("b_course_announcements.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("announcement_id", "user_id", name="uq_b_announcement_read"),
+        Index("ix_b_announcement_reads_user_id", "user_id"),
+    )
+
+
+class BCourseAppeal(TimestampMixin, Base):
+    """Student appeal regarding contribution, task evaluation, or grading within a course."""
+
+    __tablename__ = "b_course_appeals"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    appellant_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    appeal_type: Mapped[str] = mapped_column(String(32), server_default=text("'contribution'"))
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    supplement_text: Mapped[str | None] = mapped_column(Text)
+    evidence_json: Mapped[list] = mapped_column(DocumentJSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), server_default=text("'pending'"))
+    resolved_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "appeal_type IN ('contribution', 'task', 'score', 'other')",
+            name="ck_b_course_appeal_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'need_supplement', 'accepted', 'rejected')",
+            name="ck_b_course_appeal_status",
+        ),
+        Index("ix_b_course_appeals_course_id", "course_id"),
+        Index("ix_b_course_appeals_project_id", "project_id"),
+    )
+
+
+class BCourseAppealDecision(Base):
+    """Append-only audit and contribution adjustment log for a course appeal."""
+
+    __tablename__ = "b_course_appeal_decisions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    appeal_id: Mapped[UUID] = mapped_column(ForeignKey("b_course_appeals.id", ondelete="CASCADE"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(32))
+    reason: Mapped[str] = mapped_column(Text)
+    snapshot_id: Mapped[UUID | None] = mapped_column(Uuid)
+    adjustments_json: Mapped[list | None] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('reject', 'accept', 'request_supplement', 'supplement_submitted')",
+            name="ck_b_appeal_decision_action",
+        ),
+        Index("ix_b_course_appeal_decisions_appeal_id", "appeal_id"),
+    )

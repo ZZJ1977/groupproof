@@ -26,17 +26,8 @@ from app.modules.d.models import (
 FORMULA = "formal-task-weight-x-confirmed-responsibility-v1"
 
 
-def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | None:
-    get_project_access(session, user, project_id)
-    snapshot = session.scalar(
-        select(ContributionSnapshot)
-        .where(ContributionSnapshot.project_id == project_id)
-        .order_by(ContributionSnapshot.version_no.desc())
-        .limit(1)
-    )
-    if snapshot is None:
-        return None
-    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+def current_basis_hash(session: Session, project_id: UUID) -> str:
+    """Read current formal inputs without changing historical calculations."""
     current_basis = []
     outcomes = session.scalars(
         select(FormalOutcome)
@@ -61,7 +52,40 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
                 },
             }
         )
-    current_hash = hashlib.sha256(json.dumps(current_basis, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(current_basis, sort_keys=True).encode()).hexdigest()
+
+
+def current_frozen_snapshot(session: Session, project_id: UUID) -> ContributionSnapshot | None:
+    """A new report may reference only a frozen calculation of current outcomes."""
+    snapshot = session.scalar(
+        select(ContributionSnapshot)
+        .where(
+            ContributionSnapshot.project_id == project_id,
+            ContributionSnapshot.status == "frozen",
+        )
+        .order_by(ContributionSnapshot.version_no.desc())
+        .limit(1)
+    )
+    if snapshot is None:
+        return None
+    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+    if calculation.input_hash != current_basis_hash(session, project_id):
+        return None
+    return snapshot
+
+
+def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | None:
+    get_project_access(session, user, project_id)
+    snapshot = session.scalar(
+        select(ContributionSnapshot)
+        .where(ContributionSnapshot.project_id == project_id)
+        .order_by(ContributionSnapshot.version_no.desc())
+        .limit(1)
+    )
+    if snapshot is None:
+        return None
+    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+    current_hash = current_basis_hash(session, project_id)
     items = session.execute(
         select(ContributionItem, User)
         .join(User, User.id == ContributionItem.user_id)
@@ -119,12 +143,59 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
     return {
         "id": str(snapshot.id),
         "version": snapshot.version_no,
+        "status": snapshot.status,
+        "frozen_at": snapshot.frozen_at.isoformat() if snapshot.frozen_at else None,
         "formula_version": calculation.formula_version,
         "calculated_at": calculation.calculated_at.isoformat(),
         "input_hash": calculation.input_hash,
         "stale": calculation.input_hash != current_hash,
         "members": members,
     }
+
+
+def freeze_snapshot(session: Session, project_id: UUID, user: User) -> dict:
+    access = get_project_access(session, user, project_id, lock=True)
+    if not (access.leader or access.teacher):
+        raise ApiError(
+            403,
+            "CONTRIBUTION_FREEZE_DENIED",
+            "Only the project leader or course teacher may freeze contribution.",
+        )
+    if access.project.lifecycle != "active" or (access.course and access.course.status != "active"):
+        raise ApiError(409, "PROJECT_READ_ONLY", "Project or course is read-only.")
+    snapshot = session.scalar(
+        select(ContributionSnapshot)
+        .where(ContributionSnapshot.project_id == project_id)
+        .order_by(ContributionSnapshot.version_no.desc())
+        .limit(1)
+    )
+    if snapshot is None:
+        raise ApiError(
+            409,
+            "NO_CONTRIBUTION_SNAPSHOT",
+            "Calculate contribution from formal outcomes before freezing.",
+        )
+    calculation = session.get(ContributionCalculation, snapshot.calculation_id)
+    if calculation is None or calculation.input_hash != current_basis_hash(session, project_id):
+        raise ApiError(
+            409,
+            "CONTRIBUTION_STALE",
+            "Formal outcomes changed; recalculate contribution before freezing.",
+        )
+    if snapshot.status != "frozen":
+        prior_frozen = session.scalars(
+            select(ContributionSnapshot).where(
+                ContributionSnapshot.project_id == project_id,
+                ContributionSnapshot.status == "frozen",
+                ContributionSnapshot.id != snapshot.id,
+            )
+        ).all()
+        for old in prior_frozen:
+            old.status = "superseded"
+        snapshot.status = "frozen"
+        snapshot.frozen_at = datetime.now(UTC)
+        session.commit()
+    return latest_snapshot(session, project_id, user)
 
 
 def calculate(session: Session, project_id: UUID, user: User) -> dict:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -19,8 +20,10 @@ from app.db.models import (
     AcceptanceCriterion,
     Course,
     FunctionalModule,
+    GroupMember,
     Milestone,
     Project,
+    ProjectGroup,
     ProjectMember,
     Task,
     TaskAssignee,
@@ -30,28 +33,42 @@ from app.modules.c.models import Evidence, EvidenceCriterion, EvidenceSourceSnap
 from app.modules.d import (
     acceptance,
     contribution,
+    contribution_week7,
     integrity,
+    project_lifecycle,
     report_tasks,
     reporting,
     risk_checks,
+    teacher_course,
     teacher_overview,
+    teacher_reports,
+    teacher_workspace,
     verification,
 )
 from app.modules.d.models import (
     AcceptanceDecision,
+    ContributionAppeal,
+    ContributionArchive,
     ContributionCalculation,
     ContributionItem,
     ContributionItemTask,
     ContributionSnapshot,
+    CourseGrade,
+    CourseRuleConfirmation,
+    CourseRuleVersion,
+    CourseTemplateApplication,
     CriterionResult,
     FormalOutcome,
     IntegrityCheck,
+    ProjectArchive,
+    ProjectReopen,
     Report,
     ReportArtifact,
     ReportDownloadLink,
     ReportReview,
     ReportSnapshot,
     Risk,
+    TeacherReportComment,
     VerificationRun,
 )
 
@@ -72,12 +89,16 @@ def db():
         "courses",
         "course_staff",
         "groups",
+        "group_members",
         "projects",
         "functional_modules",
+        "requirements",
         "tasks",
         "milestones",
         "project_members",
         "task_milestones",
+        "task_requirements",
+        "task_dependencies",
         "progress_events",
         "task_assignees",
         "acceptance_criteria",
@@ -96,6 +117,22 @@ def db():
         "contribution_snapshots",
         "contribution_items",
         "contribution_item_tasks",
+        "collaboration_notes",
+        "contribution_appeals",
+        "appeal_decisions",
+        "contribution_archives",
+        "project_archives",
+        "project_reopens",
+        "course_rule_versions",
+        "course_rule_confirmations",
+        "course_template_applications",
+        "teacher_report_comments",
+        "course_grades",
+        "a_github_repo_links",
+        "a_feishu_chat_links",
+        "a_action_items",
+        "a_notifications",
+        "c_course_lifecycle_decisions",
         "reports",
         "report_snapshots",
         "report_artifacts",
@@ -524,6 +561,7 @@ def test_human_acceptance_requires_every_responsible_and_real_shares(db, scope, 
     )
     db.add(second)
     db.flush()
+    db.flush()
     db.add_all(
         [
             TaskAssignee(task_id=scope.task.id, user_id=scope.user.id, role="responsible"),
@@ -827,6 +865,35 @@ def test_report_worker_persists_real_pdf_and_status(db, scope, monkeypatch):
 
 
 def test_preview_worker_freezes_one_report_snapshot(db, scope, monkeypatch):
+    calculation = ContributionCalculation(
+        project_id=scope.project.id,
+        formula_version="test-v1",
+        basis_version="test",
+        calculated_by=scope.user.id,
+        input_hash=contribution.current_basis_hash(db, scope.project.id),
+    )
+    db.add(calculation)
+    db.flush()
+    contribution_snapshot = ContributionSnapshot(
+        project_id=scope.project.id,
+        calculation_id=calculation.id,
+        version_no=1,
+        status="frozen",
+        created_by=scope.user.id,
+    )
+    db.add(contribution_snapshot)
+    db.flush()
+    db.add(
+        ContributionItem(
+            snapshot_id=contribution_snapshot.id,
+            user_id=scope.user.id,
+            task_credit=100,
+            collaboration_credit=0,
+            share=100,
+            acceptance_rate=100,
+            status="formal",
+        )
+    )
     report = Report(
         id=uuid4(), project_id=scope.project.id, created_by=scope.user.id, status="generating"
     )
@@ -854,7 +921,34 @@ def test_preview_worker_freezes_one_report_snapshot(db, scope, monkeypatch):
     stored = db.get(ReportSnapshot, snapshot.id)
     assert stored.status == "generated"
     assert stored.data_snapshot["counts"]["tasks"] == 1
+    assert stored.contribution_snapshot_id == contribution_snapshot.id
+    assert (
+        db.scalar(
+            select(ContributionArchive.snapshot_id).where(
+                ContributionArchive.source_kind == "report",
+                ContributionArchive.source_id == snapshot.id,
+            )
+        )
+        == contribution_snapshot.id
+    )
     assert db.get(Report, report.id).status == "generated"
+    original_tasks = stored.data_snapshot["sections"]["tasks"]
+    scope.task.title = "Changed after generation"
+    db.commit()
+    report_tasks.generate_preview.run(str(snapshot.id), False)
+    db.expire_all()
+    assert db.get(ReportSnapshot, snapshot.id).data_snapshot["sections"]["tasks"] == original_tasks
+    assert (
+        len(
+            db.scalars(
+                select(ContributionArchive).where(
+                    ContributionArchive.source_kind == "report",
+                    ContributionArchive.source_id == snapshot.id,
+                )
+            ).all()
+        )
+        == 1
+    )
 
 
 def test_teacher_overview_uses_same_risk_count_and_course_authorization(db, scope):
@@ -947,3 +1041,437 @@ def test_report_restore_creates_new_version_and_download_link_expires(db, scope,
     db.commit()
     with pytest.raises(ApiError):
         reporting.download_export(scope.project.id, artifact.id, token, db, scope.user)
+
+
+def test_week7_notes_restore_and_adjustment_archive_preserves_old_shares(db, scope, monkeypatch):
+    second = User(
+        id=uuid4(),
+        name="Second",
+        username=f"s-{uuid4()}",
+        email=f"{uuid4()}@example.test",
+        college="Test",
+        global_role="student",
+        status="active",
+    )
+    db.add(second)
+    db.flush()
+    db.add_all(
+        [
+            ProjectMember(
+                id=uuid4(), project_id=scope.project.id, user_id=scope.user.id, role="leader"
+            ),
+            ProjectMember(
+                id=uuid4(), project_id=scope.project.id, user_id=second.id, role="member"
+            ),
+        ]
+    )
+    calculation = ContributionCalculation(
+        project_id=scope.project.id,
+        formula_version="test-v1",
+        basis_version="test",
+        calculated_by=scope.user.id,
+    )
+    db.add(calculation)
+    db.flush()
+    snapshot = ContributionSnapshot(
+        project_id=scope.project.id,
+        calculation_id=calculation.id,
+        version_no=1,
+        status="frozen",
+        created_by=scope.user.id,
+    )
+    db.add(snapshot)
+    db.flush()
+    db.add_all(
+        [
+            ContributionItem(
+                snapshot_id=snapshot.id,
+                user_id=scope.user.id,
+                task_credit=60,
+                collaboration_credit=0,
+                share=60,
+                acceptance_rate=100,
+                status="formal",
+            ),
+            ContributionItem(
+                snapshot_id=snapshot.id,
+                user_id=second.id,
+                task_credit=40,
+                collaboration_credit=0,
+                share=40,
+                acceptance_rate=100,
+                status="formal",
+            ),
+        ]
+    )
+    db.commit()
+    access = SimpleNamespace(leader=True, member=True, teacher=False, project=scope.project)
+    monkeypatch.setattr(contribution_week7, "get_project_access", lambda *a, **k: access)
+    request = SimpleNamespace(state=SimpleNamespace(request_id="week7-test"))
+    contribution_week7.save_note(
+        scope.project.id,
+        scope.user.id,
+        contribution_week7.NoteInput(body="Original"),
+        request,
+        db,
+        scope.user,
+    )
+    contribution_week7.save_note(
+        scope.project.id,
+        scope.user.id,
+        contribution_week7.NoteInput(body="Updated"),
+        request,
+        db,
+        scope.user,
+    )
+    contribution_week7.save_note(
+        scope.project.id,
+        scope.user.id,
+        contribution_week7.NoteInput(body="restore", restore_revision=1),
+        request,
+        db,
+        scope.user,
+    )
+    assert [
+        row["body"]
+        for row in contribution_week7.read_notes(
+            scope.project.id, scope.user.id, request, db, scope.user
+        ).data
+    ] == ["Original", "Updated", "Original"]
+    source_id = uuid4()
+    contribution_week7.archive_contribution(db, scope.project.id, "grade", source_id)
+    appeal = ContributionAppeal(
+        project_id=scope.project.id,
+        snapshot_id=snapshot.id,
+        member_id=scope.user.id,
+        task_id=scope.task.id,
+        evidence_id=uuid4(),
+        reason="Credit mismatch",
+        status="pending",
+    )
+    # A formal evidence row is needed for the appeal foreign key.
+    evidence = Evidence(
+        id=appeal.evidence_id,
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        author_id=scope.user.id,
+        title="Proof",
+        description="Proof",
+        source_type="manual",
+        status="formal",
+    )
+    db.add(evidence)
+    db.flush()
+    db.add(appeal)
+    db.flush()
+    revised = contribution_week7.adjusted_snapshot(db, appeal, Decimal("70"), scope.user.id)
+    db.commit()
+    shares = [
+        item.share
+        for item in db.scalars(
+            select(ContributionItem).where(ContributionItem.snapshot_id == revised.id)
+        )
+    ]
+    assert sum(shares) == 100
+    assert sorted(shares) == [30, 70]
+    archived = db.scalar(
+        select(ContributionArchive).where(ContributionArchive.source_id == source_id)
+    )
+    assert sorted(row["share"] for row in archived.data["members"]) == ["40.0000", "60.0000"]
+
+
+def test_week7_project_settings_archive_gate_and_reopen_provenance(db, scope, monkeypatch):
+    access = SimpleNamespace(leader=True, teacher=False, project=scope.project)
+    monkeypatch.setattr(project_lifecycle, "get_project_access", lambda *a, **k: access)
+    request = SimpleNamespace(state=SimpleNamespace(request_id="lifecycle-test"))
+    project_lifecycle.save_settings(
+        scope.project.id,
+        project_lifecycle.SettingsInput(name="Renamed", visibility="course", language="zh"),
+        request,
+        db,
+        scope.user,
+    )
+    assert scope.project.name == "Renamed"
+    assert scope.project.visibility == "course"
+    with pytest.raises(ApiError) as incomplete:
+        project_lifecycle.archive_project(scope.project.id, request, db, scope.user)
+    assert incomplete.value.code == "PROJECT_NOT_FINAL"
+    scope.project.lifecycle = "archived"
+    scope.project.archived_at = datetime.now(UTC)
+    db.add(
+        ProjectArchive(
+            project_id=scope.project.id,
+            actor_id=scope.user.id,
+            snapshot={"project": {"name": scope.project.name}},
+        )
+    )
+    db.add(
+        ProjectMember(id=uuid4(), project_id=scope.project.id, user_id=scope.user.id, role="leader")
+    )
+    db.add(
+        CourseRuleVersion(
+            course_id=scope.course.id,
+            version_no=1,
+            actor_id=scope.user.id,
+            reason="Template",
+            effective_at=datetime.now(UTC),
+            rules={
+                "template": {
+                    "milestones": [
+                        {"name": "New review", "required_materials": ["Demo"], "weight": 100}
+                    ]
+                }
+            },
+        )
+    )
+    db.commit()
+    result = project_lifecycle.reopen_project(
+        scope.project.id,
+        project_lifecycle.ReopenInput(
+            version_label="v2", reason="New semester", copy_scope="baseline"
+        ),
+        request,
+        db,
+        scope.user,
+    )
+    new_id = UUID(result.data["new_project_id"])
+    assert db.get(Project, new_id).lifecycle == "active"
+    assert db.scalar(select(Milestone).where(Milestone.project_id == new_id)).title == "New review"
+    assert (
+        db.scalar(
+            select(CourseTemplateApplication).where(CourseTemplateApplication.project_id == new_id)
+        ).template["milestones"][0]["weight"]
+        == 100
+    )
+    assert scope.project.lifecycle == "archived"
+    assert (
+        db.scalar(select(ProjectReopen).where(ProjectReopen.new_project_id == new_id)).reason
+        == "New semester"
+    )
+    with pytest.raises(ApiError) as duplicate:
+        project_lifecycle.reopen_project(
+            scope.project.id,
+            project_lifecycle.ReopenInput(
+                version_label="v2", reason="Duplicate", copy_scope="baseline"
+            ),
+            request,
+            db,
+            scope.user,
+        )
+    assert duplicate.value.code == "REOPEN_VERSION_EXISTS"
+    full = project_lifecycle.reopen_project(
+        scope.project.id,
+        project_lifecycle.ReopenInput(
+            version_label="v3", reason="Copy structure", copy_scope="full"
+        ),
+        request,
+        db,
+        scope.user,
+    )
+    copied_id = UUID(full.data["new_project_id"])
+    assert db.scalar(select(Task).where(Task.project_id == copied_id)).title == scope.task.title
+    assert db.scalar(select(Task).where(Task.project_id == copied_id)).status == "not_started"
+
+
+def test_week7_teacher_group_listing_and_lazy_detail(db, scope, monkeypatch):
+    scope.user.global_role = "teacher"
+    db.commit()
+    request = SimpleNamespace(state=SimpleNamespace(request_id="teacher-week7"))
+    page = teacher_workspace.teacher_groups(
+        scope.course.id, request, 1, 20, "name", "", db, scope.user
+    )
+    assert page.data["total"] == 1
+    assert page.data["items"][0]["tasks"] == 1
+    monkeypatch.setattr(
+        teacher_workspace, "get_project_access", lambda *a, **k: SimpleNamespace(staff=True)
+    )
+    module_rows = teacher_workspace.teacher_modules(scope.project.id, request, db, scope.user)
+    assert len(module_rows.data) == 1
+    detail = teacher_workspace.teacher_module_detail(
+        scope.project.id, scope.task.module_id, request, db, scope.user
+    )
+    assert detail.data["tasks"][0]["formal_acceptance"] == 0
+    assert detail.data["tasks"][0]["formal_evidence"] == 0
+
+
+def test_week7_teacher_rules_confirm_and_end(db, scope, monkeypatch):
+    scope.user.global_role = "teacher"
+    db.commit()
+    request = SimpleNamespace(state=SimpleNamespace(request_id="course-week7"))
+    template = teacher_course.TemplateInput(
+        milestones=[teacher_course.MilestoneTemplate(name="Review", weight=100)],
+        reason="First teaching template",
+    )
+    response = teacher_course.change_template(scope.course.id, template, request, db, scope.user)
+    assert response.data["version"] == 1
+    settings = teacher_course.CourseSettingsInput(
+        name="Updated course",
+        grouping_mode="free",
+        min_group_size=1,
+        max_group_size=5,
+        reason="Change group size",
+    )
+    response = teacher_course.change_settings(scope.course.id, settings, request, db, scope.user)
+    assert response.data["version"] == 2
+    assert response.data["rules"]["template"]["milestones"][0]["name"] == "Review"
+    versions = list(db.scalars(select(CourseRuleVersion).order_by(CourseRuleVersion.version_no)))
+    assert versions[0].rules["template"] == versions[1].rules["template"]
+    monkeypatch.setattr(
+        teacher_course,
+        "get_project_access",
+        lambda *a, **k: SimpleNamespace(project=scope.project, course=scope.course, leader=True),
+    )
+    teacher_course.confirm_rules(
+        scope.course.id, versions[1].id, scope.project.id, request, db, scope.user
+    )
+    assert db.scalar(select(CourseRuleConfirmation)).actor_id == scope.user.id
+    ended = teacher_course.end_course(
+        scope.course.id,
+        teacher_course.EndInput(reason="Semester finished"),
+        request,
+        db,
+        scope.user,
+    )
+    assert ended.data["status"] == "ended"
+    assert scope.project.lifecycle == "archived"
+    assert db.scalar(select(ProjectArchive)).snapshot["course_end_reason"] == "Semester finished"
+    with pytest.raises(ApiError) as error:
+        teacher_course.change_template(scope.course.id, template, request, db, scope.user)
+    assert error.value.code == "COURSE_READ_ONLY"
+
+
+def test_week7_grade_uses_finalized_report_contribution_basis(db, scope, monkeypatch):
+    scope.user.global_role = "teacher"
+    calculation = ContributionCalculation(
+        project_id=scope.project.id,
+        formula_version="test-v1",
+        basis_version="test",
+        calculated_by=scope.user.id,
+    )
+    db.add(calculation)
+    db.flush()
+    contribution_snapshot = ContributionSnapshot(
+        project_id=scope.project.id,
+        calculation_id=calculation.id,
+        version_no=1,
+        status="frozen",
+        created_by=scope.user.id,
+    )
+    db.add(contribution_snapshot)
+    db.flush()
+    db.add(
+        ContributionItem(
+            snapshot_id=contribution_snapshot.id,
+            user_id=scope.user.id,
+            task_credit=100,
+            collaboration_credit=0,
+            share=100,
+            acceptance_rate=100,
+            status="formal",
+        )
+    )
+    report = Report(project_id=scope.project.id, created_by=scope.user.id, status="finalized")
+    db.add(report)
+    db.flush()
+    snapshot = ReportSnapshot(
+        report_id=report.id,
+        version_no=1,
+        status="finalized",
+        contribution_snapshot_id=contribution_snapshot.id,
+        data_snapshot={"sections": {}, "evidence_records": []},
+    )
+    db.add(snapshot)
+    db.commit()
+    monkeypatch.setattr(
+        teacher_reports,
+        "get_project_access",
+        lambda *a, **k: SimpleNamespace(teacher=True, staff=True, course=scope.course),
+    )
+    request = SimpleNamespace(state=SimpleNamespace(request_id="grade-week7"))
+    teacher_reports.comment_report(
+        scope.project.id,
+        teacher_reports.CommentInput(body="Needs stronger evidence"),
+        request,
+        db,
+        scope.user,
+    )
+    teacher_reports.grade_report(
+        scope.project.id,
+        teacher_reports.GradeInput(score=87, comment="Good overall"),
+        request,
+        db,
+        scope.user,
+    )
+    grade = db.scalar(select(CourseGrade))
+    assert grade.report_snapshot_id == snapshot.id
+    assert (
+        db.get(ContributionArchive, grade.contribution_archive_id).snapshot_id
+        == contribution_snapshot.id
+    )
+    assert db.scalar(select(TeacherReportComment)).body == "Needs stronger evidence"
+    snapshot.contribution_snapshot_id = None
+    db.commit()
+    with pytest.raises(ApiError) as missing:
+        teacher_reports.grade_report(
+            scope.project.id,
+            teacher_reports.GradeInput(score=80, comment="Second grade"),
+            request,
+            db,
+            scope.user,
+        )
+    assert missing.value.code == "CONTRIBUTION_MISSING"
+    assert len(db.scalars(select(CourseGrade)).all()) == 1
+
+
+def test_week7_new_course_project_binds_current_template(db, scope):
+    group = ProjectGroup(
+        id=uuid4(), course_id=scope.course.id, leader_id=scope.user.id, name="Fresh group"
+    )
+    db.add(group)
+    db.flush()
+    db.add(GroupMember(id=uuid4(), group_id=group.id, user_id=scope.user.id, role="leader"))
+    db.add(
+        CourseRuleVersion(
+            course_id=scope.course.id,
+            version_no=1,
+            actor_id=scope.user.id,
+            reason="Required milestone",
+            effective_at=datetime.now(UTC),
+            rules={
+                "template": {
+                    "milestones": [{"name": "Demo", "required_materials": ["Video"], "weight": 100}]
+                }
+            },
+        )
+    )
+    db.commit()
+    request = SimpleNamespace(state=SimpleNamespace(request_id="new-course-project"))
+    response = teacher_course.create_template_project(
+        scope.course.id,
+        group.id,
+        teacher_course.CourseProjectInput(name="New project"),
+        request,
+        db,
+        scope.user,
+    )
+    project_id = UUID(response.data["project_id"])
+    assert response.data["template_version"] == 1
+    assert db.scalar(select(Milestone).where(Milestone.project_id == project_id)).title == "Demo"
+    assert (
+        db.scalar(
+            select(CourseTemplateApplication).where(
+                CourseTemplateApplication.project_id == project_id
+            )
+        ).template["milestones"][0]["weight"]
+        == 100
+    )
+    with pytest.raises(ApiError) as error:
+        teacher_course.create_template_project(
+            scope.course.id,
+            group.id,
+            teacher_course.CourseProjectInput(name="Duplicate"),
+            request,
+            db,
+            scope.user,
+        )
+    assert error.value.code == "GROUP_PROJECT_EXISTS"

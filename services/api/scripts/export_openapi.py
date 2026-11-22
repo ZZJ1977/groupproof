@@ -7,9 +7,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-from app.main import app
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.main import app  # noqa: E402
 
 SNAPSHOT = Path(__file__).resolve().parents[3] / "packages" / "domain" / "openapi.json"
 

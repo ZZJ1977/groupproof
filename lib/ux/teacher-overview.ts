@@ -1,5 +1,6 @@
 import type { MockData, Project } from "@/types/domain";
 import { currentTasks, deriveProgress, weightedProgress } from "@/lib/overview";
+import { tr } from "@/lib/i18n/tr";
 
 export interface TeacherOverviewRisk {
   level: "none" | "low" | "medium" | "high";
@@ -69,8 +70,8 @@ export function teacherOverviewActivities(data: MockData, project?: Project): Te
   ]);
   return [
     ...data.github.filter((item) => item.projectId === project.id).map((item) => ({ id: `github-${item.id}`, title: item.title, at: item.timestamp })),
-    ...data.evidence.filter((item) => item.projectId === project.id).map((item) => ({ id: `evidence-${item.id}`, title: `提交证据：${item.title}`, at: item.createdAt })),
-    ...data.verifications.filter((item) => item.projectId === project.id).map((item) => ({ id: `verification-${item.id}`, title: `验收结果：${item.result}`, at: item.createdAt })),
+    ...data.evidence.filter((item) => item.projectId === project.id).map((item) => ({ id: `evidence-${item.id}`, title: tr("提交证据：{0}", { 0: item.title }), at: item.createdAt })),
+    ...data.verifications.filter((item) => item.projectId === project.id).map((item) => ({ id: `verification-${item.id}`, title: tr("验收结果：{0}", { 0: item.result }), at: item.createdAt })),
     ...data.feishu.filter((item) => item.projectId === project.id).map((item) => ({ id: `feishu-${item.id}`, title: item.summary, at: item.timestamp })),
     ...data.discussions.filter((item) => item.projectId === project.id).map((item) => ({ id: `discussion-${item.id}`, title: item.title, at: item.updatedAt })),
     ...data.logs.filter((item) => targetIds.has(item.target)).map((item) => ({ id: `log-${item.id}`, title: item.action, at: item.createdAt })),

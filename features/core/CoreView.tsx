@@ -51,13 +51,18 @@ function ActivityPage() {
   return <><PageHeader title={t("title")} description={t("description")} /><div className="gp-grid-3 mb-5"><Stat label={t("devActivity")} value={activities.filter((item) => item.type === "github").length} icon={Github} /><Stat label={t("submittedEvidence")} value={activities.filter((item) => item.type === "evidence").length} icon={Mail} /><Stat label={t("discussions")} value={activities.filter((item) => item.type === "discussion").length} icon={Users} /></div><div className="gp-grid-2"><div><div className="gp-tabs mb-4">{[["all", t("tabs.all")], ["github", t("tabs.github")], ["evidence", t("tabs.evidence")], ["discussion", t("tabs.discussion")]].map(([id, label]) => <button key={id} className={`gp-tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>)}</div><Panel noPadding><div className="divide-y divide-[#e9eef5]">{visible.map((item) => <Link href={item.href} key={item.id} className="flex gap-3 p-4 hover:bg-[#fafcff]"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] bg-[#eaf2ff] text-[#246bfa]">{item.type === "github" ? <Github size={15} /> : item.type === "evidence" ? <Mail size={15} /> : <Users size={15} />}</span><div><div className="font-semibold">{item.title}</div><div className="mt-1 text-[11px] text-[#8896a8]">{formatDate(item.time, { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div></div></Link>)}</div>{!visible.length && <EmptyState title={t("empty")} />}</Panel></div><div className="gp-stack"><Panel title={t("pendingPanel")}><div className="space-y-3">{data.actionItems.filter((item) => item.assigneeId === data.currentUserId && item.status === "pending").slice(0, 3).map((item) => <Link key={item.id} href={item.href} className="block border-b border-[#e9eef5] pb-3 text-[12px] last:border-0"><div className="font-semibold">{item.title}</div><div className="mt-1 text-[#8995a6]">{t("due", { date: formatDate(item.dueAt) })}</div></Link>)}</div></Panel><Panel title={t("myProjects")}><Link href="/courses" className="gp-link text-[12px]">GroupProof <ArrowRight size={13} className="inline" /></Link></Panel></div></div></>;
 }
 
+function DailyUnavailable() {
+  const t = useTranslations("pages.shared");
+  return <EmptyState title={t("dailyUnavailable")} description={t("dailyUnavailableDesc")} />;
+}
+
 export function CoreView({ screen }: { screen: number }) {
   if (apiMode("daily") === "real") {
     if (screen === 4) return <HomeApiPage />;
     if (screen === 30) return <ActivityApiPage />;
   }
   if (apiMode("workspace") !== "mock" && [4, 5, 6, 30].includes(screen)) {
-    return <EmptyState title="日常入口数据暂不可用" description="首页、通知、待办及动态服务尚未接入，请稍后重试。" />;
+    return <DailyUnavailable />;
   }
   switch (screen) {
     case 4: return <HomePage />;

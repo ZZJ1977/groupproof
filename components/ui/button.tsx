@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[6px] text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:pointer-events-none disabled:opacity-50", {
@@ -22,9 +23,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   loading?: boolean;
 }
 
+function ProcessingLabel() {
+  return <>{useTranslations("pages.shared")("processing")}</>;
+}
+
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ className, variant, size, loading, disabled, children, ...props }, ref) => (
   <button ref={ref} className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} aria-busy={loading || undefined} {...props}>
-    {loading ? <span className="gp-fade-in inline-flex items-center gap-2">处理中…{children}</span> : children}
+    {loading ? <span className="gp-fade-in inline-flex items-center gap-2"><ProcessingLabel />{children}</span> : children}
   </button>
 ));
 Button.displayName = "Button";

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { can } from "@/lib/access/policy";
 import { DomainError, type Command } from "@/lib/commands/core";
 import type { FileRecord, MockData } from "@/types/domain";
+import { tr } from "@/lib/i18n/tr";
 
 export interface CFileDesignation {
   idempotencyKey: string;
@@ -75,7 +76,7 @@ export const designateProjectFile: Command<DesignateProjectFileInput, FileWithCD
         logs: [...data.logs, {
           id: context.logId, actorId: context.actorId, action: "设为正式文件版本", target: file.id,
           result: "success", ip: "mock", createdAt: context.now,
-          detail: `${file.name} v${file.version}；${input.reason}；本地元数据决策，未发送真实成员通知`,
+          detail: tr("{0} v{1}；{2}；本地元数据决策，未发送真实成员通知", { 0: file.name, 1: file.version, 2: input.reason }),
         }],
       },
       result: updated,

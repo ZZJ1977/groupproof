@@ -25,7 +25,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const nodes = (connection) => (connection?.edges ?? []).map((edge) => edge.node);
 function railway(args, json = false) {
   const result = spawnSync("railway", args, { encoding: "utf8", stdio: json ? ["ignore", "pipe", "pipe"] : "inherit" });
-  if (result.status !== 0) throw new Error(`Railway ${args[0]} failed`);
+  if (result.status !== 0) {
+    // The CLI's stderr names the cause (expired token, missing project access); it never echoes the token itself.
+    const reason = (result.stderr ?? "").trim() || result.error?.message || `exit ${result.status}`;
+    throw new Error(`Railway ${args[0]} failed: ${reason}`);
+  }
   return json ? JSON.parse(result.stdout) : null;
 }
 async function graphql(query, variables = {}) {
@@ -119,6 +123,7 @@ const authVariables = {};
 for (const key of ["RESEND_API_KEY", "BREVO_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "STUDENT_EMAIL_DOMAIN", "TEACHER_EMAIL_DOMAIN", "STUDENT_ID_PATTERN", "STUDENT_ID_EMAIL_RULE"]) {
   if (apiVars[key] || identityVars[key]) authVariables[key] = apiVars[key] || identityVars[key];
 }
+const hasDedicatedReportWorker = services.some((node) => node.serviceName === "groupproof-report-worker");
 Object.assign(authVariables, {
   APP_ENV: "staging", APP_MODE: apiVars.APP_MODE || identityVars.APP_MODE || "dev",
   APP_ORIGIN: origin, PORT: "8000", // Brevo works without an own domain (single verified sender); keep it when an operator picked it.
@@ -128,6 +133,7 @@ Object.assign(authVariables, {
   AUTH_GOOGLE_ENABLED: "true", AUTH_PASSWORD_ENABLED: "true",
   AUTH_EMAIL_SIGNUP_ENABLED: "true", AUTH_PASSWORD_RESET_ENABLED: "true",
   DEBUG_ENDPOINTS: "false", ENABLE_DEMO_AUTH: "false", ACCEPTANCE_TEST_TOKEN: "",
+  REPORT_INLINE_MODE: hasDedicatedReportWorker ? "false" : "true",
   EMAIL_CHALLENGE_HMAC_KEY: apiVars.EMAIL_CHALLENGE_HMAC_KEY || identityVars.EMAIL_CHALLENGE_HMAC_KEY || randomBytes(32).toString("hex"),
 });
 await setVariables(apiId, authVariables);
@@ -155,7 +161,14 @@ async function deploy(serviceId, label) {
   throw new Error(`${label} did not become ready`);
 }
 await deploy(apiId, "Unified API");
-await setVariables(webId, { API_INTERNAL_URL: "http://groupproof.railway.internal:8000", NEXT_PUBLIC_APP_ENV: "staging" });
+await setVariables(webId, {
+  API_INTERNAL_URL: "http://groupproof.railway.internal:8000",
+  NEXT_PUBLIC_APP_ENV: "staging",
+  NEXT_PUBLIC_APP_MODE: "real",
+  NEXT_PUBLIC_ENABLE_MOCKS: "false",
+  NEXT_PUBLIC_API_FEATURES: "",
+  NEXT_PUBLIC_API_BASE_URL: "",
+});
 await deploy(webId, "Web");
 const session = await fetch(`${origin}/api/v1/auth/session`, { signal: AbortSignal.timeout(30_000) });
 assert.equal(session.status, 200);

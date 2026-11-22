@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import User
-from app.modules.a.ai import EvidenceMatchInput, match_evidence
+from app.modules.a.ai import AIUsageContext, EvidenceMatchInput, match_evidence
 from app.modules.a.ai.schemas import CriterionBrief, EvidenceBrief
 from app.modules.c.files_models import LogicalFile
 from app.modules.c.models import Evidence, EvidenceSourceSnapshot
@@ -165,7 +165,8 @@ def run_verification(session: Session, project_id: UUID, task_id: UUID, user: Us
                         )
                         for item in evidence
                     ],
-                )
+                ),
+                usage=AIUsageContext(user_id=user.id, project_id=project_id),
             )
             suggestion = (
                 "AI 仅返回演示占位结果；请人工复核。"

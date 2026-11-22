@@ -2,11 +2,14 @@ import createClient from "openapi-fetch";
 import type { paths } from "@/packages/domain/api.generated";
 import { apiConfig } from "@/lib/api/config";
 
-export async function fetchWithSession(input: Request, transport: typeof fetch = fetch) {
+/**
+ * Wrap a transport so every write carries the current session's CSRF token.
+ * Fetch the session for each write: OAuth, verification and login can rotate
+ * its token. Never cache credentials across users or retry a write.
+ */
+export async function fetchWithSession(input: Request, transport: typeof fetch = (req, init) => fetch(req, init)) {
   const request = new Request(input);
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method) && !request.headers.has("X-CSRF-Token")) {
-    // Fetch the current session for each write: OAuth, verification and login
-    // can rotate its token. Never cache credentials across users or retry a write.
     const sessionResponse = await transport(new Request(new URL("/api/v1/auth/session", request.url), {
       credentials: "include", cache: "no-store", signal: request.signal,
     }));
@@ -24,12 +27,15 @@ export async function fetchWithSession(input: Request, transport: typeof fetch =
   return transport(request);
 }
 
+export function createSessionFetch(transport: typeof fetch = (input, init) => fetch(input, init)) {
+  return (input: Request): Promise<Response> => fetchWithSession(input, transport);
+}
+
 export function createApiClient(options: { baseUrl?: string; fetch?: typeof fetch } = {}) {
-  const transport: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init));
   return createClient<paths>({
     baseUrl: options.baseUrl ?? apiConfig.baseUrl,
     credentials: "include",
-    fetch: (input) => fetchWithSession(input, transport),
+    fetch: createSessionFetch(options.fetch),
   });
 }
 

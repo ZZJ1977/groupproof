@@ -44,6 +44,24 @@ def decisions_for_run(session: Session, run_id: UUID) -> dict[UUID, AcceptanceDe
 
 
 def stale_reason(session: Session, run: VerificationRun, *, completed: bool = False) -> str | None:
+    invalidated = session.scalar(
+        select(CriterionResult)
+        .where(
+            CriterionResult.verification_run_id == run.id,
+            CriterionResult.invalidated_at.is_not(None),
+        )
+        .limit(1)
+    )
+    if invalidated is not None:
+        return invalidated.invalidated_reason or "验收结果已失效"
+    outcome = session.scalar(
+        select(FormalOutcome).where(
+            FormalOutcome.verification_run_id == run.id,
+            FormalOutcome.invalidated_at.is_not(None),
+        )
+    )
+    if outcome is not None:
+        return outcome.invalidated_reason or "正式结果已失效"
     task = require_task(session, run.project_id, run.task_id)
     expected = run.task_version + (1 if completed else 0) if run.task_version is not None else None
     if expected is None or task.lock_version != expected:

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { BookOpen, CheckSquare, Folder } from "lucide-react";
-import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
+import { BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
+import { EmptyState, ListRow, PageHeader, ProgressBar, Section, Stat, StatusBadge } from "@/components/common";
+import { buttonVariants } from "@/components/ui/button";
+import { projectRequest } from "@/features/github-binding/integration-request";
+import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
@@ -32,14 +34,52 @@ function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
   return <div role="alert" className="gp-panel p-4"><p>{message}</p><button className={`${buttonClass} mt-3`} type="button" onClick={retry}>重试</button></div>;
 }
 
+function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; userId: string }) {
+  const repos = useQuery({
+    queryKey: ["project-integration-repos", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<unknown[]>(`/api/v1/a/projects/${projectId}/github/repos`, { signal }),
+    retry: false,
+  });
+  const chats = useQuery({
+    queryKey: ["project-integration-chats", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<unknown[]>(`/api/v1/a/projects/${projectId}/feishu/chats`, { signal }),
+    retry: false,
+  });
+  const githubLabel = repos.isPending
+    ? "GitHub 状态读取中"
+    : repos.isError
+      ? "GitHub 状态暂不可用"
+      : repos.data.length > 0
+        ? `GitHub 已连接 · ${repos.data.length} 个仓库`
+        : "GitHub 未连接";
+  const feishuLabel = chats.isPending
+    ? "飞书状态读取中"
+    : chats.isError
+      ? "飞书状态暂不可用"
+      : chats.data.length > 0
+        ? `飞书已接入 · ${chats.data.length} 个群`
+        : "飞书未接入";
+  return <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+    <Link className="gp-link" href={`/projects/${encodeURIComponent(projectId)}/settings#github-integration`}>{githubLabel}</Link>
+    <Link className="gp-link" href={`/projects/${encodeURIComponent(projectId)}/settings#feishu-integration`}>{feishuLabel}</Link>
+  </div>;
+}
+
 /** Canonical queries only; workspace data and demo roles are never a data source. */
 export function HomeApiPage() {
-  const { userId } = useWorkspace();
+  const { userId, role } = useWorkspace();
+  const isTeacher = role === "teacher" || role === "ta";
   const t = useTranslations("core.home");
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
-    <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<button className={buttonClass} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}>刷新统计</button>} />
+    <AnnouncementBanner />
+    <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<div className="flex flex-wrap items-center gap-2">
+      {isTeacher && <Link href="/teacher/courses" className={buttonVariants()}>我的班级 / 创建班级</Link>}
+      <Link href="/projects/new" className={buttonVariants(isTeacher ? { variant: "outline" } : undefined)}><Plus size={16} />{t("createProject")}</Link>
+      <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>
+      <button className={buttonVariants({ variant: "ghost" })} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}><RefreshCw size={15} />刷新统计</button>
+    </div>} />
     {result.isFetching && <p role="status">正在读取首页…</p>}
     {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
     {data && <>
@@ -55,22 +95,18 @@ export function HomeApiPage() {
         <Link className="gp-link" href="/action-items">待处理事项：{data.pending_action_items ?? "暂不可用"}</Link>
       </div>
       <div className="gp-grid-2">
-        <Panel title={t("myProjects")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 个项目</p>
-          <div className="space-y-4">{data.projects.map((project) => <div key={project.id} className="border-b border-slate-100 pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{project.name}</strong><StatusBadge status={project.lifecycle} /></div>
-            <p className="my-2 text-xs text-slate-600">任务进度：{project.progress === null ? "暂不可计算" : `${project.progress}%`}</p>
+        <Section title={t("myProjects")} description="最近更新的最多 10 个项目">
+          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
             {project.progress !== null && <ProgressBar value={project.progress} />}
-            <Link className="gp-link mt-2 inline-block text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>
-          </div>)}</div>
-          {!data.projects.length && <EmptyState title={t("emptyProjects")} />}
-        </Panel>
-        <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 门课程</p>
-          <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div><strong>{course.name}</strong><span className="ml-2"><StatusBadge status={course.status} /></span></div>
-            <Link className="gp-link text-sm" href={`/courses/${encodeURIComponent(course.id)}/rules`}>查看课程</Link>
-          </div>)}</div>
-          {!data.courses.length && <EmptyState title={t("emptyCourses")} />}
-        </Panel>
+            <ProjectIntegrationStatus projectId={project.id} userId={userId} />
+          </ListRow>)}</div>
+          {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
+        </Section>
+        <Section title={t("myCourses")} description="最近更新的最多 10 门课程">
+          {isTeacher && <Link className="gp-link mb-3 inline-block text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link>}
+          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<><span>{course.name}</span> <StatusBadge status={course.status} /></>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
+          {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
+        </Section>
       </div>
       <Link className="gp-link mt-4 inline-block" href="/activity">查看个人动态</Link>
     </>}
@@ -78,32 +114,11 @@ export function HomeApiPage() {
   </>;
 }
 
-function GithubAuthorForm() {
-  const [login, setLogin] = useState("");
-  const change = useMutation({
-    mutationFn: (value: string | null) => client.setGithubLogin(value),
-    retry: false,
-    onSuccess: (reply) => setLogin(reply.login ?? ""),
-  });
-  return <details className="my-4">
-    <summary className="cursor-pointer font-medium">设置个人 GitHub 用户名</summary>
-    <form className="mt-3" onSubmit={(event) => { event.preventDefault(); if (login.trim() && !change.isPending) change.mutate(login.trim()); }}>
-      <p className="mb-2 text-sm">填写本人使用的 GitHub 用户名，供下次项目同步时匹配作者。此设置只用于作者归属，仓库访问权限由项目绑定管理。</p>
-      <label className="block">GitHub 用户名<input className={`${inputClass} ml-2`} value={login} maxLength={120} autoCapitalize="none" spellCheck={false}
-        disabled={change.isPending} onChange={(event) => { change.reset(); setLogin(event.target.value); }} /></label>
-      <div className="my-2 flex gap-2"><button className={buttonClass} disabled={change.isPending || !login.trim()}>保存用户名</button>
-        <button className={buttonClass} type="button" disabled={change.isPending} onClick={() => change.mutate(null)}>清除作者映射</button></div>
-      {change.isPending && <p role="status">正在保存…</p>}
-      {change.isSuccess && <p role="status">{change.data.login ? `已保存 GitHub 用户名 @${change.data.login}。` : "已清除 GitHub 用户名映射。"}</p>}
-      {change.isError && <p role="alert">{change.error instanceof CApiError ? change.error.message : "保存失败，请重试。"}</p>}
-    </form>
-  </details>;
-}
-
 export function ActivityApiPage() {
   const { userId } = useWorkspace();
   const { query, updateQuery } = useUrlQuery();
   const t = useTranslations("core.activity");
+  const githubText = useTranslations("account.githubIdentity");
   const rawCategory = query.get("category") ?? "all";
   const category = Object.hasOwn(categoryLabels, rawCategory) ? rawCategory as keyof typeof categoryLabels : "all";
   const rawPage = Number(query.get("page") ?? 1);
@@ -115,7 +130,7 @@ export function ActivityApiPage() {
   return <>
     <PageHeader title={t("title")} description="查看自己的任务、文件版本、证据、讨论，以及项目中已同步并归属本人的 GitHub 活动。" />
     <p className="mb-4 text-sm text-slate-600">日期按 UTC 自然日筛选。个人飞书记录仍待发送者身份匹配。</p>
-    {data && <GithubAuthorForm key={userId} />}
+    {data && <Link className="gp-link mb-4 inline-block text-sm" href="/account/security#github-identity">{githubText("manage")}</Link>}
     <div className="gp-tabs mb-4" aria-label="动态分类">{Object.entries(categoryLabels).map(([value, label]) => <button className={`gp-tab ${category === value ? "active" : ""}`} type="button" key={value} aria-pressed={category === value} onClick={() => updateQuery({ category: value === "all" ? null : value, page: null })}>{label}</button>)}</div>
     <form key={query.toString()} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault(); const input = new FormData(event.currentTarget);
@@ -130,21 +145,17 @@ export function ActivityApiPage() {
     {filters.project_id && <p className="mb-3 text-sm">当前仅显示指定项目；重置可查看全部可访问项目。</p>}
     {result.isFetching && <p role="status">正在读取个人动态…</p>}
     {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
-    {data && <Panel>
-      <div className="space-y-4">{data.items.map((item) => {
+    {data && <Section title="动态时间线" description="按时间查看自己的开发、证据和协作记录。">
+      <div className="gp-list">{data.items.map((item) => {
         const prefix = `/projects/${item.project_id}/`;
         const href = item.href.startsWith(prefix) && !/[\\\u0000-\u001f]/.test(item.href) ? item.href : null;
-        return <article key={item.id} className="border-b border-slate-100 pb-3">
-          <p className="mb-1 text-xs text-slate-500">{activityLabels[item.event_type] ?? categoryLabels[item.category]} · {item.project_name}</p>
-          {href ? <Link className="gp-link" href={href}>{item.title}</Link> : <span>{item.title}</span>}
-          <p className="mt-1 text-xs text-slate-500"><time dateTime={item.occurred_at}>{formatDate(item.occurred_at, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></p>
-        </article>;
+        return <ListRow key={item.id} title={href ? <Link className="gp-link" href={href}>{item.title}</Link> : item.title} meta={`${activityLabels[item.event_type] ?? categoryLabels[item.category]} · ${item.project_name} · ${formatDate(item.occurred_at, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}`} />;
       })}</div>
       {!data.items.length && <EmptyState title="没有符合条件的个人动态" />}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span>共 {data.total} 条 · 第 {data.page} 页</span><div className="flex gap-2">
         <button className={buttonClass} type="button" disabled={page <= 1} onClick={() => updateQuery({ page: String(page - 1) })}>上一页</button>
         <button className={buttonClass} type="button" disabled={data.page * data.page_size >= data.total} onClick={() => updateQuery({ page: String(page + 1) })}>下一页</button>
       </div></div>
-    </Panel>}
+    </Section>}
   </>;
 }

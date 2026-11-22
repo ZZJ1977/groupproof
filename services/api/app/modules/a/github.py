@@ -185,6 +185,20 @@ class GithubClient:
             {"sha": branch, "per_page": 100},
         )
 
+    def commit_detail(
+        self, owner: str, repo: str, sha: str, installation_id: int
+    ) -> dict[str, Any]:
+        """读取一条提交的文件变更，用于后续的证据约束摘要。"""
+        response = self._get(
+            f"/repos/{owner}/{repo}/commits/{sha}", self.installation_token(installation_id)
+        )
+        if response.status_code != 200:
+            raise _unavailable("无法读取提交的文件变更。")
+        body = response.json()
+        if not isinstance(body, dict):
+            raise _unavailable("GitHub 返回的提交详情格式不正确。")
+        return body
+
     def pulls(self, owner: str, repo: str, installation_id: int) -> list[dict[str, Any]]:
         """最近更新的合并请求（含已合并和已关闭，最多 100 条）。"""
         return self._list(

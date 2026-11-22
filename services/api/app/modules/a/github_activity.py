@@ -3,8 +3,7 @@
 
 规则：
 - 只读：只调用 GitHub 的读取接口；每次同步读默认分支最近 100 条提交、100 个合并请求、100 次 CI 运行；
-- 作者识别：先看本站用户自己声明的 GitHub 用户名，其次按提交邮箱（本站登录邮箱、已验证学校邮箱、
-  ``id+用户名@users.noreply.github.com``）匹配；只会对应到本项目的成员，对应不上就只显示 GitHub 名字；
+- 作者识别：按 GitHub 返回的账号 ID 和成员通过授权关联的账号 ID 匹配，保留未匹配记录的来源名称；
 - 来源被删除：窗口内本该出现却没出现的提交/CI 运行，逐个向 GitHub 确认，GitHub 明确说查不到才标记
   deleted；网络或权限失败整体 503，绝不当作删除；
 - 同步到新提交后，调用 C 的任务号匹配函数（commit 里写 ``#T-012`` 自动关联任务）。
@@ -20,11 +19,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.auth.models import SchoolEmailBinding
+from app.auth.models import VerifiedGithubIdentity
 from app.db.models import ProjectMember, User
 from app.modules.a import permissions
 from app.modules.a.models import GithubActivity, GithubRepoLink, GithubUserLink
@@ -39,8 +38,14 @@ logger = logging.getLogger("groupproof.a.github_activity")
 
 KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
-_NOREPLY = re.compile(r"^(?:\d+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$", re.IGNORECASE)
+MAX_COMMIT_FILES = 80
+MAX_PATCH_CHARS = 6000
+MAX_TOTAL_PATCH_CHARS = 120_000
 _LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
+_ACTOR_ACCOUNT_ID = "_github_actor_account_id"
+_SECRET = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|private[_-]?key)(\s*[=:]\s*)([^\s,;]+)"
+)
 
 
 def _parse_time(value: str | None) -> datetime:
@@ -49,7 +54,18 @@ def _parse_time(value: str | None) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _revision(payload: dict[str, Any]) -> str:
+def _source_detail(detail: dict[str, Any] | None) -> dict[str, Any]:
+    return {key: value for key, value in (detail or {}).items() if key != _ACTOR_ACCOUNT_ID}
+
+
+def _source_revision(values: dict[str, Any]) -> str:
+    # Membership and OAuth bindings can change independently of the GitHub source.
+    payload = {key: value for key, value in values.items() if key != "author_user_id"}
+    payload["detail"] = _source_detail(values["detail"])
+    occurred_at = values["occurred_at"]
+    if occurred_at.tzinfo is None:
+        occurred_at = occurred_at.replace(tzinfo=UTC)
+    payload["occurred_at"] = occurred_at.astimezone(UTC).isoformat()
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()
     ).hexdigest()
@@ -66,57 +82,124 @@ def _line(text: str | None, limit: int = 240) -> str:
     return first[:limit]
 
 
+def _redact_patch(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    text = value[:MAX_PATCH_CHARS]
+    return _SECRET.sub(r"\1\2[REDACTED]", text)
+
+
+def _commit_detail(detail: dict[str, Any]) -> tuple[list[dict[str, Any]], bool, dict[str, int]]:
+    """保留可供摘要引用的文件级变更，限制大小并做常见凭据脱敏。"""
+    raw_files = detail.get("files")
+    if not isinstance(raw_files, list):
+        return [], bool(detail.get("files_truncated")), {}
+    files: list[dict[str, Any]] = []
+    total_patch = 0
+    truncated = bool(detail.get("files_truncated"))
+    for raw in raw_files:
+        if not isinstance(raw, dict) or not isinstance(raw.get("filename"), str):
+            continue
+        path = raw["filename"].strip()
+        if not path:
+            continue
+        raw_status = raw.get("status")
+        status = (
+            raw_status
+            if isinstance(raw_status, str)
+            and raw_status
+            in {
+                "added",
+                "modified",
+                "deleted",
+                "renamed",
+            }
+            else "unknown"
+        )
+        additions = raw.get("additions") if type(raw.get("additions")) is int else 0
+        deletions = raw.get("deletions") if type(raw.get("deletions")) is int else 0
+        patch = _redact_patch(raw.get("patch"))
+        if patch is not None:
+            if total_patch + len(patch) > MAX_TOTAL_PATCH_CHARS:
+                truncated = True
+                patch = None
+            else:
+                total_patch += len(patch)
+        if len(files) >= MAX_COMMIT_FILES:
+            truncated = True
+            break
+        files.append(
+            {
+                "path": path[:500],
+                "status": status,
+                "additions": max(0, min(additions, 1_000_000)),
+                "deletions": max(0, min(deletions, 1_000_000)),
+                "patch": patch,
+            }
+        )
+    stats = detail.get("stats") if isinstance(detail.get("stats"), dict) else {}
+    totals = {
+        key: max(0, min(stats.get(key, 0), 1_000_000))
+        for key in ("additions", "deletions", "total")
+        if type(stats.get(key)) is int
+    }
+    if type(detail.get("changed_files")) is int:
+        totals["changed_files"] = max(0, min(detail["changed_files"], 1_000_000))
+    return files, truncated, totals
+
+
 # ---------------------------------------------------------------- 作者识别
 
 
+def _github_account_id(actor: dict[str, Any]) -> int | None:
+    value = actor.get("id")
+    if type(value) is int and 0 < value <= 2**63 - 1:
+        return value
+    return None
+
+
+def _verified_member_identities(project_id):
+    return (
+        select(VerifiedGithubIdentity)
+        .join(ProjectMember, ProjectMember.user_id == VerifiedGithubIdentity.user_id)
+        .join(User, User.id == VerifiedGithubIdentity.user_id)
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.left_at.is_(None),
+            User.status == "active",
+        )
+    )
+
+
 class AuthorResolver:
-    """把 GitHub 登录名/邮箱对应到本项目成员（一次同步建一个，避免重复查询）。"""
+    """同步时按 GitHub 账号 ID 查找本项目的活跃成员。"""
 
     def __init__(self, session: Session, project_id: UUID) -> None:
-        member_ids = set(
-            session.scalars(
-                select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
-            )
-        )
-        self.by_login: dict[str, UUID] = {}
-        self.by_email: dict[str, UUID] = {}
-        if not member_ids:
-            return
-        for user_id, login in session.execute(
-            select(GithubUserLink.user_id, GithubUserLink.login).where(
-                GithubUserLink.user_id.in_(member_ids)
-            )
-        ):
-            self.by_login[login.lower()] = user_id
-        for user_id, email in session.execute(
-            select(User.id, User.email).where(User.id.in_(member_ids), User.email.is_not(None))
-        ):
-            self.by_email.setdefault(email.strip().lower(), user_id)
-        for user_id, email in session.execute(
-            select(SchoolEmailBinding.user_id, SchoolEmailBinding.school_email_normalized).where(
-                SchoolEmailBinding.user_id.in_(member_ids),
-                SchoolEmailBinding.verified_at.is_not(None),
-                SchoolEmailBinding.school_email_normalized.is_not(None),
-            )
-        ):
-            self.by_email.setdefault(email.strip().lower(), user_id)
+        identities = session.scalars(_verified_member_identities(project_id))
+        self.by_account_id = {identity.github_user_id: identity.user_id for identity in identities}
 
-    def resolve(self, login: str | None, email: str | None) -> UUID | None:
-        candidates = []
-        if login:
-            candidates.append(login.lower())
-        normalized = (email or "").strip().lower()
-        match = _NOREPLY.match(normalized)
-        if match:
-            candidates.append(match.group(1).lower())
-        for candidate in candidates:
-            if candidate in self.by_login:
-                return self.by_login[candidate]
-        return self.by_email.get(normalized)
+    def resolve(self, account_id: int | None) -> UUID | None:
+        return self.by_account_id.get(account_id) if account_id is not None else None
+
+
+def _verified_author_id():
+    # Rows from before OAuth have no marker. Recheck the current binding and
+    # membership even when the activity has yet to be synced again.
+    return (
+        _verified_member_identities(GithubActivity.project_id)
+        .with_only_columns(VerifiedGithubIdentity.user_id)
+        .where(
+            VerifiedGithubIdentity.user_id == GithubActivity.author_user_id,
+            cast(VerifiedGithubIdentity.github_user_id, String)
+            == GithubActivity.detail[_ACTOR_ACCOUNT_ID].as_string(),
+        )
+        .correlate(GithubActivity)
+        .scalar_subquery()
+    )
 
 
 def set_github_login(session: Session, user: User, login: str | None) -> GithubUserLink | None:
-    """本人声明（或清除）自己的 GitHub 用户名；一个用户名只能属于一个本站用户。"""
+    """维护旧版客户端自行声明的 GitHub 用户名。"""
     permissions.require_active(user)
     existing = session.get(GithubUserLink, user.id)
     if login is None or not login.strip():
@@ -153,10 +236,14 @@ def _upsert(
     *,
     kind: str,
     external_id: str,
+    account_id: int | None,
     values: dict[str, Any],
     new_commits: list[GithubActivity],
 ) -> None:
-    revision = _revision({**values, "occurred_at": values["occurred_at"].isoformat()})
+    if account_id is not None:
+        # Keep the marker out of public source snapshots and revision hashes.
+        values["detail"][_ACTOR_ACCOUNT_ID] = str(account_id)
+    revision = _source_revision(values)
     row = existing.get((kind, external_id))
     if row is None:
         row = GithubActivity(
@@ -176,8 +263,17 @@ def _upsert(
         if kind == "commit":
             new_commits.append(row)
         return
-    if row.revision == revision and not row.deleted:
-        return
+    if not row.deleted:
+        same_source = (
+            row.revision == revision
+            or _source_revision({key: getattr(row, key) for key in values}) == revision
+        )
+        if same_source:
+            if row.author_user_id != values["author_user_id"] or row.detail != values["detail"]:
+                row.author_user_id = values["author_user_id"]
+                row.detail = values["detail"]
+                row.synced_at = now
+            return
     for key, value in values.items():
         setattr(row, key, value)
     row.revision, row.synced_at, row.deleted = revision, now, False
@@ -210,10 +306,43 @@ def sync_activity(
         info = item.get("commit") or {}
         author = info.get("author") or {}
         message = info.get("message") or ""
-        login = (item.get("author") or {}).get("login")
+        account = item.get("author") or {}
+        account_id = _github_account_id(account)
+        login = account.get("login")
         email = author.get("email")
+        existing_row = existing.get(("commit", sha))
+        detail = (
+            dict(_source_detail(existing_row.detail))
+            if existing_row is not None
+            and isinstance(existing_row.detail, dict)
+            and existing_row.detail.get("files_fetched") is True
+            else {"sha": sha, "branch": link.default_branch}
+        )
+        detail_reader = getattr(client, "commit_detail", None)
+        if callable(detail_reader) and (
+            existing_row is None
+            or not isinstance(existing_row.detail, dict)
+            or existing_row.detail.get("files_fetched") is not True
+        ):
+            try:
+                commit_detail = detail_reader(owner, repo, sha, inst)
+                if not isinstance(commit_detail, dict):
+                    raise ApiError(503, "GITHUB_UNAVAILABLE", "提交详情格式不正确。")
+                files, files_truncated, stats = _commit_detail(commit_detail)
+                detail.update(
+                    {"files_fetched": True, "files": files, "files_truncated": files_truncated}
+                )
+                detail.update(stats)
+            except (ApiError, TypeError, ValueError) as exc:
+                # 提交正文仍然是可用的原始来源；文件详情失败不应清空同步结果。
+                logger.info(
+                    "commit detail unavailable for %s: %s",
+                    sha[:12],
+                    getattr(exc, "code", type(exc).__name__),
+                )
         _upsert(
             session, link, existing, totals, now, kind="commit", external_id=sha,
+            account_id=account_id,
             values={
                 "title": _line(message) or f"提交 {sha[:7]}",
                 "summary": message[:30000],
@@ -221,9 +350,9 @@ def sync_activity(
                 "author_login": login,
                 "author_name": (author.get("name") or login or "未知作者")[:240],
                 "author_email": email,
-                "author_user_id": resolver.resolve(login, email),
+                "author_user_id": resolver.resolve(account_id),
                 "url": _safe_url(item.get("html_url")),
-                "detail": {"sha": sha, "branch": link.default_branch},
+                "detail": detail,
                 "occurred_at": _parse_time(author.get("date")),
             },
             new_commits=new_commits,
@@ -231,10 +360,13 @@ def sync_activity(
 
     for item in pulls:
         number = str(item["number"])
-        login = (item.get("user") or {}).get("login")
+        account = item.get("user") or {}
+        account_id = _github_account_id(account)
+        login = account.get("login")
         state = "merged" if item.get("merged_at") else item.get("state", "open")
         _upsert(
             session, link, existing, totals, now, kind="pull_request", external_id=number,
+            account_id=account_id,
             values={
                 "title": f"#{number} {item.get('title') or ''}".strip()[:240],
                 "summary": (item.get("body") or "")[:30000],
@@ -242,7 +374,7 @@ def sync_activity(
                 "author_login": login,
                 "author_name": (login or "未知作者")[:240],
                 "author_email": None,
-                "author_user_id": resolver.resolve(login, None),
+                "author_user_id": resolver.resolve(account_id),
                 "url": _safe_url(item.get("html_url")),
                 "detail": {
                     "number": item["number"],
@@ -257,10 +389,13 @@ def sync_activity(
 
     for item in runs:
         run_id = str(item["id"])
-        login = (item.get("actor") or {}).get("login")
+        account = item.get("actor") or {}
+        account_id = _github_account_id(account)
+        login = account.get("login")
         state = item.get("conclusion") or item.get("status") or "unknown"
         _upsert(
             session, link, existing, totals, now, kind="ci_run", external_id=run_id,
+            account_id=account_id,
             values={
                 "title": f"{item.get('name') or 'CI'} #{item.get('run_number', '')}: {state}"[:240],
                 "summary": (
@@ -271,7 +406,7 @@ def sync_activity(
                 "author_login": login,
                 "author_name": (login or "GitHub Actions")[:240],
                 "author_email": None,
-                "author_user_id": resolver.resolve(login, None),
+                "author_user_id": resolver.resolve(account_id),
                 "url": _safe_url(item.get("html_url")),
                 "detail": {
                     "run_number": item.get("run_number"),
@@ -357,7 +492,7 @@ class _Reuse:
 # ---------------------------------------------------------------- C 的活动页读取
 
 
-def _record(row: GithubActivity) -> ActivitySourceRecord:
+def _record(row: GithubActivity, author_id: UUID | None) -> ActivitySourceRecord:
     if row.deleted:
         title, summary = f"[已删除] {row.kind} {row.external_id[:12]}", ""
         content = {"deleted": True, "kind": row.kind, "external_id": row.external_id}
@@ -369,7 +504,7 @@ def _record(row: GithubActivity) -> ActivitySourceRecord:
             "title": row.title,
             "state": row.state,
             "author_login": row.author_login,
-            **(row.detail or {}),
+            **_source_detail(row.detail),
         }
         if row.kind == "commit":
             content["message"] = row.summary
@@ -377,7 +512,7 @@ def _record(row: GithubActivity) -> ActivitySourceRecord:
         id=row.id,
         title=title or f"{row.kind} {row.external_id[:12]}",
         summary=summary,
-        author_id=row.author_user_id,
+        author_id=author_id,
         author_name=row.author_name or row.author_login or "未知作者",
         occurred_at=row.occurred_at,
         kind=row.kind,
@@ -402,7 +537,12 @@ def _escape_like(value: str) -> str:
 def github_filters(project_id: UUID, query: ActivitySourceQuery) -> list:
     filters = [GithubActivity.project_id == project_id]
     if query.author_id is not None:
-        filters.append(GithubActivity.author_user_id == query.author_id)
+        filters.extend(
+            (
+                GithubActivity.author_user_id == query.author_id,
+                _verified_author_id() == query.author_id,
+            )
+        )
     if query.record_kind:
         filters.append(GithubActivity.kind == query.record_kind)
     if query.since is not None:
@@ -446,28 +586,31 @@ class DatabaseGithubActivityPort:
                 return ActivitySourcePage(items=(), total=0)
             filters = github_filters(project_id, query)
             total = session.scalar(select(func.count()).select_from(GithubActivity).where(*filters))
-            rows = session.scalars(
-                select(GithubActivity)
+            rows = session.execute(
+                select(GithubActivity, _verified_author_id())
                 .where(*filters)
                 .order_by(GithubActivity.occurred_at.desc(), GithubActivity.id.asc())
                 .offset((query.page - 1) * query.page_size)
                 .limit(query.page_size)
             ).all()
-            return ActivitySourcePage(items=tuple(_record(r) for r in rows), total=total or 0)
+            return ActivitySourcePage(
+                items=tuple(_record(row, author_id) for row, author_id in rows), total=total or 0
+            )
 
     def get(
         self, *, project_id: UUID, actor_id: UUID, source_type: str, source_id: UUID
     ) -> ActivitySourceRecord:
         with self._session_factory() as session:
             self._check(session, project_id, actor_id, source_type)
-            row = session.scalar(
-                select(GithubActivity).where(
+            result = session.execute(
+                select(GithubActivity, _verified_author_id()).where(
                     GithubActivity.id == source_id, GithubActivity.project_id == project_id
                 )
-            )
-            if row is None:
+            ).one_or_none()
+            if result is None:
                 raise ApiError(404, "ACTIVITY_NOT_FOUND", "记录不存在。")
-            return _record(row)
+            row, author_id = result
+            return _record(row, author_id)
 
 
 class CompositeActivityPort:
@@ -492,22 +635,18 @@ def list_activity(
     author_id: UUID | None = None,
     page: int = 1,
     page_size: int = 20,
-) -> tuple[list[GithubActivity], int]:
+) -> tuple[list[tuple[GithubActivity, UUID | None]], int]:
     """项目成员查看本项目的 GitHub 活动（新的在前）。"""
     permissions.require_project_member(session, actor, project_id, write=False)
     if kind is not None and kind not in KINDS:
         raise ApiError(422, "INVALID_ACTIVITY_KIND", "kind 只能是 commit、pull_request 或 ci_run。")
-    where = [GithubActivity.project_id == project_id]
-    if kind:
-        where.append(GithubActivity.kind == kind)
-    if author_id is not None:
-        where.append(GithubActivity.author_user_id == author_id)
+    where = github_filters(project_id, ActivitySourceQuery(record_kind=kind, author_id=author_id))
     total = session.scalar(select(func.count()).select_from(GithubActivity).where(*where)) or 0
-    rows = session.scalars(
-        select(GithubActivity)
+    rows = session.execute(
+        select(GithubActivity, _verified_author_id())
         .where(*where)
         .order_by(GithubActivity.occurred_at.desc(), GithubActivity.id.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
-    return list(rows), total
+    return [(row, verified_author_id) for row, verified_author_id in rows], total

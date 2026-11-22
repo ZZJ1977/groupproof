@@ -37,8 +37,47 @@ services:
       DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
       REDIS_URL: redis://redis:6379/0
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-dev}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      EMAIL_CHALLENGE_HMAC_KEY: ${EMAIL_CHALLENGE_HMAC_KEY:-local-docker-hmac-secret-key}
+      AUTH_GOOGLE_ENABLED: ${AUTH_GOOGLE_ENABLED:-true}
+      AUTH_PASSWORD_ENABLED: ${AUTH_PASSWORD_ENABLED:-true}
+      AUTH_EMAIL_SIGNUP_ENABLED: ${AUTH_EMAIL_SIGNUP_ENABLED:-true}
+      AUTH_PASSWORD_RESET_ENABLED: ${AUTH_PASSWORD_RESET_ENABLED:-true}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/api/v1/auth/google/callback}
+      GOOGLE_DISCOVERY_URL: ${GOOGLE_DISCOVERY_URL:-https://accounts.google.com/.well-known/openid-configuration}
+      GOOGLE_EXPECTED_ISSUER: ${GOOGLE_EXPECTED_ISSUER:-https://accounts.google.com}
+      STUDENT_EMAIL_DOMAIN: ${STUDENT_EMAIL_DOMAIN:-student.must.edu.mo}
+      TEACHER_EMAIL_DOMAIN: ${TEACHER_EMAIL_DOMAIN:-must.edu.mo}
+      STUDENT_ID_PATTERN: ${STUDENT_ID_PATTERN:-^\S{4,20}$}
+      STUDENT_ID_EMAIL_RULE: ${STUDENT_ID_EMAIL_RULE:-none}
+      # Local Docker may reuse the same mail provider as Railway. Secrets stay in
+      # the ignored .env file and are forwarded only to the API container.
+      MAIL_MODE: ${MAIL_MODE:-capture}
+      MAIL_PUBLIC_ENABLED: ${MAIL_PUBLIC_ENABLED:-false}
+      MAIL_FROM: ${MAIL_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS_MODE: ${SMTP_TLS_MODE:-starttls}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-15}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
       # 本地默认用 AI 固定假结果；文件存储填了 Supabase 变量才启用
       AI_PROVIDER: ${AI_PROVIDER:-fake}
+      AI_API_KEY: ${AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-}
@@ -50,7 +89,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz')"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -75,6 +114,7 @@ services:
       context: ./services/api
     command: ["python", "-m", "scripts.daily_risks", "--loop"]
     environment:
+      RUN_MIGRATIONS_ON_STARTUP: "0"
       DATABASE_URL: postgresql://${POSTGRES_USER:-groupproof}:${POSTGRES_PASSWORD:-groupproof-local}@postgres:5432/${POSTGRES_DB:-groupproof}
       DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
     depends_on:
@@ -86,9 +126,14 @@ services:
       context: ./services/api
     command: ["celery", "-A", "app.modules.d.report_tasks:celery_app", "worker", "--loglevel=info"]
     environment:
+      RUN_MIGRATIONS_ON_STARTUP: "0"
       DATABASE_URL: postgresql://${POSTGRES_USER:-groupproof}:${POSTGRES_PASSWORD:-groupproof-local}@postgres:5432/${POSTGRES_DB:-groupproof}
       DATABASE_TIMEZONE: ${DATABASE_TIMEZONE:-Asia/Shanghai}
       REDIS_URL: redis://redis:6379/0
+      AI_PROVIDER: ${AI_PROVIDER:-fake}
+      AI_API_KEY: ${AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
     depends_on:
       api:
         condition: service_healthy
@@ -102,9 +147,16 @@ services:
       args:
         # 构建期 rewrites 兑底地址（容器网络内固定为服务名）；运行时代理另读 API_INTERNAL_URL
         API_INTERNAL_URL: ${API_DOCKER_INTERNAL_URL:-http://api:8000}
+        NEXT_PUBLIC_APP_ENV: ${NEXT_PUBLIC_APP_ENV:-development}
+        NEXT_PUBLIC_APP_MODE: ${NEXT_PUBLIC_APP_MODE:-real}
+        NEXT_PUBLIC_ENABLE_MOCKS: ${NEXT_PUBLIC_ENABLE_MOCKS:-false}
+        NEXT_PUBLIC_API_FEATURES: ${NEXT_PUBLIC_API_FEATURES:-}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
     environment:
       NEXT_PUBLIC_APP_ENV: ${NEXT_PUBLIC_APP_ENV:-development}
-      NEXT_PUBLIC_ENABLE_MOCKS: ${NEXT_PUBLIC_ENABLE_MOCKS:-true}
+      NEXT_PUBLIC_APP_MODE: ${NEXT_PUBLIC_APP_MODE:-real}
+      NEXT_PUBLIC_ENABLE_MOCKS: ${NEXT_PUBLIC_ENABLE_MOCKS:-false}
+      NEXT_PUBLIC_API_FEATURES: ${NEXT_PUBLIC_API_FEATURES:-}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8000}
     ports:

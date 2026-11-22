@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 export function PageHeader({ title, description, eyebrow, actions, icon: Icon }: { title: string; description?: string; eyebrow?: string; actions?: ReactNode; icon?: LucideIcon }) {
   return <div className="gp-page-header flex flex-wrap items-start justify-between gap-3"><div>{eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}<div className="flex items-center gap-3">{Icon && <span className="flex h-10 w-10 items-center justify-center rounded-[7px] bg-[var(--gp-action-soft)] text-[var(--gp-action)]"><Icon size={21} /></span>}<div><h1 className="gp-page-title">{title}</h1>{description && <p className="gp-page-description">{description}</p>}</div></div></div>{actions && <div className="flex items-center gap-2">{actions}</div>}</div>;
@@ -11,6 +12,29 @@ export function PageHeader({ title, description, eyebrow, actions, icon: Icon }:
 
 export function Panel({ title, action, children, className, bodyClassName, noPadding = false }: { title?: string; action?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; noPadding?: boolean }) {
   return <section className={cn("gp-panel", className)}>{(title || action) && <div className="gp-panel-header"><h2 className="gp-panel-title">{title}</h2>{action}</div>}<div className={cn(noPadding ? "" : "gp-panel-body", bodyClassName)}>{children}</div></section>;
+}
+
+export function Section({ title, description, action, children, className, surface = false }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string; surface?: boolean }) {
+  return <section className={cn("gp-section", className)} aria-label={title} data-surface={surface ? "true" : undefined}>
+    {(title || description || action) && <div className="gp-section-heading"><div>{title && <h2 className="gp-section-title">{title}</h2>}{description && <p className="gp-section-description">{description}</p>}</div>{action}</div>}
+    {children}
+  </section>;
+}
+
+export function ListRow({ title, meta, leading, actions, children, className }: { title?: ReactNode; meta?: ReactNode; leading?: ReactNode; actions?: ReactNode; children?: ReactNode; className?: string }) {
+  return <div className={cn("gp-list-row", className)}><div className="flex min-w-0 flex-1 items-start gap-3">{leading}{(title || meta || children) && <div className="gp-list-row-main">{title && <div className="gp-list-row-title">{title}</div>}{meta && <div className="gp-list-row-meta">{meta}</div>}{children}</div>}</div>{actions && <div className="gp-list-row-actions">{actions}</div>}</div>;
+}
+
+export function DetailDrawer({ open, onOpenChange, title, description, children, footer }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; children: ReactNode; footer?: ReactNode }) {
+  return <Sheet open={open} modal={false} onOpenChange={onOpenChange}><SheetContent overlayClassName="pointer-events-none" className="gp-detail-drawer gp-detail-drawer-nonmodal">
+    <div className="gp-detail-drawer-header"><SheetTitle className="gp-detail-drawer-title">{title}</SheetTitle>{description && <SheetDescription className="gp-detail-drawer-description">{description}</SheetDescription>}</div>
+    <div className="gp-detail-drawer-body">{children}</div>
+    {footer && <div className="gp-detail-drawer-footer">{footer}</div>}
+  </SheetContent></Sheet>;
+}
+
+export function StateBlock({ tone = "empty", title, description, action }: { tone?: "loading" | "empty" | "error" | "warning"; title: string; description?: string; action?: ReactNode }) {
+  return <div className="gp-state-block" data-tone={tone} role={tone === "error" ? "alert" : "status"}><div className="gp-state-block-title">{title}</div>{description && <div className="gp-state-block-description">{description}</div>}{action}</div>;
 }
 
 const toneByStatus: Record<string, "blue" | "green" | "amber" | "red" | "gray"> = {

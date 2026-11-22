@@ -23,6 +23,7 @@ export function GovernanceView({ screen, courseId, groupId }: { screen: number |
     case 54: return <AdminLogs />;
     case 55: return <AdminAiUsage />;
     case 56: return <AdminAccessRequests />;
+    case 62: return <AdminUsers />;
     default: return <div className={styles.page}><Header title="页面不存在" description="请从导航中选择教师或管理员页面。" /></div>;
   }
 }
