@@ -561,8 +561,6 @@ def _apply_activity_command(
     if kind not in {"github", "feishu"}:
         raise ApiError(422, "INVALID_ACTIVITY_SOURCE", "Unsupported activity source.")
     action = "associate" if isinstance(command, AssociateActivity) else command.action
-    if action != "associate" and kind != "feishu":
-        raise ApiError(422, "INVALID_ACTIVITY_ACTION", "Only Feishu records support triage.")
     record, replay = claim_request(
         session,
         actor_id=user.id,

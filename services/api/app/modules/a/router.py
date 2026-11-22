@@ -248,6 +248,61 @@ def create_personal_project(
     )
 
 
+class AddPersonalMemberRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str = Field(min_length=1, max_length=320)
+
+
+class PersonalMemberDTO(BaseModel):
+    project_id: UUID
+    user_id: UUID
+    name: str | None = None
+    role: str
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/members",
+    response_model=SuccessResponse[PersonalMemberDTO],
+    dependencies=[Depends(_private)],
+)
+def add_personal_project_member(
+    project_id: UUID,
+    payload: AddPersonalMemberRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    row = projects.add_personal_member(session, user, project_id, identifier=payload.identifier)
+    member_user = session.get(User, row.user_id)
+    session.commit()
+    return success(
+        PersonalMemberDTO(
+            project_id=project_id,
+            user_id=row.user_id,
+            name=member_user.name if member_user else None,
+            role=row.role,
+        ),
+        request,
+    )
+
+
+@router.delete(
+    "/api/v1/a/projects/{project_id}/members/{member_user_id}",
+    response_model=SuccessResponse[dict],
+    dependencies=[Depends(_private)],
+)
+def remove_personal_project_member(
+    project_id: UUID,
+    member_user_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    projects.remove_personal_member(session, user, project_id, member_user_id=member_user_id)
+    session.commit()
+    return success({"project_id": str(project_id), "removed_user_id": str(member_user_id)}, request)
+
+
 @router.post(
     "/api/v1/a/projects/{project_id}/leader",
     response_model=SuccessResponse[dict],

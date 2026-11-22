@@ -93,7 +93,13 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const [title, description] = titles[view];
   return <div>
     <PageHeader title={tr(title)} description={tr(description)} actions={<Link href={`/projects/${projectId}/planning`} className={secondary}>{tr("任务计划")}</Link>} />
-    <nav aria-label={tr("任务视图")} className="mt-4 flex gap-2">{(["tree", "board", "list"] as const).map((v) => <Link key={v} href={viewHref(v)} aria-current={v === view ? "page" : undefined} className={v === view ? button : secondary}>{tr(viewLabel[v])}</Link>)}</nav>
+    <nav aria-label={tr("任务视图")} className="gp-segmented mt-4">
+      {(["tree", "board", "list"] as const).map((v) => (
+        <Link key={v} href={viewHref(v)} aria-current={v === view ? "page" : undefined} data-active={v === view ? "true" : undefined} className="gp-segmented-item">
+          {tr(viewLabel[v])}
+        </Link>
+      ))}
+    </nav>
     <Panel className="mt-3">
       <form className="grid grid-cols-2 gap-2 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); setFilters({ q: q.trim() || null, page: null }); }}>
         <div className="col-span-2"><label className={label} htmlFor="tasks-q">{tr("搜索")}</label><input id="tasks-q" className={input} placeholder={tr("名称、说明或编号 T-001")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -168,14 +174,14 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
   const tr = useUiText();
   const [dragged, setDragged] = useState<BTaskRow>();
   const target = (status: string) => dragged?.transitions.find((t) => t.to === status);
-  return <div className="grid gap-3 overflow-x-auto md:grid-cols-5">{page.columns.map((col) => <section key={col.status} aria-label={col.label} data-testid={`column-${col.status}`}
-    className={`min-h-40 rounded border bg-slate-50 p-2 ${dragged && target(col.status) ? "border-blue-400" : "border-slate-200"}`}
+  return <div className="grid gap-3.5 overflow-x-auto md:grid-cols-5">{page.columns.map((col) => <section key={col.status} aria-label={col.label} data-testid={`column-${col.status}`}
+    className={`min-h-44 rounded-2xl border p-3 transition-colors ${dragged && target(col.status) ? "border-sky-400 bg-sky-50/40" : "border-slate-200/70 bg-slate-50/75"}`}
     onDragOver={(e) => { if (target(col.status)) e.preventDefault(); }}
     onDrop={(e) => { e.preventDefault(); const t = target(col.status); if (dragged && t) onMove(dragged, t); setDragged(undefined); }}>
-    <h2 className="mb-2 flex justify-between text-xs font-semibold text-slate-600"><span>{col.label}</span><span>{col.count}</span></h2>
-    <div className="space-y-2">{page.items.filter((r) => r.status === col.status).map((row) => <article key={row.id} data-testid="board-card" draggable={row.transitions.length > 0} data-movable={row.transitions.length > 0 ? "true" : "false"}
+    <h2 className="mb-2.5 flex items-center justify-between text-xs font-semibold text-slate-600"><span>{col.label}</span><span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-500 shadow-2xs">{col.count}</span></h2>
+    <div className="space-y-2.5">{page.items.filter((r) => r.status === col.status).map((row) => <article key={row.id} data-testid="board-card" draggable={row.transitions.length > 0} data-movable={row.transitions.length > 0 ? "true" : "false"}
       title={row.blocked_reason ?? tr("拖到下一列")} onDragStart={() => setDragged(row)} onDragEnd={() => setDragged(undefined)}
-      className={`rounded border border-slate-200 bg-white p-2 text-sm shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}>
+      className={`rounded-xl border border-slate-200/80 bg-white p-3 text-sm shadow-2xs transition-shadow hover:shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}>
       <div className="font-mono text-xs text-slate-500">{row.code}</div>
       <Link className="font-medium text-slate-900 hover:underline" href={row.links.detail}>{row.title}</Link>
       <div className="mt-1 text-xs text-slate-500"><Assignees row={row} /> · {row.progress_percent}%</div>

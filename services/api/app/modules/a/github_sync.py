@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from uuid import UUID, uuid4
@@ -232,6 +233,7 @@ def _sync_link(session, client, link: GithubRepoLink, totals: dict[str, int], no
     }
     total_bytes = 0
     keep: set[str] = set()
+    to_fetch: list[tuple[str, str, GithubFile | None]] = []
     for entry in entries:
         path, sha, size = entry["path"], entry["sha"], entry.get("size", 0)
         total_bytes += size
@@ -242,7 +244,24 @@ def _sync_link(session, client, link: GithubRepoLink, totals: dict[str, int], no
         row = existing.get(path)
         if row is not None and row.blob_sha == sha:
             continue
-        raw = client.blob(link.owner, link.repo, sha, link.installation_id)
+        to_fetch.append((path, sha, row))
+
+    fetched_blobs: dict[str, bytes] = {}
+    if len(to_fetch) == 1:
+        _, sha, _ = to_fetch[0]
+        fetched_blobs[sha] = client.blob(link.owner, link.repo, sha, link.installation_id)
+    elif len(to_fetch) > 1:
+        unique_shas = list(dict.fromkeys(sha for _, sha, _ in to_fetch))
+        with ThreadPoolExecutor(max_workers=min(8, len(unique_shas))) as pool:
+            futures = {
+                sha: pool.submit(client.blob, link.owner, link.repo, sha, link.installation_id)
+                for sha in unique_shas
+            }
+            for sha, future in futures.items():
+                fetched_blobs[sha] = future.result()
+
+    for path, sha, row in to_fetch:
+        raw = fetched_blobs[sha]
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
