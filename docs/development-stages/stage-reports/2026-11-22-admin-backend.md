@@ -34,3 +34,9 @@
 - 已在已登录的 Railway workspace 中创建新项目 `groupproof-admin`（project ID `c96385e7-2109-4250-be01-5100b1d55521`，production environment ID `95b0f49f-afca-4636-81fc-222636ba16f5`），并建立 `Postgres`、`Redis`、`api`、`web`、`worker` 五个服务。`admin-backend` 已推送到 `ZZJ1977/groupproof`，API/Web/worker 均绑定该分支；五个服务当前均为 `SUCCESS`，各运行 1 个副本。最新 API、Web、worker 部署分别为 `780ceb11-7075-4946-8a99-33994a0f6b8b`、`eee7ec13-0f8f-4dd4-8d9e-e571edc915ee`、`8b62ad4a-9f12-4aab-9bce-3558e46d0edd`；worker 日志已确认 Celery 连接 Redis 并进入 `ready` 状态。
 - Railway API 当前为 `APP_MODE=real`，Google、邮箱注册和密码找回保持关闭，邮件不对外发送；尚未创建初始管理员，因此当前证据是服务/匿名健康检查，不是已登录 Admin 业务验收。所有密钥只存在 Railway Variables。
 - 旧业务审计端点 `/api/v1/admin/audit-logs` 仍保留兼容契约并在 provider 未接通时返回 503；管理日志默认入口使用已接通的 `/api/v1/admin/shared-audit-events`，页面会明确显示来源与不可用状态。
+
+### 双环境数据库接入收尾
+
+- `admin-backend` 已合入 `develop` 的后端代码和迁移历史，Alembic head 为 `0046`；完整 API 回归为 `1045 passed, 258 skipped`。
+- `groupproof-staging/admin-api` 使用 Staging 项目内 PostgreSQL，`groupproof-production/admin-api` 使用 Production 项目内 PostgreSQL；两套管理 Web 均在线并通过真实管理员登录验证。
+- Staging 管理面板读取到 3 个账号（1 个管理员、2 个学生）；Production 管理面板读取到 1 个管理员。课程和待审核数据按各自数据库真实状态显示。
