@@ -5,7 +5,9 @@ test("匿名用户可打开邮箱注册流程", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /以证据为核心的\s*小组项目协作平台/ })).toBeVisible();
   await page.getByRole("button", { name: "注册账号", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByRole("dialog")).toContainText("第 1/3 步");
+  await expect(page.getByRole("dialog")).toContainText("第 1/2 步");
+  await expect(page.getByRole("dialog").getByLabel("学校邮箱", { exact: true })).toBeFocused();
+  await expect(page.getByRole("dialog").locator('input[type="password"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: "发送验证码", exact: true })).toBeVisible();
   await expect(page).not.toHaveURL(/\/home$/);
 });

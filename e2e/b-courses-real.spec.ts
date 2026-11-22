@@ -31,6 +31,8 @@ test("B1-01 我的课程只显示接口返回的课程，Tab 和搜索写进 URL
   await page.goto("/courses");
   await expect(page.getByRole("heading", { name: "软件工程实践" })).toBeVisible();
   await expect(page.getByText("待处理 2 项")).toBeVisible();
+  await expect(page.locator(`a[href="/courses/${courseA}/rules"]`)).toHaveText("查看课程规则");
+  await expect(page.locator(`a[href="/courses/${courseA}/files"]`)).toHaveText("课程文件");
   await expect(page.locator("main")).not.toContainText("软件工程 · 2026"); // seed course never leaks
   await page.getByRole("tab", { name: /已结束/ }).click();
   await expect(page).toHaveURL(/tab=ended/);

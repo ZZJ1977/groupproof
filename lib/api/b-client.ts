@@ -1,5 +1,5 @@
 import { apiConfig } from "@/lib/api/config";
-import { createSessionFetch } from "@/lib/api/client";
+import { fetchWithSession } from "@/lib/api/client";
 
 /**
  * B module API client.
@@ -59,7 +59,8 @@ export function newIdempotencyKey(): string {
 }
 
 export function createBClient(options: { baseUrl?: string; fetch?: typeof fetch } = {}) {
-  const send = createSessionFetch(options.fetch);
+  const transport: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init));
+  const send = (request: Request) => fetchWithSession(request, transport);
   const baseUrl = options.baseUrl ?? apiConfig.baseUrl;
   const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
 

@@ -20,6 +20,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     DateTime,
     ForeignKey,
     Index,
@@ -264,6 +265,36 @@ class OAuthTransaction(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class VerifiedGithubIdentity(Base):
+    """Ownership verified at GitHub for attribution, independent of sign-in."""
+
+    __tablename__ = "verified_github_identities"
+    __table_args__ = (UniqueConstraint("github_user_id", name="uq_verified_github_identity"),)
+
+    user_id: Mapped[Any] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    github_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    login: Mapped[str] = mapped_column(String(39), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class GithubLinkTransaction(Base):
+    """One pending personal GitHub authorization per user, tied to one session."""
+
+    __tablename__ = "github_link_transactions"
+
+    user_id: Mapped[Any] = mapped_column(
+        UUIDType, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("auth_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    state_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_verifier: Mapped[str | None] = mapped_column(String(128))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PasswordCredential(Base):
     """账号密码凭据（与 Google 身份分开管理；只存密码哈希，不存明文）。
 
@@ -328,7 +359,7 @@ class PreRegistrationRequest(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     send_status: Mapped[str] = mapped_column(
         String(16), default="pending"
-    )  # pending|accepted|failed|unknown
+    )  # pending|accepted|captured|failed|unknown
     resend_available_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     code_consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creation_grant_digest: Mapped[str | None] = mapped_column(

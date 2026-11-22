@@ -27,14 +27,14 @@ test("B2-01 建组失败时保留表单，成功后进入小组详情且创建�
   await page.route(`**/api/v1/groups/${group}`, (route) => ok(route, detail({ members: [{ ...person(me, "我"), role: "leader", joined_at: "2026-11-05T00:00:00Z" }], member_count: 1 })));
   await page.route(`**/api/v1/courses/${course}/ungrouped-students**`, (route) => ok(route, []));
   await page.goto(`/courses/${course}/groups`);
-  await page.getByRole("button", { name: "创建小组" }).click();
+  await page.locator(".gp-page-header").getByRole("button", { name: "创建小组", exact: true }).click();
   await page.getByLabel("小组名称").fill("星火组");
   await page.getByLabel("项目方向（可选）").fill("校园服务");
-  await page.getByRole("button", { name: "创建小组" }).last().click();
+  await page.locator("main form").getByRole("button", { name: "创建小组", exact: true }).click();
   await expect(page.getByText("本课程已有同名小组，请换一个名称。")).toBeVisible();
   await expect(page.getByLabel("小组名称")).toHaveValue("星火组");
   await expect(page.getByLabel("项目方向（可选）")).toHaveValue("校园服务");
-  await page.getByRole("button", { name: "创建小组" }).last().click();
+  await page.locator("main form").getByRole("button", { name: "创建小组", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/courses/${course}/groups/${group}$`));
   await expect(page.getByRole("heading", { name: "星火组" })).toBeVisible();
   await expect(page.locator("main").getByRole("listitem").filter({ hasText: "我" }).getByText("组长", { exact: true })).toBeVisible();

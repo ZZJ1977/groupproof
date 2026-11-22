@@ -47,7 +47,7 @@ from app.modules.a.ai.schemas import (
 )
 from app.modules.a.audit import record_audit
 from app.modules.b import requirement_history as history
-from app.modules.b.common import now, require_reason, require_version
+from app.modules.b.common import lock_project_for_write, now, require_reason, require_version
 from app.modules.b.courses_schemas import PersonDTO
 from app.modules.b.models import (
     BAnalysisRun,
@@ -89,13 +89,8 @@ UNSORTED_MODULE = "未分类"
 
 def require_draft_writer(session: Session, user: User, project_id: UUID):
     """Project member, project writable, and the baseline still a draft (row locked)."""
-    relation = permissions.require_project_member(session, user, project_id)
-    project = session.scalar(
-        select(Project)
-        .where(Project.id == project_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    relation = lock_project_for_write(session, user, project_id)
+    project = relation.project
     check_draft(project)
     return relation, project
 
@@ -416,13 +411,22 @@ def run_analysis(bind: Engine | Connection, run_id: UUID, provider: AIProvider |
                 session, run_id, "failed", "ANALYSIS_FAILED", "分析失败，请重试或手动录入需求。"
             )
             return
+        run = session.get(BAnalysisRun, run_id, populate_existing=True)
+        if run is None or run.status != "processing":
+            return
+        try:
+            # The AI call ran outside the write transaction. Membership, course
+            # lifecycle and baseline state may all have changed while it ran.
+            actor = session.get(User, run.requested_by, populate_existing=True)
+            project = lock_project_for_write(session, actor, run.project_id).project
+        except ApiError as error:
+            session.rollback()
+            _finish(session, run_id, "failed", error.code, error.message)
+            return
         run = session.get(BAnalysisRun, run_id, with_for_update=True, populate_existing=True)
         if run is None or run.status != "processing":
             return
-        project = session.scalar(
-            select(Project).where(Project.id == run.project_id).with_for_update()
-        )
-        if project is None or project.setup_status not in DRAFT_SETUP:
+        if project.setup_status not in DRAFT_SETUP:
             session.rollback()
             _finish(
                 session,
@@ -487,7 +491,7 @@ def merge_result(
         if r not in replaceable and r.id in metas and metas[r.id].ai_key
     }
     for row in replaceable:
-        session.delete(metas[row.id])
+        # The FK cascades the metadata row; deleting both ORM objects races that cascade.
         session.delete(row)
     session.flush()
 
@@ -872,13 +876,7 @@ def update_requirement(
 ) -> RequirementDTO:
     """Draft: free edits. Frozen baseline (B4-02): only with a reason; every save is a
     new version and the linked acceptance criteria are flagged for re-checking."""
-    permissions.require_project_member(session, user, project_id)
-    project = session.scalar(
-        select(Project)
-        .where(Project.id == project_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    project = lock_project_for_write(session, user, project_id).project
     frozen = project.setup_status == "frozen"
     reason = (command.reason or "").strip() or None
     if frozen and reason is None:

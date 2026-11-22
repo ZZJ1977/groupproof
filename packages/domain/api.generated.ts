@@ -144,7 +144,7 @@ export interface paths {
         get?: never;
         /**
          * Set My Github Login
-         * @description 声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。
+         * @description 维护旧版客户端自行声明的 GitHub 用户名。
          */
         put: operations["set_my_github_login_api_v1_a_me_github_login_put"];
         post?: never;
@@ -713,6 +713,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/email/registrations/{tx_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Email Registration Profile */
+        get: operations["read_email_registration_profile_api_v1_auth_email_registrations__tx_id__profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/email/registrations/{tx_id}/resend": {
         parameters: {
             query?: never;
@@ -741,6 +758,23 @@ export interface paths {
         put?: never;
         /** Verify Email Registration */
         post: operations["verify_email_registration_api_v1_auth_email_registrations__tx_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/github/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Callback */
+        get: operations["github_callback_api_v1_auth_github_callback_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1232,6 +1266,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{course_id}/groups/{group_id}/teacher-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Group Project */
+        get: operations["teacher_group_project_api_v1_courses__course_id__groups__group_id__teacher_project_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/groups/{group_id}/template-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Template Project */
+        post: operations["create_template_project_api_v1_courses__course_id__groups__group_id__template_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{course_id}/join-policy": {
         parameters: {
             query?: never;
@@ -1330,6 +1398,159 @@ export interface paths {
         /** Set Project Template */
         put: operations["set_project_template_api_v1_courses__course_id__project_template_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/reopenable-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reopenable Projects */
+        get: operations["reopenable_projects_api_v1_courses__course_id__reopenable_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Actions */
+        get: operations["teacher_actions_api_v1_courses__course_id__teacher_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End Course */
+        post: operations["end_course_api_v1_courses__course_id__teacher_end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Groups */
+        get: operations["teacher_groups_api_v1_courses__course_id__teacher_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Overview */
+        get: operations["teacher_overview_api_v1_courses__course_id__teacher_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Rules */
+        get: operations["read_rules_api_v1_courses__course_id__teacher_rules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-rules/{version_id}/projects/{project_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Rules */
+        post: operations["confirm_rules_api_v1_courses__course_id__teacher_rules__version_id__projects__project_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Settings */
+        post: operations["change_settings_api_v1_courses__course_id__teacher_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{course_id}/teacher-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Template */
+        post: operations["change_template_api_v1_courses__course_id__teacher_template_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1690,6 +1911,41 @@ export interface paths {
         get: operations["my_invitations_api_v1_me_group_invitations_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/identities/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Github Identity */
+        get: operations["get_github_identity_api_v1_me_identities_github_get"];
+        put?: never;
+        post?: never;
+        /** Unlink Github Identity */
+        delete: operations["unlink_github_identity_api_v1_me_identities_github_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/identities/github/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Github Identity */
+        post: operations["link_github_identity_api_v1_me_identities_github_link_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2136,6 +2392,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/applied-course-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Applied Template */
+        get: operations["applied_template_api_v1_projects__project_id__applied_course_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Project */
+        post: operations["archive_project_api_v1_projects__project_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/baseline/checklist": {
         parameters: {
             query?: never;
@@ -2283,6 +2573,93 @@ export interface paths {
         put?: never;
         /** Resolve Conflict */
         post: operations["resolve_conflict_api_v1_projects__project_id__conflicts__conflict_id__resolution_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/contribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Contribution */
+        get: operations["read_contribution_api_v1_projects__project_id__contribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/contribution/appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Appeals */
+        get: operations["list_appeals_api_v1_projects__project_id__contribution_appeals_get"];
+        put?: never;
+        /** Submit Appeal */
+        post: operations["submit_appeal_api_v1_projects__project_id__contribution_appeals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/contribution/appeals/{appeal_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Appeal */
+        post: operations["decide_appeal_api_v1_projects__project_id__contribution_appeals__appeal_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/contribution/calculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Calculate Contribution */
+        post: operations["calculate_contribution_api_v1_projects__project_id__contribution_calculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/contribution/members/{member_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Notes */
+        get: operations["read_notes_api_v1_projects__project_id__contribution_members__member_id__notes_get"];
+        put?: never;
+        /** Save Note */
+        post: operations["save_note_api_v1_projects__project_id__contribution_members__member_id__notes_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2928,6 +3305,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen Project */
+        post: operations["reopen_project_api_v1_projects__project_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reopens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Reopens */
+        get: operations["read_reopens_api_v1_projects__project_id__reopens_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reports */
+        get: operations["list_reports_api_v1_projects__project_id__reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Export */
+        post: operations["request_export_api_v1_projects__project_id__reports_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/exports/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Export */
+        get: operations["read_export_api_v1_projects__project_id__reports_exports__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/exports/{artifact_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Export */
+        get: operations["download_export_api_v1_projects__project_id__reports_exports__artifact_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/exports/{artifact_id}/download-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Download Link */
+        post: operations["create_download_link_api_v1_projects__project_id__reports_exports__artifact_id__download_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Report */
+        post: operations["refresh_report_api_v1_projects__project_id__reports_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Report Version */
+        post: operations["restore_report_version_api_v1_projects__project_id__reports_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Report */
+        post: operations["review_report_api_v1_projects__project_id__reports_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Edit Section */
+        post: operations["edit_section_api_v1_projects__project_id__reports_sections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/reports/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Report */
+        post: operations["submit_report_api_v1_projects__project_id__reports_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/requirements": {
         parameters: {
             query?: never;
@@ -3015,6 +3596,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/risk-explanation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Risk Explanation */
+        get: operations["risk_explanation_api_v1_projects__project_id__risk_explanation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/risk-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Risk Summary */
+        get: operations["risk_summary_api_v1_projects__project_id__risk_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/risks": {
         parameters: {
             query?: never;
@@ -3044,6 +3659,24 @@ export interface paths {
         put?: never;
         /** Transition Risk */
         post: operations["transition_risk_api_v1_projects__project_id__risks__risk_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Settings */
+        get: operations["read_settings_api_v1_projects__project_id__settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_v1_projects__project_id__settings_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3217,6 +3850,125 @@ export interface paths {
         put?: never;
         /** Create Verification */
         post: operations["create_verification_api_v1_projects__project_id__tasks__task_id__verification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Acceptance Decision */
+        post: operations["create_acceptance_decision_api_v1_projects__project_id__tasks__task_id__verification_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/verification/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Verification History */
+        get: operations["read_verification_history_api_v1_projects__project_id__tasks__task_id__verification_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/teacher-modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Modules */
+        get: operations["teacher_modules_api_v1_projects__project_id__teacher_modules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/teacher-modules/{module_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Module Detail */
+        get: operations["teacher_module_detail_api_v1_projects__project_id__teacher_modules__module_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/teacher-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Report */
+        get: operations["teacher_report_api_v1_projects__project_id__teacher_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/teacher-report/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Comment Report */
+        post: operations["comment_report_api_v1_projects__project_id__teacher_report_comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/teacher-report/grades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grade Report */
+        post: operations["grade_report_api_v1_projects__project_id__teacher_report_grades_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4360,6 +5112,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptanceDecisionRequest */
+        AcceptanceDecisionRequest: {
+            /** Decision */
+            decision: string;
+            /** Reason */
+            reason: string;
+            /** Responsibility Share */
+            responsibility_share?: number | null;
+        };
         /** AccessGrantDTO */
         AccessGrantDTO: {
             /**
@@ -4971,6 +5732,21 @@ export interface components {
             /** Requirements */
             requirements: components["schemas"]["ImplRequirement"][];
         };
+        /** AppealInput */
+        AppealInput: {
+            /**
+             * Evidence Id
+             * Format: uuid
+             */
+            evidence_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
         /** AppendCourseFileVersion */
         AppendCourseFileVersion: {
             /** Expected Version */
@@ -5294,6 +6070,11 @@ export interface components {
             path: string;
             /** Quote */
             quote: string;
+        };
+        /** CommentInput */
+        CommentInput: {
+            /** Body */
+            body: string;
         };
         /** CompleteMilestone */
         CompleteMilestone: {
@@ -5689,6 +6470,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** CourseProjectInput */
+        CourseProjectInput: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+        };
         /** CourseRulesDTO */
         CourseRulesDTO: {
             /**
@@ -5752,6 +6540,23 @@ export interface components {
             require_plan_review: boolean;
             /** Required Deliverables */
             required_deliverables?: string[];
+        };
+        /** CourseSettingsInput */
+        CourseSettingsInput: {
+            /** Formation Deadline */
+            formation_deadline?: string | null;
+            /** Grouping Mode */
+            grouping_mode: string;
+            /** Max Group Size */
+            max_group_size: number;
+            /** Min Group Size */
+            min_group_size: number;
+            /** Name */
+            name: string;
+            /** Project Deadline */
+            project_deadline?: string | null;
+            /** Reason */
+            reason: string;
         };
         /** CProjectContextDTO */
         CProjectContextDTO: {
@@ -5928,6 +6733,16 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CreatedProjectDTO */
+        CreatedProjectDTO: {
+            /** Href */
+            href: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
         /** CreateEvidence */
         CreateEvidence: {
             /** Criterion Ids */
@@ -5990,6 +6805,10 @@ export interface components {
         CreateProject: {
             /** Description */
             description?: string | null;
+            /** Expected Course Rule Version Id */
+            expected_course_rule_version_id?: string | null;
+            /** Expected Group Version */
+            expected_group_version?: number | null;
             /** Name */
             name: string;
             /** Project Type */
@@ -6303,6 +7122,15 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** DecisionInput */
+        DecisionInput: {
+            /** Action */
+            action: string;
+            /** Adjusted Share */
+            adjusted_share?: number | string | null;
+            /** Reason */
+            reason: string;
+        };
         /** DemoTaskRequest */
         DemoTaskRequest: {
             /**
@@ -6467,6 +7295,26 @@ export interface components {
             discussion: components["schemas"]["DiscussionDTO"];
             reply: components["schemas"]["DiscussionReplyDTO"];
         };
+        /** DraftDTO */
+        DraftDTO: {
+            /**
+             * Group Id
+             * Format: uuid
+             */
+            group_id: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Project Id */
+            project_id: string | null;
+            /** Step */
+            step: number;
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** EditMembershipChange */
         EditMembershipChange: {
             /** Expected Version */
@@ -6479,12 +7327,36 @@ export interface components {
              */
             reason: string;
         };
+        /** EditSection */
+        EditSection: {
+            /** Body */
+            body: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Section */
+            section: string;
+        };
         /** EmailRegistrationCompleteIn */
         EmailRegistrationCompleteIn: {
+            /** College */
+            college?: string | null;
+            /** Confirmpassword */
+            confirmPassword: string;
+            /** Feishuaccount */
+            feishuAccount?: string | null;
+            /** Githubusername */
+            githubUsername?: string | null;
+            /** Name */
+            name: string;
             /** Password */
             password: string;
-            /** Username */
-            username: string;
+            /**
+             * Requestedidentity
+             * @enum {string}
+             */
+            requestedIdentity: "student" | "teacher";
+            /** Studentid */
+            studentId?: string | null;
         };
         /** EmailRegistrationIn */
         EmailRegistrationIn: {
@@ -6502,6 +7374,11 @@ export interface components {
         EndClass: {
             /** Expected Version */
             expected_version: number;
+            /** Reason */
+            reason: string;
+        };
+        /** EndInput */
+        EndInput: {
             /** Reason */
             reason: string;
         };
@@ -6712,6 +7589,13 @@ export interface components {
             source_revision: string;
             /** Version No */
             version_no: number;
+        };
+        /** ExportInput */
+        ExportInput: {
+            /** File Format */
+            file_format: string;
+            /** Version */
+            version: number;
         };
         /** ExportReportRequest */
         ExportReportRequest: {
@@ -7086,6 +7970,20 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** GithubIdentityStatus */
+        GithubIdentityStatus: {
+            /** Available */
+            available: boolean;
+            /** Login */
+            login: string | null;
+            /** Verifiedat */
+            verifiedAt: string | null;
+        };
+        /** GithubLinkStart */
+        GithubLinkStart: {
+            /** Authorizeurl */
+            authorizeUrl: string;
+        };
         /** GithubLoginDTO */
         GithubLoginDTO: {
             /** Login */
@@ -7181,6 +8079,13 @@ export interface components {
             reason: string;
             /** Version No */
             version_no: number;
+        };
+        /** GradeInput */
+        GradeInput: {
+            /** Comment */
+            comment: string;
+            /** Score */
+            score: number;
         };
         /** HandleAction */
         HandleAction: {
@@ -7398,6 +8303,61 @@ export interface components {
              */
             snapshot_id: string;
         };
+        /** MaterialDTO */
+        MaterialDTO: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by: components["schemas"]["PersonDTO"] | null;
+            /** Extract Reason */
+            extract_reason: string | null;
+            /**
+             * Extract Status
+             * @enum {string}
+             */
+            extract_status: "ready" | "pending" | "failed" | "unavailable";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "file";
+            /** Text */
+            text?: string | null;
+            /** Text Length */
+            text_length: number;
+            /** Title */
+            title: string;
+        };
+        /** MilestoneBriefDTO */
+        MilestoneBriefDTO: {
+            /** Deadline */
+            deadline: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /** MilestoneTemplate */
+        MilestoneTemplate: {
+            /** Name */
+            name: string;
+            /** Required Materials */
+            required_materials?: string[];
+            /** Weight */
+            weight: number;
+        };
         /** MilestoneTemplateItem */
         MilestoneTemplateItem: {
             /** Deadline */
@@ -7406,6 +8366,13 @@ export interface components {
             description?: string | null;
             /** Title */
             title: string;
+        };
+        /** NoteInput */
+        NoteInput: {
+            /** Body */
+            body: string;
+            /** Restore Revision */
+            restore_revision?: number | null;
         };
         /** NotificationDTO */
         NotificationDTO: {
@@ -7506,6 +8473,45 @@ export interface components {
             /** Unread Before */
             unread_before: number;
         };
+        /** OverviewDTO */
+        OverviewDTO: {
+            /** Can Edit */
+            can_edit: boolean;
+            /** Course Id */
+            course_id: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Entry
+             * @enum {string}
+             */
+            entry: "setup" | "baseline" | "readonly";
+            /** Final Deadline */
+            final_deadline: string | null;
+            /** Group Id */
+            group_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Leader */
+            is_leader: boolean;
+            /** Lifecycle */
+            lifecycle: string;
+            /** Lock Version */
+            lock_version: number;
+            /** Members */
+            members: components["schemas"]["PersonDTO"][];
+            /** Name */
+            name: string;
+            next_milestone: components["schemas"]["MilestoneBriefDTO"] | null;
+            /** Setup Status */
+            setup_status: string;
+            /** Setup Step */
+            setup_step: number;
+            stats: components["schemas"]["ProjectStatsDTO"];
+        };
         /** PasswordChange */
         PasswordChange: {
             /** Currentpassword */
@@ -7558,6 +8564,16 @@ export interface components {
              */
             project_id: string;
         };
+        /** PersonDTO */
+        PersonDTO: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string | null;
+        };
         /** PreferencesPatch */
         PreferencesPatch: {
             /** Preferredlocale */
@@ -7580,6 +8596,10 @@ export interface components {
             college?: string | null;
             /** Expectedversion */
             expectedVersion: number;
+            /** Feishuaccount */
+            feishuAccount?: string | null;
+            /** Githubusername */
+            githubUsername?: string | null;
             /** Name */
             name?: string | null;
             /** Requestedidentity */
@@ -7653,6 +8673,44 @@ export interface components {
             /** Message */
             message?: string | null;
         };
+        /** ProjectStatsDTO */
+        ProjectStatsDTO: {
+            /** Completed Count */
+            completed_count: number;
+            /** Member Count */
+            member_count: number;
+            /** Milestone Count */
+            milestone_count: number;
+            /** Progress */
+            progress: number | null;
+            /**
+             * Progress Status
+             * @enum {string}
+             */
+            progress_status: "available" | "no_weighted_tasks" | "invalid_task_tree";
+            /** Task Count */
+            task_count: number;
+        };
+        /** ProjectTemplateDTO */
+        ProjectTemplateDTO: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Rule Version */
+            course_rule_version: number | null;
+            /** Course Rule Version Id */
+            course_rule_version_id: string | null;
+            /** Lock Version */
+            lock_version: number;
+            /** Max Group Size */
+            max_group_size: number;
+            /** Milestones */
+            milestones: components["schemas"]["MilestoneTemplateItem"][];
+            /** Min Group Size */
+            min_group_size: number;
+        };
         /** PublishCourseFileVersion */
         PublishCourseFileVersion: {
             /** Expected Version */
@@ -7670,6 +8728,14 @@ export interface components {
             /** Change Summary */
             change_summary: string;
             rules?: components["schemas"]["CourseRulesDTO"] | null;
+        };
+        /** RefreshInput */
+        RefreshInput: {
+            /**
+             * Includes Appendix
+             * @default false
+             */
+            includes_appendix: boolean;
         };
         /** RegisterCourseFile */
         RegisterCourseFile: {
@@ -7732,6 +8798,15 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** ReopenInput */
+        ReopenInput: {
+            /** Copy Scope */
+            copy_scope: string;
+            /** Reason */
+            reason: string;
+            /** Version Label */
+            version_label: string;
+        };
         /** ReplyDiscussion */
         ReplyDiscussion: {
             /** Body */
@@ -7782,6 +8857,11 @@ export interface components {
             /** Request Id */
             request_id: string;
         };
+        /** RestoreInput */
+        RestoreInput: {
+            /** Version */
+            version: number;
+        };
         /** ReviewIn */
         ReviewIn: {
             /** Decision */
@@ -7790,6 +8870,13 @@ export interface components {
             expectedVersion: number;
             /** Reason */
             reason?: string | null;
+        };
+        /** ReviewInput */
+        ReviewInput: {
+            /** Action */
+            action: string;
+            /** Reason */
+            reason: string;
         };
         /** RevokeGrantRequest */
         RevokeGrantRequest: {
@@ -7921,6 +9008,47 @@ export interface components {
             expected_version: number;
             /** Milestones */
             milestones: components["schemas"]["MilestoneTemplateItem"][];
+        };
+        /** SettingsInput */
+        SettingsInput: {
+            /** Language */
+            language?: string | null;
+            /** Name */
+            name: string;
+            /** Project Type */
+            project_type?: string | null;
+            /** Visibility */
+            visibility: string;
+        };
+        /** SetupDTO */
+        SetupDTO: {
+            /** Can Edit */
+            can_edit: boolean;
+            /** Course Deadline */
+            course_deadline: string | null;
+            /** Description */
+            description: string | null;
+            /** End Date */
+            end_date: string | null;
+            /** Lock Version */
+            lock_version: number;
+            /** Materials */
+            materials: components["schemas"]["MaterialDTO"][];
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Type */
+            project_type: string | null;
+            /** Setup Status */
+            setup_status: string;
+            /** Setup Step */
+            setup_step: number;
+            /** Start Date */
+            start_date: string | null;
         };
         /** SharedAuditPage */
         SharedAuditPage: {
@@ -8167,6 +9295,11 @@ export interface components {
             data: components["schemas"]["CProjectContextDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[CreatedProjectDTO] */
+        SuccessResponse_CreatedProjectDTO_: {
+            data: components["schemas"]["CreatedProjectDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[DailyActivityPageDTO] */
         SuccessResponse_DailyActivityPageDTO_: {
             data: components["schemas"]["DailyActivityPageDTO"];
@@ -8203,6 +9336,11 @@ export interface components {
         /** SuccessResponse[DiscussionReplyResultDTO] */
         SuccessResponse_DiscussionReplyResultDTO_: {
             data: components["schemas"]["DiscussionReplyResultDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[DraftDTO] */
+        SuccessResponse_DraftDTO_: {
+            data: components["schemas"]["DraftDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[EvidenceDetailDTO] */
@@ -8304,6 +9442,11 @@ export interface components {
             data: components["schemas"]["LogicalFileDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[MaterialDTO] */
+        SuccessResponse_MaterialDTO_: {
+            data: components["schemas"]["MaterialDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[NotificationPageDTO] */
         SuccessResponse_NotificationPageDTO_: {
             data: components["schemas"]["NotificationPageDTO"];
@@ -8312,6 +9455,11 @@ export interface components {
         /** SuccessResponse[NotificationReadReceipt] */
         SuccessResponse_NotificationReadReceipt_: {
             data: components["schemas"]["NotificationReadReceipt"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[OverviewDTO] */
+        SuccessResponse_OverviewDTO_: {
+            data: components["schemas"]["OverviewDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[PersonalProjectDTO] */
@@ -8332,6 +9480,16 @@ export interface components {
         /** SuccessResponse[ProjectExample] */
         SuccessResponse_ProjectExample_: {
             data: components["schemas"]["ProjectExample"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[ProjectTemplateDTO] */
+        SuccessResponse_ProjectTemplateDTO_: {
+            data: components["schemas"]["ProjectTemplateDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[SetupDTO] */
+        SuccessResponse_SetupDTO_: {
+            data: components["schemas"]["SetupDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[SharedAuditPage] */
@@ -8594,6 +9752,13 @@ export interface components {
             decision: string;
             /** Expectedversion */
             expectedVersion: number;
+            /** Reason */
+            reason: string;
+        };
+        /** TemplateInput */
+        TemplateInput: {
+            /** Milestones */
+            milestones: components["schemas"]["MilestoneTemplate"][];
             /** Reason */
             reason: string;
         };
@@ -11279,6 +12444,37 @@ export interface operations {
             };
         };
     };
+    read_email_registration_profile_api_v1_auth_email_registrations__tx_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tx_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resend_email_registration_api_v1_auth_email_registrations__tx_id__resend_post: {
         parameters: {
             query?: never;
@@ -11337,6 +12533,37 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_callback_api_v1_auth_github_callback_get: {
+        parameters: {
+            query?: {
+                code?: string;
+                error?: string;
+                state?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -13118,6 +14345,78 @@ export interface operations {
             };
         };
     };
+    teacher_group_project_api_v1_courses__course_id__groups__group_id__teacher_project_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_template_project_api_v1_courses__course_id__groups__group_id__template_projects_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseProjectInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     join_policy_api_v1_courses__course_id__join_policy_get: {
         parameters: {
             query?: never;
@@ -13619,7 +14918,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_ProjectTemplateDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -13702,7 +15001,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_ProjectTemplateDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -13757,6 +15056,322 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reopenable_projects_api_v1_courses__course_id__reopenable_projects_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_actions_api_v1_courses__course_id__teacher_actions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    end_course_api_v1_courses__course_id__teacher_end_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_groups_api_v1_courses__course_id__teacher_groups_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                search?: string;
+                size?: number;
+                sort?: string;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_overview_api_v1_courses__course_id__teacher_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_rules_api_v1_courses__course_id__teacher_rules_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_rules_api_v1_courses__course_id__teacher_rules__version_id__projects__project_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_settings_api_v1_courses__course_id__teacher_settings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_template_api_v1_courses__course_id__teacher_template_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -14589,7 +16204,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_DraftDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -14672,7 +16287,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_DraftDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -14755,7 +16370,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_CreatedProjectDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -15573,6 +17188,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_github_identity_api_v1_me_identities_github_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubIdentityStatus"];
+                };
+            };
+        };
+    };
+    unlink_github_identity_api_v1_me_identities_github_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    link_github_identity_api_v1_me_identities_github_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubLinkStart"];
                 };
             };
         };
@@ -16956,6 +18629,72 @@ export interface operations {
             };
         };
     };
+    applied_template_api_v1_projects__project_id__applied_course_template_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_project_api_v1_projects__project_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     checklist_api_v1_projects__project_id__baseline_checklist_get: {
         parameters: {
             query?: never;
@@ -17640,6 +19379,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_contribution_api_v1_projects__project_id__contribution_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_appeals_api_v1_projects__project_id__contribution_appeals_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_appeal_api_v1_projects__project_id__contribution_appeals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppealInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_appeal_api_v1_projects__project_id__contribution_appeals__appeal_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                appeal_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calculate_contribution_api_v1_projects__project_id__contribution_calculate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_notes_api_v1_projects__project_id__contribution_members__member_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                member_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_note_api_v1_projects__project_id__contribution_members__member_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                member_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -19333,7 +21322,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_MaterialDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -19412,7 +21401,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_MaterialDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -20231,7 +22220,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_OverviewDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -21268,6 +23257,431 @@ export interface operations {
             };
         };
     };
+    reopen_project_api_v1_projects__project_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_reopens_api_v1_projects__project_id__reopens_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_projects__project_id__reports_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_export_api_v1_projects__project_id__reports_exports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_export_api_v1_projects__project_id__reports_exports__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_api_v1_projects__project_id__reports_exports__artifact_id__download_get: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_download_link_api_v1_projects__project_id__reports_exports__artifact_id__download_link_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_report_api_v1_projects__project_id__reports_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_report_version_api_v1_projects__project_id__reports_restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_report_api_v1_projects__project_id__reports_review_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_section_api_v1_projects__project_id__reports_sections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditSection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_report_api_v1_projects__project_id__reports_submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_requirements_api_v1_projects__project_id__requirements_get: {
         parameters: {
             query?: {
@@ -21841,6 +24255,72 @@ export interface operations {
             };
         };
     };
+    risk_explanation_api_v1_projects__project_id__risk_explanation_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_summary_api_v1_projects__project_id__risk_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_risks_api_v1_projects__project_id__risks_get: {
         parameters: {
             query?: never;
@@ -21949,7 +24429,7 @@ export interface operations {
             };
         };
     };
-    project_setup_api_v1_projects__project_id__setup_get: {
+    read_settings_api_v1_projects__project_id__settings_get: {
         parameters: {
             query?: never;
             header?: {
@@ -21969,6 +24449,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_projects__project_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_setup_api_v1_projects__project_id__setup_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_SetupDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -22134,7 +24684,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuccessResponse_SetupDTO_"];
                 };
             };
             /** @description Authentication is required. */
@@ -22774,6 +25324,256 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_acceptance_decision_api_v1_projects__project_id__tasks__task_id__verification_decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptanceDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_verification_history_api_v1_projects__project_id__tasks__task_id__verification_history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_modules_api_v1_projects__project_id__teacher_modules_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_module_detail_api_v1_projects__project_id__teacher_modules__module_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                module_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_report_api_v1_projects__project_id__teacher_report_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    comment_report_api_v1_projects__project_id__teacher_report_comments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grade_report_api_v1_projects__project_id__teacher_report_grades_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradeInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

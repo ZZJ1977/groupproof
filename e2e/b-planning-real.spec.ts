@@ -15,7 +15,7 @@ const task = (id: string, code: string, title: string, extra: Record<string, unk
   content_version: 1, origin: "manual", href: `/projects/${project}/tasks/${id}`, ...extra,
 });
 const plan = (extra: Record<string, unknown> = {}) => ({
-  project_id: project, id: "p1", version_no: 1, status: "draft", lock_version: 3, baseline_frozen: true, baseline_version_no: 1, frozen_at: null,
+  project_id: project, id: "p1", version_no: 1, status: "draft", lock_version: 3, baseline_required: true, baseline_frozen: true, baseline_version_no: 1, frozen_at: null,
   tasks: [task("t1", "T-001", "实现登录页"), task("t2", "T-002", "实现注册页", { assignees: [{ id: me, name: "我" }] })],
   issues: [], confirmations: [{ user: members[0], state: "pending", confirmed_at: null, task_count: 1 }, { user: members[1], state: "stale", confirmed_at: null, task_count: 1 }],
   my_task_versions: { t2: 1 }, my_state: "pending", can_edit: true, can_lead: true, root_weight_total: 100,
@@ -26,6 +26,15 @@ const plan = (extra: Record<string, unknown> = {}) => ({
 async function stubSuggestions(page: Page, items: unknown[] = []) {
   await page.route(`${base}/suggestions`, (route) => (route.request().method() === "GET" ? ok(route, items) : route.fallback()));
 }
+
+test("B5-01 个人项目无需冻结需求基线即可直接规划", async ({ page }) => {
+  await page.route(base, (route) => ok(route, plan({ id: null, version_no: 0, status: "none", baseline_required: false, baseline_frozen: false, baseline_version_no: null, tasks: [], confirmations: [], my_task_versions: {}, my_state: null, can_edit: true, can_lead: true, root_weight_total: 0, history: [] })));
+  await stubSuggestions(page);
+  await page.goto(`/projects/${project}/planning`);
+  await expect(page.getByText("个人项目不要求冻结需求基线，可以直接制定任务计划。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "新建任务" })).toBeVisible();
+  await expect(page.getByText("需求基线冻结后才能制定任务计划。")).toHaveCount(0);
+});
 
 test("B5-01 保存时环形依赖被拒，页面列出环上的任务；保存成功后版本号加一", async ({ page }) => {
   const puts: Record<string, unknown>[] = [];

@@ -10,6 +10,7 @@ import a_fixtures as fixtures
 import httpx
 import pytest
 from sqlalchemy import select
+from test_a_feishu import link_visible_chat
 
 from app.api.errors import ApiError
 from app.modules.a import feishu
@@ -54,7 +55,7 @@ class Reader:
 
 def sync(db, scope, reader):
     leader = scope.users["leader"]
-    feishu.link_chat(db, leader, scope.project.id, CHAT)
+    link_visible_chat(db, leader, scope.project.id, CHAT)
     return feishu.sync_project(db, leader, scope.project.id, reader)
 
 

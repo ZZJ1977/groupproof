@@ -8,14 +8,15 @@ from uuid import UUID, uuid4
 import pytest
 import test_c_evidence as evidence_tests
 from pydantic import ValidationError
-from sqlalchemy import JSON, MetaData, create_engine, event, select
+from sqlalchemy import JSON, MetaData, Uuid, create_engine, event, select, text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api.errors import ApiError
 from app.db.base import Base
-from app.db.models import Milestone, Requirement
+from app.db.models import Milestone, Requirement, User
 from app.modules.c import discussion_service
 from app.modules.c.discussion_models import (
     Discussion,
@@ -64,6 +65,10 @@ def db():
             for column in portable.columns:
                 if isinstance(column.type, JSONB):
                     column.type = JSON()
+                elif isinstance(column.type, PostgreSQLUUID):
+                    # PostgreSQL's UUID declaration has NUMERIC affinity in SQLite.
+                    # Hex strings such as 1e999... become floating-point infinity.
+                    column.type = Uuid(as_uuid=True)
                 if (
                     column.server_default is not None
                     and str(column.server_default.arg) == "gen_random_uuid()"
@@ -81,6 +86,33 @@ def db():
             session.close()
             transaction.rollback()
     engine.dispose()
+
+
+def test_portable_uuid_columns_preserve_numeric_looking_hex(db):
+    identifier = UUID("1e999999-9999-9999-9999-999999999999")
+    user = User(
+        id=identifier,
+        name="UUID fixture",
+        username="uuid-scientific",
+        email="uuid-scientific@example.test",
+        college="Test",
+        global_role="student",
+        status="active",
+    )
+    db.add(user)
+    db.flush()
+    dialect = db.get_bind().dialect.name
+    assert dialect in {"sqlite", "postgresql"}
+    type_expression = "typeof(id)" if dialect == "sqlite" else "pg_typeof(id)::text"
+    expected_type = "text" if dialect == "sqlite" else "uuid"
+    assert (
+        db.execute(
+            text(f"SELECT {type_expression} FROM users WHERE username='uuid-scientific'")
+        ).scalar_one()
+        == expected_type
+    )
+    db.expunge_all()
+    assert db.scalar(select(User).where(User.username == "uuid-scientific")).id == identifier
 
 
 @pytest.fixture()

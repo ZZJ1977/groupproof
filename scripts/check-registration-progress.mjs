@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
-import { launchChrome, closeChrome, openTab, sleep } from "./browser-check.mjs";
+import { execFileSync } from "node:child_process";
+import { assertCaptureApi, launchChrome, closeChrome, openTab, readCapturedCode, sleep } from "./browser-check.mjs";
 
 /**
  * 注册进度与「登入」按钮浏览器验收（2026-10-10）：
@@ -11,7 +11,8 @@ import { launchChrome, closeChrome, openTab, sleep } from "./browser-check.mjs";
  * R6 教师：待提交/审核中保持浅红 + 按钮禁用；审核依据失效同步退回；
  * R7 一致性与可访问性：刷新/跨页/切换账号/三语/360px/200% 缩放/键盘。
  *
- * 前置：`npm run dev` + `MAIL_MODE=capture npm run server:dev`（验证码仅从本地邮件捕获器读取）。
+ * 前置：与 check:auth-browser 相同的隔离 API 和数据库。新注册由 check:auth-browser
+ * 验收。本脚本通过历史账号夹具验证旧的个人中心补完流程。
  * 教师“有效批准后变蓝并允许进入”由服务端测试 test_registration_progress 覆盖（开发环境无管理员浏览器凭据）。
  */
 
@@ -33,20 +34,8 @@ const COLORS = {
   enter: "rgb(21, 128, 61)",
 };
 
-/** 仅隔离开发环境：从邮件捕获器读取发往该地址的最新验证码 */
-function readCapturedCode(email) {
-  const body = execSync(
-    `docker exec gp-pg-test psql -U gp -d gp_dev -t -A -c "SELECT body FROM email_outbox WHERE to_email='${email}' ORDER BY id DESC LIMIT 1"`,
-    { encoding: "utf8" },
-  );
-  const match = /(\d{6})/.exec(body);
-  assert(match, `捕获邮件中未找到验证码：${body.slice(0, 60)}`);
-  return match[1];
-}
-
-function sql(query) {
-  return execSync(`docker exec gp-pg-test psql -U gp -d gp_dev -t -A -c ${JSON.stringify(query)}`, { encoding: "utf8" }).trim();
-}
+const apiContainer = process.env.GP_AUTH_TEST_API_CONTAINER ?? "gp-signup-browser-test-api";
+const dbContainer = process.env.GP_AUTH_TEST_DB_CONTAINER ?? "gp-signup-browser-test-db";
 
 async function stageInfo(tab, index) {
   return tab.evaluate(`(() => {
@@ -141,22 +130,38 @@ const teacher = {
   schoolEmail: `prgt${stamp}@must.edu.mo`,
 };
 
-async function registerAccount(tab, account) {
-  await tab.goto("/login");
-  await tab.clickByText("注册账号", "button");
-  await tab.waitFor(`document.body.textContent.includes("第 1/3 步")`);
-  await tab.typeInLabeled("登录邮箱", account.email);
-  await tab.clickByText("发送验证码", "button");
-  await tab.waitFor(`document.body.textContent.includes("第 2/3 步")`, 10000);
-  await tab.type('input[autocomplete="one-time-code"]', readCapturedCode(account.email));
-  await tab.clickByText("验证邮箱", "button");
-  await tab.waitFor(`document.body.textContent.includes("第 3/3 步")`, 10000);
-  await tab.type('div[role="dialog"] input[aria-label="用户名"]', account.username);
-  await tab.type('div[role="dialog"] input[aria-label="密码"]', password);
-  await tab.type('div[role="dialog"] input[aria-label="确认密码"]', password);
-  await tab.clickByText("注册并继续", "button");
-  await tab.waitFor(`location.pathname.startsWith("/account")`, 12000);
-  await waitForProgress(tab);
+function seedLegacyAccounts() {
+  execFileSync("docker", ["exec", "-i", apiContainer, "python", "-c", `
+import json
+import sys
+from urllib.parse import urlsplit
+from app.auth.config import get_settings
+from app.auth.db import get_session_factory
+from app.auth.models import PasswordCredential, User, utcnow
+from app.auth.security import hash_password
+s = get_settings()
+assert s.app_mode == 'dev' and s.mail_mode == 'capture'
+assert urlsplit(s.database_url).path == '/groupproof_signup_test'
+accounts = json.load(sys.stdin)
+with get_session_factory()() as db:
+    for account in accounts:
+        user = User(username=account['username'], username_normalized=account['username'],
+                    email=account['email'], account_status='enabled')
+        db.add(user)
+        db.flush()
+        db.add(PasswordCredential(user_id=user.id, login_email=user.email,
+                                  login_email_normalized=user.email, login_email_verified_at=utcnow(),
+                                  password_hash=hash_password(account['password']), password_algo='argon2id'))
+    db.commit()
+  `], { input: JSON.stringify([student, teacher].map((account) => ({ ...account, password }))) });
+}
+
+function setLoginEmailVerified(account, verified) {
+  const query = verified ? "SET login_email_verified_at = NOW()" : "SET login_email_verified_at = NULL";
+  execFileSync("docker", ["exec", "-i", dbContainer, "psql", "-XAt", "-U",
+    "groupproof", "-d", "groupproof_signup_test", "-v", "ON_ERROR_STOP=1", "-v", `mail=${account.email}`], {
+    input: `UPDATE password_credentials ${query} WHERE login_email_normalized = :'mail';\n`,
+  });
 }
 
 async function login(tab, identifier) {
@@ -170,17 +175,22 @@ async function login(tab, identifier) {
 }
 
 async function verifySchoolEmail(tab, schoolEmail) {
-  await tab.clickByText("重新发送验证码", "button");
-  await tab.waitFor(`document.querySelectorAll('input[autocomplete="one-time-code"]').length > 0`, 10000);
-  await tab.type('input[autocomplete="one-time-code"]', readCapturedCode(schoolEmail));
+  await tab.clickByText("发送验证码", "button");
+  await tab.waitFor(`document.body.innerText.includes("MAIL_MODE=capture")`, 10000);
+  const code = readCapturedCode(schoolEmail);
+  assert.match(code, /^\d{6}$/, "邮箱捕获器应保存学校验证码");
+  await tab.type('input[autocomplete="one-time-code"]', code);
   await tab.clickByText("验证并继续", "button");
   await sleep(900);
 }
 
+await assertCaptureApi(process.env.GP_BASE_URL ?? "http://localhost:3000");
 await launchChrome();
 const tab = await openTab();
 
 try {
+  seedLegacyAccounts();
+  await tab.setReducedMotion(true);
   await tab.setViewport(1440, 900);
   // 无头 Chrome 默认 Accept-Language 为英文：先固定简体中文（保留既有语言偏好机制）
   await tab.goto("/login");
@@ -188,7 +198,7 @@ try {
   await tab.reload();
 
   // ── R1 新用户（学生）：前三项浅红待完成；账号安全注册时已满足=浅蓝 ──
-  await registerAccount(tab, student);
+  await login(tab, student.username);
   let stages = await Promise.all([0, 1, 2, 3].map((i) => stageInfo(tab, i)));
   ok("阶段条目共 4 项（含可选账号安全）", stages.every(Boolean));
   ok("未完成必填阶段为浅红整行底色（非仅图标）", stages.slice(0, 3).every((s) => s.tone === "todo" && s.bg === COLORS.todo));
@@ -201,7 +211,7 @@ try {
   const ui = await tab.evaluate(`(() => {
     const text = document.body.innerText;
     return {
-      panels: Array.from(document.querySelectorAll('.gp-panel-title')).map((e) => e.textContent.trim()),
+      panels: Array.from(document.querySelectorAll('.gp-panel-title, details summary')).map((e) => e.textContent.trim()),
       pwd: text.includes('当前密码') || Array.from(document.querySelectorAll('button')).some((b) => b.textContent.trim() === '修改密码'),
       langTexts: Array.from(document.querySelectorAll('button')).filter((b) => (b.getAttribute('aria-label') || '').includes('简体中文')).map((b) => b.textContent.trim()),
       switchers: document.querySelectorAll('button[aria-label*="简体中文"]').length,
@@ -262,7 +272,7 @@ try {
   await openAccountPage(tab, "/account/profile");
   await tab.clickByText("退出登录", "button");
   await tab.waitFor(`location.pathname === "/login"`, 10000);
-  sql(`UPDATE password_credentials SET login_email_verified_at=NULL WHERE user_id=(SELECT id FROM users WHERE username_normalized='${student.username}')`);
+  setLoginEmailVerified(student, false);
   await login(tab, student.username);
   stages = await Promise.all([0, 1, 2, 3].map((i) => stageInfo(tab, i)));
   ok("历史账户：账号安全未完成=浅灰 + “可选”", stages[3].tone === "optional" && stages[3].bg === COLORS.optional && stages[3].text.includes("可选"));
@@ -276,7 +286,7 @@ try {
   note(`实现截图：${await tab.screenshot("registration-progress-05-optional-security")}`);
 
   // 恢复验证后同一按钮经会话升级可进入（历史补验完成后放行）
-  sql(`UPDATE password_credentials SET login_email_verified_at=NOW() WHERE user_id=(SELECT id FROM users WHERE username_normalized='${student.username}')`);
+  setLoginEmailVerified(student, true);
   await openAccountPage(tab, "/account/profile");
   await tab.clickByText("登入", "button");
   await tab.waitFor(`location.pathname.startsWith("/home")`, 12000);
@@ -286,7 +296,7 @@ try {
   await openAccountPage(tab, "/account/profile");
   await tab.clickByText("退出登录", "button");
   await tab.waitFor(`location.pathname === "/login"`, 10000);
-  await registerAccount(tab, teacher);
+  await login(tab, teacher.username);
   await tab.typeInLabeled("姓名", teacher.name);
   await tab.typeInLabeled("用户名", teacher.username);
   await tab.typeInLabeled("申请身份", "teacher");
@@ -355,15 +365,15 @@ try {
 
   // ── R8 验收临时密令（仅测试模式；与 .env 的 ACCEPTANCE_TEST_TOKEN 一致）──
   // 注册邮箱框输入密令直达信息完善页；验证码框输入同一密令直通学校邮箱验证（无需发码/读码）
-  const TOKEN = "202610";
+  const TOKEN = process.env.GP_AUTH_TEST_ACCEPTANCE_TOKEN;
   const acceptanceOn = await tab.evaluate(`fetch("/api/v1/auth/capabilities").then((r) => r.json()).then((c) => c.acceptanceTest?.enabled === true)`);
-  if (acceptanceOn) {
+  if (acceptanceOn && TOKEN) {
     await openAccountPage(tab, "/account/profile");
     await tab.clickByText("退出登录", "button");
     await tab.waitFor(`location.pathname === "/login"`, 10000);
     await tab.clickByText("注册账号", "button");
-    await tab.waitFor(`document.body.textContent.includes("第 1/3 步")`);
-    await tab.typeInLabeled("登录邮箱", TOKEN);
+    await tab.waitFor(`document.body.textContent.includes("第 1/2 步")`);
+    await tab.typeInLabeled("学校邮箱", TOKEN);
     await tab.clickByText("发送验证码", "button");
     await tab.waitFor(`location.pathname.startsWith("/account")`, 12000);
     await waitForProgress(tab);
@@ -389,7 +399,7 @@ try {
     ok("验收账户经真实会话升级进入业务页", (await tab.evaluate("location.pathname")).startsWith("/home"));
     note(`实现截图：${await tab.screenshot("registration-progress-10-test-entry-complete")}`);
   } else {
-    note("ℹ️ 验收密令未启用（ACCEPTANCE_TEST_TOKEN 为空）：R8 跳过");
+    note("验收密令用例跳过：测试 API 必须启用验收模式并配置 GP_AUTH_TEST_ACCEPTANCE_TOKEN");
   }
 
   console.log("注册进度浏览器验收通过（2026-10-10）：");

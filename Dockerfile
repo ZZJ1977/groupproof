@@ -13,6 +13,18 @@ FROM base AS builder
 # rewrites 兑底在构建时固化目标地址：容器内必须指向服务名 api（运行时代理优先读环境变量）
 ARG API_INTERNAL_URL=http://localhost:8000
 ENV API_INTERNAL_URL=$API_INTERNAL_URL
+# Next.js inlines public configuration at build time; runner-only variables cannot
+# turn a previously built demo bundle into a real workspace.
+ARG NEXT_PUBLIC_APP_ENV=development
+ARG NEXT_PUBLIC_APP_MODE=real
+ARG NEXT_PUBLIC_ENABLE_MOCKS=false
+ARG NEXT_PUBLIC_API_FEATURES=
+ARG NEXT_PUBLIC_API_BASE_URL=
+ENV NEXT_PUBLIC_APP_ENV=$NEXT_PUBLIC_APP_ENV \
+    NEXT_PUBLIC_APP_MODE=$NEXT_PUBLIC_APP_MODE \
+    NEXT_PUBLIC_ENABLE_MOCKS=$NEXT_PUBLIC_ENABLE_MOCKS \
+    NEXT_PUBLIC_API_FEATURES=$NEXT_PUBLIC_API_FEATURES \
+    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

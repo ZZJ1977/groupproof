@@ -1,15 +1,11 @@
-import { redirect } from "next/navigation";
-import { getAuthSession } from "@/lib/auth/server";
-import { GithubRepoBinding } from "@/features/github-binding/GithubRepoBinding";
+import { notFound, redirect } from "next/navigation";
+import { resolveCanonicalRouteContext } from "@/lib/ux/navigation";
 
 export const dynamic = "force-dynamic";
 
-/** 受保护页面：未登录直接跳转登录，与主路由守卫保持一致。 */
+/** 旧入口保留，目标页面统一处理会话与项目权限。 */
 export default async function GithubBindingPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const lookup = await getAuthSession();
-  if (!lookup.ok || !lookup.session.authenticated) {
-    redirect(`/login?returnTo=${encodeURIComponent(`/github/${projectId}`)}`);
-  }
-  return <GithubRepoBinding projectId={projectId} />;
+  if (resolveCanonicalRouteContext(`/projects/${projectId}`).projectId !== projectId) notFound();
+  redirect(`/projects/${projectId}/settings#github-integration`);
 }

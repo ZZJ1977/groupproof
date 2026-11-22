@@ -18,6 +18,54 @@ const activity = {
   occurred_at: "2026-10-12T00:00:00Z", href: `/projects/${projectId}/tasks/${taskId}?tab=history`,
 } satisfies components["schemas"]["DailyActivityDTO"];
 
+test("project settings authorizes provider binding by project membership and leadership", async ({ page }) => {
+  test.setTimeout(75_000);
+  const base = `/api/v1/projects/${projectId}`;
+  const providers = `/api/v1/a/projects/${projectId}`;
+  const envelope = (data: unknown) => ({ data, meta: { request_id: "integration-fixture" } });
+  let isLeader = true;
+  let bound = false;
+  let synced = 0;
+  await page.route(`**${base}/c-context`, (route) => route.fulfill({ json: envelope({
+    project: { id: projectId, lifecycle: "active" },
+    actor: { is_member: true, is_leader: isLeader },
+    permissions: { can_manage_files: true },
+  }) }));
+  await page.route(`**${base}/settings`, (route) => route.fulfill({ json: envelope({ name: "项目集成", visibility: "members", lifecycle: "active" }) }));
+  await page.route(`**${base}/reopens`, (route) => route.fulfill({ json: envelope([]) }));
+  await page.route(`**${providers}/github/repos`, (route) => route.fulfill({ json: envelope([]) }));
+  await page.route(`**${providers}/feishu/chats`, (route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      expect(request.headers()["x-csrf-token"]).toBe("c-contract-fixture-csrf");
+      expect(request.postDataJSON()).toEqual({ chat_id: "oc_fixture" });
+      bound = true;
+      return route.fulfill({ status: 201, json: envelope({ chat_id: "oc_fixture" }) });
+    }
+    return route.fulfill({ json: envelope(bound ? [{ chat_id: "oc_fixture", linked_at: activity.occurred_at }] : []) });
+  });
+  await page.route(`**${providers}/feishu/sync`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().headers()["x-csrf-token"]).toBe("c-contract-fixture-csrf");
+    synced += 1;
+    return route.fulfill({ json: envelope({ chats: 1, created: 3, updated: 0, deleted: 0, seen: 3 }) });
+  });
+  await page.goto(`/feishu/${projectId}`, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(`/projects/${projectId}/settings#feishu-integration`);
+  await expect(page.getByRole("button", { name: "绑定仓库" })).toBeVisible();
+  await page.getByLabel("飞书群聊 ID").fill("oc_fixture");
+  await page.getByRole("button", { name: "接入并同步", exact: true }).click();
+  await expect(page.getByText("已接入飞书群并同步 3 条消息。", { exact: true })).toBeVisible();
+  expect(synced).toBe(1);
+  await expect(page.getByRole("link", { name: "查看协作记录" })).toHaveAttribute("href", `/projects/${projectId}/collaboration`);
+
+  isLeader = false;
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByText(/群 oc_fixture/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "绑定仓库" })).toHaveCount(0);
+  await expect(page.getByLabel("飞书群聊 ID")).toHaveCount(0);
+});
+
 test("C7-07 submits only the requested task scope and refreshes the applicant's own requests", async ({ page }) => {
   const envelope = (data: unknown) => ({ data, meta: { request_id: "access-test" } });
   await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: envelope(summary) }));
@@ -51,9 +99,15 @@ test("C7-07 submits only the requested task scope and refreshes the applicant's 
 test("C1-01 canonical home refreshes real counts and preserves project/course IDs", async ({ page }) => {
   let completed = 1;
   await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: { data: { ...summary, my_completed_tasks: completed }, meta: { request_id: "home-fixture" } } }));
+  await page.route(`**/api/v1/a/projects/${projectId}/github/repos`, (route) => route.fulfill({ json: { data: [{
+    owner: "ZZJ1977", repo: "groupproof", default_branch: "main", linked_at: activity.occurred_at, last_synced_at: activity.occurred_at,
+  }], meta: { request_id: "home-github" } } }));
+  await page.route(`**/api/v1/a/projects/${projectId}/feishu/chats`, (route) => route.fulfill({ json: { data: [], meta: { request_id: "home-feishu" } } }));
   await page.goto("/home");
   await expect(page.getByText("数据库项目", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "进入项目", exact: true })).toHaveAttribute("href", `/projects/${projectId}`);
+  await expect(page.getByRole("link", { name: "GitHub 已连接 · 1 个仓库", exact: true })).toHaveAttribute("href", `/projects/${projectId}/settings#github-integration`);
+  await expect(page.getByRole("link", { name: "飞书未接入", exact: true })).toHaveAttribute("href", `/projects/${projectId}/settings#feishu-integration`);
   await expect(page.getByRole("link", { name: "查看课程", exact: true })).toHaveAttribute("href", `/courses/${courseId}/rules`);
   const completedCard = page.locator(".gp-stat").filter({ hasText: "我的已完成任务" });
   await expect(completedCard.locator(".gp-stat-value")).toHaveText("1");
@@ -134,36 +188,14 @@ test("C1-04 API categories, UTC dates and page survive reload and Back", async (
   await expect(page).toHaveURL(/date_from=2026-10-01/);
 });
 
-test("C1-04 saves and clears the current user's GitHub attribution", async ({ page }) => {
+test("C1-04 routes GitHub identity management to account security", async ({ page }) => {
   const envelope = (data: unknown) => ({ data, meta: { request_id: "github-author-test" } });
   await page.route("**/api/v1/me/activity**", (route) => route.fulfill({ json: envelope({
     items: [], page: 1, page_size: 10, total: 0, scope: "Self only", unavailable_sources: ["feishu"],
   }) }));
-  await page.route("**/api/v1/auth/session", (route) => route.fulfill({ json: { authenticated: true, csrfToken: "github-csrf" } }));
-  const received: Array<string | null> = [];
-  await page.route("**/api/v1/a/me/github-login", (route) => {
-    expect(route.request().method()).toBe("PUT");
-    expect(route.request().headers()["x-csrf-token"]).toBe("github-csrf");
-    const body = route.request().postDataJSON();
-    expect(Object.keys(body)).toEqual(["login"]);
-    received.push(body.login);
-    if (body.login === "taken") return route.fulfill({ status: 409, json: {
-      error: { code: "GITHUB_LOGIN_TAKEN", message: "这个 GitHub 用户名已经被其他账号使用。" },
-    } });
-    return route.fulfill({ json: envelope({ login: body.login?.toLowerCase() ?? null }) });
-  });
   await page.goto("/activity");
-  await page.getByText("设置个人 GitHub 用户名", { exact: true }).click();
-  const login = page.getByLabel("GitHub 用户名", { exact: true });
-  await login.fill("taken");
-  await page.getByRole("button", { name: "保存用户名" }).click();
-  await expect(page.getByText("这个 GitHub 用户名已经被其他账号使用。", { exact: true })).toBeVisible();
-  await login.fill("ExampleDev");
-  await page.getByRole("button", { name: "保存用户名" }).click();
-  await expect(page.getByText("已保存 GitHub 用户名 @exampledev。")).toBeVisible();
-  await page.getByRole("button", { name: "清除作者映射" }).click();
-  await expect(page.getByText("已清除 GitHub 用户名映射。")).toBeVisible();
-  expect(received).toEqual(["taken", "ExampleDev", null]);
+  await expect(page.getByRole("link", { name: "管理 GitHub 绑定" })).toHaveAttribute("href", "/account/security#github-identity");
+  await expect(page.getByText("设置个人 GitHub 用户名", { exact: true })).toHaveCount(0);
 });
 
 test("C1-04 unavailable and empty responses never show local personal records", async ({ page }) => {

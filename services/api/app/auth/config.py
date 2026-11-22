@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     google_discovery_url: str = "https://accounts.google.com/.well-known/openid-configuration"
     google_expected_issuer: str = "https://accounts.google.com"
 
+    # Dedicated OAuth App for personal GitHub identity verification.
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
+
     # --- 邮件（依赖邮件的操作：注册/学校验证/密码重置）---
     # smtp: SMTP 投递；resend: Resend HTTPS API（需验证发信域名）；
     # brevo: Brevo HTTPS API（可只验证单个发件邮箱，无需域名）；capture: 仅隔离开发/测试环境

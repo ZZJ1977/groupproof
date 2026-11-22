@@ -33,7 +33,7 @@ from app.modules.a import permissions
 from app.modules.a.audit import record_audit
 from app.modules.a.inbox import close_action_items_by_source, create_action_item, notify
 from app.modules.a.models import ActionItem
-from app.modules.b.common import now, require_reason, require_version
+from app.modules.b.common import lock_project_for_write, now, require_reason, require_version
 from app.modules.b.courses_schemas import PersonDTO
 from app.modules.b.models import BBaselineChecklistItem, BBaselineScope, BRequirementMeta
 from app.modules.b.requirements_schemas import (
@@ -307,18 +307,8 @@ def _snapshot(session: Session, project: Project, version_no: int) -> dict:
     }
 
 
-def _lock_project(session: Session, project_id: UUID) -> Project:
-    return session.scalar(
-        select(Project)
-        .where(Project.id == project_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-
-
 def submit(session: Session, user: User, project_id: UUID, request=None) -> BaselineDTO:
-    permissions.require_project_leader(session, user, project_id)
-    project = _lock_project(session, project_id)
+    project = lock_project_for_write(session, user, project_id, leader=True).project
     check_draft(project)
     review = _checklist(session, project.id)
     if not review.ready:
@@ -414,10 +404,9 @@ def confirm(
     command: ConfirmBaseline,
     request=None,
 ) -> BaselineDTO:
-    permissions.require_project_member(session, user, project_id)
+    project = lock_project_for_write(session, user, project_id).project
     if member_id != user.id:
         raise ApiError(403, "NOT_YOUR_CONFIRMATION", "只能确认你自己的那一条。")
-    project = _lock_project(session, project_id)
     baseline = _baseline_for_update(session, project_id, baseline_id)
     row = session.scalar(
         select(BaselineConfirmation)
@@ -505,9 +494,8 @@ def force_freeze(
     command: ForceFreeze,
     request=None,
 ) -> BaselineDTO:
-    permissions.require_project_leader(session, user, project_id)
+    project = lock_project_for_write(session, user, project_id, leader=True).project
     reason = require_reason(command.reason)
-    project = _lock_project(session, project_id)
     baseline = _baseline_for_update(session, project_id, baseline_id)
     unconfirmed = list(
         session.scalars(

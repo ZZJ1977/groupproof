@@ -92,6 +92,11 @@ jobs:
       - name: Check route mapping
         run: npm run check:routes
 
+      - name: Check real workspace configuration and cache isolation
+        run: |
+          npm run test:api-config
+          npm run check:workspace-isolation
+
       - name: Check generated API client is up to date
         run: |
           npm run api:generate
@@ -236,6 +241,9 @@ jobs:
       - name: Run C shell without demo data
         run: npx playwright test --config playwright.c-shell.config.ts
 
+      - name: Verify real student workflows and demo-data isolation
+        run: npm run test:workspace-real
+
       - name: Check C business commands and generated client
         run: |
           npx tsx scripts/check-c-url-filters.mjs
@@ -375,7 +383,7 @@ jobs:
     needs: [quality, backend, e2e, c-integration, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/develop' && 'staging' || 'production') }}
     env:
@@ -405,3 +413,6 @@ jobs:
       - name: Validate, back up, migrate, and deploy production API and Web
         if: github.ref == 'refs/heads/main'
         run: node scripts/deploy-production.mjs
+
+      - name: Deploy report worker and daily risk scheduler
+        run: node scripts/deploy-d-workers.mjs

@@ -13,6 +13,7 @@ from app.modules.b.ports import (
     get_material_text_port,
     get_verification_port,
 )
+from app.modules.b.verification_port import PersistedVerificationPort
 
 
 def test_b_ready_still_returns_200():
@@ -33,18 +34,21 @@ def test_default_material_text_port_reports_unavailable_without_inventing_text()
     assert result.reason
 
 
-def test_default_verification_port_refuses_status_queries():
-    port = get_verification_port()
-    assert isinstance(port, UnavailableVerificationPort)
+def test_default_verification_port_uses_persisted_adapter():
+    assert isinstance(get_verification_port(), PersistedVerificationPort)
+
+
+def test_unavailable_verification_port_refuses_status_queries():
+    port = UnavailableVerificationPort()
     with pytest.raises(ApiError) as raised:
         port.task_verification_status(None, task_ids=[uuid4()])
     assert raised.value.status_code == 503
     assert raised.value.code == "VERIFICATION_UNAVAILABLE"
 
 
-def test_default_verification_port_never_claims_an_invalidation():
+def test_unavailable_verification_port_never_claims_an_invalidation():
     task_id = uuid4()
-    outcome = get_verification_port().invalidate_criterion_results(
+    outcome = UnavailableVerificationPort().invalidate_criterion_results(
         None, task_id=task_id, criterion_ids=[uuid4()], reason="标准修改", actor_id=uuid4()
     )
     assert outcome.task_id == task_id

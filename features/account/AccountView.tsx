@@ -3,21 +3,16 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { AlertCircle, Info, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
-import { Feedback, PageHeader, Panel, SaveState, StatusBadge } from "@/components/common";
+import { AlertCircle, Mail, RotateCw, ShieldCheck } from "lucide-react";
+import { Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAccountSession } from "@/components/account-session";
 import { authClient, ApiError, type MeDTO, type SessionDTO } from "@/lib/api/auth-client";
 import { useMe, useAcceptanceTest } from "@/features/account/use-me";
+import { GithubIdentityPanel } from "@/features/account/GithubIdentityPanel";
+import { AccountProfilePanel } from "@/features/account/AccountProfilePanel";
 import { deriveProgress, ProgressStatusChip } from "@/features/account/registration-progress";
-
-type FieldErrors = Record<string, string>;
-
-function fieldError(errors: FieldErrors, field: string, t: (key: string) => string) {
-  const code = errors[field];
-  return code ? t(`errors.${code}`) : null;
-}
 
 /** 个人中心：受限注册模式与已激活模式共用同一套资料/邮箱组件，按服务端状态呈现 */
 export function AccountView({ screen }: { screen: number }) {
@@ -37,166 +32,7 @@ export function AccountView({ screen }: { screen: number }) {
   if (screen === 102) return <EmailPanel session={session} me={me} refetch={refetch} />;
   if (screen === 103) return <StatusPanel session={session} me={me} refetch={refetch} />;
   if (screen === 104) return <SecurityPanel session={session} me={me} refetch={refetch} />;
-  return <ProfilePanel session={session} me={me} refetch={refetch} />;
-}
-
-/* ---------------- 基本资料 ---------------- */
-
-function ProfilePanel({ session, me, refetch }: { session: SessionDTO; me: MeDTO; refetch: () => unknown }) {
-  const { refreshSession } = useAccountSession();
-  const t = useTranslations("account.profile");
-  const tc = useTranslations("common");
-  const router = useRouter();
-  const [form, setForm] = useState({
-    name: me.user.name ?? "",
-    username: me.user.username ?? "",
-    studentId: me.user.studentId ?? "",
-    college: me.user.college ?? "",
-    requestedIdentity: me.user.requestedIdentity ?? "student",
-    schoolEmail: "",
-  });
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [saveState, setSaveState] = useState<"clean" | "dirty" | "saving" | "saved" | "error">("clean");
-  const [info, setInfo] = useState<string | null>(null);
-  const identityLocked = Boolean(me.user.requestedIdentity && me.user.roles.some((role) => role === "student" || role === "teacher"));
-  const isStudent = form.requestedIdentity === "student";
-
-  const set = (field: keyof typeof form) => (event: { target: { value: string } }) => {
-    setForm((current) => ({ ...current, [field]: event.target.value }));
-    setSaveState("dirty");
-    setErrors((current) => ({ ...current, [field]: "" }));
-    setInfo(null);
-  };
-
-  const submit = async (exitAfter: boolean) => {
-    setSaveState("saving");
-    setInfo(null);
-    try {
-      const body: Record<string, unknown> = {
-        name: form.name,
-        username: form.username,
-        college: form.college,
-        expectedVersion: me.user.version,
-      };
-      if (!identityLocked) body.requestedIdentity = form.requestedIdentity;
-      if (isStudent || me.user.studentId) body.studentId = form.studentId;
-      if (!me.schoolEmail.verified && form.schoolEmail.trim()) body.schoolEmail = form.schoolEmail.trim();
-      const updated = await authClient.updateProfile(session.csrfToken ?? "", body);
-      await refreshSession();
-      setErrors({});
-      setSaveState("saved");
-      void refetch();
-      if (exitAfter) {
-        setInfo(t("saveAndExitDone"));
-        return;
-      }
-      setInfo(t("savedNext"));
-      const next = updated.registration?.nextAction?.href;
-      window.setTimeout(() => router.push(next && next.startsWith("/account") ? next : "/account/email"), 400);
-    } catch (error) {
-      setSaveState("error");
-      if (error instanceof ApiError) {
-        if (error.code === "VERSION_CONFLICT") setErrors({ version: "version_conflict" });
-        else setErrors(error.fieldErrors);
-      }
-    }
-  };
-
-  return (
-    <div>
-      <PageHeader eyebrow={t("eyebrow")} title={t("title")} description={t("description")} icon={UserRound} />
-      <div className="gp-grid-2">
-        <Panel title={t("title")}>
-          <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(false); }}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="gp-field">
-                {t("name")}
-                <Input value={form.name} onChange={set("name")} autoComplete="name" />
-                {fieldError(errors, "name", t) && <span className="text-[#e54955]" role="alert">{fieldError(errors, "name", t)}</span>}
-              </label>
-              <label className="gp-field">
-                {t("username")}
-                <Input value={form.username} onChange={set("username")} autoComplete="username" />
-                {fieldError(errors, "username", t) && <span className="text-[#e54955]" role="alert">{fieldError(errors, "username", t)}</span>}
-              </label>
-              <label className="gp-field">
-                {t("identity")}
-                <select className="gp-input" value={form.requestedIdentity} onChange={set("requestedIdentity")} disabled={identityLocked}>
-                  <option value="student">{t("identityStudent")}</option>
-                  <option value="teacher">{t("identityTeacher")}</option>
-                </select>
-                {fieldError(errors, "requestedIdentity", t) && <span className="text-[#e54955]" role="alert">{fieldError(errors, "requestedIdentity", t)}</span>}
-              </label>
-              {isStudent && (
-                <label className="gp-field">
-                  {t("studentId")}
-                  <Input value={form.studentId} onChange={set("studentId")} placeholder={t("studentIdPlaceholder")} />
-                  {fieldError(errors, "studentId", t) && <span className="text-[#e54955]" role="alert">{fieldError(errors, "studentId", t)}</span>}
-                </label>
-              )}
-            </div>
-            <label className="gp-field">
-              {t("college")}
-              <Input value={form.college} onChange={set("college")} />
-            </label>
-            <label className="gp-field">
-              {t("schoolEmail")}
-              <Input
-                value={me.schoolEmail.verified ? me.schoolEmail.verifiedEmail ?? "" : form.schoolEmail}
-                onChange={set("schoolEmail")}
-                inputMode="email"
-                readOnly={me.schoolEmail.verified}
-                placeholder={me.schoolEmail.verified ? undefined : t("errors.email_required")}
-              />
-              {fieldError(errors, "schoolEmail", t) && <span className="text-[#e54955]" role="alert">{fieldError(errors, "schoolEmail", t)}</span>}
-            </label>
-            {errors.version && <Feedback tone="error">{t("errors.version_conflict")}</Feedback>}
-            <div className="flex items-center justify-end gap-3 border-t border-[#e7edf5] pt-4">
-              <SaveState state={saveState} />
-              <Button variant="outline" type="button" onClick={() => void submit(true)}>{tc("saveAndExit")}</Button>
-              <Button type="submit">{tc("saveAndContinue")}</Button>
-            </div>
-            {info && <Feedback tone="success">{info}</Feedback>}
-          </form>
-        </Panel>
-        <div className="gp-stack">
-          {/* 注意事项提示（2026-10-10：基本资料页移除修改密码，安全设置集中在“账号安全”页） */}
-          <Panel title={t("noticesTitle")}>
-            <ul className="space-y-2 text-[12px] leading-6 text-[#6f7f95]">
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("declarativeNotice")}
-              </li>
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("notices.schoolEmail")}
-              </li>
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("notices.teacher")}
-              </li>
-              <li className="flex gap-2">
-                <Info size={14} className="mt-1 shrink-0 text-[#246bfa]" aria-hidden="true" />
-                {t("notices.password")}
-              </li>
-            </ul>
-          </Panel>
-          {me.user.googleEmailBound && <Panel title={t("googleBound")}>
-            <div className="gp-row text-[12px]">
-              <span className="flex items-center gap-2">
-                <span className="font-bold text-[#4285f4]">G</span>
-                {t("googleBound")}
-              </span>
-              <StatusBadge status="confirmed" label={t("bound")} />
-            </div>
-          </Panel>}
-          <Panel title={t("identity")}>
-            <p className="text-[12px] leading-6 text-[#6f7f95]">{t("identityNotice")}</p>
-          </Panel>
-        </div>
-      </div>
-    </div>
-  );
+  return <AccountProfilePanel session={session} me={me} refetch={refetch} />;
 }
 
 /* ---------------- 修改密码 ---------------- */
@@ -345,6 +181,7 @@ function SecurityPanel({ session, me, refetch }: { session: SessionDTO; me: MeDT
           )}
         </Panel>
         <GooglePanel session={session} me={me} refetch={refetch} />
+        {session.accountState === "active" && session.sessionScope === "full" && <GithubIdentityPanel key={me.user.id} userId={me.user.id} csrfToken={session.csrfToken ?? ""} />}
         <PasswordPanel session={session} me={me} />
         <p className="text-[11px] text-[#8d9aad]">{tc("appName")}</p>
       </div>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import a_fixtures as fixtures
@@ -9,6 +10,8 @@ import pytest
 from sqlalchemy import select
 
 from app.api.errors import ApiError
+from app.auth.models import VerifiedGithubIdentity
+from app.db.models import ProjectMember
 from app.modules.a import github_activity, github_sync
 from app.modules.a.models import GithubActivity
 from app.modules.c.activity_ports import ActivitySourceQuery
@@ -19,23 +22,31 @@ scope = fixtures.scope
 URL = "https://github.com/acme/demo"
 
 
-def commit(sha, message, *, login=None, email="x@example.com", date="2026-11-10T08:00:00Z"):
+def commit(
+    sha,
+    message,
+    *,
+    login=None,
+    github_user_id=None,
+    email="x@example.com",
+    date="2026-11-10T08:00:00Z",
+):
     return {
         "sha": sha,
         "html_url": f"https://github.com/acme/demo/commit/{sha}",
-        "author": {"login": login} if login else None,
+        "author": {"login": login, "id": github_user_id} if login else None,
         "commit": {"message": message, "author": {"name": "Dev", "email": email, "date": date}},
     }
 
 
-def pull(number, title, *, state="open", merged=False, login="dev1"):
+def pull(number, title, *, state="open", merged=False, login="dev1", github_user_id=None):
     return {
         "number": number,
         "title": title,
         "body": "说明",
         "state": state,
         "merged_at": "2026-11-10T09:00:00Z" if merged else None,
-        "user": {"login": login},
+        "user": {"login": login, "id": github_user_id},
         "html_url": f"https://github.com/acme/demo/pull/{number}",
         "head": {"ref": "feat"},
         "base": {"ref": "main"},
@@ -44,7 +55,7 @@ def pull(number, title, *, state="open", merged=False, login="dev1"):
     }
 
 
-def run(run_id, *, conclusion="success"):
+def run(run_id, *, conclusion="success", github_user_id=None):
     return {
         "id": run_id,
         "name": "CI",
@@ -54,7 +65,7 @@ def run(run_id, *, conclusion="success"):
         "event": "push",
         "head_branch": "main",
         "head_sha": "abcdef1234567",
-        "actor": {"login": "dev1"},
+        "actor": {"login": "dev1", "id": github_user_id},
         "html_url": f"https://github.com/acme/demo/actions/runs/{run_id}",
         "created_at": "2026-11-10T08:30:00Z",
     }
@@ -116,6 +127,15 @@ def rows(db, scope):
     }
 
 
+def verify_account(db, user, github_user_id, login="dev1"):
+    identity = VerifiedGithubIdentity(
+        user_id=user.id, github_user_id=github_user_id, login=login, verified_at=datetime.now(UTC)
+    )
+    db.add(identity)
+    db.flush()
+    return identity
+
+
 def test_sync_stores_commits_pulls_and_runs_and_is_idempotent(db, scope):
     client = FakeGithub(
         [commit("a" * 40, "T-001 登录页\n\n详细说明")],
@@ -147,7 +167,7 @@ def test_changed_pull_request_gets_a_new_revision(db, scope):
     assert after.revision != before and after.state == "merged"
 
 
-def test_author_is_mapped_by_declared_login_or_email_for_members_only(db, scope):
+def test_declared_login_and_commit_email_do_not_attribute_to_a_member(db, scope):
     member, outsider = scope.users["member"], scope.users["outsider"]
     github_activity.set_github_login(db, member, "@Dev-Member")
     client = FakeGithub(
@@ -161,11 +181,95 @@ def test_author_is_mapped_by_declared_login_or_email_for_members_only(db, scope)
     )
     sync(db, scope, client)
     stored = rows(db, scope)
-    assert stored[("commit", "1" * 40)].author_user_id == member.id
-    assert stored[("commit", "2" * 40)].author_user_id == member.id
-    assert stored[("commit", "3" * 40)].author_user_id == member.id
-    assert stored[("commit", "4" * 40)].author_user_id is None  # 不是本项目成员
-    assert stored[("commit", "5" * 40)].author_user_id is None
+    assert all(row.author_user_id is None for row in stored.values())
+    assert stored[("commit", "1" * 40)].author_login == "dev-member"
+    assert stored[("commit", "2" * 40)].author_name == "Dev"
+
+
+def test_structured_account_id_matches_active_verified_members_for_each_activity(db, scope):
+    member = scope.users["member"]
+    verify_account(db, member, 101)
+    verify_account(db, scope.users["peer"], 102, "peer")
+    verify_account(db, scope.users["disabled"], 103, "disabled")
+    sync(
+        db,
+        scope,
+        FakeGithub(
+            [
+                commit("a" * 40, "Renamed", login="newname", github_user_id=101),
+                commit("b" * 40, "Wrong ID", login="dev1", email=member.email, github_user_id=102),
+                commit("c" * 40, "Inactive", login="disabled", github_user_id=103),
+                commit("d" * 40, "Malformed ID", login="dev1", github_user_id="101"),
+            ],
+            [pull(1, "Feature", github_user_id=101)],
+            [run(4, github_user_id=101)],
+        ),
+    )
+    stored = rows(db, scope)
+    assert {key for key, row in stored.items() if row.author_user_id == member.id} == {
+        ("commit", "a" * 40),
+        ("pull_request", "1"),
+        ("ci_run", "4"),
+    }
+    assert all(row.author_user_id in (member.id, None) for row in stored.values())
+    assert stored[("commit", "a" * 40)].author_login == "newname"
+
+
+@pytest.mark.parametrize("change", ["unlink", "replace", "leave"])
+def test_attribution_disappears_from_a_and_c_reads_without_resync(db, scope, change):
+    member, leader = scope.users["member"], scope.users["leader"]
+    identity = verify_account(db, member, 101)
+    sync(db, scope, FakeGithub([commit("a" * 40, "Feature", login="dev1", github_user_id=101)]))
+    row = rows(db, scope)[("commit", "a" * 40)]
+    port = github_activity.DatabaseGithubActivityPort(lambda: github_activity._Reuse(db))
+    base = dict(project_id=scope.project.id, actor_id=leader.id, source_type="github")
+    query = ActivitySourceQuery(author_id=member.id)
+    before = port.get(**base, source_id=row.id)
+    assert before.author_id == member.id
+    assert port.query(**base, query=query).total == 1
+    assert github_activity.list_activity(db, leader, scope.project.id) == ([(row, member.id)], 1)
+
+    if change == "unlink":
+        db.delete(identity)
+    elif change == "replace":
+        identity.github_user_id = 202
+    else:
+        membership = db.scalar(
+            select(ProjectMember).where(
+                ProjectMember.project_id == scope.project.id, ProjectMember.user_id == member.id
+            )
+        )
+        membership.left_at = datetime.now(UTC)
+    db.flush()
+
+    assert port.query(**base, query=query).total == 0
+    filtered = github_activity.list_activity(db, leader, scope.project.id, author_id=member.id)
+    assert filtered == ([], 0)
+    assert github_activity.list_activity(db, leader, scope.project.id) == ([(row, None)], 1)
+    after = port.get(**base, source_id=row.id)
+    assert after.author_id is None
+    assert after.title == before.title and after.source == before.source
+
+
+def test_legacy_attribution_stays_hidden_until_verified_resync_without_new_revision(db, scope):
+    member, leader = scope.users["member"], scope.users["leader"]
+    original = commit("a" * 40, "Feature", login="dev1", email=member.email)
+    client = FakeGithub([original])
+    sync(db, scope, client)
+    row = rows(db, scope)[("commit", "a" * 40)]
+    row.author_user_id = member.id
+    row.revision = "f" * 64  # Earlier revisions included the local author ID.
+    db.flush()
+    verify_account(db, member, 101)
+    assert github_activity.list_activity(db, leader, scope.project.id) == ([(row, None)], 1)
+
+    client._commits = [
+        commit("a" * 40, "Feature", login="dev1", email=member.email, github_user_id=101)
+    ]
+    totals = github_sync.sync_project_repos(db, leader, scope.project.id, client)
+    assert totals["commits"] == totals["associated"] == 0
+    assert row.revision == "f" * 64
+    assert github_activity.list_activity(db, leader, scope.project.id) == ([(row, member.id)], 1)
 
 
 def test_github_login_is_unique_and_validated(db, scope):
@@ -240,9 +344,15 @@ def test_new_commits_are_offered_to_c_task_matching_once(db, scope, monkeypatch)
 
 def test_port_filters_authorizes_and_reports_deleted(db, scope):
     member = scope.users["member"]
-    github_activity.set_github_login(db, member, "dev-member")
+    verify_account(db, member, 101, "dev-member")
     gone = "9" * 40
-    first = commit("1" * 40, "T-001 登录页", login="dev-member", date="2026-11-11T08:00:00Z")
+    first = commit(
+        "1" * 40,
+        "T-001 登录页",
+        login="dev-member",
+        date="2026-11-11T08:00:00Z",
+        github_user_id=101,
+    )
     anchor = commit("8" * 40, "anchor", login="other", date="2026-11-10T08:00:00Z")
     client = FakeGithub(
         [first, commit(gone, "later removed", login="other", date="2026-11-10T09:00:00Z"), anchor],

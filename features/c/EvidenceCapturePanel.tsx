@@ -11,16 +11,16 @@ type Context = components["schemas"]["CProjectContextDTO"];
 type Source = "manual" | "task_note" | "discussion" | "file" | "screenshot" | "github" | "feishu";
 const sourceNames: Record<Source, string> = { manual: "手工说明或链接", task_note: "当前任务说明", discussion: "重要讨论", file: "已有项目文件", screenshot: "已有项目截图", github: "GitHub 来源", feishu: "飞书来源" };
 
-export function EvidenceCapturePanel({ context, userId, fixedTaskId, onSaved, onDenied, onDirtyChange, visible = true }: { context: Context; userId: string; fixedTaskId?: string; onSaved: () => void; onDenied: (error: unknown) => void; onDirtyChange?: (dirty: boolean) => void; visible?: boolean }) {
+export function EvidenceCapturePanel({ context, userId, fixedTaskId, initialTaskId, initialCriterionId, onSaved, onDenied, onDirtyChange, visible = true }: { context: Context; userId: string; fixedTaskId?: string; initialTaskId?: string; initialCriterionId?: string; onSaved: () => void; onDenied: (error: unknown) => void; onDirtyChange?: (dirty: boolean) => void; visible?: boolean }) {
   const projectId = context.project.id;
-  const [taskId, setTaskId] = useState(fixedTaskId ?? "");
+  const [taskId, setTaskId] = useState(fixedTaskId ?? (context.tasks.some((item) => item.id === initialTaskId) ? initialTaskId! : ""));
   const [kind, setKind] = useState<Source>("manual");
   const [sourceId, setSourceId] = useState("");
   const [page, setPage] = useState(1);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
-  const [criteria, setCriteria] = useState<string[]>([]);
+  const [criteria, setCriteria] = useState<string[]>(context.tasks.find((item) => item.id === (fixedTaskId ?? initialTaskId))?.criteria.some((criterion) => criterion.id === initialCriterionId) ? [initialCriterionId!] : []);
   const dirty = Boolean(title || body || sourceId || url || criteria.length);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [error, setError] = useState<unknown>(null);

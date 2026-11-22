@@ -286,7 +286,7 @@ def test_completion_lists_what_is_missing_and_never_skips_d(world_api, b_engine)
 def test_completion_without_linked_tasks_skips_d(world_api, b_engine):  # noqa: F811
     api, world, other, modules = world_api
     milestone = add_milestone(b_engine, world)
-    # The default port is unavailable; with no linked tasks it is never asked.
+    # With no linked tasks there is no acceptance result to query.
     done = api.post(m(world, milestone, "/complete"), {"expected_version": 0})
     assert done.status_code == 200, done.text
 

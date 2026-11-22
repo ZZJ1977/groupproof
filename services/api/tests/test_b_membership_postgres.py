@@ -337,3 +337,38 @@ def test_reject_and_needs_info_notify_and_allow_editing(pending, b_engine):  # n
     assert in_group(b_engine, world, s[1])
     assert active_assignees(b_engine, login["id"]) == [str(s[1])]
     assert pending_items(b_engine, row["id"]) == []
+
+
+def test_ended_course_rejects_old_member_change_edits_and_approval(pending, b_engine):  # noqa: F811
+    from app.db.models import Course
+    from app.modules.b.models import BMembershipChangeRequest
+
+    api, world, login, report, row = pending
+    with Session(b_engine) as session:
+        session.get(Course, world.course_id).status = "ended"
+        session.commit()
+    rejected = decide(api, world, row, "approve")
+    assert rejected.status_code == 409, rejected.text
+    assert error(rejected) == "COURSE_CLOSED"
+    assert in_group(b_engine, world, world.student_ids[1])
+    assert active_assignees(b_engine, login["id"]) == [str(world.student_ids[1])]
+    with Session(b_engine) as session:
+        change = session.get(BMembershipChangeRequest, row["id"])
+        assert change.status == "pending"
+        # Exercise a separate existing needs-info request state after course closure.
+        change.status = "needs_info"
+        session.commit()
+    rejected = api.put(
+        f"/api/v1/membership-changes/{row['id']}",
+        {
+            "reason": "补充沟通过程",
+            "handovers": handover(login, report, world.student_ids[3]),
+            "expected_version": row["lock_version"],
+        },
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert error(rejected) == "COURSE_CLOSED"
+    with Session(b_engine) as session:
+        change = session.get(BMembershipChangeRequest, row["id"])
+        assert change.status == "needs_info"
+        assert change.lock_version == row["lock_version"]

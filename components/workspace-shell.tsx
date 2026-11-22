@@ -15,12 +15,14 @@ import { apiMode } from "@/lib/api/config";
 import { inboxApi } from "@/lib/api/c-inbox-client";
 import { mockService } from "@/lib/api/mock-service";
 import { authClient } from "@/lib/api/auth-client";
-import { projectNavItems, resolveObjectContext, resolveCanonicalRouteContext, teacherNavItems } from "@/lib/ux/navigation";
+import { resolveObjectContext, resolveCanonicalRouteContext, teacherNavItems } from "@/lib/ux/navigation";
+import { projectNavGroups, type ProjectNavGroup } from "@/lib/ux/student-workspace";
 import { tr } from "@/lib/i18n/tr";
 import type { Role } from "@/types/domain";
 import { cn } from "@/lib/utils";
 
 type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
+type NavGroup = Omit<ProjectNavGroup, "items"> & { items: NavItem[] };
 
 const iconByKey: Record<string, typeof Home> = {
   folder: Folder, fileClock: FileClock, fileText: FileText, clipboardList: ClipboardList,
@@ -43,7 +45,6 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const t = useTranslations("nav");
   const tc = useTranslations("common");
   const ts = useTranslations("shell");
-  const tp = useTranslations("pages.shared");
   const { data, role, userId, userName, setRole, demoMode, mockWorkspace } = useWorkspace();
   const realInbox = apiMode("inbox") === "real";
   const inboxBlocked = useQuery({ queryKey: ["c-inbox-blocked", userId], queryFn: () => false,
@@ -55,6 +56,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     : data.notifications.filter((item) => item.userId === data.currentUserId && !item.read).length;
   const { session } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openProjectGroups, setOpenProjectGroups] = useState<Record<string, boolean>>({ plan: true, collaborate: true, review: true });
   const [search, setSearch] = useState("");
   const user = data.users.find((item) => item.id === data.currentUserId);
   const displayName = session?.user?.name || userName || (mockWorkspace ? user?.name : null) || "—";
@@ -97,9 +99,22 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     const teacherGlobal = role === "teacher" || role === "ta" ? [teacherDashboard, myClasses, ...globalNav] : globalNav;
     const isGlobalTeacherRoute = pathname === "/teacher/dashboard" || pathname === "/teacher/courses";
     if (kind === "teacher") return navCourseId && !isGlobalTeacherRoute ? map(teacherNavItems(navCourseId), "teacher") : [teacherDashboard, myClasses, ...globalNav];
-    return projectMode ? map(projectNavItems(context.projectId as string), "project") : teacherGlobal;
+    return teacherGlobal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, navCourseId, projectMode, context.projectId, role, pathname, t]);
+
+  const projectGroups: NavGroup[] = useMemo(() => {
+    if (!projectMode || !context.projectId) return [];
+    return projectNavGroups(context.projectId).map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({
+        label: t(`project.${item.label.toLowerCase()}`),
+        href: item.href,
+        icon: iconByKey[item.iconKey] ?? Folder,
+        ignoreSearch: item.href.includes("?"),
+      })),
+    }));
+  }, [context.projectId, projectMode, t]);
 
   const searchResults = useMemo(() => {
     if (!search.trim()) return [];
@@ -131,8 +146,36 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><Folder size={16} className="text-[#246bfa]" /> {context.courseName ? `${context.courseName} · ` : ""}{context.projectName ?? ts("projectFallback")} <ChevronDown size={13} className="ml-auto" /></Link>}
       {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={15} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
       <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
-        {projectMode && <><div className="gp-nav-section">{t("global")}</div><NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" /><NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" /><div className="gp-nav-section">{t("currentProject")}</div></>}
-        {nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+        {projectMode ? <>
+          <div className="gp-nav-section">{t("global")}</div>
+          <NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" />
+          <NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" />
+          <div className="gp-nav-section">{t("currentProject")}</div>
+          {projectGroups.map((group) => {
+            const collapsible = group.id === "plan" || group.id === "collaborate" || group.id === "review";
+            const open = openProjectGroups[group.id] !== false;
+            if (!collapsible) return group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />);
+            const panelId = `project-nav-${group.id}`;
+            return <div className="gp-nav-group" key={group.id}>
+              <button
+                type="button"
+                className="gp-nav-group-toggle"
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpenProjectGroups((current) => ({ ...current, [group.id]: !open }));
+                }}
+              >
+                <span>{t(`projectGroups.${group.label}`)}</span>
+                <ChevronDown size={14} aria-hidden="true" className={cn("gp-nav-group-chevron", open && "open")} />
+              </button>
+              {open && <div id={panelId} className="gp-nav-group-items">
+                {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+              </div>}
+            </div>;
+          })}
+        </> : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
       </nav>
       <div className="gp-sidebar-footer">{ts("footer")}</div>
     </aside>
@@ -140,14 +183,14 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       <header className="gp-topbar">
         <div className="gp-topbar-left">
           <button className="gp-icon-button gp-mobile-menu" onClick={() => setMobileOpen(!mobileOpen)} aria-label={ts("openMenu")}>{mobileOpen ? <X size={19} /> : <Menu size={19} />}</button>
-          <div className="gp-search relative min-w-0 flex-1"><Search size={15} /><input value={search} disabled={!mockShell} title={!mockShell ? tp("searchUnavailable") : undefined} onChange={(event) => setSearch(event.target.value)} placeholder={mockShell ? ts("searchPlaceholder") : tp("searchUsePageFilters")} aria-label={ts("searchLabel")} />
+          <div className="gp-search relative min-w-0 flex-1"><Search size={15} /><input value={search} disabled={!mockShell} title={!mockShell ? "全局搜索暂不可用，请使用页面内筛选。" : undefined} onChange={(event) => setSearch(event.target.value)} placeholder={mockShell ? ts("searchPlaceholder") : "请使用页面内筛选"} aria-label={ts("searchLabel")} />
             {mockShell && search && <div className="absolute left-0 top-10 z-40 w-[min(340px,85vw)] rounded-[7px] border border-[#dfe6ee] bg-white p-1 shadow-lg">{searchResults.length ? searchResults.map((result) => <Link key={`${result.type}-${result.href}`} href={result.href} onClick={() => setSearch("")} className="flex gap-2 rounded-[4px] px-3 py-2 text-[12px] hover:bg-[#eef4ff]"><span className="w-8 text-[#8b99aa]">{result.type}</span><span className="truncate">{result.label}</span></Link>) : <div className="px-3 py-2 text-[12px] text-[#8b99aa]">{ts("searchNoResult")}</div>}</div>}
           </div>
         </div>
         <div className="gp-topbar-right">
           <LanguageSwitcher compact />
           <span className="gp-topbar-link hidden lg:inline">{ts("helpCenter")}</span>
-          <Link href="/notifications" className="gp-icon-button relative" aria-label={ts("notifications")} title={unreadCount === null ? tp("unreadUnavailable") : tp("unreadCount", { count: unreadCount })}><Bell size={18} />{unreadCount !== null && unreadCount > 0 && <span data-testid="unread-notification-dot" className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]" />}</Link>
+          <Link href="/notifications" className="gp-icon-button relative" aria-label={ts("notifications")} title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}><Bell size={18} />{unreadCount !== null && unreadCount > 0 && <span data-testid="unread-notification-dot" className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]" />}</Link>
           <DropdownMenu><DropdownMenuTrigger className="flex items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]"><Avatar name={displayName} color={user?.avatarColor} size={28} /><span className="hidden lg:inline">{displayName}</span><ChevronDown size={13} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => router.push("/account")}><UserRound size={14} />{ts("accountCenter")}</DropdownMenuItem><DropdownMenuItem onSelect={() => router.push("/activity")}>{ts("myActivity")}</DropdownMenuItem><DropdownMenuItem onSelect={() => void logout()}><LogOut size={14} />{ts("logout")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
           {demoMode && (
             <select className="hidden max-w-[86px] rounded-[5px] border border-[#e0e6ef] bg-white px-1.5 py-1.5 text-[11px] text-[#53637d] lg:inline" aria-label={ts("switchDemoRole")} title={ts("switchDemoRole")} value={role} onChange={(event) => setRole(event.target.value as Role)}>

@@ -23,7 +23,7 @@ from app.db.models import Course, Milestone, Task, TaskMilestone, User
 from app.modules.a import permissions
 from app.modules.a.audit import record_audit
 from app.modules.a.inbox import notify
-from app.modules.b.common import now, require_reason, require_version
+from app.modules.b.common import lock_project_for_write, now, require_reason, require_version
 from app.modules.b.courses_schemas import PersonDTO
 from app.modules.b.courses_service import teacher_ids
 from app.modules.b.milestones_schemas import (
@@ -51,7 +51,6 @@ from app.modules.b.models import (
 from app.modules.b.planning_service import (
     Facts,
     _facts,
-    _lock_project,
     _members,
     _people,
     task_code,
@@ -385,8 +384,7 @@ def milestone_detail(
 
 
 def _leader_write(session: Session, user: User, project_id: UUID, milestone_id: UUID):
-    permissions.require_project_leader(session, user, project_id)
-    project = _lock_project(session, project_id)
+    project = lock_project_for_write(session, user, project_id, leader=True).project
     m = _milestone(session, project_id, milestone_id, lock=True)
     return project, m
 

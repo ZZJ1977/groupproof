@@ -22,6 +22,7 @@ const STEPS = [
   { id: "identity", icon: CheckCircle2, href: "/account/status", labelKey: "review", screen: 103, optional: false },
   { id: "security", icon: ShieldCheck, href: "/account/security", labelKey: "security", screen: 104, optional: true },
 ] as const;
+const pageWidth = "mx-auto w-full max-w-[1160px] px-4 sm:px-8";
 
 /** 注册受限布局：只有本人资料、语言与退出；不挂载工作区导航、搜索、通知 */
 export function AccountShell({ session, screen, children }: { session: SessionDTO; screen: number; children: ReactNode }) {
@@ -58,27 +59,29 @@ function AccountChrome({ screen, children }: { screen: number; children: ReactNo
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f9fd]">
-      <header className="flex h-[65px] items-center justify-between border-b border-[#e7edf5] bg-white px-[max(24px,4vw)]">
-        <Link href="/account" className="text-[18px] font-bold text-[#14213b]">GroupProof</Link>
-        <div className="flex items-center gap-2">
+    <div className="min-h-screen bg-[var(--gp-canvas)]">
+      <header className="border-b border-border bg-white">
+        <div className={`${pageWidth} flex min-h-16 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2`}>
+        <Link href="/account" className="text-xl font-bold tracking-tight">GroupProof</Link>
+        <div className="flex items-center gap-1 sm:gap-2">
           <LanguageSwitcher compact />
           <span className="hidden items-center gap-2 px-2 text-[12px] text-[#53637d] sm:inline-flex"><Avatar name={displayName} size={28} />{displayName}</span>
           <Button variant="ghost" size="sm" onClick={() => void logout()} loading={loggingOut}>
             <LogOut size={15} />{t("logout")}
           </Button>
         </div>
+        </div>
       </header>
-      <main className="mx-auto grid max-w-[1100px] grid-cols-1 gap-8 px-[max(24px,4vw)] py-10 lg:grid-cols-[240px_1fr]">
-        <RegistrationSidebar screen={screen} />
-        <div className="min-w-0">{children}</div>
+      <main className={`${pageWidth} pb-12 pt-6 sm:pt-8`}>
+        <RegistrationNavigation screen={screen} />
+        <div className="mt-8 min-w-0 sm:mt-10">{children}</div>
       </main>
     </div>
   );
 }
 
-/** 注册进度侧栏：阶段底色/图标/文字三通道；状态提示与「登入」按钮共用同一份后端事实 */
-function RegistrationSidebar({ screen }: { screen: number }) {
+/** 紧凑进度导航：与新版注册共用内容宽度，完成状态仍由服务端事实派生。 */
+function RegistrationNavigation({ screen }: { screen: number }) {
   const t = useTranslations("account");
   const router = useRouter();
   const { session, setSession } = useAccountSession();
@@ -123,9 +126,13 @@ function RegistrationSidebar({ screen }: { screen: number }) {
   });
 
   return (
-    <aside className="self-start rounded-[8px] border border-[#e0e7f0] bg-white p-5">
-      <h2 className="text-[13px] font-semibold text-[#14213b]">{t("steps.title")}</h2>
-      <ol className="mt-4 space-y-2">
+    <section aria-label={t("steps.title")}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-[var(--gp-ink-soft)]">{session.accountState === "active" ? t("menuAccount") : t("steps.title")}</h2>
+        <ProgressStatusChip statusKey={progress.statusKey} statusTone={progress.statusTone} />
+      </div>
+      <nav aria-label={t("menuAccount")}>
+      <ol className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         {STEPS.map((step) => {
           const stage = progress.stages.find((item) => item.id === step.id);
           const selected = step.screen === screen;
@@ -135,54 +142,51 @@ function RegistrationSidebar({ screen }: { screen: number }) {
               <Link
                 href={step.href}
                 aria-current={selected ? "page" : undefined}
-                className={cn("gp-stage-row", selected && "is-current")}
+                className={cn("flex h-full min-h-20 items-center gap-3 rounded-xl border p-3 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:p-4",
+                  selected ? "border-primary bg-[var(--gp-action-soft)]" : "border-border bg-white hover:bg-slate-50")}
                 data-tone={stage?.tone ?? "unknown"}
               >
-                <span className="gp-stage-icon" data-tone={stage?.tone ?? "unknown"} aria-hidden="true"><Icon size={14} /></span>
-                <span className="gp-stage-label">
-                  {t(`steps.${step.labelKey}`)}
-                  {step.optional && <span className="gp-stage-tag">{t("progress.optionalTag")}</span>}
-                </span>
-                <span className="gp-stage-state" data-tone={stage?.tone ?? "unknown"}>
-                  {stage?.stateKey ? t(`progress.${stage.stateKey}`) : ""}
+                <span className={cn("hidden size-9 shrink-0 place-items-center rounded-full sm:grid", stage?.complete ? "bg-teal-50 text-[var(--gp-success)]" : "bg-slate-100 text-[var(--gp-ink-soft)]")} aria-hidden="true"><Icon size={18} /></span>
+                <span className="min-w-0 text-sm">
+                  <span className="block font-medium text-[var(--gp-ink)]">{t(`steps.${step.labelKey}`)}</span>
+                  <span className={cn("mt-1 block text-xs", stage?.complete ? "text-[var(--gp-success)]" : "text-[var(--gp-ink-soft)]")}>
+                    {step.optional ? t("progress.optionalTag") : stage?.stateKey ? t(`progress.${stage.stateKey}`) : ""}
+                  </span>
                 </span>
               </Link>
             </li>
           );
         })}
       </ol>
-      <div className="mt-6 space-y-3 border-t border-[#e7edf5] pt-4">
-        <ProgressStatusChip statusKey={progress.statusKey} statusTone={progress.statusTone} />
+      </nav>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--gp-ink-soft)]">
         {progress.loadFailed && (
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
             <RotateCw size={13} />{t("progress.retry")}
           </Button>
         )}
-        <Button
-          className="gp-enter-button w-full"
+        {progress.canEnter && <Button
+          className="ml-auto"
+          size="sm"
           disabled={!progress.canEnter || entering}
           aria-busy={entering || undefined}
           onClick={() => void enter()}
         >
           {entering ? t("progress.entering") : t("progress.enter")}
-        </Button>
+        </Button>}
         {!progress.canEnter && !progress.loading && !progress.loadFailed && (
-          <p className="text-[11px] leading-5 text-[#65748b]">
+          <p className="text-xs leading-5">
             {t("progress.missingPrefix")}{missingLabels.join(t("progress.listSeparator"))}
           </p>
         )}
         {progress.loginEmailPending && (
-          <p className="text-[11px] leading-5 text-[#b45309]">
+          <p className="text-xs leading-5 text-[var(--gp-warning)]">
             {t("progress.loginEmailHint")}{" "}
             <Link href="/account/security" className="gp-link">{t("steps.security")}</Link>
           </p>
         )}
-        {enterError && <p className="text-[11px] leading-5 text-[#b91c1c]" role="alert">{enterError}</p>}
+        {enterError && <p className="basis-full text-sm leading-5 text-[var(--gp-danger)]" role="alert">{enterError}</p>}
       </div>
-      {/* 语言选择仅保留页面右上角一处（2026-10-10 验收调整） */}
-      <div className="mt-4 text-[11px] text-[#8190a4]">
-        <span>{t("menuAccount")}</span>
-      </div>
-    </aside>
+    </section>
   );
 }

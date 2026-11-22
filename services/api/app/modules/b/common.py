@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import Depends, Header, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -18,8 +19,9 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.api.errors import ApiError
 from app.api.responses import ErrorResponse
-from app.db.models import User
+from app.db.models import Course, Project, ProjectGroup, User
 from app.db.session import get_session
+from app.modules.a import permissions
 from app.modules.b.models import BCommandReceipt
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -140,3 +142,43 @@ def require_reason(reason: str | None, *, field: str = "reason") -> str:
     if not value:
         raise ApiError(422, "REASON_REQUIRED", "请填写原因。", details={"field": field})
     return value
+
+
+def lock_project_for_write(
+    session: Session, user: User, project_id: UUID, *, leader: bool = False
+) -> permissions.ProjectRelation:
+    """Hold course/project facts through commit, then re-read current authorization.
+
+    Course SHARE precedes project UPDATE, matching course closure's lock order.
+    C execution's shared course lock is compatible with this shared lock.
+    """
+    probe = session.scalar(select(Project.id).where(Project.id == project_id))
+    if probe is None:
+        raise ApiError(404, "PROJECT_NOT_FOUND", "项目不存在。")
+    course_id = session.scalar(select(Project.course_id).where(Project.id == project_id))
+    if course_id is not None:
+        session.scalar(
+            select(Course)
+            .where(Course.id == course_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+    project = session.scalar(
+        select(Project)
+        .where(Project.id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if project is None or project.course_id != course_id:
+        raise ApiError(409, "INVALID_PROJECT_CONTEXT", "项目所属课程已变化，请刷新后重试。")
+    if project.group_id is not None:
+        session.scalar(
+            select(ProjectGroup)
+            .where(ProjectGroup.id == project.group_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+    # A's relationship queries use populate_existing; a member removed while this
+    # request waited for the project lock must not retain the earlier permission.
+    guard = permissions.require_project_leader if leader else permissions.require_project_member
+    return guard(session, user, project_id)

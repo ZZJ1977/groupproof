@@ -1,4 +1,4 @@
-"""注册前验证事务（E02–E06）：先证明登录邮箱归属，再限时一次性建档。
+"""学校邮箱注册：先证明邮箱归属，再限时一次性建档。
 
 - 验证前不创建永久用户/密码凭据、不占用用户名；
 - 验证码与建档资格均限时、一次性、绑定浏览器事务，服务端限流；
@@ -8,33 +8,47 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Literal
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from ..config import get_settings
 from ..errors import AppError
-from ..models import PasswordCredential, PreRegistrationRequest, User, utcnow
+from ..models import AuthIdentity, PasswordCredential, PreRegistrationRequest, User, utcnow
 from ..security import (
     check_email_format,
     code_hmac,
+    email_domain_allowed,
     hash_password,
     new_code,
     new_token,
-    normalize_username,
     token_digest,
     validate_password,
-    validate_username,
 )
 from . import audit
+from .email_challenges import bind_verified_target
 from .mailer import MailSendError, send_template
 from .rate_limit import RateLimitExceeded, check_and_increment
+from .registration import normalize_collaboration_accounts, profile_field_errors
+
+RegistrationIdentity = Literal["student", "teacher"]
 
 
 def _browser_ok(tx: PreRegistrationRequest, browser_token: str | None) -> bool:
     return bool(browser_token) and tx.browser_token_digest == token_digest(browser_token)
+
+
+def school_identities(email: str) -> list[RegistrationIdentity]:
+    identities: tuple[RegistrationIdentity, ...] = ("student", "teacher")
+    return [identity for identity in identities if email_domain_allowed(email, identity)]
+
+
+def _require_school_address(email: str) -> None:
+    if not school_identities(email):
+        raise AppError("VALIDATION_ERROR", 400, field_errors={"email": "school_email_domain"})
 
 
 def create_registration(
@@ -46,12 +60,11 @@ def create_registration(
             "MAIL_UNAVAILABLE", 503, params={"reason": "signup_disabled_or_mail_unavailable"}
         )
     try:
-        normalized = check_email_format(
-            email
-        )  # 登录邮箱允许 QQ 等普通邮箱；学校资格另在个人中心验证
+        normalized = check_email_format(email)
     except ValueError:
         # 邮箱格式错误必须是可恢复的字段错误，不得 500
         raise AppError("VALIDATION_ERROR", 400, field_errors={"email": "invalid_email"}) from None
+    _require_school_address(normalized)
     now = utcnow()
     for key, limit, window in (
         (f"reg:email:{normalized}", settings.code_send_per_hour, 3600),
@@ -89,7 +102,7 @@ def _dispatch_code(
 ) -> None:
     try:
         send_template("registration_code", tx.email, locale, code=code)
-        tx.send_status = "accepted"
+        tx.send_status = "captured" if get_settings().mail_mode == "capture" else "accepted"
     except MailSendError as exc:
         tx.send_status = "failed"
         db.commit()  # 发件状态与真实结果一致地持久化
@@ -107,6 +120,10 @@ def resend_code(
     request_ip: str | None,
 ) -> PreRegistrationRequest:
     settings = get_settings()
+    if not settings.email_signup_available:
+        raise AppError(
+            "MAIL_UNAVAILABLE", 503, params={"reason": "signup_disabled_or_mail_unavailable"}
+        )
     now = utcnow()
     tx = db.execute(
         select(PreRegistrationRequest).where(PreRegistrationRequest.id == tx_id).with_for_update()
@@ -115,6 +132,7 @@ def resend_code(
         raise AppError("NOT_FOUND", 404)
     if not _browser_ok(tx, browser_token):
         raise AppError("FORBIDDEN", 403, params={"reason": "browser_binding"})
+    _require_school_address(tx.email_normalized)
     if tx.resend_available_at and tx.resend_available_at > now:
         raise AppError(
             "RATE_LIMITED",
@@ -186,15 +204,46 @@ def verify_code(
     return tx
 
 
+def _require_creation_grant(tx: PreRegistrationRequest) -> None:
+    if (
+        tx.completed_at is not None
+        or tx.code_consumed_at is None
+        or not tx.creation_grant_digest
+        or not tx.creation_grant_expires_at
+    ):
+        raise AppError("CHALLENGE_INVALID", 400, params={"reason": "no_creation_grant"})
+    if tx.creation_grant_expires_at <= utcnow():
+        raise AppError("CODE_EXPIRED", 400, params={"reason": "creation_grant_expired"})
+
+
+def read_registration_profile(
+    db: DbSession, tx_id: str, *, browser_token: str | None
+) -> PreRegistrationRequest:
+    tx = db.get(PreRegistrationRequest, tx_id)
+    if tx is None or tx.invalidated_at is not None:
+        raise AppError("NOT_FOUND", 404)
+    if not _browser_ok(tx, browser_token):
+        raise AppError("FORBIDDEN", 403, params={"reason": "browser_binding"})
+    _require_creation_grant(tx)
+    _require_school_address(tx.email_normalized)
+    return tx
+
+
 def complete_registration(
     db: DbSession,
     tx_id: str,
     *,
-    username: str,
+    name: str,
+    requested_identity: RegistrationIdentity,
+    student_id: str | None,
+    college: str | None,
     password: str,
+    confirm_password: str,
     browser_token: str | None,
+    github_username: str | None = None,
+    feishu_account: str | None = None,
 ) -> tuple[User, bool]:
-    """单事务建档：锁行 → 核对资格/期限 → 唯一性 → 插入 user+credential → 消费资格 → 建受限会话。
+    """在同一事务内创建资料、密码凭据及已验证的学校邮箱，并消费建档资格。
 
     返回 (user, created)；同一事务已完成时返回 (user, False)（幂等安全结果，不重复创建）。
     """
@@ -210,51 +259,69 @@ def complete_registration(
         user = db.get(User, tx.result_user_id)
         if user is not None:
             return user, False
-    if (
-        tx.code_consumed_at is None
-        or not tx.creation_grant_digest
-        or not tx.creation_grant_expires_at
-    ):
-        raise AppError("CHALLENGE_INVALID", 400, params={"reason": "no_creation_grant"})
-    if tx.creation_grant_expires_at <= utcnow():
-        raise AppError("CODE_EXPIRED", 400, params={"reason": "creation_grant_expired"})
+    _require_creation_grant(tx)
 
+    user_id = uuid4()
+    # 资料兼容内部用户名字段。新用户登录使用学校邮箱。
+    username = f"u-{user_id.hex[:30]}"
+    student_id = (student_id or "").strip() if requested_identity == "student" else None
+    college = (college or "").strip()
+    errors = profile_field_errors(
+        name=name,
+        username=username,
+        student_id=student_id,
+        requested_identity=requested_identity,
+        school_email=tx.email,
+    )
+    if len(student_id or "") > 80:
+        errors["studentId"] = "invalid_student_id"
+    if len(college) > 160:
+        errors["college"] = "college_too_long"
+    if password != confirm_password:
+        errors["confirmPassword"] = "password_mismatch"
     try:
-        name_value = validate_username(username)
-    except ValueError:
-        raise AppError(
-            "VALIDATION_ERROR", 400, field_errors={"username": "invalid_username"}
-        ) from None
-    try:
-        password_value = validate_password(password)
+        validate_password(password)
     except ValueError as exc:
-        raise AppError("VALIDATION_ERROR", 400, field_errors={"password": str(exc)}) from None
+        errors["password"] = str(exc)
+    if errors:
+        raise AppError("VALIDATION_ERROR", 400, field_errors=errors)
 
-    if (
-        db.execute(
-            select(User).where(User.username_normalized == normalize_username(name_value))
-        ).scalar_one_or_none()
-        is not None
-    ):
-        raise AppError("USERNAME_CONFLICT", 409, field_errors={"username": "username_taken"})
+    github_username, feishu_account = normalize_collaboration_accounts(
+        github_username, feishu_account
+    )
+
+    # OIDC 用户的镜像邮箱可能为空。显式核对已有 Google 身份，避免注册第二个账号。
+    google_owner = db.scalar(
+        select(AuthIdentity.user_id)
+        .where(func.lower(AuthIdentity.google_email) == tx.email_normalized)
+        .limit(1)
+    )
+    if google_owner is not None:
+        raise AppError("EMAIL_CONFLICT", 409, field_errors={"schoolEmail": "email_taken"})
 
     now = utcnow()
     user = User(
-        id=uuid4(),
-        username=name_value,
-        username_normalized=normalize_username(name_value),
+        id=user_id,
+        name=name.strip(),
+        username=username,
+        username_normalized=username,
+        requested_identity=requested_identity,
+        student_id=student_id,
+        college=college or None,
+        github_username=github_username,
+        feishu_account=feishu_account,
         # users.email 仅为业务展示/检索镜像；登录邮箱与学校邮箱的验证事实分别保存在认证表
-        email=tx.email,
+        email=tx.email_normalized,
         account_status="enabled",
     )
     credential = PasswordCredential(
         user_id=user.id,
         login_email=tx.email,
         login_email_normalized=tx.email_normalized,
-        login_email_verified_at=now,  # 邮箱归属已证明（本次注册前验证）
+        login_email_verified_at=tx.code_consumed_at,
         verification_evidence_ref=tx.id,
         credential_version=1,
-        password_hash=hash_password(password_value),
+        password_hash=hash_password(password),
         password_algo="argon2id",
     )
     try:
@@ -262,9 +329,25 @@ def complete_registration(
         with db.begin_nested():
             db.add(user)
             db.add(credential)
+            bind_verified_target(db, user, email=tx.email, email_normalized=tx.email_normalized)
             db.flush()
-    except IntegrityError:
-        raise AppError("EMAIL_CONFLICT", 409, field_errors={"email": "email_taken"}) from None
+    except IntegrityError as exc:
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint == "uq_users_student_id":
+            raise AppError(
+                "VALIDATION_ERROR", 409, field_errors={"studentId": "student_id_taken"}
+            ) from None
+        if constraint in {
+            "users_email_key",
+            "uq_users_email",
+            "uq_school_email_verified",
+            "password_credentials_login_email_normalized_key",
+            "uq_password_credentials_login_email",
+        }:
+            raise AppError(
+                "EMAIL_CONFLICT", 409, field_errors={"schoolEmail": "email_taken"}
+            ) from None
+        raise
 
     tx.creation_grant_digest = None  # 建档资格一次性消费
     tx.completed_at = now
@@ -274,7 +357,7 @@ def complete_registration(
         "auth.email_registered",
         actor_id=user.id,
         target_user_id=user.id,
-        changed_fields=["users", "password_credentials"],
+        changed_fields=["users", "password_credentials", "school_email_bindings"],
     )
     db.flush()
     return user, True
@@ -323,7 +406,7 @@ def cleanup_expired(db: DbSession, older_than_hours: int = 24) -> int:
 
 
 # 建档会话签发复用 sessions 服务（auth_method=password）
-def issue_onboarding_session(db: DbSession, user: User, facts: dict):
+def issue_registration_session(db: DbSession, user: User, facts: dict):
     from .sessions import issue_session
 
     return issue_session(db, user, facts, auth_method="password", credential_version=1)
