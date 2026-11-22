@@ -780,6 +780,13 @@
       "dailyUnavailable": "日常入口資料暫不可用",
       "dailyUnavailableDesc": "首頁、通知、待辦及動態服務尚未接入，請稍後重試。"
     },
+    "daily": {
+      "notificationSaveFailed": "通知儲存失敗，請重試；當前狀態未變更。",
+      "notificationsNotConnected": "通知服務尚未接入，暫時無法讀取或處理真實通知。",
+      "demoNotifications": "當前為本機示範通知。",
+      "notificationPagination": "通知分頁",
+      "pagerOf": "第 {page}/{pages} 頁"
+    },
     "independentProject": {
       "title": "建立專案",
       "description": "無需加入課程即可建立獨立專案，你將自動成為專案組長。",
