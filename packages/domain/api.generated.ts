@@ -391,6 +391,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/projects/{project_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Personal Project Member */
+        post: operations["add_personal_project_member_api_v1_a_projects__project_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/members/{member_user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Personal Project Member */
+        delete: operations["remove_personal_project_member_api_v1_a_projects__project_id__members__member_user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/access-requests": {
         parameters: {
             query?: never;
@@ -5732,6 +5766,11 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** AddPersonalMemberRequest */
+        AddPersonalMemberRequest: {
+            /** Identifier */
+            identifier: string;
+        };
         /** AdminUserDetailDTO */
         AdminUserDetailDTO: {
             /** College */
@@ -8771,6 +8810,23 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** PersonalMemberDTO */
+        PersonalMemberDTO: {
+            /** Name */
+            name?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Role */
+            role: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** PersonalProjectDTO */
         PersonalProjectDTO: {
             /**
@@ -9722,6 +9778,11 @@ export interface components {
         /** SuccessResponse[OverviewDTO] */
         SuccessResponse_OverviewDTO_: {
             data: components["schemas"]["OverviewDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[PersonalMemberDTO] */
+        SuccessResponse_PersonalMemberDTO_: {
+            data: components["schemas"]["PersonalMemberDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[PersonalProjectDTO] */
@@ -11434,6 +11495,77 @@ export interface operations {
                 "application/json": components["schemas"]["TransferLeadershipRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_dict_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_personal_project_member_api_v1_a_projects__project_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPersonalMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_PersonalMemberDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_personal_project_member_api_v1_a_projects__project_id__members__member_user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                member_user_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

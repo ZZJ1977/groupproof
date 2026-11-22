@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -40,7 +41,7 @@ KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
 MAX_BRANCHES_PER_SYNC = 10
 MAX_NON_DEFAULT_BRANCH_COMMITS = 30
-MAX_COMMIT_DETAIL_PER_SYNC = 25
+MAX_COMMIT_DETAIL_PER_SYNC = 15
 MAX_COMMIT_FILES = 80
 MAX_PATCH_CHARS = 6000
 MAX_TOTAL_PATCH_CHARS = 120_000
@@ -330,42 +331,89 @@ def sync_activity(
         totals.setdefault(key, 0)
     owner, repo, inst = link.owner, link.repo, link.installation_id
     branches = _discover_branches(client, owner, repo, link.default_branch, inst)
-    commit_map: dict[str, tuple[dict[str, Any], list[str]]] = {}
-    commits: list[dict[str, Any]] = []
-    for idx, branch in enumerate(branches):
-        is_default = idx == 0
-        try:
-            branch_commits = _fetch_branch_commits(
-                client, owner, repo, branch, inst, is_default=is_default
+
+    # 并发拉取各分支提交、PR 与 CI 运行，避免多次串行 HTTP 往返拖慢同步。
+    with ThreadPoolExecutor(max_workers=min(8, len(branches) + 2)) as pool:
+        branch_futures = [
+            (
+                idx == 0,
+                branch,
+                pool.submit(
+                    _fetch_branch_commits, client, owner, repo, branch, inst, is_default=(idx == 0)
+                ),
             )
-        except ApiError:
-            if is_default:
-                raise
-            logger.info("skip branch commits for %s/%s@%s", owner, repo, branch)
-            continue
-        for item in branch_commits:
-            sha = item.get("sha")
-            if not isinstance(sha, str) or not sha:
+            for idx, branch in enumerate(branches)
+        ]
+        pulls_future = pool.submit(client.pulls, owner, repo, inst)
+        runs_future = pool.submit(client.workflow_runs, owner, repo, inst)
+
+        commit_map: dict[str, tuple[dict[str, Any], list[str]]] = {}
+        commits: list[dict[str, Any]] = []
+        for is_default, branch, future in branch_futures:
+            try:
+                branch_commits = future.result()
+            except ApiError:
+                if is_default:
+                    raise
+                logger.info("skip branch commits for %s/%s@%s", owner, repo, branch)
                 continue
-            if sha not in commit_map:
-                commit_map[sha] = (item, [branch])
-                commits.append(item)
-            elif branch not in commit_map[sha][1]:
-                commit_map[sha][1].append(branch)
+            for item in branch_commits:
+                sha = item.get("sha")
+                if not isinstance(sha, str) or not sha:
+                    continue
+                if sha not in commit_map:
+                    commit_map[sha] = (item, [branch])
+                    commits.append(item)
+                elif branch not in commit_map[sha][1]:
+                    commit_map[sha][1].append(branch)
+        pulls = pulls_future.result()
+        runs = runs_future.result()
+
     # 按提交时间从新到旧排序，确保优先获取最新提交的文件差异
     commits.sort(
         key=lambda item: _parse_time(((item.get("commit") or {}).get("author") or {}).get("date")),
         reverse=True,
     )
-    pulls = client.pulls(owner, repo, inst)
-    runs = client.workflow_runs(owner, repo, inst)
 
     existing = {
         (row.kind, row.external_id): row
         for row in session.scalars(select(GithubActivity).where(GithubActivity.link_id == link.id))
     }
     new_commits: list[GithubActivity] = []
-    details_fetched = 0
+
+    # 并发拉取最新缺失文件差异的提交详情（纯只读 HTTP，不触碰数据库会话）
+    detail_reader = getattr(client, "commit_detail", None)
+    fetched_details: dict[str, dict[str, Any]] = {}
+    if callable(detail_reader):
+        detail_shas: list[str] = []
+        for item in commits:
+            sha = item["sha"]
+            existing_row = existing.get(("commit", sha))
+            if (
+                existing_row is None
+                or not isinstance(existing_row.detail, dict)
+                or existing_row.detail.get("files_fetched") is not True
+            ):
+                detail_shas.append(sha)
+                if len(detail_shas) >= MAX_COMMIT_DETAIL_PER_SYNC:
+                    break
+        if detail_shas:
+            with ThreadPoolExecutor(max_workers=min(6, len(detail_shas))) as pool:
+                detail_futures = {
+                    sha: pool.submit(detail_reader, owner, repo, sha, inst) for sha in detail_shas
+                }
+                for sha, future in detail_futures.items():
+                    try:
+                        raw_detail = future.result()
+                        if not isinstance(raw_detail, dict):
+                            raise ApiError(503, "GITHUB_UNAVAILABLE", "提交详情格式不正确。")
+                        fetched_details[sha] = raw_detail
+                    except (ApiError, TypeError, ValueError) as exc:
+                        logger.info(
+                            "commit detail unavailable for %s: %s",
+                            sha[:12],
+                            getattr(exc, "code", type(exc).__name__),
+                        )
 
     for item in commits:
         sha = item["sha"]
@@ -389,33 +437,12 @@ def sync_activity(
         detail["branch"] = primary_branch
         if len(commit_branches) > 1 or primary_branch != link.default_branch:
             detail["branches"] = commit_branches
-        detail_reader = getattr(client, "commit_detail", None)
-        if (
-            callable(detail_reader)
-            and details_fetched < MAX_COMMIT_DETAIL_PER_SYNC
-            and (
-                existing_row is None
-                or not isinstance(existing_row.detail, dict)
-                or existing_row.detail.get("files_fetched") is not True
+        if sha in fetched_details:
+            files, files_truncated, stats = _commit_detail(fetched_details[sha])
+            detail.update(
+                {"files_fetched": True, "files": files, "files_truncated": files_truncated}
             )
-        ):
-            details_fetched += 1
-            try:
-                commit_detail = detail_reader(owner, repo, sha, inst)
-                if not isinstance(commit_detail, dict):
-                    raise ApiError(503, "GITHUB_UNAVAILABLE", "提交详情格式不正确。")
-                files, files_truncated, stats = _commit_detail(commit_detail)
-                detail.update(
-                    {"files_fetched": True, "files": files, "files_truncated": files_truncated}
-                )
-                detail.update(stats)
-            except (ApiError, TypeError, ValueError) as exc:
-                # 提交正文仍然是可用的原始来源；文件详情失败不应清空同步结果。
-                logger.info(
-                    "commit detail unavailable for %s: %s",
-                    sha[:12],
-                    getattr(exc, "code", type(exc).__name__),
-                )
+            detail.update(stats)
         _upsert(
             session, link, existing, totals, now, kind="commit", external_id=sha,
             account_id=account_id,

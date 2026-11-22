@@ -81,3 +81,52 @@ def test_activity_summary_accepts_file_evidence_without_project_terms(fake):
     result = ai.summarize_activity(value)
     assert result.implementation
     assert result.evidence[0].source in {"files", "title"}
+
+
+def test_openrouter_uses_code_commit_analysis_system_prompt_and_unwraps_fenced_json():
+    import json
+
+    import httpx
+
+    from app.modules.a.ai.openrouter import OpenRouterProvider
+    from app.modules.a.ai.prompts import CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT
+
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        fenced = (
+            "```json\n"
+            + json.dumps(
+                {
+                    "headline": "新增项目总览页面并接入导航",
+                    "implementation": "新增了项目总览展示组件并将侧边栏项目导航连接到总览路由。",
+                    "impact": "影响学生端项目工作区入口。",
+                    "verification": [],
+                    "risks": [],
+                    "evidence": [
+                        {
+                            "source": "body",
+                            "quote": (
+                                "Add a project overview page and connect the project navigation."
+                            ),
+                        }
+                    ],
+                    "confidence": 0.85,
+                    "insufficient_context": [],
+                },
+                ensure_ascii=False,
+            )
+            + "\n```"
+        )
+        return httpx.Response(200, json={"choices": [{"message": {"content": fenced}}]})
+
+    provider = OpenRouterProvider(
+        "sk-test", "openai/gpt-4o-mini", transport=httpx.MockTransport(handler)
+    )
+    result = ai.summarize_activity(payload(), provider=provider)
+    assert result.headline == "新增项目总览页面并接入导航"
+    system_msg = seen["body"]["messages"][0]["content"]
+    assert "资深软件工程代码评审与功能分析专家" in system_msg
+    assert "固定字段输出规范" in system_msg
+    assert CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT.strip() in system_msg

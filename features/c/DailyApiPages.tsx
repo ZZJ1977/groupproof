@@ -96,7 +96,7 @@ export function HomeApiPage() {
       </div>
       <div className="gp-grid-2">
         <Section title={t("myProjects")} description="最近更新的项目" surface>
-          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<span className="inline-flex flex-wrap items-center gap-2"><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></span>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
+          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<span className="inline-flex flex-wrap items-center gap-2"><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></span>} meta={project.progress === null ? "尚未规划任务 · 进入项目开始拆解任务" : `任务进度：${project.progress}%`} actions={<Link className="gp-link text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
             {project.progress !== null && <div className="mt-2"><ProgressBar value={project.progress} /></div>}
             <ProjectIntegrationStatus projectId={project.id} userId={userId} />
           </ListRow>)}</div>

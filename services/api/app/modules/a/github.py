@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import os
 import re
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -76,10 +77,12 @@ class GithubClient:
             base_url=settings.base_url,
             timeout=15.0,
             transport=transport,
+            limits=httpx.Limits(max_connections=16, max_keepalive_connections=12),
             headers={"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
         )
         self._now = now or (lambda: datetime.now(UTC))
         self._tokens: dict[int, tuple[str, datetime]] = {}
+        self._token_lock = threading.Lock()
 
     def close(self) -> None:
         self._http.close()
@@ -115,23 +118,24 @@ class GithubClient:
         return f"https://github.com/apps/{self._settings.app_slug}/installations/new"
 
     def installation_token(self, installation_id: int) -> str:
-        now = self._now()
-        cached = self._tokens.get(installation_id)
-        if cached and now < cached[1] - timedelta(seconds=TOKEN_REFRESH_MARGIN):
-            return cached[0]
-        try:
-            response = self._http.post(
-                f"/app/installations/{installation_id}/access_tokens",
-                headers={"Authorization": f"Bearer {self._app_jwt()}"},
-            )
-        except httpx.HTTPError as exc:
-            raise _unavailable() from exc
-        if response.status_code != 201:
-            raise _unavailable("无法获取 GitHub 访问令牌，请检查 GitHub App 配置。")
-        body = response.json()
-        expires = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00"))
-        self._tokens[installation_id] = (body["token"], expires)
-        return body["token"]
+        with self._token_lock:
+            now = self._now()
+            cached = self._tokens.get(installation_id)
+            if cached and now < cached[1] - timedelta(seconds=TOKEN_REFRESH_MARGIN):
+                return cached[0]
+            try:
+                response = self._http.post(
+                    f"/app/installations/{installation_id}/access_tokens",
+                    headers={"Authorization": f"Bearer {self._app_jwt()}"},
+                )
+            except httpx.HTTPError as exc:
+                raise _unavailable() from exc
+            if response.status_code != 201:
+                raise _unavailable("无法获取 GitHub 访问令牌，请检查 GitHub App 配置。")
+            body = response.json()
+            expires = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00"))
+            self._tokens[installation_id] = (body["token"], expires)
+            return body["token"]
 
     def repo_info(self, owner: str, repo: str, installation_id: int) -> dict[str, Any]:
         response = self._get(f"/repos/{owner}/{repo}", self.installation_token(installation_id))

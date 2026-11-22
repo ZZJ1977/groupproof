@@ -17,12 +17,43 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import User
-from app.modules.a import ai, permissions
+from app.modules.a import ai, github, github_activity, permissions
 from app.modules.a.ai.usage import AIUsageContext
-from app.modules.a.models import ActivitySummary, GithubActivity
+from app.modules.a.models import ActivitySummary, GithubActivity, GithubRepoLink
 
-PROMPT_VERSION = "activity-summary-v1"
+PROMPT_VERSION = "activity-summary-v2"
 SUMMARY_STATUSES = ("not_generated", "pending", "ready", "failed", "unsupported")
+
+
+def _hydrate_commit_detail(session: Session, row: GithubActivity) -> None:
+    """若该提交入库时未拉取文件差异，在 AI 分析前按需补拉一次（只读、失败不阻断）。"""
+    if row.kind != "commit" or row.deleted:
+        return
+    if isinstance(row.detail, dict) and row.detail.get("files_fetched") is True:
+        return
+    settings = github.github_settings()
+    if settings is None:
+        return
+    link = session.get(GithubRepoLink, row.link_id)
+    if link is None:
+        return
+    client = github.GithubClient(settings)
+    try:
+        commit_detail = client.commit_detail(
+            link.owner, link.repo, row.external_id, link.installation_id
+        )
+        if not isinstance(commit_detail, dict):
+            return
+        files, files_truncated, stats = github_activity._commit_detail(commit_detail)
+        merged = dict(row.detail) if isinstance(row.detail, dict) else {"sha": row.external_id}
+        merged.update({"files_fetched": True, "files": files, "files_truncated": files_truncated})
+        merged.update(stats)
+        row.detail = merged
+        session.flush()
+    except Exception:  # noqa: BLE001 - 按需补拉失败时退回现有提交信息，绝不阻断摘要生成
+        return
+    finally:
+        client.close()
 
 
 def _metadata(row: GithubActivity) -> dict[str, str | int | float | bool | None]:
@@ -192,6 +223,7 @@ def generate_summary(
     provider: ai.AIProvider | None = None,
 ) -> dict[str, Any]:
     row = _source(session, actor, project_id, source_id)
+    _hydrate_commit_detail(session, row)
     payload = build_input(row)
     data = _base(row.id, payload, status="not_generated")
     if row.kind != "commit" or row.deleted:

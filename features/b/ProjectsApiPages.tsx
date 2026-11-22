@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, FileText, Lock, Upload } from "lucide-react";
-import { EmptyState, Feedback, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
+import { ArrowRight, Crown, FileText, Lock, Upload, UserMinus, UserPlus } from "lucide-react";
+import { Avatar, EmptyState, Feedback, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
 import { BApiError, newIdempotencyKey } from "@/lib/api/b-client";
+import { projectRequest } from "@/features/github-binding/integration-request";
 import { bGroupsApi } from "@/lib/api/b-groups";
 import { bProjectsApi, type BMaterial, type BProjectDraft, type BProjectSetup } from "@/lib/api/b-projects";
 import { bRequirementsApi } from "@/lib/api/b-requirements";
@@ -148,9 +149,158 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
         {project.next_milestone && <div className="flex gap-3"><dt className="w-24 text-slate-500">{tr("下一个里程碑")}</dt><dd>{project.next_milestone.title} · {dateOnly(project.next_milestone.deadline, tr("未设置"))}</dd></div>}
         {!project.can_edit && <p className="flex items-center gap-1 pt-2 text-xs text-slate-500"><Lock size={13} />{tr("你可以查看，但不能修改这个项目。")}</p>}
       </dl></Panel>
-      <div id="project-members" className="scroll-mt-20"><Panel title={tr("成员")}><ul className="divide-y divide-slate-100 text-sm">{project.members.map((member) => <li key={member.id} className="py-2">{member.name ?? tr("未命名")}</li>)}</ul></Panel></div>
+      <div id="project-members" className="scroll-mt-20">
+        <ProjectMembersPanel projectId={projectId} project={project} currentUserId={userId} />
+      </div>
     </div>
   </div>;
+}
+
+function ProjectMembersPanel({
+  projectId,
+  project,
+  currentUserId,
+}: {
+  projectId: string;
+  project: {
+    course_id: string | null;
+    group_id: string | null;
+    lifecycle: string;
+    is_leader: boolean;
+    members: { id: string; name: string | null; role?: string | null }[];
+  };
+  currentUserId: string;
+}) {
+  const tr = useUiText();
+  const cache = useQueryClient();
+  const [identifier, setIdentifier] = useState("");
+  const [memberNotice, setMemberNotice] = useState<Notice>();
+  const isPersonal = !project.course_id && !project.group_id;
+  const canManage = isPersonal && project.is_leader && project.lifecycle === "active";
+
+  const refreshMembers = () =>
+    Promise.all([
+      cache.invalidateQueries({ queryKey: ["b-project-overview"] }),
+      cache.invalidateQueries({ queryKey: ["b-plan"] }),
+      cache.invalidateQueries({ queryKey: ["c-project-context"] }),
+    ]);
+
+  const addMember = useMutation({
+    mutationFn: () =>
+      projectRequest<{ user_id: string; name: string | null }>(
+        `/api/v1/a/projects/${encodeURIComponent(projectId)}/members`,
+        { method: "POST", body: { identifier: identifier.trim() } },
+      ),
+    onSuccess: async (added) => {
+      setIdentifier("");
+      setMemberNotice({ tone: "success", text: tr("已将 {0} 加入项目，现在可以在任务计划中分配任务。", { 0: added.name ?? tr("成员") }) });
+      await refreshMembers();
+    },
+    onError: (err) => {
+      setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("添加队友失败，请核对学号、用户名或邮箱。") });
+    },
+  });
+
+  const removeMember = useMutation({
+    mutationFn: (memberId: string) =>
+      projectRequest(`/api/v1/a/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(memberId)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: async () => {
+      setMemberNotice({ tone: "info", text: tr("已移除该成员。") });
+      await refreshMembers();
+    },
+    onError: (err) => {
+      setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("移除成员失败。") });
+    },
+  });
+
+  const transferLeader = useMutation({
+    mutationFn: (newLeaderId: string) =>
+      projectRequest(`/api/v1/a/projects/${encodeURIComponent(projectId)}/leader`, {
+        method: "POST",
+        body: { new_leader_id: newLeaderId },
+      }),
+    onSuccess: async () => {
+      setMemberNotice({ tone: "success", text: tr("组长身份已转让。") });
+      await refreshMembers();
+    },
+    onError: (err) => {
+      setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("转让组长失败。") });
+    },
+  });
+
+  return (
+    <Panel title={tr("项目成员")}>
+      {isPersonal && <p className="mb-3 text-xs text-slate-500">{tr("独立项目可直接按学号、用户名或邮箱邀请队友")}</p>}
+      {memberNotice && <div className="mb-3"><Feedback tone={memberNotice.tone}>{memberNotice.text}</Feedback></div>}
+      <ul className="divide-y divide-slate-100 text-sm">
+        {project.members.map((member) => {
+          const isSelf = member.id === currentUserId;
+          const isMemberLeader = member.role === "leader" || (project.is_leader && isSelf);
+          return (
+            <li key={member.id} className="flex items-center justify-between gap-2 py-2.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Avatar name={member.name || "成"} />
+                <span className="truncate font-medium text-slate-800">{member.name ?? tr("未命名")}</span>
+                {isMemberLeader && <span className="gp-pill shrink-0">{tr("组长")}</span>}
+              </div>
+              {canManage && !isSelf && (
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                    disabled={transferLeader.isPending || removeMember.isPending}
+                    title={tr("转让组长")}
+                    onClick={() => transferLeader.mutate(member.id)}
+                  >
+                    <Crown size={12} />
+                    {tr("设为组长")}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50"
+                    disabled={removeMember.isPending || transferLeader.isPending}
+                    title={tr("移除成员")}
+                    onClick={() => removeMember.mutate(member.id)}
+                  >
+                    <UserMinus size={12} />
+                    {tr("移除")}
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {canManage && (
+        <form
+          className="mt-3.5 border-t border-slate-100 pt-3.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (identifier.trim() && !addMember.isPending) addMember.mutate();
+          }}
+        >
+          <label className={label} htmlFor="personal-member-identifier">{tr("邀请队友加入")}</label>
+          <div className="mt-1.5 flex gap-2">
+            <input
+              id="personal-member-identifier"
+              className={input}
+              placeholder={tr("输入学号、用户名或邮箱")}
+              value={identifier}
+              maxLength={320}
+              disabled={addMember.isPending}
+              onChange={(event) => setIdentifier(event.target.value)}
+            />
+            <button type="submit" className={`${button} shrink-0`} disabled={!identifier.trim() || addMember.isPending}>
+              <UserPlus size={14} />
+              {addMember.isPending ? tr("添加中…") : tr("添加")}
+            </button>
+          </div>
+        </form>
+      )}
+    </Panel>
+  );
 }
 
 const extractLabel: Record<BMaterial["extract_status"], { tone: "green" | "amber" | "red" | "gray"; text: string }> = {
