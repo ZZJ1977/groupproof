@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -105,6 +106,7 @@ class VerificationRun(Base):
     )
     task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
     triggered_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    task_version: Mapped[int | None] = mapped_column(Integer)
     result: Mapped[str] = mapped_column(
         String(16), default="pending", server_default=text("'pending'")
     )
@@ -179,6 +181,58 @@ class CriterionResult(Base):
             postgresql_where=text("invalidated_at IS NULL"),
         ),
     )
+
+
+class AcceptanceDecision(Base):
+    """Append-only human decision by a current responsible task assignee."""
+
+    __tablename__ = "acceptance_decisions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    verification_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("verification_runs.id", ondelete="RESTRICT"), index=True
+    )
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    revision_no: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(16))
+    responsibility_share: Mapped[float | None] = mapped_column(Numeric(7, 4))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "verification_run_id",
+            "actor_id",
+            "revision_no",
+            name="uq_acceptance_decisions_revision",
+        ),
+        CheckConstraint("revision_no > 0", name="ck_acceptance_decisions_revision"),
+        CheckConstraint(
+            "decision IN ('confirmed', 'rejected')", name="ck_acceptance_decisions_decision"
+        ),
+        CheckConstraint("length(trim(reason)) > 0", name="ck_acceptance_decisions_reason"),
+        CheckConstraint(
+            "responsibility_share IS NULL OR responsibility_share BETWEEN 0 AND 100",
+            name="ck_acceptance_decisions_share",
+        ),
+    )
+
+
+class FormalOutcome(Base):
+    """One accepted result; invalidation preserves its original basis."""
+
+    __tablename__ = "formal_outcomes"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
+    verification_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("verification_runs.id", ondelete="RESTRICT"), unique=True
+    )
+    basis_json: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invalidated_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class ContributionCalculation(Base):
@@ -299,12 +353,156 @@ class ContributionItemTask(Base):
     task_id: Mapped[UUID] = mapped_column(
         ForeignKey("tasks.id", ondelete="RESTRICT"), primary_key=True
     )
+    formal_outcome_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("formal_outcomes.id", ondelete="RESTRICT")
+    )
     ratio: Mapped[float] = mapped_column(Numeric(7, 4))
 
     __table_args__ = (
         CheckConstraint("ratio >= 0 AND ratio <= 100", name="ck_contribution_item_tasks_ratio"),
         Index("ix_contribution_item_tasks_task_id", "task_id"),
     )
+
+
+class CollaborationNote(Base):
+    """Append-only member explanation, including restored revisions."""
+
+    __tablename__ = "collaboration_notes"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    author_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    revision: Mapped[int] = mapped_column(Integer)
+    body: Mapped[str] = mapped_column(Text)
+    restored_from: Mapped[UUID | None] = mapped_column(ForeignKey("collaboration_notes.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("project_id", "member_id", "revision"),)
+
+
+class ContributionAppeal(Base):
+    """A member's dispute against one frozen contribution basis."""
+
+    __tablename__ = "contribution_appeals"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_snapshots.id"))
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id"))
+    evidence_id: Mapped[UUID] = mapped_column(ForeignKey("evidence.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("status IN ('pending','upheld','adjusted','returned')"),)
+
+
+class AppealDecision(Base):
+    __tablename__ = "appeal_decisions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    appeal_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_appeals.id"), index=True)
+    teacher_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    adjusted_share: Mapped[float | None] = mapped_column(Numeric(7, 4))
+    resulting_snapshot_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("contribution_snapshots.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContributionArchive(Base):
+    """Immutable contribution basis copied when a report is generated or graded."""
+
+    __tablename__ = "contribution_archives"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_snapshots.id"))
+    source_kind: Mapped[str] = mapped_column(String(16))
+    source_id: Mapped[UUID] = mapped_column(Uuid)
+    data: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("source_kind", "source_id"),)
+
+
+class ProjectArchive(Base):
+    __tablename__ = "project_archives"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    snapshot: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectReopen(Base):
+    __tablename__ = "project_reopens"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    source_project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    new_project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    version_label: Mapped[str] = mapped_column(String(80))
+    copy_scope: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("copy_scope IN ('full','baseline')"),)
+
+
+class CourseRuleVersion(Base):
+    __tablename__ = "course_rule_versions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    rules: Mapped[dict] = mapped_column(DocumentJSON)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("course_id", "version_no"),)
+
+
+class CourseRuleConfirmation(Base):
+    __tablename__ = "course_rule_confirmations"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    __table_args__ = (UniqueConstraint("version_id", "project_id"),)
+
+
+class CourseTemplateApplication(Base):
+    """Immutable rule version and template attached to a newly created project."""
+
+    __tablename__ = "course_template_applications"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), unique=True)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("course_rule_versions.id"))
+    template: Mapped[dict] = mapped_column(DocumentJSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeacherReportComment(Base):
+    __tablename__ = "teacher_report_comments"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CourseGrade(Base):
+    __tablename__ = "course_grades"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    report_snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    contribution_archive_id: Mapped[UUID] = mapped_column(ForeignKey("contribution_archives.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    score: Mapped[float] = mapped_column(Numeric(5, 2))
+    comment: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (CheckConstraint("score >= 0 AND score <= 100"),)
 
 
 class Report(Base):
@@ -328,7 +526,8 @@ class Report(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('draft', 'generating', 'generated', 'finalized', 'failed')",
+            "status IN ('draft', 'generating', 'generated', 'submitted', "
+            "'returned', 'finalized', 'failed')",
             name="ck_reports_status",
         ),
     )
@@ -343,6 +542,7 @@ class ReportSnapshot(Base):
     report_id: Mapped[UUID] = mapped_column(
         ForeignKey("reports.id", ondelete="RESTRICT"), index=True
     )
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     baseline_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("baseline_versions.id", ondelete="SET NULL")
     )
@@ -371,6 +571,75 @@ class ReportSnapshot(Base):
             name="ck_report_snapshots_status",
         ),
         Index("ix_report_snapshots_contribution_snapshot_id", "contribution_snapshot_id"),
+    )
+
+
+class ReportDownload(Base):
+    """Append-only audit of generated report downloads."""
+
+    __tablename__ = "report_downloads"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    file_format: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("file_format IN ('pdf','docx')", name="ck_report_downloads_format"),
+    )
+
+
+class ReportArtifact(Base):
+    """Generated immutable bytes for one snapshot and format."""
+
+    __tablename__ = "report_artifacts"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"), index=True)
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    file_format: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    content: Mapped[bytes | None] = mapped_column(LargeBinary)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("file_format IN ('pdf','docx')", name="ck_report_artifacts_format"),
+        CheckConstraint(
+            "status IN ('pending','generating','ready','failed')",
+            name="ck_report_artifacts_status",
+        ),
+    )
+
+
+class ReportDownloadLink(Base):
+    """Independent short-lived grant for one authorized user and export."""
+
+    __tablename__ = "report_download_links"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    artifact_id: Mapped[UUID] = mapped_column(ForeignKey("report_artifacts.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReportReview(Base):
+    """Append-only report submission and teacher decisions."""
+
+    __tablename__ = "report_reviews"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    report_id: Mapped[UUID] = mapped_column(ForeignKey("reports.id"), index=True)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("report_snapshots.id"))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('submitted','returned','finalized')", name="ck_report_reviews_action"
+        ),
     )
 
 
