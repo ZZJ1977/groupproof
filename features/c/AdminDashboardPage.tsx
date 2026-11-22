@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRight, BookOpen, RefreshCw, ShieldCheck, UserCheck, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/lib/workspace";
-import { cIdentityClient } from "@/lib/api/c-identity-client";
+import { cIdentityClient, type IdentityAdminPage, type IdentityAdminUser } from "@/lib/api/c-identity-client";
 import { createGovernanceClient } from "@/lib/api/c-governance-client";
 import { Box, Empty, Header, Metric } from "@/features/governance/primitives";
 import styles from "@/features/governance/governance.module.css";
@@ -30,6 +30,24 @@ function QuickLink({ href, title, description, icon: Icon }: { href: string; tit
   </Link>;
 }
 
+function Distribution({ items, total }: { items: { label: string; value: number | string; color: string }[]; total: number | string }) {
+  const denominator = typeof total === "number" && total > 0 ? total : 0;
+  return <div className="space-y-4">
+    {items.map((item) => {
+      const value = typeof item.value === "number" ? item.value : 0;
+      const width = denominator ? Math.max(value ? 5 : 0, Math.round((value / denominator) * 100)) : 0;
+      return <div key={item.label}>
+        <div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="flex items-center gap-2 text-slate-700"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />{item.label}</span><strong className="text-slate-900">{item.value}</strong></div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{ width: `${width}%`, backgroundColor: item.color }} /></div>
+      </div>;
+    })}
+  </div>;
+}
+
+function ServiceStatus({ label, ready, loading }: { label: string; ready: boolean; loading: boolean }) {
+  return <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">{label}</span><span className={`inline-flex items-center gap-1.5 text-xs font-medium ${loading ? "text-slate-400" : ready ? "text-emerald-600" : "text-rose-600"}`}><span className={`h-2 w-2 rounded-full ${loading ? "bg-slate-300" : ready ? "bg-emerald-500" : "bg-rose-500"}`} />{loading ? "读取中" : ready ? "已连接" : "不可用"}</span></div>;
+}
+
 export function AdminDashboardPage() {
   const { userId } = useWorkspace();
   const users = useQuery({
@@ -52,13 +70,42 @@ export function AdminDashboardPage() {
     queryFn: () => governance.accessRequests({ page: 1, page_size: 1, status: "pending" }),
     ...querySettings,
   });
+  const roleQueries = {
+    student: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "student"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "student" })), ...querySettings }),
+    teacher: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "teacher"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "teacher" })), ...querySettings }),
+    ta: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "ta"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "ta" })), ...querySettings }),
+    admin: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "admin"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "admin" })), ...querySettings }),
+  };
+  const courseQueries = {
+    draft: useQuery({ queryKey: ["admin-dashboard-course-status", userId, "draft"], queryFn: () => governance.courses({ page: 1, page_size: 1, status: "draft" }), ...querySettings }),
+    active: useQuery({ queryKey: ["admin-dashboard-course-status", userId, "active"], queryFn: () => governance.courses({ page: 1, page_size: 1, status: "active" }), ...querySettings }),
+    ended: useQuery({ queryKey: ["admin-dashboard-course-status", userId, "ended"], queryFn: () => governance.courses({ page: 1, page_size: 1, status: "ended" }), ...querySettings }),
+  };
 
   const refresh = () => {
-    void Promise.all([users.refetch(), teachers.refetch(), courses.refetch(), requests.refetch()]);
+    void Promise.all([
+      users.refetch(), teachers.refetch(), courses.refetch(), requests.refetch(),
+      ...Object.values(roleQueries).map((query) => query.refetch()),
+      ...Object.values(courseQueries).map((query) => query.refetch()),
+    ]);
   };
   const onlyAdmin = users.data?.total === 1 && courses.data?.total === 0;
   const hasError = users.isError || teachers.isError || courses.isError || requests.isError;
   const recentUsers = users.data?.items.slice(0, 5) ?? [];
+  const roleTotal = users.data?.total ?? "—";
+  const roleItems = [
+    { label: "学生", value: roleQueries.student.data?.total ?? "—", color: "#2563eb" },
+    { label: "教师", value: roleQueries.teacher.data?.total ?? "—", color: "#7c3aed" },
+    { label: "助教", value: roleQueries.ta.data?.total ?? "—", color: "#0d9488" },
+    { label: "管理员", value: roleQueries.admin.data?.total ?? "—", color: "#ea580c" },
+  ];
+  const courseItems = [
+    { label: "草稿", value: courseQueries.draft.data?.total ?? "—", color: "#f59e0b" },
+    { label: "已发布", value: courseQueries.active.data?.total ?? "—", color: "#10b981" },
+    { label: "已结束", value: courseQueries.ended.data?.total ?? "—", color: "#64748b" },
+  ];
+  const roleLoading = Object.values(roleQueries).some((query) => query.isFetching);
+  const courseLoading = Object.values(courseQueries).some((query) => query.isFetching);
 
   return <main className={styles.page}>
     <Header title="管理总览" description="查看使用端账号和课程治理状态，快速处理待办事项。" action={<button type="button" className={styles.button} onClick={refresh}><RefreshCw size={15} />刷新数据</button>} />
@@ -88,6 +135,22 @@ export function AdminDashboardPage() {
         </div>
       </Box>
     </div>
+    <div className={styles.equalColumns}>
+      <Box title="账号结构">
+        <div className={styles.panelBody}><Distribution items={roleItems} total={roleTotal} /></div>
+      </Box>
+      <Box title="课程状态">
+        <div className={styles.panelBody}><Distribution items={courseItems} total={courses.data?.total ?? "—"} /></div>
+      </Box>
+    </div>
+    <Box title="数据连接状态">
+      <div className="grid gap-3 p-[18px] sm:grid-cols-2 lg:grid-cols-4">
+        <ServiceStatus label="统一身份服务" ready={users.isSuccess && !roleLoading} loading={users.isFetching || roleLoading} />
+        <ServiceStatus label="教师审核服务" ready={teachers.isSuccess} loading={teachers.isFetching} />
+        <ServiceStatus label="课程治理服务" ready={courses.isSuccess && !courseLoading} loading={courses.isFetching || courseLoading} />
+        <ServiceStatus label="访问审批服务" ready={requests.isSuccess} loading={requests.isFetching} />
+      </div>
+    </Box>
     <Box title="管理入口">
       <div className="grid gap-3 p-[18px] sm:grid-cols-2 lg:grid-cols-3">
         <QuickLink href="/admin/users" title="用户管理" description="创建、查询、停用和恢复账号" icon={Users} />
