@@ -69,7 +69,7 @@ def _facts_with_checks(db: DbSession, user: User) -> dict:
 
 def workspace_entry_action(user: User, facts: dict) -> dict:
     if facts["accountState"] == "active" and "admin" in (user.roles or []):
-        return {"type": "enter_admin_workspace", "href": "/admin/users"}
+        return {"type": "enter_admin_workspace", "href": "/admin"}
     return dict(facts["nextAction"])
 
 

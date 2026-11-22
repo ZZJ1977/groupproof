@@ -19,6 +19,7 @@ const staticRoutes: Record<string, number> = {
   "/activity": 30,
   "/courses": 31,
   "/courses/join": 32,
+  "/admin": 57,
   "/admin/users": 51,
   "/admin/teacher-verifications": 52,
   "/admin/courses": 53,

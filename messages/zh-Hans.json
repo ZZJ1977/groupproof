@@ -441,6 +441,7 @@
       "settings": "课程设置"
     },
     "adminItems": {
+      "overview": "管理总览",
       "users": "用户管理",
       "teacherVerifications": "教师审核",
       "courses": "课程管理",
