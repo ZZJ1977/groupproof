@@ -18,7 +18,7 @@ const context: Schema["CProjectContextDTO"] = {
 };
 const execution: Schema["TaskExecutionView"] = {
   task_id: tid, project_id: pid, status: "in_progress", progress: 30, version: 2, started_at: stamp, completed_at: null,
-  responsible_ids: [aid], dependencies: [], project_progress: 30, module_progress: {}, can_start: false, can_update_progress: true, read_only: false,
+  responsible_ids: [aid], dependencies: [], project_progress: 30, module_progress: {}, can_start: false, can_update_progress: true, read_only: false, temporary_read: false,
 };
 const note: Schema["TaskNoteDTO"] = {
   id: id(414), project_id: pid, task_id: tid, lock_version: 1, current_version_no: 1,

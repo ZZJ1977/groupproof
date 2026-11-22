@@ -199,6 +199,7 @@ class CreateAccount(BaseModel):
     schoolEmail: str = Field(min_length=3, max_length=255)
     studentId: str | None = Field(default=None, max_length=80)
     college: str | None = Field(default=None, max_length=160)
+    submitForReview: bool = Field(default=False, strict=True)
 
 
 @router.post("/users", status_code=201)
@@ -218,6 +219,7 @@ def create_account(
         school_email=body.schoolEmail,
         student_id=body.studentId,
         college=body.college,
+        submit_for_review=body.submitForReview,
     )
     db.commit()
     return JSONResponse(
