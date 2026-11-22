@@ -2684,6 +2684,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/contribution/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Freeze Contribution */
+        post: operations["freeze_contribution_api_v1_projects__project_id__contribution_freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/contribution/members/{member_id}/notes": {
         parameters: {
             query?: never;
@@ -3009,6 +3026,23 @@ export interface paths {
         get: operations["material_api_v1_projects__project_id__materials__material_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/materials/upload-inline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Inline Material */
+        post: operations["upload_inline_material_api_v1_projects__project_id__materials_upload_inline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4005,6 +4039,26 @@ export interface paths {
         put?: never;
         /** Grade Report */
         post: operations["grade_report_api_v1_projects__project_id__teacher_report_grades_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Workspace Endpoint
+         * @description 按当前登录用户的真实权限范围检索课程、项目、任务、证据与项目文件。
+         */
+        get: operations["search_workspace_endpoint_api_v1_search_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8152,6 +8206,13 @@ export interface components {
             /** Skipped */
             skipped: number;
         };
+        /** GlobalSearchResponseDTO */
+        GlobalSearchResponseDTO: {
+            /** Items */
+            items: components["schemas"]["SearchResultItemDTO"][];
+            /** Query */
+            query: string;
+        };
         /** GovernanceHistoryDTO */
         GovernanceHistoryDTO: {
             /** Action */
@@ -9086,6 +9147,25 @@ export interface components {
             /** Schoolemail */
             schoolEmail: string;
         };
+        /** SearchResultItemDTO */
+        SearchResultItemDTO: {
+            /** Href */
+            href: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "course" | "project" | "task" | "evidence" | "file" | "user";
+            /** Subtitle */
+            subtitle?: string | null;
+            /** Title */
+            title: string;
+        };
         /** SetJoinPolicy */
         SetJoinPolicy: {
             /** Expected Version */
@@ -9515,6 +9595,11 @@ export interface components {
         /** SuccessResponse[GithubSyncDTO] */
         SuccessResponse_GithubSyncDTO_: {
             data: components["schemas"]["GithubSyncDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GlobalSearchResponseDTO] */
+        SuccessResponse_GlobalSearchResponseDTO_: {
+            data: components["schemas"]["GlobalSearchResponseDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[ImplementationAnalysisResult] */
@@ -10065,6 +10150,17 @@ export interface components {
             title: string;
             /** Weight */
             weight: number;
+        };
+        /** UploadInlineMaterial */
+        UploadInlineMaterial: {
+            /** Content Base64 */
+            content_base64: string;
+            /** Filename */
+            filename: string;
+            /** Mime Type */
+            mime_type: string;
+            /** Title */
+            title?: string | null;
         };
         /** UploadMaterialRequest */
         UploadMaterialRequest: {
@@ -19816,6 +19912,41 @@ export interface operations {
             };
         };
     };
+    freeze_contribution_api_v1_projects__project_id__contribution_freeze_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_notes_api_v1_projects__project_id__contribution_members__member_id__notes_get: {
         parameters: {
             query?: never;
@@ -21652,6 +21783,89 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_MaterialDTO_"];
+                };
+            };
+            /** @description Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No permission for this course, group or project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale version, idempotency conflict, duplicate or invalid state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependent service is not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_inline_material_api_v1_projects__project_id__materials_upload_inline_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadInlineMaterial"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25829,6 +26043,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_workspace_endpoint_api_v1_search_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                q?: string;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GlobalSearchResponseDTO_"];
                 };
             };
             /** @description Validation Error */

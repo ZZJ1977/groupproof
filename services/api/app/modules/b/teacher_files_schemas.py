@@ -78,6 +78,7 @@ class TeacherFilesTreeDTO(BaseModel):
 class StudentMaterialsDTO(BaseModel):
     course_id: UUID
     is_grouped: bool
+    folders: list[FolderRefDTO] = Field(default_factory=list)
     items: list[MaterialItemDTO]
 
 

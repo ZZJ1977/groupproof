@@ -516,20 +516,40 @@
       "settings": "課程設定"
     },
     "adminItems": {
+      "overview": "管理總覽",
       "users": "使用者管理",
       "teacherVerifications": "教師審核",
       "courses": "課程管理",
       "logs": "系統日誌",
       "aiUsage": "AI 使用情況",
       "accessRequests": "異常 / 存取審批"
+    },
+    "adminGroups": {
+      "platform": "平台管理",
+      "operations": "運行分析"
     }
   },
   "shell": {
+    "adminEnvironment": {
+      "label": "資料環境",
+      "description": "切換管理後台讀取和操作的資料環境",
+      "develop": "develop / Staging",
+      "main": "main / Production",
+      "currentDevelop": "目前：develop / Staging",
+      "currentMain": "目前：main / Production",
+      "switchFailed": "切換失敗，請重試",
+      "retry": "重試"
+    },
     "searchPlaceholder": "搜尋課程、專案或任務...",
     "searchNoResult": "無符合結果",
+    "searching": "正在搜尋…",
+    "searchError": "搜尋暫不可用，請稍後重試",
     "searchTypeProject": "專案",
     "searchTypeTask": "任務",
     "searchTypeCourse": "課程",
+    "searchTypeEvidence": "證據",
+    "searchTypeFile": "檔案",
+    "searchTypeUser": "使用者",
     "searchLabel": "全域搜尋",
     "helpCenter": "說明中心",
     "notifications": "通知",

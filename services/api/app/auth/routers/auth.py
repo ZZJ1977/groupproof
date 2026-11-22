@@ -68,10 +68,16 @@ def _facts_with_checks(db: DbSession, user: User) -> dict:
     return derive_facts(user, user.email_binding, checks, applications, credential)
 
 
+def workspace_entry_action(user: User, facts: dict) -> dict:
+    if facts["accountState"] == "active" and "admin" in (user.roles or []):
+        return {"type": "enter_admin_workspace", "href": "/admin"}
+    return dict(facts["nextAction"])
+
+
 def session_payload(context: AuthContext) -> dict:
     user = context.user
     facts = context.facts
-    next_action = dict(facts["nextAction"])
+    next_action = workspace_entry_action(user, facts)
     # 未验证登录邮箱的密码/未知来源会话：引导补验，不得借 active 状态进入业务
     if context.session.auth_method != "google" and not facts.get("loginEmailVerified", True):
         next_action = {"type": "verify_login_email", "href": "/account/security"}
@@ -282,7 +288,7 @@ def google_callback(
     return_to = (
         safe_return_to(transaction.return_to) if can_enter_workspace(facts, "google") else None
     )
-    target = return_to or facts["nextAction"]["href"]
+    target = return_to or workspace_entry_action(user, facts)["href"]
     response = RedirectResponse(target, status_code=302)
     response.delete_cookie(
         settings.oauth_cookie_name, path="/", secure=settings.is_real, httponly=True, samesite="lax"

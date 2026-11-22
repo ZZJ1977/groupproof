@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -72,13 +73,18 @@ def healthz() -> dict[str, str]:
     return {"service": "api", "status": "ok"}
 
 
-@app.get("/readyz", tags=["system"])
-def readyz(response: Response) -> dict[str, str]:
-    """Only accept traffic after the unified database reaches this image's migration head."""
+@lru_cache(maxsize=1)
+def expected_alembic_heads() -> frozenset[str]:
     api_root = Path(__file__).resolve().parents[1]
     config = Config(str(api_root / "alembic.ini"))
     config.set_main_option("script_location", str(api_root / "migrations"))
-    expected = set(ScriptDirectory.from_config(config).get_heads())
+    return frozenset(ScriptDirectory.from_config(config).get_heads())
+
+
+@app.get("/readyz", tags=["system"])
+def readyz(response: Response) -> dict[str, str]:
+    """Only accept traffic after the unified database reaches this image's migration head."""
+    expected = expected_alembic_heads()
     try:
         with engine.connect() as connection:
             actual = set(

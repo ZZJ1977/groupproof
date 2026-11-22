@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchWithSession } from "@/lib/api/client";
+import { apiConfig } from "@/lib/api/config";
 import { createCClient } from "@/lib/api/c-client";
 
 type Option = { id: string; title: string };
 type Risk = { id: string; title: string; description: string; level: string; status: string; version: number; events: { id: string; type: string; note: string; created_at: string }[] };
 
 async function riskRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(path, { method, credentials: "include", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  const response = await fetchWithSession(new Request(new URL(apiConfig.baseUrl + path, window.location.origin), {
+    method, credentials: "include", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined, cache: "no-store",
+  }));
   const envelope = await response.json();
   if (!response.ok) throw new Error(envelope.error?.message ?? "请求失败");
   return envelope.data as T;

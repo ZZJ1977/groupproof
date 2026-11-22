@@ -200,6 +200,11 @@ def archive_project(
             "PROJECT_NOT_FINAL",
             "Finalize the report, baseline, plan, contribution and tasks first.",
         )
+    frozen_course_files = (
+        baseline.snapshot_json.get("course_files", [])
+        if isinstance(baseline.snapshot_json, dict)
+        else []
+    )
     snapshot = {
         "project": {
             "name": project.name,
@@ -211,6 +216,7 @@ def archive_project(
         "plan_version_id": str(plan.id),
         "contribution_snapshot_id": str(contribution.id),
         "report_id": str(report.id),
+        "course_files": frozen_course_files,
         "tasks": [
             {"id": str(task.id), "status": task.status, "title": task.title} for task in tasks
         ],

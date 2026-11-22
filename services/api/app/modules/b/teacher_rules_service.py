@@ -25,6 +25,7 @@ from app.modules.b.teacher_rules_schemas import (
     RuleVersionDTO,
     SaveRulesDraft,
 )
+from app.modules.d.models import CourseRuleVersion
 
 
 def _load_course(session: Session, course_id: UUID, *, lock: bool = False) -> Course:
@@ -302,6 +303,38 @@ def publish_rules(
         session.add(published)
 
     _sync_course_and_template(session, course, user, rules_obj, ts)
+    d_max_ver = (
+        session.scalar(
+            select(func.max(CourseRuleVersion.version_no)).where(
+                CourseRuleVersion.course_id == course_id
+            )
+        )
+        or 0
+    )
+    session.add(
+        CourseRuleVersion(
+            course_id=course_id,
+            version_no=d_max_ver + 1,
+            actor_id=user.id,
+            reason=summary,
+            rules={
+                "settings": {
+                    "name": course.name,
+                    "grouping_mode": course.grouping_mode,
+                    "min_group_size": course.min_group_size,
+                    "max_group_size": course.max_group_size,
+                    "formation_deadline": course.formation_deadline.isoformat()
+                    if course.formation_deadline
+                    else None,
+                    "project_deadline": course.project_deadline.isoformat()
+                    if course.project_deadline
+                    else None,
+                },
+                "b_rule_version_no": published.version_no,
+            },
+            effective_at=ts,
+        )
+    )
     session.flush()
 
     staff_uids = set(

@@ -7752,6 +7752,27 @@
         "title": "GithubSyncDTO",
         "type": "object"
       },
+      "GlobalSearchResponseDTO": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultItemDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "items"
+        ],
+        "title": "GlobalSearchResponseDTO",
+        "type": "object"
+      },
       "GovernanceHistoryDTO": {
         "properties": {
           "action": {
@@ -10329,6 +10350,54 @@
         "title": "SchoolEmailChange",
         "type": "object"
       },
+      "SearchResultItemDTO": {
+        "properties": {
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "course",
+              "project",
+              "task",
+              "evidence",
+              "file",
+              "user"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "href"
+        ],
+        "title": "SearchResultItemDTO",
+        "type": "object"
+      },
       "SetJoinPolicy": {
         "additionalProperties": false,
         "properties": {
@@ -11578,6 +11647,22 @@
           "meta"
         ],
         "title": "SuccessResponse[GithubSyncDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GlobalSearchResponseDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GlobalSearchResponseDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GlobalSearchResponseDTO]",
         "type": "object"
       },
       "SuccessResponse_ImplementationAnalysisResult_": {
@@ -13335,6 +13420,48 @@
           "expected_version"
         ],
         "title": "UpdateTask",
+        "type": "object"
+      },
+      "UploadInlineMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "content_base64": {
+            "maxLength": 22000000,
+            "minLength": 1,
+            "title": "Content Base64",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "filename",
+          "mime_type",
+          "content_base64"
+        ],
+        "title": "UploadInlineMaterial",
         "type": "object"
       },
       "UploadMaterialRequest": {
@@ -30043,6 +30170,68 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/contribution/freeze": {
+      "post": {
+        "operationId": "freeze_contribution_api_v1_projects__project_id__contribution_freeze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Freeze Contribution Api V1 Projects  Project Id  Contribution Freeze Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Freeze Contribution",
+        "tags": [
+          "d-acceptance"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/contribution/members/{member_id}/notes": {
       "get": {
         "operationId": "read_notes_api_v1_projects__project_id__contribution_members__member_id__notes_get",
@@ -33388,6 +33577,138 @@
           }
         },
         "summary": "Add Material",
+        "tags": [
+          "b",
+          "b-projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/materials/upload-inline": {
+      "post": {
+        "operationId": "upload_inline_material_api_v1_projects__project_id__materials_upload_inline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadInlineMaterial"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_MaterialDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No permission for this course, group or project."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale version, idempotency conflict, duplicate or invalid state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid input."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A dependent service is not available."
+          }
+        },
+        "summary": "Upload Inline Material",
         "tags": [
           "b",
           "b-projects"
@@ -40536,6 +40857,80 @@
         "summary": "Grade Report",
         "tags": [
           "d-teacher-report"
+        ]
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "description": "按当前登录用户的真实权限范围检索课程、项目、任务、证据与项目文件。",
+        "operationId": "search_workspace_endpoint_api_v1_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 120,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GlobalSearchResponseDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Workspace Endpoint",
+        "tags": [
+          "a"
         ]
       }
     },

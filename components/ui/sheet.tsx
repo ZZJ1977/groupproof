@@ -15,6 +15,6 @@ type SheetContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.C
 
 export const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Content>, SheetContentProps>(({ className, overlayClassName, children, ...props }, ref) => {
   const t = useTranslations("pages.shared");
-  return <DialogPrimitive.Portal><DialogPrimitive.Overlay className={cn("fixed inset-0 z-50 bg-[#14233d]/35", overlayClassName)} /><DialogPrimitive.Content ref={ref} className={cn("fixed inset-y-0 right-0 z-50 w-[min(100vw,520px)] overflow-y-auto border-l border-[#dfe6ee] bg-white p-6 shadow-xl outline-none", className)} {...props}>{children}<DialogPrimitive.Close className="absolute right-4 top-4 rounded p-1 text-[#718097] hover:bg-[#f2f5fa]" aria-label={t("close")}><X size={16} /></DialogPrimitive.Close></DialogPrimitive.Content></DialogPrimitive.Portal>;
+  return <DialogPrimitive.Portal><DialogPrimitive.Overlay data-radix-dialog-overlay className={cn("fixed inset-0 z-50 bg-[#14233d]/35", overlayClassName)} /><DialogPrimitive.Content ref={ref} className={cn("fixed inset-y-0 right-0 z-50 w-[min(100vw,520px)] overflow-y-auto border-l border-[#dfe6ee] bg-white p-6 shadow-xl outline-none", className)} {...props}>{children}<DialogPrimitive.Close className="absolute right-4 top-4 rounded p-1 text-[#718097] hover:bg-[#f2f5fa]" aria-label={t("close")}><X size={16} /></DialogPrimitive.Close></DialogPrimitive.Content></DialogPrimitive.Portal>;
 });
 SheetContent.displayName = "SheetContent";

@@ -28,7 +28,20 @@ export type BBaseline = {
   id: string; version_no: number; status: "draft" | "confirmed" | "frozen" | "archived"; created_by: BPerson | null; created_at: string;
   frozen_at: string | null; waiting_for: BPerson[]; lock_version: number;
   confirmations: { user: BPerson; status: "pending" | "confirmed" | "rejected"; comment: string | null; confirmed_at: string | null }[];
-  snapshot: { requirements?: { id: string; title: string }[]; modules?: { id: string; name: string }[]; scope?: { in_scope: string; out_of_scope: string } };
+  snapshot: {
+    requirements?: { id: string; title: string }[];
+    modules?: { id: string; name: string }[];
+    scope?: { in_scope: string; out_of_scope: string };
+    course_files?: {
+      source?: "c_course_file" | "b_material";
+      file_id: string;
+      version_id: string;
+      version_no: number;
+      name: string;
+      original_name?: string;
+      content_hash?: string;
+    }[];
+  };
 };
 export type BRequirementInput = { module_id: string; title: string; description?: string; priority: BPriority };
 

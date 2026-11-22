@@ -1,14 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { fetchWithSession } from "@/lib/api/client";
+import { apiConfig } from "@/lib/api/config";
 
 type Appeal = { id: string; project_id: string; member_id: string; task_id: string; evidence_id: string; reason: string; status: string };
 type Project = { project_id: string; project_name: string };
 
 async function read<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(path, { method, credentials: "include", cache: "no-store",
+  const response = await fetchWithSession(new Request(new URL(apiConfig.baseUrl + path, window.location.origin), {
+    method, credentials: "include", cache: "no-store",
     headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined });
+    body: body ? JSON.stringify(body) : undefined,
+  }));
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.message ?? "请求失败");
   return result.data as T;

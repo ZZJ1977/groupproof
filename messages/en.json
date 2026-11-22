@@ -516,20 +516,40 @@
       "settings": "Course settings"
     },
     "adminItems": {
+      "overview": "Admin overview",
       "users": "Users",
       "teacherVerifications": "Teacher reviews",
       "courses": "Courses",
       "logs": "System logs",
       "aiUsage": "AI usage",
       "accessRequests": "Anomalies / access approvals"
+    },
+    "adminGroups": {
+      "platform": "Platform management",
+      "operations": "Operations and analytics"
     }
   },
   "shell": {
+    "adminEnvironment": {
+      "label": "Data environment",
+      "description": "Switch the data environment used by the admin console",
+      "develop": "develop / Staging",
+      "main": "main / Production",
+      "currentDevelop": "Current: develop / Staging",
+      "currentMain": "Current: main / Production",
+      "switchFailed": "Switch failed; try again",
+      "retry": "Retry"
+    },
     "searchPlaceholder": "Search courses, projects or tasks...",
     "searchNoResult": "No matches",
+    "searching": "Searching…",
+    "searchError": "Search is temporarily unavailable",
     "searchTypeProject": "Project",
     "searchTypeTask": "Task",
     "searchTypeCourse": "Course",
+    "searchTypeEvidence": "Evidence",
+    "searchTypeFile": "File",
+    "searchTypeUser": "User",
     "searchLabel": "Global search",
     "helpCenter": "Help center",
     "notifications": "Notifications",

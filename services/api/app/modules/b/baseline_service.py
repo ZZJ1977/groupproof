@@ -35,7 +35,13 @@ from app.modules.a.inbox import close_action_items_by_source, create_action_item
 from app.modules.a.models import ActionItem
 from app.modules.b.common import lock_project_for_write, now, require_reason, require_version
 from app.modules.b.courses_schemas import PersonDTO
-from app.modules.b.models import BBaselineChecklistItem, BBaselineScope, BRequirementMeta
+from app.modules.b.models import (
+    BBaselineChecklistItem,
+    BBaselineScope,
+    BCourseMaterialItem,
+    BCourseMaterialVersion,
+    BRequirementMeta,
+)
 from app.modules.b.requirements_schemas import (
     BaselineDTO,
     CheckItem,
@@ -52,6 +58,7 @@ from app.modules.b.requirements_service import (
     require_draft_writer,
     requirement_dtos,
 )
+from app.modules.c.course_files_models import CourseFile, CourseFileVersion
 
 MANUAL_ITEMS = {
     "requirements_reviewed": "组员已逐条看过需求清单",
@@ -257,6 +264,64 @@ def _snapshot(session: Session, project: Project, version_no: int) -> dict:
         .join(ConflictResolution, ConflictResolution.conflict_id == RequirementConflict.id)
         .where(RequirementConflict.project_id == project.id)
     ).all()
+    published_course_files = (
+        session.execute(
+            select(CourseFile, CourseFileVersion)
+            .join(
+                CourseFileVersion,
+                (CourseFileVersion.file_id == CourseFile.id)
+                & (CourseFileVersion.version_no == CourseFile.official_version_no),
+            )
+            .where(
+                CourseFile.course_id == project.course_id,
+                CourseFile.official_version_no.is_not(None),
+            )
+            .order_by(CourseFile.created_at, CourseFile.id)
+        ).all()
+        if project.course_id is not None
+        else []
+    )
+    published_b_materials = (
+        session.execute(
+            select(BCourseMaterialItem, BCourseMaterialVersion)
+            .join(
+                BCourseMaterialVersion,
+                (BCourseMaterialVersion.material_id == BCourseMaterialItem.id)
+                & (BCourseMaterialVersion.version_no == BCourseMaterialItem.latest_version_no),
+            )
+            .where(
+                BCourseMaterialItem.course_id == project.course_id,
+                BCourseMaterialItem.status == "published",
+                BCourseMaterialItem.visibility.in_(["all", "grouped"]),
+            )
+            .order_by(BCourseMaterialItem.created_at, BCourseMaterialItem.id)
+        ).all()
+        if project.course_id is not None
+        else []
+    )
+    course_file_refs = [
+        {
+            "source": "c_course_file",
+            "file_id": str(cf.id),
+            "version_id": str(cfv.id),
+            "version_no": cfv.version_no,
+            "name": cf.name,
+            "original_name": cfv.original_name,
+            "content_hash": cfv.content_hash,
+        }
+        for cf, cfv in published_course_files
+    ] + [
+        {
+            "source": "b_material",
+            "file_id": str(item.id),
+            "version_id": str(ver.id),
+            "version_no": ver.version_no,
+            "name": item.name,
+            "original_name": ver.original_name,
+            "content_hash": ver.checksum,
+        }
+        for item, ver in published_b_materials
+    ]
     return {
         "version_no": version_no,
         "taken_at": now().isoformat(),
@@ -273,6 +338,7 @@ def _snapshot(session: Session, project: Project, version_no: int) -> dict:
             "in_scope": scope.in_scope if scope else "",
             "out_of_scope": scope.out_of_scope if scope else "",
         },
+        "course_files": course_file_refs,
         "modules": [
             {
                 "id": str(m.id),

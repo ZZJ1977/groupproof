@@ -16,10 +16,22 @@ from app.modules.d.risk_read import risk_advice
 
 celery_app = Celery(
     "groupproof-d-reports",
-    broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-    backend=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+    broker=os.getenv("REDIS_URL") or "redis://localhost:6379/0",
+    backend=os.getenv("REDIS_URL") or "redis://localhost:6379/0",
 )
-celery_app.conf.update(task_acks_late=True, task_reject_on_worker_lost=True)
+celery_app.conf.update(
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    broker_connection_retry=False,
+    broker_transport_options={
+        "max_retries": 0,
+        "socket_connect_timeout": 1,
+        "socket_timeout": 1,
+    },
+    result_backend_transport_options={"retry_policy": {"max_retries": 0}},
+    redis_socket_connect_timeout=1,
+    redis_socket_timeout=1,
+)
 
 
 @celery_app.task(name="app.modules.d.report_tasks.generate_preview")

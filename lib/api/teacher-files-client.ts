@@ -65,6 +65,7 @@ export type TeacherFilesTree = {
 export type StudentMaterialsData = {
   course_id: string;
   is_grouped: boolean;
+  folders: FolderRef[];
   items: MaterialItem[];
 };
 
@@ -86,6 +87,8 @@ export const teacherFilesKeys = {
     ["b-teacher-files", userId, courseId, key] as const,
   versions: (userId: string, courseId: string, materialId: string) =>
     ["b-teacher-file-versions", userId, courseId, materialId] as const,
+  student: (userId: string, courseId: string) =>
+    ["b-student-course-materials", userId, courseId] as const,
 };
 
 export const teacherFilesApi = {
@@ -220,5 +223,10 @@ export const teacherFilesApi = {
       path: `/api/v1/teacher/classes/${enc(courseId)}/files/batch`,
       body,
       idempotencyKey: newIdempotencyKey(),
+    }),
+
+  studentList: (courseId: string) =>
+    bRequest<StudentMaterialsData>({
+      path: `/api/v1/courses/${enc(courseId)}/materials`,
     }),
 };

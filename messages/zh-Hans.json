@@ -516,20 +516,40 @@
       "settings": "课程设置"
     },
     "adminItems": {
+      "overview": "管理总览",
       "users": "用户管理",
       "teacherVerifications": "教师审核",
       "courses": "课程管理",
       "logs": "系统日志",
       "aiUsage": "AI 使用情况",
       "accessRequests": "异常 / 访问审批"
+    },
+    "adminGroups": {
+      "platform": "平台管理",
+      "operations": "运行分析"
     }
   },
   "shell": {
+    "adminEnvironment": {
+      "label": "数据环境",
+      "description": "切换管理后台读取和操作的数据环境",
+      "develop": "develop / Staging",
+      "main": "main / Production",
+      "currentDevelop": "当前：develop / Staging",
+      "currentMain": "当前：main / Production",
+      "switchFailed": "切换失败，请重试",
+      "retry": "重试"
+    },
     "searchPlaceholder": "搜索课程、项目或任务...",
     "searchNoResult": "无匹配结果",
+    "searching": "正在搜索…",
+    "searchError": "搜索暂不可用，请稍后重试",
     "searchTypeProject": "项目",
     "searchTypeTask": "任务",
     "searchTypeCourse": "课程",
+    "searchTypeEvidence": "证据",
+    "searchTypeFile": "文件",
+    "searchTypeUser": "用户",
     "searchLabel": "全局搜索",
     "helpCenter": "帮助中心",
     "notifications": "通知",

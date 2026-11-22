@@ -14,7 +14,7 @@ from app.modules.a.ai import AIUsageContext, RiskExplanationInput, explain_risk
 from app.modules.a.ai.schemas import RiskRecord, TaskProgressBrief
 from app.modules.c.permissions import get_project_access
 from app.modules.d.acceptance import decide, history
-from app.modules.d.contribution import calculate, latest_snapshot
+from app.modules.d.contribution import calculate, freeze_snapshot, latest_snapshot
 from app.modules.d.integrity import enter_verification, latest_check, run_check
 from app.modules.d.models import Risk, RiskEvent
 from app.modules.d.risk_read import risk_counts
@@ -139,6 +139,15 @@ def calculate_contribution(
     session: Session = Depends(get_session),
 ) -> dict:
     return {"data": calculate(session, project_id, user)}
+
+
+@acceptance_router.post("/{project_id}/contribution/freeze")
+def freeze_contribution(
+    project_id: UUID,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    return {"data": freeze_snapshot(session, project_id, user)}
 
 
 @router.get("/ready", include_in_schema=False)

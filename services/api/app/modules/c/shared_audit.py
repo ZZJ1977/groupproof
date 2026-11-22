@@ -13,6 +13,8 @@ from app.modules.c.auth_audit_service import require_auth_audit_admin
 from app.modules.c.governance_common import utc
 from app.modules.c.governance_read_schemas import SAFE_AUDIT_METADATA_FIELDS
 
+REDACTED_AUDIT_REASON = "[redacted]"
+
 
 class SharedAuditFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -63,6 +65,19 @@ def snapshot_fields(raw):
     return safe, len(safe) != len(raw)
 
 
+def project_reason(raw: str | None) -> str | None:
+    """Keep free-form audit text out of the admin read model.
+
+    Audit reasons are intentionally accepted by write-side business commands, but
+    they can contain emails, tokens, or project content.  The shared admin view
+    has no approved reason-code contract, so it returns only an explicit marker
+    rather than attempting incomplete pattern-based redaction.
+    """
+    if raw is None or not str(raw).strip():
+        return None
+    return REDACTED_AUDIT_REASON
+
+
 def shared_audit_page(session: Session, user: User, filters: SharedAuditFilters) -> SharedAuditPage:
     require_auth_audit_admin(session, user)
     if (filters.target_type is None) != (filters.target_id is None):
@@ -106,7 +121,7 @@ def shared_audit_page(session: Session, user: User, filters: SharedAuditFilters)
                 result=event.result,
                 target_type=event.target_type,
                 target_id=event.target_id,
-                reason=event.reason,
+                reason=project_reason(event.reason),
                 before=before,
                 after=after,
                 metadata_redacted=before_redacted or after_redacted,

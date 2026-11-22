@@ -7,6 +7,12 @@ const origin = process.env.CHECK_ORIGIN ?? "http://localhost:3000";
 const cases = [...plan.matchAll(/^\|\s*(\d{2})\s*\|[^|]*\|\s*`([^`]+)`\s*\|/gm)].map((match) => ({ screen: Number(match[1]), path: match[2] }));
 assert.equal(cases.length, 56, "计划中应列出全部 56 个设计页");
 
+// The Admin workbench is an operational landing page added after the original
+// 56-page design set. Keep it out of the historical page count, but verify its
+// route explicitly so the real-data dashboard cannot silently lose coverage.
+const adminHome = resolveRoute("/admin");
+assert.equal(adminHome?.screen, 62, "/admin 应映射到 Admin 工作台页面 62");
+
 for (const item of cases) {
   const url = new URL(item.path, "http://localhost:3000");
   const actual = resolveRoute(url.pathname, url.searchParams.get("view"));
@@ -28,6 +34,10 @@ if (process.env.CHECK_HTTP === "1") {
       assert(target.startsWith("/login"), `${item.path} 匿名应跳登录，实际 ${target}`);
     }
   }
+  const adminResponse = await fetch(`${origin}/admin`, { redirect: "manual" });
+  const adminTarget = adminResponse.headers.get("location") ?? "";
+  assert([301, 302, 303, 307, 308].includes(adminResponse.status), `/admin 匿名应重定向，实际 ${adminResponse.status}`);
+  assert(adminTarget.startsWith("/login"), `/admin 匿名应跳登录，实际 ${adminTarget}`);
 }
 
-console.log(`已核对 ${cases.length} 个设计页与路由${process.env.CHECK_HTTP === "1" ? "，匿名访问行为符合鉴权语义（登录页 200 / 其余重定向）" : ""}。`);
+console.log(`已核对 ${cases.length} 个设计页与 Admin 工作台入口 /admin${process.env.CHECK_HTTP === "1" ? "，匿名访问行为符合鉴权语义（登录页 200 / 其余重定向）" : ""}。`);

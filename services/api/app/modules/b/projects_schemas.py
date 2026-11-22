@@ -120,6 +120,13 @@ class AddMaterial(Strict):
     receipt_id: UUID | None = None
 
 
+class UploadInlineMaterial(Strict):
+    filename: str = Field(min_length=1, max_length=255)
+    mime_type: str = Field(min_length=1, max_length=200)
+    content_base64: str = Field(min_length=1, max_length=22_000_000)
+    title: str | None = Field(default=None, max_length=255)
+
+
 class MaterialDTO(BaseModel):
     id: UUID
     kind: Literal["text", "file"]

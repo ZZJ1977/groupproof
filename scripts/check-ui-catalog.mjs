@@ -2,9 +2,10 @@
 // Traditional Chinese entry in lib/i18n/catalog (see lib/i18n/tr.ts). Run: npm run check:ui-catalog
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HAN = /[㐀-鿿]/;
 const walk = (dir, out = []) => {
   for (const name of fs.readdirSync(dir)) {

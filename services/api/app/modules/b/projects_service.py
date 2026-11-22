@@ -13,8 +13,11 @@ and materials (B3-04).
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
-from uuid import UUID
+import base64
+import binascii
+import hashlib
+from datetime import date, datetime, time, timedelta
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -31,7 +34,7 @@ from app.db.models import (
     Task,
     User,
 )
-from app.modules.a import permissions
+from app.modules.a import permissions, storage, text_extraction
 from app.modules.a.audit import record_audit
 from app.modules.a.inbox import notify
 from app.modules.a.models import UploadReceipt
@@ -60,6 +63,7 @@ from app.modules.b.projects_schemas import (
     SaveDraft,
     SetProjectTemplate,
     SetupDTO,
+    UploadInlineMaterial,
 )
 from app.modules.c.task_execution import progress_projection
 from app.modules.d.models import CourseTemplateApplication
@@ -605,6 +609,106 @@ def add_material(
             extract_reason=extracted.reason,
             created_by=user.id,
         )
+    session.add(row)
+    project.setup_step = max(project.setup_step, 2)
+    session.flush()
+    record_audit(
+        session,
+        actor=user,
+        action="project.material.added",
+        target=("project_material", row.id),
+        project_id=project.id,
+        course_id=project.course_id,
+        after={"kind": row.kind, "title": row.title, "extract_status": row.extract_status},
+        request=request,
+    )
+    return _material_dto(session, row, full=True)
+
+
+MAX_INLINE_MATERIAL_BYTES = 15 * 1024 * 1024
+
+
+def upload_inline_material(
+    session: Session,
+    user: User,
+    project_id: UUID,
+    command: UploadInlineMaterial,
+    request=None,
+) -> MaterialDTO:
+    """Direct server-side material verification + extraction when object storage is unconfigured."""
+    _, project = _require_setup_writer(session, user, project_id)
+    try:
+        raw_bytes = base64.b64decode(command.content_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ApiError(422, "INVALID_FILE_PAYLOAD", "文件编码无效，请重新选择文件上传。") from exc
+
+    if not 0 < len(raw_bytes) <= MAX_INLINE_MATERIAL_BYTES:
+        raise ApiError(413, "FILE_TOO_LARGE", "初始化资料单文件不能为空，且不能超过 15MB。")
+
+    extension = storage.validate_file(command.filename, command.mime_type, len(raw_bytes))
+    scan_reason = storage.BasicContentScanner().scan(raw_bytes, extension=extension)
+    if scan_reason is not None:
+        raise ApiError(
+            422,
+            "FILE_CONTENT_REJECTED",
+            f"文件内容校验未通过（{scan_reason}），请检查文件格式是否真实有效。",
+        )
+
+    digest = hashlib.sha256(raw_bytes).hexdigest()
+    ts = now()
+    receipt_id = uuid4()
+    safe_name = storage._FILENAME_SAFE.sub("_", command.filename)[-120:] or "material"
+    receipt = UploadReceipt(
+        id=receipt_id,
+        scope="project",
+        scope_id=project.id,
+        actor_id=user.id,
+        provider="inline",
+        bucket="inline-materials",
+        object_id=f"project/{project.id}/{receipt_id}/{safe_name}",
+        filename=command.filename,
+        declared_mime=command.mime_type,
+        declared_size=len(raw_bytes),
+        status="completed",
+        content_hash=digest,
+        size_bytes=len(raw_bytes),
+        mime_type=command.mime_type,
+        scan_status="clean",
+        created_at=ts,
+        upload_expires_at=ts + timedelta(hours=2),
+        completed_at=ts,
+    )
+    session.add(receipt)
+    session.flush()
+
+    extract_status = "ready"
+    extract_reason: str | None = None
+    text_content: str | None = None
+    try:
+        extracted = text_extraction.extract_text(raw_bytes, extension)
+        if not extracted.text.strip():
+            extract_status = "failed"
+            extract_reason = (
+                "未检测到可提取的文字内容（可能为空白文件或扫描版 PDF），请粘贴文本资料。"
+            )
+        else:
+            text_content = extracted.text
+            if extracted.truncated:
+                extract_reason = "文件正文较长，已按上限截断。"
+    except ApiError as err:
+        extract_status = "failed"
+        extract_reason = err.message
+
+    row = BProjectMaterial(
+        project_id=project.id,
+        kind="file",
+        title=(command.title or "").strip() or command.filename,
+        receipt_id=receipt.id,
+        text_content=text_content,
+        extract_status=extract_status,
+        extract_reason=extract_reason,
+        created_by=user.id,
+    )
     session.add(row)
     project.setup_step = max(project.setup_step, 2)
     session.flush()

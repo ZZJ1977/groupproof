@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.errors import ApiError
 from app.main import app
 from app.modules.b.common import MAX_OPERATION_LENGTH, _receipt_operation
+from app.modules.b.material_text_port import PersistedMaterialTextPort
 from app.modules.b.ports import (
     UnavailableMaterialTextPort,
     UnavailableVerificationPort,
@@ -24,10 +25,21 @@ def test_b_ready_still_returns_200():
     assert response.json() == {"module": "b", "status": "ready"}
 
 
-def test_default_material_text_port_reports_unavailable_without_inventing_text():
+def test_default_material_text_port_uses_persisted_adapter():
+    port = get_material_text_port()
+    assert isinstance(port, PersistedMaterialTextPort)
     receipt_id = uuid4()
-    result = get_material_text_port().get_text(None, receipt_id=receipt_id, actor_id=uuid4())
-    assert isinstance(get_material_text_port(), UnavailableMaterialTextPort)
+    result = port.get_text(None, receipt_id=receipt_id, actor_id=uuid4())
+    assert result.receipt_id == receipt_id
+    assert result.status == "unavailable"
+    assert result.segments == ()
+    assert result.text == ""
+    assert result.reason
+
+
+def test_unavailable_material_text_port_reports_unavailable_without_inventing_text():
+    receipt_id = uuid4()
+    result = UnavailableMaterialTextPort().get_text(None, receipt_id=receipt_id, actor_id=uuid4())
     assert result.receipt_id == receipt_id
     assert result.status == "unavailable"
     assert result.segments == ()

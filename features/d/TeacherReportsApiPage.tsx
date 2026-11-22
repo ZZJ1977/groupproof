@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { fetchWithSession } from "@/lib/api/client";
+import { apiConfig } from "@/lib/api/config";
 
 type Project = { project_id: string; project_name: string };
 type Review = { report_status: string; snapshot: { id: string; version: number; data: { sections: Record<string, string> } } | null;
@@ -10,9 +12,11 @@ type Review = { report_status: string; snapshot: { id: string; version: number; 
   grades: { id: string; score: number; comment: string; created_at: string }[] };
 
 async function call<T>(path: string, method = "GET", data?: unknown): Promise<T> {
-  const response = await fetch(path, { method, credentials: "include", cache: "no-store",
+  const response = await fetchWithSession(new Request(new URL(apiConfig.baseUrl + path, window.location.origin), {
+    method, credentials: "include", cache: "no-store",
     headers: data ? { "Content-Type": "application/json" } : undefined,
-    body: data ? JSON.stringify(data) : undefined });
+    body: data ? JSON.stringify(data) : undefined,
+  }));
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.message ?? "请求失败");
   return result.data as T;
