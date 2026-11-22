@@ -23,7 +23,8 @@ const actionCategories = { all: "all", task: "task", verification: "verification
 function InboxFailure({ error, retry }: { error: unknown; retry?: () => void }) {
   const t = useTranslations("pages.inbox");
   const ts = useTranslations("pages.shared");
-  const text = accessFailure(error) ? t("failAccess")
+  const text = error === "NOTIFICATION_WRITE_UNAVAILABLE" ? t("writeUnavailable")
+    : accessFailure(error) ? t("failAccess")
     : versionFailure(error) ? t("failVersion")
       : error instanceof CApiError && error.status === 503 ? t("failUnavailable")
         : t("failDefault");
@@ -73,7 +74,10 @@ function Notifications({ userId }: { userId: string }) {
       setAll(null); setNotice(item ? t("markedOne") : t("markedAll"));
       const response = await list.refetch();
       if (accessFailure(response.error)) block(response.error);
-    } catch (failure) { setError(failure); if (accessFailure(failure)) block(failure); }
+    } catch (failure) {
+      setError(failure instanceof CApiError && failure.status === 503 ? "NOTIFICATION_WRITE_UNAVAILABLE" : failure);
+      if (accessFailure(failure)) block(failure);
+    }
     finally { lock.current = false; setBusy(false); }
   }
   return <>
