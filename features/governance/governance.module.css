@@ -461,6 +461,102 @@
   gap: 18px;
 }
 
+.identityHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.identityLoading {
+  margin: -6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.identitySummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.identitySummaryCard {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fff 0%, #f8fbff 100%);
+}
+
+.identitySummaryCard span,
+.identitySummaryCard small {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.identitySummaryCard strong {
+  display: block;
+  margin: 9px 0 4px;
+  color: #0f172a;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.identitySummaryCard small { color: #94a3b8; }
+
+.identityFilterActions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding-bottom: 1px;
+}
+
+.identityQuickFilters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+}
+
+.identityQuickFilter {
+  min-height: 30px;
+  padding: 4px 11px;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  background: #fff;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.identityQuickFilter:hover,
+.identityQuickFilter[aria-pressed="true"] { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+
+.identityFilterChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: -8px;
+}
+
+.identityFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.identityFilterChip span { color: #64748b; font-size: 15px; line-height: 1; }
+
 .toolbarPanel {
   display: flex;
   align-items: center;
@@ -534,6 +630,63 @@
 .identityTablePanel {
   overflow: hidden;
 }
+
+.identityTableWrap { width: 100%; overflow-x: auto; }
+
+.identityTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.identityTable th {
+  padding: 13px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.identityTable td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf1f6;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.identityTable tbody tr:last-child td { border-bottom: 0; }
+.identityTable tbody tr:hover,
+.identityTable tbody tr[aria-selected="true"] { background: #f8fbff; }
+
+.identityUserCell,
+.identityEmailCell,
+.identityBadgeGroup { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.identityBadgeGroup { flex-wrap: wrap; gap: 5px; }
+.identityEmailCell { align-items: flex-start; flex-direction: column; gap: 5px; max-width: 230px; }
+.identityEmailCell > span:first-child { overflow-wrap: anywhere; }
+
+.identityAvatar {
+  display: inline-flex;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.identityUserCell strong,
+.identityUserCell small { display: block; }
+.identityUserCell strong { color: #0f172a; font-size: 13px; }
+.identityUserCell small { margin-top: 3px; color: #94a3b8; font-size: 11px; }
 
 .identityRows {
   display: flex;
@@ -690,6 +843,9 @@
 }
 
 @media (max-width: 660px) {
+  .identitySummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .identityHeaderActions { width: 100%; }
+  .identityHeaderActions .button { flex: 1 1 0; }
   .toolbarPanel { align-items: stretch; }
   .toolbarPanel .toolbar { width: 100%; align-items: stretch; flex-direction: column; }
   .fieldInline { justify-content: space-between; }
@@ -702,6 +858,15 @@
   .identityRow { align-items: flex-start; }
   .identityRow .button { flex: 0 0 auto; }
   .identityRows { padding-inline: 16px; }
+  .identityFilterActions { align-items: stretch; }
+  .identityFilterActions .button { flex: 1 1 0; }
+  .identityTable { min-width: 680px; }
+}
+
+@media (max-width: 420px) {
+  .identitySummary { gap: 8px; }
+  .identitySummaryCard { padding: 13px; }
+  .identitySummaryCard strong { font-size: 22px; }
 }
 
 .progressTrack {

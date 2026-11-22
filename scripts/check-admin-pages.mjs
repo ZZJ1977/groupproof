@@ -16,6 +16,8 @@ const checks = [
   ["dashboard has a visual workbench wrapper", /styles\.page/.test(pages.dashboard) && /styles\.metrics/.test(pages.dashboard)],
   ["identity page uses the shared visual scope", /styles\.identityPage/.test(pages.identity) && /styles\.identityTablePanel/.test(pages.identity)],
   ["identity keeps critical admin actions", ["新增账号", "刷新列表", "查看", "处理原因", "取消"].every((label) => pages.identity.includes(label))],
+  ["identity directory has real result summaries", ["结果总数", "当前页可用", "当前页已停用", "当前页待验证"].every((label) => pages.identity.includes(label))],
+  ["identity directory has resettable filters and table", /重置筛选/.test(pages.identity) && /identityTable/.test(pages.identity) && /identityFilterChip/.test(pages.identity)],
   ["usage page keeps scenario breakdown", /usageScenarioDefinitions/.test(pages.usage) && /业务场景分布/.test(pages.usage)],
   ["usage page keeps data-quality caveats", /unpriced_requests/.test(pages.usage) && /incomplete_token_records/.test(pages.usage)],
   ["usage page does not turn unknown cost into zero", /function metricCost[\s\S]*未计价/.test(pages.usage) && !/metricCost[\s\S]*\|\|\s*["']0["']/.test(pages.usage)],

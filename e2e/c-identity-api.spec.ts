@@ -60,6 +60,18 @@ test("user directory translates identity states and replays the selected user fr
   await expect(page).toHaveURL(/user=identity-student/);
 });
 
+test("user directory summarizes the current result and resets URL filters", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 7, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users?q=真实&role=student&user=identity-student");
+  await expect(page.getByText("结果总数", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前页可用", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前页已停用", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前页待验证", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重置筛选", exact: true }).click();
+  await expect(page).not.toHaveURL(/q=|role=|status=|college=|user=/);
+});
+
 test("C7-02 submits the selected identity and school email to A's account service", async ({ page }) => {
   await session(page);
   await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
