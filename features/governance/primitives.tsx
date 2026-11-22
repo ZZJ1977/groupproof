@@ -11,40 +11,49 @@ export function Header({
   title,
   description,
   breadcrumb,
+  eyebrow,
   action,
+  actions,
 }: {
   title: string;
   description: string;
   breadcrumb?: string;
+  /** New name for breadcrumb; breadcrumb remains supported by existing pages. */
+  eyebrow?: string;
   action?: ReactNode;
+  /** New name for action; action remains supported by existing pages. */
+  actions?: ReactNode;
 }) {
-  return <PageHeader title={title} description={description} eyebrow={breadcrumb} actions={action} />;
+  return <PageHeader title={title} description={description} eyebrow={eyebrow ?? breadcrumb} actions={actions ?? action} />;
 }
 
-export function Box({ children, title, action, className = "" }: {
+export function Box({ children, title, action, className = "", variant = "default" }: {
   children: ReactNode;
   title?: string;
   action?: ReactNode;
   className?: string;
+  variant?: "default" | "elevated";
 }) {
-  return <Panel title={title} action={action} className={`${styles.panel} ${className}`} noPadding>{children}</Panel>;
+  return <Panel title={title} action={action} className={`${styles.panel} ${variant === "elevated" ? styles.panelElevated : ""} ${className}`} noPadding>{children}</Panel>;
 }
 
-export function Metric({ label, value, hint, icon: Icon, tone = "blue" }: {
+export function Metric({ label, value, hint, trend, icon: Icon, tone = "blue" }: {
   label: string;
   value: string | number;
   hint?: string;
+  trend?: ReactNode;
   icon: LucideIcon;
-  tone?: "blue" | "green" | "amber" | "red";
+  tone?: "blue" | "green" | "amber" | "red" | "purple";
 }) {
-  const colors = { blue: "#1767e7", green: "#0d9a62", amber: "#b77a02", red: "#d43b38" };
+  const colors = { blue: "#2563eb", green: "#059669", amber: "#d97706", red: "#dc2626", purple: "#7c3aed" };
   return (
-    <div className={styles.metric}>
+    <div className={styles.metric} data-tone={tone}>
       <div className={styles.metricIcon} style={{ color: colors[tone] }}><Icon size={18} /></div>
       <div>
         <div className={styles.metricLabel}>{label}</div>
         <div className={styles.metricValue} style={{ color: tone === "blue" ? undefined : colors[tone] }}>{value}</div>
         {hint ? <div className={styles.metricHint}>{hint}</div> : null}
+        {trend ? <div className={styles.metricTrend} data-tone={tone}>{trend}</div> : null}
       </div>
     </div>
   );
@@ -55,7 +64,7 @@ export function Badge({ children, tone = "gray" }: {
   tone?: "blue" | "green" | "amber" | "red" | "gray" | "purple";
 }) {
   const classes = { blue: styles.badgeBlue, green: styles.badgeGreen, amber: styles.badgeAmber, red: styles.badgeRed, gray: styles.badgeGray, purple: styles.badgePurple };
-  return <span className={`${styles.badge} ${classes[tone]}`}>{children}</span>;
+  return <span className={`${styles.badge} ${classes[tone]}`} data-tone={tone}>{children}</span>;
 }
 
 export function Progress({ value, label = true }: { value: number; label?: boolean }) {
@@ -84,8 +93,8 @@ export function Empty({ children = "暂无符合条件的记录" }: { children?:
   return <div className={styles.empty}>{children}</div>;
 }
 
-export function Table({ children }: { children: ReactNode }) {
-  return <div className={styles.tableWrap}><table className={styles.table}>{children}</table></div>;
+export function Table({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`${styles.tableWrap} ${styles.adminTableWrap} ${className}`}><table className={styles.table}>{children}</table></div>;
 }
 
 export function formatDate(value?: string) {

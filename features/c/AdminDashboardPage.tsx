@@ -112,10 +112,10 @@ export function AdminDashboardPage() {
     {hasError && <ErrorState onRetry={refresh} />}
     {onlyAdmin && <div role="status" className={styles.notice}><span>当前数据库只有管理员账号，使用端还没有学生、教师或课程数据。</span><Link className={styles.primaryButton} href="/admin/users">新增账号<ArrowRight size={14} /></Link></div>}
     <div className={styles.metrics}>
-      <Metric label="用户总数" value={valueOf(users)} hint="来自统一身份服务" icon={Users} />
-      <Metric label="待审核教师" value={valueOf(teachers)} hint="需要管理员处理" icon={UserCheck} tone={teachers.data?.total ? "amber" : "blue"} />
-      <Metric label="课程总数" value={valueOf(courses)} hint="草稿、已发布和已结束" icon={BookOpen} />
-      <Metric label="待审批访问" value={valueOf(requests)} hint="临时只读授权申请" icon={ShieldCheck} tone={requests.data?.total ? "amber" : "blue"} />
+      <Metric label="用户总数" value={valueOf(users)} hint="来自统一身份服务" trend="当前环境" icon={Users} />
+      <Metric label="待审核教师" value={valueOf(teachers)} hint="需要管理员处理" trend={teachers.data?.total ? "有待办" : "队列为空"} icon={UserCheck} tone={teachers.data?.total ? "amber" : "blue"} />
+      <Metric label="课程总数" value={valueOf(courses)} hint="草稿、已发布和已结束" trend="生命周期汇总" icon={BookOpen} />
+      <Metric label="待审批访问" value={valueOf(requests)} hint="临时只读授权申请" trend={requests.data?.total ? "有待办" : "暂无待办"} icon={ShieldCheck} tone={requests.data?.total ? "amber" : "blue"} />
     </div>
     <div className={styles.twoColumns}>
       <Box title="最近账号" action={<Link className="gp-link inline-flex items-center gap-1" href="/admin/users">查看用户目录 <ArrowRight size={14} /></Link>}>

@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { AdminEnvironmentSwitcher } from "@/components/admin-environment-switcher";
 
 type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
+type NavGroup = { label: string; items: NavItem[] };
 
 const iconByKey: Record<string, typeof Home> = {
   folder: Folder, fileClock: FileClock, fileText: FileText, clipboardList: ClipboardList,
@@ -72,6 +73,26 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   ];
   const globalNav: NavItem[] = globalLinks.map((item) => ({ label: t(item.key), href: item.href, icon: item.icon }));
 
+  const adminNavGroups: NavGroup[] = useMemo(() => kind === "admin" ? [
+    {
+      label: t("adminGroups.platform"),
+      items: [
+        { label: t("adminItems.overview"), href: "/admin", icon: Home },
+        { label: t("adminItems.users"), href: "/admin/users", icon: Users },
+        { label: t("adminItems.teacherVerifications"), href: "/admin/teacher-verifications", icon: ShieldCheck },
+        { label: t("adminItems.courses"), href: "/admin/courses", icon: BookOpen },
+        { label: t("adminItems.accessRequests"), href: "/admin/access-requests", icon: ShieldCheck },
+      ],
+    },
+    {
+      label: t("adminGroups.operations"),
+      items: [
+        { label: t("adminItems.logs"), href: "/admin/logs", icon: FileClock },
+        { label: t("adminItems.aiUsage"), href: "/admin/ai-usage", icon: Activity },
+      ],
+    },
+  ] : [], [kind, t]);
+
   const nav: NavItem[] = useMemo(() => {
     const map = (items: { label: string; href: string; iconKey: string }[], namespace: string): NavItem[] =>
       items.map((item) => ({
@@ -80,17 +101,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
         icon: iconByKey[item.iconKey] ?? Folder,
         ignoreSearch: item.href.includes("?"),
       }));
-    if (kind === "admin") {
-      return [
-        { label: t("adminItems.overview"), href: "/admin", icon: Home },
-        { label: t("adminItems.users"), href: "/admin/users", icon: Users },
-        { label: t("adminItems.teacherVerifications"), href: "/admin/teacher-verifications", icon: ShieldCheck },
-        { label: t("adminItems.courses"), href: "/admin/courses", icon: BookOpen },
-        { label: t("adminItems.logs"), href: "/admin/logs", icon: FileClock },
-        { label: t("adminItems.aiUsage"), href: "/admin/ai-usage", icon: Activity },
-        { label: t("adminItems.accessRequests"), href: "/admin/access-requests", icon: ShieldCheck },
-      ];
-    }
+    if (kind === "admin") return [];
     if (kind === "teacher") return navCourseId ? map(teacherNavItems(navCourseId), "teacher") : globalNav;
     return projectMode ? map(projectNavItems(context.projectId as string), "project") : globalNav;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,7 +129,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     }
   };
 
-  return <div className="gp-shell">
+  return <div className={cn("gp-shell", kind === "admin" && "gp-shell-admin")}>
     {mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
       <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
@@ -127,7 +138,10 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       {kind === "teacher" && <div className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><BookOpen size={15} /> {context.courseName ?? defaultCourse?.name ?? ts("courseFallback")} <ChevronDown size={13} className="ml-auto" /></div>}
       <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
         {projectMode && <><div className="gp-nav-section">{t("global")}</div><NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" /><NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" /><div className="gp-nav-section">{t("currentProject")}</div></>}
-        {nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+        {kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>
+          <div className="gp-nav-section" role="heading" aria-level={2}>{group.label}</div>
+          {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+        </div>) : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
       </nav>
       <div className="gp-sidebar-footer">{ts("footer")}</div>
     </aside>

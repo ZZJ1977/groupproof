@@ -448,6 +448,10 @@
       "logs": "System logs",
       "aiUsage": "AI usage",
       "accessRequests": "Anomalies / access approvals"
+    },
+    "adminGroups": {
+      "platform": "Platform management",
+      "operations": "Operations and analytics"
     }
   },
   "shell": {
@@ -455,7 +459,11 @@
       "label": "Data environment",
       "description": "Switch the data environment used by the admin console",
       "develop": "develop / Staging",
-      "main": "main / Production"
+      "main": "main / Production",
+      "currentDevelop": "Current: develop / Staging",
+      "currentMain": "Current: main / Production",
+      "switchFailed": "Switch failed; try again",
+      "retry": "Retry"
     },
     "searchPlaceholder": "Search courses, projects or tasks...",
     "searchNoResult": "No matches",

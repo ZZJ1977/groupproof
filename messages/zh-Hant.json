@@ -448,6 +448,10 @@
       "logs": "系統日誌",
       "aiUsage": "AI 使用情況",
       "accessRequests": "異常 / 存取審批"
+    },
+    "adminGroups": {
+      "platform": "平台管理",
+      "operations": "運行分析"
     }
   },
   "shell": {
@@ -455,7 +459,11 @@
       "label": "資料環境",
       "description": "切換管理後台讀取和操作的資料環境",
       "develop": "develop / Staging",
-      "main": "main / Production"
+      "main": "main / Production",
+      "currentDevelop": "目前：develop / Staging",
+      "currentMain": "目前：main / Production",
+      "switchFailed": "切換失敗，請重試",
+      "retry": "重試"
     },
     "searchPlaceholder": "搜尋課程、專案或任務...",
     "searchNoResult": "無符合結果",

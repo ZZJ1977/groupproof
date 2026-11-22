@@ -498,7 +498,12 @@ function LogsPage() {
 }
 
 function costs(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" / ") || "无费用样本"; }
-function metricCost(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" · ") || "0"; }
+function metricCost(value: Record<string, string>, unpricedRequests = 0, requests = 0) {
+  const formatted = Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" · ");
+  if (formatted) return formatted;
+  if (unpricedRequests > 0) return "未计价";
+  return requests > 0 ? "无费用样本" : "—";
+}
 function number(value: number) { return new Intl.NumberFormat("zh-CN").format(value); }
 function rate(value: number, total: number) { return total ? `${Math.round((value / total) * 100)}%` : "—"; }
 function UsageTable({ title, items }: { title: string; items: (Schema["UsageBreakdownDTO"] | Schema["UsageDayDTO"])[] }) {
@@ -531,7 +536,7 @@ function UsagePage() {
           <UserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
           <form className={styles.usageInlineForm} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}>
             <Field label="功能"><input className={styles.input} name="feature" maxLength={100} defaultValue={filters.feature ?? ""} placeholder="例如：chat" /></Field>
-            <Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} placeholder="例如：openai/gpt-4o" /></Field>
+            <Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} placeholder="例如：provider/model" /></Field>
             <div className={styles.usageFormActions}><button className={styles.primaryButton} type="submit"><ListFilter size={15} aria-hidden="true" />查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></div>
           </form>
         </div>
@@ -541,7 +546,7 @@ function UsagePage() {
     {data && <>
       <div className={`${styles.metrics} ${styles.usageMetrics}`} aria-label="用量关键指标">
         <Metric label="请求总数" value={number(data.requests)} hint={`${number(data.succeeded)} 次成功 · ${number(data.failed)} 次失败`} icon={Activity} />
-        <Metric label="总费用" value={metricCost(data.cost_by_currency)} hint="按币种累计已记录费用" icon={Coins} tone="green" />
+        <Metric label="总费用" value={metricCost(data.cost_by_currency, data.unpriced_requests, data.requests)} hint="按币种累计已记录费用" icon={Coins} tone="green" />
         <Metric label="总 Token" value={number(data.input_tokens + data.output_tokens)} hint={`输入 ${number(data.input_tokens)} · 输出 ${number(data.output_tokens)}`} icon={Layers3} tone="blue" />
         <Metric label="成功率" value={rate(data.succeeded, data.requests)} hint="按请求结果统计" icon={Gauge} tone="blue" />
         <Metric label="未计价记录" value={number(data.unpriced_requests)} hint={data.unpriced_requests ? "需要补充费用信息" : "计费记录完整"} icon={CircleAlert} tone={data.unpriced_requests ? "amber" : "green"} />
@@ -563,6 +568,15 @@ function UsagePage() {
         </Box>
       </div>
       <Box title="业务场景分布" action={<Badge tone="blue">按方案映射</Badge>}>
+        <div className={styles.scenarioGrid} aria-label="业务场景用量概览">{usageScenarioDefinitions.map((scenario, index) => {
+          const item = featureRows.find((row) => row.key === scenario.feature);
+          const hasData = Boolean(item && item.requests > 0);
+          return <article className={styles.scenarioCard} data-has-data={hasData} key={`${scenario.key}-card`}>
+            <div className={styles.scenarioCardTop}><span className={styles.scenarioIndex}>{String(index + 1).padStart(2, "0")}</span><Badge tone={hasData ? "green" : "gray"}>{hasData ? "有记录" : "暂无样本"}</Badge></div>
+            <h3>{scenario.label}</h3><p>{scenario.description}</p>
+            <div className={styles.scenarioStats}><div><strong>{item ? number(item.requests) : "—"}</strong><span>请求</span></div><div><strong>{item ? rate(item.succeeded, item.requests) : "—"}</strong><span>成功率</span></div><div><strong>{item ? number(item.input_tokens + item.output_tokens) : "—"}</strong><span>Token</span></div></div>
+          </article>;
+        })}</div>
         <Table><thead><tr><th>业务场景</th><th>用途</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th></tr></thead><tbody>{usageScenarioDefinitions.map((scenario) => {
           const item = featureRows.find((row) => row.key === scenario.feature);
           return <tr key={scenario.key}><td><strong>{scenario.label}</strong><div className={styles.rowMeta}>{item ? `功能键：${scenario.feature}` : scenario.feature === "match_evidence" ? "群聊同步本身不调用模型" : "当前范围暂无调用"}</div></td><td>{scenario.description}</td><td>{item ? number(item.requests) : "—"}</td><td>{item ? rate(item.succeeded, item.requests) : "—"}</td><td>{item ? number(item.input_tokens + item.output_tokens) : "—"}</td><td>{item ? costs(item.cost_by_currency) : "—"}</td></tr>;
