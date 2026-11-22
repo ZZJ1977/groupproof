@@ -120,6 +120,17 @@
 6. 教师 10 页与 Admin 6 页。
 7. 执行 lint、typecheck、build，检查导航和核心交互，记录 Mock 与待集成项到 `FRONTEND_STATUS.md`。
 
+## 2026-11-22 学生端统一 UI 与活动摘要落地
+
+本轮不改变 56 个页面路由和权限边界，而是把学生端的展示层收敛到同一套工作台语言：
+
+- **设计令牌与基础组件**：`app/globals.css` 集中维护画布、表面、文字、操作色、状态色、边框、圆角、间距和动效变量；`components/common.tsx` 提供 `Section`、`ListRow`、`DetailDrawer`、`StateBlock`；学生角色由 `WorkspaceShell` 加入统一工作区标识。实现规格见 [`学生端统一 UI 设计与实现规格`](docs/superpowers/specs/2026-11-22-student-ui-unified-design.md)。
+- **页面模板**：工作台首页使用轻量统计 + 项目/课程/活动列表；项目页保留上下文与主动作；活动、文件、讨论和证据页使用“索引列表 + 详情抽屉”；表单和向导按关注点分段。现有角色、项目导航和 56 页旧链接继续有效。
+- **GitHub 活动**：`/projects/:projectId/github` 首屏显示提交者和 AI 实现摘要，详情抽屉显示影响、验证、风险、证据、原始来源和操作历史。PR/CI 仍为来源证据；不会把 PR 正文渲染成开发摘要。
+- **通用摘要服务**：`services/api/app/modules/a/activity_summary.py` 将 GitHub commit 映射到与平台无关的 `ActivitySummaryInput`；`services/api/app/modules/a/ai/` 维护提示词版本、证据引用校验、假提供方和 OpenRouter 提供方。摘要表和缓存迁移为 `0042_a_activity_summaries`。
+- **同步输入**：GitHub commit 同步会尽可能读取文件级变更并保存受限、脱敏的 patch；无法读取差异时仍保存提交标题/正文，摘要状态会提示上下文不足。来源快照始终是事实来源，AI 结果只作建议并需人工确认。
+- **验收脚本**：除既有 `check:ux`、`check:routes` 和业务断言外，使用 `npm run check:student-ui` 检查学生工作区标识、共享组件、响应式/焦点规则和 GitHub 活动页关键结构。真实外部平台授权、生产 AI 凭据、数据库迁移和浏览器实平台回归不在本地 Mock 验收之内。
+
 ### 2026-11-21 学生端补充入口
 
 - `/projects/new`：独立项目创建，复用页面 35 的创建职责，不要求课程；原课程项目路由继续保留。
