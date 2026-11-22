@@ -175,14 +175,28 @@ class GithubClient:
             raise _unavailable()
         return items
 
+    def branches(self, owner: str, repo: str, installation_id: int) -> list[dict[str, Any]]:
+        """读取仓库活跃分支（最多 30 个），用于同步非默认分支提交。"""
+        return self._list(
+            f"/repos/{owner}/{repo}/branches",
+            installation_id,
+            {"per_page": 30},
+        )
+
     def commits(
-        self, owner: str, repo: str, branch: str, installation_id: int
+        self,
+        owner: str,
+        repo: str,
+        branch: str,
+        installation_id: int,
+        *,
+        per_page: int = 100,
     ) -> list[dict[str, Any]]:
-        """默认分支最近的提交（最多 100 条，新的在前）。"""
+        """指定分支最近的提交（新的在前）。"""
         return self._list(
             f"/repos/{owner}/{repo}/commits",
             installation_id,
-            {"sha": branch, "per_page": 100},
+            {"sha": branch, "per_page": per_page},
         )
 
     def commit_detail(

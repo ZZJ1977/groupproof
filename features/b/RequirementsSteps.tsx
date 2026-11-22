@@ -26,7 +26,7 @@ function useBoard(projectId: string) {
     refetchInterval: (state) => (state.state.data?.latest_run?.status === "processing" ? 2000 : false),
   });
   const refresh = () => {
-    for (const name of ["b-requirements", "b-checklist", "b-baseline", "b-project-setup", "b-project-overview"]) void cache.invalidateQueries({ queryKey: [name, userId, projectId] });
+    for (const name of ["b-requirements", "b-req-list", "b-checklist", "b-baseline", "b-project-setup", "b-project-overview"]) void cache.invalidateQueries({ queryKey: [name, userId, projectId] });
   };
   return { query, refresh };
 }
@@ -96,32 +96,38 @@ export function RequirementsStep({ projectId }: { projectId: string }) {
   if (query.isError) return <div role="alert"><Feedback tone="error">{errorText(query.error)}</Feedback></div>;
   const board = query.data;
   const running = board.latest_run?.status === "processing";
-  return <div className="space-y-4">
+  return <div className="space-y-6">
     {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}
-    <Panel title={tr("需求分析")} action={board.editable ? <button type="button" className={button} disabled={running || analyse.isPending} onClick={() => analyse.mutate()}><Bot size={15} />{board.latest_run ? tr("重新分析") : tr("开始分析")}</button> : undefined}>
-      <RunStatus board={board} />
-      {board.latest_run && board.editable && <p className="mt-2 text-xs text-slate-500">{tr("重新分析只替换没人动过的 AI 草案；人工新增或修改过的需求会原样保留。")}</p>}
-    </Panel>
-    {board.modules.length === 0 ? <Panel><EmptyState title={tr("还没有模块和需求")} description={board.editable ? tr("可以先分析资料，也可以直接手动添加。") : undefined} /></Panel>
-      : board.modules.map((module) => <Panel key={module.id} title={tr("{0}（{1} 条）", { 0: module.name, 1: module.requirement_count })}>
+    <div className="gp-surface-card flex flex-wrap items-center justify-between gap-4">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2"><span className="gp-eyebrow">AI 辅助分析</span><h2 className="text-base font-semibold text-slate-900">{tr("需求分析")}</h2></div>
+        <RunStatus board={board} />
+        {board.latest_run && board.editable && <p className="text-xs text-slate-500">{tr("重新分析仅替换未修改的 AI 草案，人工条目原样保留。")}</p>}
+      </div>
+      {board.editable && <button type="button" className={button} disabled={running || analyse.isPending} onClick={() => analyse.mutate()}><Bot size={15} />{board.latest_run ? tr("重新分析") : tr("开始分析")}</button>}
+    </div>
+    {board.modules.length === 0 ? <div className="gp-surface-card"><EmptyState title={tr("还没有模块和需求")} description={board.editable ? tr("可以先分析资料，也可以直接手动添加。") : undefined} /></div>
+      : <div className="space-y-4">{board.modules.map((module) => <div key={module.id} className="gp-surface-card">
+        <div className="mb-2 flex items-center justify-between border-b border-slate-100 pb-2.5"><h3 className="text-base font-semibold text-slate-900">{tr("{0}（{1} 条）", { 0: module.name, 1: module.requirement_count })}</h3></div>
         <ul className="divide-y divide-slate-100">{board.requirements.filter((r) => r.module_id === module.id).map((row) => <RequirementRow key={`${row.id}:${row.lock_version}`} projectId={projectId} row={row} board={board} onSaved={refresh} />)}</ul>
-        {module.requirement_count === 0 && <p className="text-xs text-slate-500">{tr("这个模块还没有需求。")}</p>}
-      </Panel>)}
-    {board.editable && <Panel title={tr("手动添加")}>
-      <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); addModule.mutate(); }}>
-        <div className="min-w-[220px] flex-1"><label className={label} htmlFor="b-new-module">{tr("新模块名称")}</label><input id="b-new-module" className={input} maxLength={200} value={moduleName} onChange={(e) => setModuleName(e.target.value)} /></div>
+        {module.requirement_count === 0 && <p className="py-2 text-xs text-slate-500">{tr("这个模块还没有需求。")}</p>}
+      </div>)}</div>}
+    {board.editable && <div className="gp-surface-card space-y-5">
+      <div><h3 className="text-base font-semibold text-slate-900">{tr("手动添加")}</h3><p className="mt-0.5 text-xs text-slate-500">{tr("先创建功能模块，再录入具体需求条目。")}</p></div>
+      <form className="flex flex-wrap items-end gap-2.5" onSubmit={(e) => { e.preventDefault(); addModule.mutate(); }}>
+        <div className="min-w-[220px] max-w-md flex-1"><label className={label} htmlFor="b-new-module">{tr("新模块名称")}</label><input id="b-new-module" className={input} maxLength={200} placeholder={tr("例如：用户认证、任务看板")} value={moduleName} onChange={(e) => setModuleName(e.target.value)} /></div>
         <button type="submit" className={secondary} disabled={addModule.isPending || !moduleName.trim()}>{tr("添加模块")}</button>
       </form>
-      {board.modules.length > 0 && <form className="mt-4 space-y-2" onSubmit={(e) => { e.preventDefault(); addRequirement.mutate(); }}>
-        <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
+      {board.modules.length > 0 && <form className="space-y-3 border-t border-slate-100 pt-4" onSubmit={(e) => { e.preventDefault(); addRequirement.mutate(); }}>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_120px]">
+          <div><label className={label} htmlFor="b-new-req-title">{tr("需求标题")}</label><input id="b-new-req-title" className={input} maxLength={240} placeholder={tr("输入简明的功能需求标题")} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></div>
           <div><label className={label} htmlFor="b-new-req-module">{tr("所属模块")}</label><select id="b-new-req-module" className={input} value={draft.module_id || board.modules[0].id} onChange={(e) => setDraft({ ...draft, module_id: e.target.value })}>{board.modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
           <div><label className={label} htmlFor="b-new-req-priority">{tr("优先级")}</label><select id="b-new-req-priority" className={input} value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value as BPriority })}>{(["high", "medium", "low"] as const).map((v) => <option key={v} value={v}>{tr(priorityLabel[v])}</option>)}</select></div>
         </div>
-        <div><label className={label} htmlFor="b-new-req-title">{tr("需求标题")}</label><input id="b-new-req-title" className={input} maxLength={240} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></div>
-        <div><label className={label} htmlFor="b-new-req-desc">{tr("说明（可选）")}</label><textarea id="b-new-req-desc" className={input} rows={2} maxLength={5000} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></div>
-        <div className="flex justify-end"><button type="submit" className={secondary} disabled={addRequirement.isPending || !draft.title.trim()}>{tr("添加需求")}</button></div>
+        <div><label className={label} htmlFor="b-new-req-desc">{tr("说明（可选）")}</label><textarea id="b-new-req-desc" className={input} rows={2} maxLength={5000} placeholder={tr("补充场景、输入输出或边界约束")} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></div>
+        <div className="flex justify-end"><button type="submit" className={button} disabled={addRequirement.isPending || !draft.title.trim()}>{tr("添加需求")}</button></div>
       </form>}
-    </Panel>}
+    </div>}
   </div>;
 }
 

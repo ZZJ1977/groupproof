@@ -38,6 +38,9 @@ logger = logging.getLogger("groupproof.a.github_activity")
 
 KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
+MAX_BRANCHES_PER_SYNC = 10
+MAX_NON_DEFAULT_BRANCH_COMMITS = 30
+MAX_COMMIT_DETAIL_PER_SYNC = 25
 MAX_COMMIT_FILES = 80
 MAX_PATCH_CHARS = 6000
 MAX_TOTAL_PATCH_CHARS = 120_000
@@ -279,6 +282,41 @@ def _upsert(
     row.revision, row.synced_at, row.deleted = revision, now, False
 
 
+def _discover_branches(client, owner: str, repo: str, default_branch: str, inst: int) -> list[str]:
+    """发现要同步提交的分支：默认分支优先，其次 develop 等活跃分支。"""
+    ordered: list[str] = [default_branch]
+    reader = getattr(client, "branches", None)
+    if not callable(reader):
+        return ordered
+    try:
+        raw_branches = reader(owner, repo, inst)
+    except (ApiError, TypeError, ValueError) as exc:
+        logger.info("branch listing unavailable for %s/%s: %s", owner, repo, exc)
+        return ordered
+    names = [
+        item["name"].strip()
+        for item in raw_branches
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip()
+    ]
+    priority = {"develop": 0, "dev": 1, "staging": 2, "main": 3, "master": 4}
+    extras = sorted(
+        (name for name in dict.fromkeys(names) if name != default_branch),
+        key=lambda name: (priority.get(name.lower(), 10), name.lower()),
+    )
+    return (ordered + extras)[:MAX_BRANCHES_PER_SYNC]
+
+
+def _fetch_branch_commits(
+    client, owner: str, repo: str, branch: str, inst: int, *, is_default: bool
+) -> list[dict[str, Any]]:
+    if is_default:
+        return client.commits(owner, repo, branch, inst)
+    try:
+        return client.commits(owner, repo, branch, inst, per_page=MAX_NON_DEFAULT_BRANCH_COMMITS)
+    except TypeError:
+        return client.commits(owner, repo, branch, inst)
+
+
 def sync_activity(
     session: Session,
     client,
@@ -291,7 +329,34 @@ def sync_activity(
     for key in ("commits", "pulls", "ci_runs", "deleted_sources"):
         totals.setdefault(key, 0)
     owner, repo, inst = link.owner, link.repo, link.installation_id
-    commits = client.commits(owner, repo, link.default_branch, inst)
+    branches = _discover_branches(client, owner, repo, link.default_branch, inst)
+    commit_map: dict[str, tuple[dict[str, Any], list[str]]] = {}
+    commits: list[dict[str, Any]] = []
+    for idx, branch in enumerate(branches):
+        is_default = idx == 0
+        try:
+            branch_commits = _fetch_branch_commits(
+                client, owner, repo, branch, inst, is_default=is_default
+            )
+        except ApiError:
+            if is_default:
+                raise
+            logger.info("skip branch commits for %s/%s@%s", owner, repo, branch)
+            continue
+        for item in branch_commits:
+            sha = item.get("sha")
+            if not isinstance(sha, str) or not sha:
+                continue
+            if sha not in commit_map:
+                commit_map[sha] = (item, [branch])
+                commits.append(item)
+            elif branch not in commit_map[sha][1]:
+                commit_map[sha][1].append(branch)
+    # 按提交时间从新到旧排序，确保优先获取最新提交的文件差异
+    commits.sort(
+        key=lambda item: _parse_time(((item.get("commit") or {}).get("author") or {}).get("date")),
+        reverse=True,
+    )
     pulls = client.pulls(owner, repo, inst)
     runs = client.workflow_runs(owner, repo, inst)
 
@@ -300,9 +365,12 @@ def sync_activity(
         for row in session.scalars(select(GithubActivity).where(GithubActivity.link_id == link.id))
     }
     new_commits: list[GithubActivity] = []
+    details_fetched = 0
 
     for item in commits:
         sha = item["sha"]
+        commit_branches = commit_map[sha][1]
+        primary_branch = commit_branches[0] if commit_branches else link.default_branch
         info = item.get("commit") or {}
         author = info.get("author") or {}
         message = info.get("message") or ""
@@ -316,14 +384,22 @@ def sync_activity(
             if existing_row is not None
             and isinstance(existing_row.detail, dict)
             and existing_row.detail.get("files_fetched") is True
-            else {"sha": sha, "branch": link.default_branch}
+            else {"sha": sha, "branch": primary_branch}
         )
+        detail["branch"] = primary_branch
+        if len(commit_branches) > 1 or primary_branch != link.default_branch:
+            detail["branches"] = commit_branches
         detail_reader = getattr(client, "commit_detail", None)
-        if callable(detail_reader) and (
-            existing_row is None
-            or not isinstance(existing_row.detail, dict)
-            or existing_row.detail.get("files_fetched") is not True
+        if (
+            callable(detail_reader)
+            and details_fetched < MAX_COMMIT_DETAIL_PER_SYNC
+            and (
+                existing_row is None
+                or not isinstance(existing_row.detail, dict)
+                or existing_row.detail.get("files_fetched") is not True
+            )
         ):
+            details_fetched += 1
             try:
                 commit_detail = detail_reader(owner, repo, sha, inst)
                 if not isinstance(commit_detail, dict):

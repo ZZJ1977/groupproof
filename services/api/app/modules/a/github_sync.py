@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
@@ -140,6 +140,77 @@ def sync_project_repos(
         project_id=project_id,
         after=totals,
     )
+    return totals
+
+
+def sync_repo_links_by_webhook(
+    session: Session,
+    owner: str,
+    repo: str,
+    client: github.GithubClient | None,
+) -> dict[str, int]:
+    """Webhook 触发增量活动同步：刷新绑定了该仓库的所有项目活动快照。"""
+    if client is None:
+        raise ApiError(503, "GITHUB_UNAVAILABLE", "GitHub 尚未接入（缺少应用凭证变量）。")
+    links = list(
+        session.scalars(
+            select(GithubRepoLink).where(
+                func.lower(GithubRepoLink.owner) == owner.lower(),
+                func.lower(GithubRepoLink.repo) == repo.lower(),
+            )
+        ).all()
+    )
+    totals = {
+        "projects": 0,
+        "commits": 0,
+        "pulls": 0,
+        "ci_runs": 0,
+        "deleted_sources": 0,
+        "associated": 0,
+    }
+    if not links:
+        return totals
+    now = datetime.now(UTC)
+    from app.modules.c.github_evidence import reconcile_github_evidence
+
+    for link in links:
+        actor = session.get(User, link.linked_by_id)
+        if actor is None or actor.status != "active":
+            continue
+        project_totals = {
+            "commits": 0,
+            "pulls": 0,
+            "ci_runs": 0,
+            "deleted_sources": 0,
+        }
+        resolver = github_activity.AuthorResolver(session, link.project_id)
+        new_commits = github_activity.sync_activity(
+            session, client, link, project_totals, now, resolver
+        )
+        link.last_synced_at = now
+        session.flush()
+        associated = github_activity.associate_new_commits(
+            session, actor, link.project_id, new_commits
+        )
+        reconcile_github_evidence(session, actor, link.project_id)
+        totals["projects"] += 1
+        totals["commits"] += project_totals["commits"]
+        totals["pulls"] += project_totals["pulls"]
+        totals["ci_runs"] += project_totals["ci_runs"]
+        totals["deleted_sources"] += project_totals["deleted_sources"]
+        totals["associated"] += associated
+        record_audit(
+            session,
+            actor=actor,
+            action="github.webhook.synced",
+            target=("project", link.project_id),
+            project_id=link.project_id,
+            after={
+                "repo": f"{link.owner}/{link.repo}",
+                **project_totals,
+                "associated": associated,
+            },
+        )
     return totals
 
 
