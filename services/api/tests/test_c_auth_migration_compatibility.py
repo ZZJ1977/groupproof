@@ -180,9 +180,13 @@ def seed_retained_history(engine):
 
         @event.listens_for(session, "do_orm_execute")
         def _defer_post_0013_columns(execute_state):
-            if not execute_state.is_select:
+            if not execute_state.is_orm_statement or not execute_state.is_select:
                 return
-            entities = {desc.get("entity") for desc in execute_state.statement.column_descriptions}
+            entities = {
+                desc.get("entity")
+                for desc in execute_state.statement.column_descriptions
+                if desc.get("entity") is not None and desc.get("expr") is desc.get("entity")
+            }
             options = []
             if Course in entities:
                 options.extend((defer(Course.description), defer(Course.archived_at)))

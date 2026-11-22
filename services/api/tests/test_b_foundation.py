@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.errors import ApiError
 from app.main import app
+from app.modules.b.common import MAX_OPERATION_LENGTH, _receipt_operation
 from app.modules.b.ports import (
     UnavailableMaterialTextPort,
     UnavailableVerificationPort,
@@ -54,3 +55,17 @@ def test_unavailable_verification_port_never_claims_an_invalidation():
     assert outcome.task_id == task_id
     assert outcome.accepted is False
     assert outcome.invalidated_result_ids == ()
+
+
+def test_receipt_operation_compacts_overlong_names_deterministically():
+    short = f"course.join.decide:{uuid4()}"
+    assert _receipt_operation(short) == short
+
+    long_a = f"teacher.actions.remind:{uuid4()}:milestone:{uuid4()}"
+    long_b = f"teacher.actions.remind:{uuid4()}:milestone:{uuid4()}"
+    assert len(long_a) > MAX_OPERATION_LENGTH
+    compacted_a = _receipt_operation(long_a)
+    compacted_b = _receipt_operation(long_b)
+    assert len(compacted_a) == MAX_OPERATION_LENGTH
+    assert compacted_a == _receipt_operation(long_a)
+    assert compacted_a != compacted_b
