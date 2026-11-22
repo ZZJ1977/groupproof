@@ -96,7 +96,7 @@ export function HomeApiPage() {
       </div>
       <div className="gp-grid-2">
         <Section title={t("myProjects")} description="最近更新的最多 10 个项目">
-          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<>{project.name} <StatusBadge status={project.lifecycle} /></>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
+          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
             {project.progress !== null && <ProgressBar value={project.progress} />}
             <ProjectIntegrationStatus projectId={project.id} userId={userId} />
           </ListRow>)}</div>
@@ -104,7 +104,7 @@ export function HomeApiPage() {
         </Section>
         <Section title={t("myCourses")} description="最近更新的最多 10 门课程">
           {isTeacher && <Link className="gp-link mb-3 inline-block text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link>}
-          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<>{course.name} <StatusBadge status={course.status} /></>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
+          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<><span>{course.name}</span> <StatusBadge status={course.status} /></>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
           {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
         </Section>
       </div>
