@@ -2,6 +2,14 @@
 
 更新日期：2026-10-15
 
+## 2026-11-22：`admin-backend` 管理后台真实治理接线
+
+- 在独立 `admin-backend` 分支接入 `services/api` 的真实治理读取端口：账号目录、教师审核、课程草稿/发布/结束、认证审计、共享业务审计、AI 用量和临时只读授权继续复用统一身份、PostgreSQL 迁移与现有 `/api/v1/admin` / `/api/v1/c-admin` 契约；没有新增用户库或第二套后台 API。
+- Admin 页面保留现有 `/admin/*` URL 与 `cidentity=real` / `governance=real` 开关。日志页默认使用真实的共享业务审计；旧 `/admin/audit-logs` 兼容端点在 provider 未接通时明确显示不可用，不把 503 当空数据。AI 用量缺少费用或 Token 时显示未计价/不完整计数，不补零或虚构趋势。
+- 账号恢复/创建、教师申请审核、课程状态变更和访问审批仍要求服务端管理员资格、验证邮箱、CSRF、幂等键、版本校验和理由；临时授权每次实际读取重新检查范围、撤销和到期状态。
+- 已同步 `packages/domain/openapi.json` 与 `api.generated.ts`。本轮验证：管理后台定向 API 测试 110 项通过，治理读取测试 34 项通过，OpenAPI 快照通过，Ruff、前端 lint/typecheck 通过；完整 API 测试在 SQLite 兼容夹具补齐 A 通知表后通过（具体命令与环境说明见 [阶段报告](docs/development-stages/stage-reports/2026-11-22-admin-backend.md)）。
+- Railway 新项目尚未创建：当前只完成服务边界和变量清单预检；没有有效 Railway 登录凭证时不创建外部项目、不写入 secrets，也不把本地验证表述为线上部署。
+
 ## 2026-10-15：C 复用 A 的认证审计与教师审核历史
 
 - 日志页增加独立认证日志入口，读取 A 已保存的真实审计事件，支持筛选、分页和只读详情；全站业务日志仍使用原提供方，来源范围明确区分。
