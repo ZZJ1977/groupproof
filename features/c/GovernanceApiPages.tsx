@@ -19,6 +19,13 @@ const courseStatuses = { draft: "草稿", active: "已发布", ended: "已结束
 const requestStatuses = { pending: "待审批", approved: "已批准", rejected: "已拒绝" } as const;
 const auditRoles = { student: "学生", leader: "组长", teacher: "教师", ta: "助教", admin: "管理员", system: "系统" } as const;
 const targetTypes = { user: "用户", course: "课程", project: "项目", task: "任务", evidence: "证据", system: "系统" } as const;
+const usageScenarioDefinitions = [
+  { key: "github-analysis", label: "GitHub 仓库提交分析", description: "根据同步代码与需求核对实现状态", feature: "analyze_implementation" },
+  { key: "chat-tracking", label: "证据与群聊追踪", description: "群聊记录进入证据流后辅助验收匹配", feature: "match_evidence" },
+  { key: "requirement-analysis", label: "需求文档解析", description: "从项目资料提取需求、模块与冲突", feature: "extract_requirements" },
+  { key: "task-planning", label: "任务规划建议", description: "识别未覆盖需求并生成任务建议", feature: "suggest_tasks" },
+  { key: "risk-analysis", label: "风险与进度解释", description: "结合任务进度和风险记录生成解释", feature: "explain_risk" },
+] as const;
 const authActions = {
   "admin.bootstrapped": "初始化管理员", "auth.acceptance_test_entry": "验收测试入口", "auth.email_registered": "邮箱注册完成",
   "auth.google.account_exists": "Google 登录邮箱与已有账号冲突", "auth.google.cancelled": "取消 Google 登录",
@@ -555,6 +562,13 @@ function UsagePage() {
           </div>
         </Box>
       </div>
+      <Box title="业务场景分布" action={<Badge tone="blue">按方案映射</Badge>}>
+        <Table><thead><tr><th>业务场景</th><th>用途</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th></tr></thead><tbody>{usageScenarioDefinitions.map((scenario) => {
+          const item = featureRows.find((row) => row.key === scenario.feature);
+          return <tr key={scenario.key}><td><strong>{scenario.label}</strong><div className={styles.rowMeta}>{item ? `功能键：${scenario.feature}` : scenario.feature === "match_evidence" ? "群聊同步本身不调用模型" : "当前范围暂无调用"}</div></td><td>{scenario.description}</td><td>{item ? number(item.requests) : "—"}</td><td>{item ? rate(item.succeeded, item.requests) : "—"}</td><td>{item ? number(item.input_tokens + item.output_tokens) : "—"}</td><td>{item ? costs(item.cost_by_currency) : "—"}</td></tr>;
+        })}</tbody></Table>
+        <div className={styles.panelBody}><p className={styles.chartNote}>群聊记录同步属于来源接入，会记录同步结果但不会产生 OpenRouter 费用。只有群聊内容进入证据匹配等 AI 流程后，才会计入模型用量。</p></div>
+      </Box>
       <div className={styles.equalColumns}>
         <Box title="模型调用分析" action={<Badge tone="purple">OpenRouter</Badge>}>
           <div className={styles.panelBody}>
@@ -565,6 +579,7 @@ function UsagePage() {
           {featureRows.length ? <Table><thead><tr><th>功能</th><th>请求</th><th>成功率</th><th>费用</th></tr></thead><tbody>{featureRows.map((item) => <tr key={item.key}><td>{item.key}</td><td>{number(item.requests)}</td><td>{rate(item.succeeded, item.requests)}</td><td>{costs(item.cost_by_currency)}</td></tr>)}</tbody></Table> : <Empty>当前范围没有功能调用记录</Empty>}
         </Box>
       </div>
+      <UsageTable title="按功能明细" items={data.by_feature} />
       <UsageTable title="按日期明细" items={data.daily} />
     </>}
   </>;

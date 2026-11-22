@@ -85,7 +85,7 @@ def handoff(db, scope, http, monkeypatch):
     db.commit()
     calls = []
 
-    def ai_advice(payload):
+    def ai_advice(payload, **_kwargs):
         calls.append(payload)
         return SimpleNamespace(is_placeholder=False, verdict="pass", reasons=["Evidence matches"])
 
