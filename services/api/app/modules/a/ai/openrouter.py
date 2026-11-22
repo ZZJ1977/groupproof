@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from app.modules.a.ai import schemas
+from app.modules.a.ai.prompts import CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT
 from app.modules.a.ai.provider import AIUnavailable
 
 OPENROUTER_BASE = "https://openrouter.ai"
@@ -58,6 +59,22 @@ def _schema_for(feature: str) -> dict[str, Any]:
     return schema
 
 
+def _parse_json_object(content: str) -> dict:
+    """容错解析模型输出的 JSON 对象（兼容偶发 Markdown ```json 围栏）。"""
+    text = (content or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    result = json.loads(text)
+    if not isinstance(result, dict):
+        raise ValueError("model did not return a JSON object")
+    return result
+
+
 class OpenRouterProvider:
     name = "openrouter"
     is_placeholder = False
@@ -81,12 +98,19 @@ class OpenRouterProvider:
     def generate(self, feature: str, payload: dict[str, Any], *, timeout: float) -> dict:
         if feature not in RESULT_MODELS:
             raise AIUnavailable(f"openrouter provider has no feature {feature}")
-        system = (
-            "你是软件工程课程项目的助手。只输出一个 JSON 对象，不要输出任何其他文字。"
-            "使用中文写理由和说明。你的结果只是建议，会由人确认。\n"
-            f"任务：{INSTRUCTIONS[feature]}\n"
-            f"输出必须符合这个 JSON Schema：{json.dumps(_schema_for(feature), ensure_ascii=False)}"
-        )
+        schema_json = json.dumps(_schema_for(feature), ensure_ascii=False)
+        if feature == "summarize_activity":
+            system = (
+                f"{CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT.strip()}\n\n"
+                f"输出必须严格符合以下 JSON Schema：{schema_json}"
+            )
+        else:
+            system = (
+                "你是软件工程课程项目的助手。只输出一个 JSON 对象，不要输出任何其他文字。"
+                "使用中文写理由和说明。你的结果只是建议，会由人确认。\n"
+                f"任务：{INSTRUCTIONS[feature]}\n"
+                f"输出必须符合这个 JSON Schema：{schema_json}"
+            )
         body = {
             "model": self._model,
             "temperature": 0,
@@ -110,10 +134,7 @@ class OpenRouterProvider:
         response.raise_for_status()
         self.last_usage = self._read_usage(response.json())
         content = response.json()["choices"][0]["message"]["content"]
-        result = json.loads(content)
-        if not isinstance(result, dict):
-            raise ValueError("model did not return a JSON object")
-        return result
+        return _parse_json_object(content)
 
     @staticmethod
     def _read_usage(body: dict) -> dict | None:

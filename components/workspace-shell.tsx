@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Bell, BookOpen, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -12,6 +12,7 @@ import { useApp } from "@/components/app-providers";
 import { useWorkspace } from "@/lib/workspace";
 import { useQuery } from "@tanstack/react-query";
 import { apiMode } from "@/lib/api/config";
+import { createCClient } from "@/lib/api/c-client";
 import { inboxApi } from "@/lib/api/c-inbox-client";
 import { globalSearchApi, type SearchItemKind } from "@/lib/api/search-client";
 import { mockService } from "@/lib/api/mock-service";
@@ -83,11 +84,18 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     queryFn: () => Promise.resolve({}),
     enabled: false,
   });
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const dailyClient = useMemo(() => createCClient(), []);
   const cachedHome = useQuery<{ projects?: { id: string; name: string }[] }>({
     queryKey: ["c-home-summary", userId],
-    queryFn: () => Promise.resolve({}),
-    enabled: false,
+    queryFn: () => dailyClient.homeSummary(),
+    enabled: projectMode && switcherOpen && !mockShell && apiMode("daily") === "real",
+    staleTime: 30_000,
+    retry: false,
   });
+  const switcherProjects = mockShell
+    ? data.projects.map((item) => ({ id: item.id, name: item.name }))
+    : (cachedHome.data?.projects ?? []);
   const resolvedProjectName =
     context.projectName ??
     (cachedCContext.status === "success" && !cachedCContext.error ? cachedCContext.data?.project?.name : undefined) ??
@@ -233,7 +241,49 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
       <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
       {kind === "admin" && <div className="px-[22px] text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
-      {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300/80 hover:bg-slate-100/80"><Folder size={15} className="shrink-0 text-[var(--gp-action)]" /> <span className="truncate">{context.courseName ? `${context.courseName} · ` : ""}{resolvedProjectName ?? ts("projectFallback")}</span> <ChevronDown size={13} className="ml-auto shrink-0 text-slate-400" /></Link>}
+      {projectMode && <DropdownMenu open={switcherOpen} onOpenChange={setSwitcherOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="mx-3 mt-2 flex w-[calc(100%-24px)] items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-left text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300/80 hover:bg-slate-100/80"
+          >
+            <Folder size={15} className="shrink-0 text-[var(--gp-action)]" />
+            <span className="truncate">{context.courseName ? `${context.courseName} · ` : ""}{resolvedProjectName ?? ts("projectFallback")}</span>
+            <ChevronDown size={13} className="ml-auto shrink-0 text-slate-400" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-[236px]">
+          <DropdownMenuItem asChild>
+            <Link href={`/projects/${context.projectId}`} onClick={() => setMobileOpen(false)}>
+              <Folder size={14} className="mr-2 text-[var(--gp-action)]" />
+              <span className="truncate font-medium">{resolvedProjectName ?? ts("projectFallback")}</span>
+              <Check size={13} className="ml-auto text-[var(--gp-action)]" />
+            </Link>
+          </DropdownMenuItem>
+          {switcherProjects.filter((item) => item.id !== context.projectId).length > 0 && (
+            <>
+              <div className="my-1 h-px bg-slate-100" />
+              {switcherProjects
+                .filter((item) => item.id !== context.projectId)
+                .map((item) => (
+                  <DropdownMenuItem key={item.id} asChild>
+                    <Link href={`/projects/${encodeURIComponent(item.id)}`} onClick={() => setMobileOpen(false)}>
+                      <Folder size={14} className="mr-2 text-slate-400" />
+                      <span className="truncate">{item.name}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+            </>
+          )}
+          <div className="my-1 h-px bg-slate-100" />
+          <DropdownMenuItem asChild>
+            <Link href="/projects/new" onClick={() => setMobileOpen(false)}>
+              <Plus size={14} className="mr-2 text-[var(--gp-action)]" />
+              <span>新建项目</span>
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>}
       {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={15} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
       <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
         {kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>

@@ -727,3 +727,46 @@ def test_source_query_count_does_not_grow_with_page_size(db, scope, with_referen
         assert len(result["items"]) == 8 and len(statements) == one
     finally:
         event.remove(connection, "before_cursor_execute", trace)
+
+
+def test_github_commit_can_be_adopted_ignored_and_restored(db, scope):
+    commit_row = source(scope, kind="github", title="feat: add export endpoint")
+    other_row = source(scope, kind="github", title="chore: format code")
+    port = FixtureSources([commit_row, other_row])
+
+    adopted = change_activity(
+        db,
+        scope.users["author"],
+        scope.project.id,
+        "github",
+        commit_row.id,
+        adopt_command(scope, reason="Commit implements export criterion"),
+        str(uuid4()),
+        port,
+    )
+    assert adopted["status"] == "adopted"
+    assert adopted["evidence_id"] is not None
+    assert count(db, Evidence) == 1
+
+    ignored = change_activity(
+        db,
+        scope.users["author"],
+        scope.project.id,
+        "github",
+        other_row.id,
+        DecideActivity(action="ignore", expected_version=0, reason="Formatting only"),
+        str(uuid4()),
+        port,
+    )
+    assert ignored["status"] == "ignored"
+    restored = change_activity(
+        db,
+        scope.users["author"],
+        scope.project.id,
+        "github",
+        other_row.id,
+        DecideActivity(action="restore", expected_version=1, reason="Reconsider"),
+        str(uuid4()),
+        port,
+    )
+    assert restored["status"] == "candidate"

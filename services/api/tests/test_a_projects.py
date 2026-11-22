@@ -81,3 +81,41 @@ def test_only_current_leader_can_transfer_and_target_must_be_member(db, scope):
             db, owner, project.id, new_leader_id=scope.users["peer"].id
         )
     assert exc.value.status_code == 422
+
+
+def test_personal_project_add_and_remove_members(db, scope):
+    owner = scope.users["outsider"]
+    teammate = scope.users["member"]
+    project = projects.create_personal_project(db, owner, name="独立协作项目")
+
+    added = projects.add_personal_member(db, owner, project.id, identifier=teammate.email)
+    assert added.user_id == teammate.id and added.role == "member"
+
+    with pytest.raises(ApiError) as dup:
+        projects.add_personal_member(db, owner, project.id, identifier=teammate.email)
+    assert dup.value.code == "ALREADY_A_MEMBER"
+
+    with pytest.raises(ApiError) as leader_leave:
+        projects.remove_personal_member(db, owner, project.id, member_user_id=owner.id)
+    assert leader_leave.value.code == "LEADER_CANNOT_LEAVE"
+
+    projects.remove_personal_member(db, owner, project.id, member_user_id=teammate.id)
+    active = db.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project.id,
+            ProjectMember.user_id == teammate.id,
+            ProjectMember.left_at.is_(None),
+        )
+    )
+    assert active is None
+
+    # 离开后允许组长重新添加
+    readded = projects.add_personal_member(db, owner, project.id, identifier=teammate.email)
+    assert readded.user_id == teammate.id and readded.left_at is None
+
+    # 课程项目成员仍由课程小组统一管理
+    with pytest.raises(ApiError) as course_err:
+        projects.add_personal_member(
+            db, scope.users["leader"], scope.project.id, identifier=owner.email
+        )
+    assert course_err.value.code == "MEMBERSHIP_MANAGED_BY_COURSE_GROUP"

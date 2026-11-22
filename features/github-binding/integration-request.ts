@@ -28,7 +28,7 @@ function githubInstallLink(value: string | undefined) {
 }
 
 export async function projectRequest<T>(path: string, options: {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
 } = {}): Promise<T> {

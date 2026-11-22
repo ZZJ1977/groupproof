@@ -87,7 +87,7 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
   const badge = data.status === "none" ? tr("还没有计划") : tr("计划 v{0} · {1}", { 0: data.version_no, 1: frozen ? tr("已冻结") : tr("草稿") });
 
   return <div>
-    <PageHeader title={tr("任务计划")} description={tr("组员一起拆任务、写验收标准、分配负责人；全员确认后由组长冻结，C 的任务执行只认冻结的计划。")}
+    <PageHeader title={tr("任务计划")} description={tr("与队友一起拆解任务、写明验收标准并分配负责人；全员确认并冻结计划后，即可进入任务执行与提交验收。")}
       actions={<>
         <StatusBadge tone={frozen ? "green" : data.status === "draft" ? "blue" : "gray"} label={badge} />
         {data.can_lead && data.status === "draft" && <button type="button" className={button} disabled={freeze.isPending} onClick={() => freeze.mutate(data)}><Lock size={14} />{tr("冻结计划")}</button>}
@@ -154,7 +154,7 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
 }
 
 function Stat({ label: name, value, warn, note }: { label: string; value: string; warn?: boolean; note?: string }) {
-  return <div className="rounded border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500">{name}</div><div className={`text-xl font-semibold ${warn ? "text-amber-700" : "text-slate-900"}`}>{value}</div>{note && <div className="text-xs text-slate-400">{note}</div>}</div>;
+  return <div className="gp-surface-card p-4"><div className="text-xs font-medium text-slate-500">{name}</div><div className={`mt-1.5 text-2xl font-bold tracking-tight ${warn ? "text-amber-600" : "text-slate-900"}`}>{value}</div>{note && <div className="mt-1 text-xs text-slate-400">{note}</div>}</div>;
 }
 
 function toggle(list: string[], value: string): string[] {
