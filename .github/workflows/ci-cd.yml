@@ -223,6 +223,12 @@ jobs:
       - name: Run Playwright tests
         run: npm run test:e2e
 
+      - name: Run B workspace browser checks
+        run: |
+          npx playwright test --config playwright.b.config.ts
+          npx playwright test --config playwright.b-real.config.ts
+          npx tsx scripts/check-b-url-filters.mjs
+
       - name: Run C workspace browser regressions
         run: npx playwright test --config playwright.c.config.ts
 

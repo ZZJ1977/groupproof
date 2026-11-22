@@ -11,6 +11,7 @@ import type { components, paths } from "@/packages/domain/api.generated";
 import { EvidenceCapturePanel } from "./EvidenceCapturePanel";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, apiButton, ApiFailure, apiInput, ApiPager, isUuid, pageNumber, projectApi, queryPolicy, safeHttps, useCommandKey, versionFailure } from "./c-project-api";
+import { tr } from "@/lib/i18n/tr";
 
 type Evidence = components["schemas"]["EvidenceDetailDTO"];
 type EvidenceQuery = paths["/api/v1/projects/{project_id}/evidence"]["get"]["parameters"]["query"];
@@ -43,7 +44,7 @@ function SourceSnapshotContent({ snapshot, sourceType, projectId, taskId }: { sn
   return <>
     {snapshot.content.availability === "deleted" && <p className="my-2">此快照记录了来源已删除。</p>}
     {originalUrl && <a className="gp-link" href={originalUrl} target="_blank" rel="noopener noreferrer">打开提交时的网址</a>}
-    {sourceType === "task_note" && typeof source.version_no === "number" && <p className="my-2 text-sm">任务说明 v{source.version_no}</p>}
+    {sourceType === "task_note" && typeof source.version_no === "number" && <p className="my-2 text-sm">{tr("任务说明 v{0}", { 0: source.version_no })}</p>}
     {available && sourceType === "task_note" && isUuid(taskId) && isUuid(noteVersionId) &&
       (source.note_version_id == null || source.note_version_id === noteVersionId) &&
       <Link className="gp-link" href={`/projects/${projectId}/tasks/${taskId}?tab=history&note=${noteVersionId}#note-${noteVersionId}`}>查看此版本的任务说明</Link>}
@@ -187,7 +188,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
             {canDecide(item) && checkableSources.has(item.source_type) && <div className="my-3">{originalSourceId(item) ? <button className={apiButton} disabled={busy} onClick={() => { key.reset(); setCommand({ id: item.id, action: "checkSource", expected: item.lock_version, reason: "", sourceId: originalSourceId(item)! }); setError(null); setNotice(""); }}>检查证据来源</button> : <p className="text-sm">原始来源标识不完整，暂不能检查来源；请刷新详情后重试。</p>}</div>}
             <h3 className="mb-2 mt-4 font-semibold">对应标准</h3>{item.criterion_ids.map((id) => <p key={id}>{access.tasks.flatMap((task) => task.criteria).find((criterion) => criterion.id === id)?.text ?? "历史关联标准"}</p>)}
             {canDecide(item) && <div className="my-3 flex gap-2">{["candidate", "pending_confirmation"].includes(item.status) && !item.source_changed && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "adopt", expected: item.lock_version, reason: "" }); setError(null); }}>采纳为正式证据</button>}{["candidate", "pending_confirmation", "formal"].includes(item.status) && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ id: item.id, action: "withdraw", expected: item.lock_version, reason: "" }); setError(null); }}>撤回证据</button>}</div>}
-            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>快照 v{snapshot.version_no} · {formatDate(snapshot.created_at)}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} projectId={projectId} taskId={item.task_id} /></details>)}
+            <h3 className="mt-4 font-semibold">来源快照</h3>{item.source_snapshots.map((snapshot) => <details key={snapshot.id} className="my-2"><summary>{tr("快照 v{0} · {1}", { 0: snapshot.version_no, 1: formatDate(snapshot.created_at) })}</summary><SourceSnapshotContent snapshot={snapshot} sourceType={item.source_type} projectId={projectId} taskId={item.task_id} /></details>)}
             <h3 className="mt-4 font-semibold">决定历史</h3>
             {decisionId && !referencedDecision && <p role="status">这条证据中找不到指定的决定。</p>}
             {item.decisions.map((decision) => <p key={decision.id} ref={decision === referencedDecision ? decisionRef : undefined}

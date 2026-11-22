@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolveRoute } from "../lib/routes.ts";
 
-const plan = readFileSync(new URL("../FRONTEND_IMPLEMENTATION_PLAN.md", import.meta.url), "utf8");
+const plan = readFileSync(new URL("../docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md", import.meta.url), "utf8");
 const origin = process.env.CHECK_ORIGIN ?? "http://localhost:3000";
 const cases = [...plan.matchAll(/^\|\s*(\d{2})\s*\|[^|]*\|\s*`([^`]+)`\s*\|/gm)].map((match) => ({ screen: Number(match[1]), path: match[2] }));
 assert.equal(cases.length, 56, "计划中应列出全部 56 个设计页");

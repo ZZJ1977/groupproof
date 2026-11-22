@@ -29,6 +29,7 @@ import { uploadProjectFile, type FileMetadataInput } from "./files.ts";
 import type { RuleChangeReview } from "@/types/domain";
 import type { BaselineRevision, FileRecord, PlanRevision } from "@/types/domain";
 import type { Course, CourseRuleRevision, Project } from "@/types/domain";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 命令注册表：已实现的命令走完整链路；
@@ -79,7 +80,7 @@ function notImplemented(name: CommandName): Command<unknown, never> {
     name,
     input: z.unknown(),
     apply(_data: MockData, _context: CommandContext, _input: unknown): { data: MockData; result: never } {
-      throw new DomainError("INVALID_STATE", `命令 ${name} 尚未实现（计划：${plannedStage[name] ?? "后续阶段"}），本次未写入任何数据`);
+      throw new DomainError("INVALID_STATE", tr("命令 {0} 尚未实现（计划：{1}），本次未写入任何数据", { 0: name, 1: plannedStage[name] ?? "后续阶段" }));
     },
   };
 }

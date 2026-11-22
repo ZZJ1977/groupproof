@@ -2,6 +2,7 @@ import { z } from "zod";
 import { can } from "@/lib/access/policy";
 import { DomainError, type Command } from "@/lib/commands/core";
 import type { Discussion, Evidence, MockData } from "@/types/domain";
+import { tr } from "@/lib/i18n/tr";
 
 const optionalId = z.string().trim().min(1).optional();
 const createSchema = z.object({
@@ -146,7 +147,7 @@ export const discussionAsEvidence: Command<z.infer<typeof evidenceSchema>, Discu
     }
     const evidence: DiscussionEvidence = {
       id: input.evidenceId, projectId: input.projectId, taskId: task.id, authorId: context.actorId,
-      title: `重要讨论：${thread.title}`, description: thread.body, criterionIds,
+      title: tr("重要讨论：{0}", { 0: thread.title }), description: thread.body, criterionIds,
       source: "discussion", status: "candidate", createdAt: context.now, version: 1,
       sourceRecordId: thread.id,
       sourceRecordUrl: `/projects/${encodeURIComponent(input.projectId)}/discussions?discussion=${encodeURIComponent(thread.id)}`,
