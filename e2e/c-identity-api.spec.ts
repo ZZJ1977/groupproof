@@ -111,6 +111,60 @@ test("user detail drawer closes from the mask and stays within a mobile viewport
   await expect(mobileDrawer).toHaveCount(0);
 });
 
+test("identity directory exposes a retry and request id for service errors", async ({ page }) => {
+  await session(page);
+  let attempts = 0;
+  await page.route("**/api/v1/c-admin/users?**", (route) => {
+    attempts++;
+    return attempts === 1
+      ? route.fulfill({ status: 503, json: { error: { code: "SERVICE_UNAVAILABLE", details: { retryAfterSeconds: 8 } }, meta: { request_id: "req-identity-503" } } })
+      : route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } });
+  });
+  await page.goto("/admin/users");
+  const alert = page.locator("main").getByRole("alert");
+  await expect(alert).toContainText("暂时不可用");
+  await expect(alert).toContainText("请求编号：req-identity-503");
+  await alert.getByRole("button", { name: "重试", exact: true }).click();
+  await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
+test("create account keeps values and shows field-level validation errors", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
+  await page.route("**/api/v1/c-admin/users", (route) => route.fulfill({ status: 422, json: { error: { code: "VALIDATION_ERROR", details: { fieldErrors: { username: "用户名已存在", schoolEmail: "学校邮箱格式不正确" } } }, meta: { request_id: "req-identity-422" } } }));
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "新增账号", exact: true }).click();
+  const username = page.getByLabel("用户名", { exact: true });
+  const schoolEmail = page.getByLabel("学校邮箱", { exact: true });
+  await username.fill("fixture.teacher");
+  await schoolEmail.fill("wrong@example.com");
+  await page.getByLabel("姓名", { exact: true }).fill("李老师");
+  await page.getByRole("button", { name: "确认创建", exact: true }).click();
+  await expect(page.getByText("用户名已存在", { exact: true })).toBeVisible();
+  await expect(page.getByText("学校邮箱格式不正确", { exact: true })).toBeVisible();
+  await expect(page.getByText(/请求编号：req-identity-422/)).toBeVisible();
+  await expect(username).toHaveValue("fixture.teacher");
+  await expect(schoolEmail).toHaveValue("wrong@example.com");
+});
+
+test("blocked account actions and unverified teacher approvals explain the next step", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [{ ...target, canDisable: false }], total: 1, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByText("当前账号暂不可停用", { exact: true })).toBeVisible();
+  await page.getByLabel("处理原因", { exact: true }).fill("核对停用权限");
+  await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeDisabled();
+
+  await page.goto("/admin/teacher-verifications");
+  await page.route("**/api/v1/c-admin/teacher-applications?**", (route) => route.fulfill({ json: { items: [{ ...application, emailVerified: false }], total: 1, page: 1, pageSize: 10 } }));
+  await page.reload();
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByText("学校邮箱尚未验证，验证后才能通过审核。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "通过", exact: true })).toBeDisabled();
+});
+
 test("C7-02 submits the selected identity and school email to A's account service", async ({ page }) => {
   await session(page);
   await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
