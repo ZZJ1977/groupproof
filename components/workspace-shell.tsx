@@ -81,6 +81,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       }));
     if (kind === "admin") {
       return [
+        { label: t("adminItems.overview"), href: "/admin", icon: Home },
         { label: t("adminItems.users"), href: "/admin/users", icon: Users },
         { label: t("adminItems.teacherVerifications"), href: "/admin/teacher-verifications", icon: ShieldCheck },
         { label: t("adminItems.courses"), href: "/admin/courses", icon: BookOpen },
@@ -119,7 +120,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   return <div className="gp-shell">
     {mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
-      <Link href={kind === "admin" ? "/admin/users" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
+      <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
       {kind === "admin" && <div className="px-[22px] text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
       {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><Folder size={16} className="text-[#246bfa]" /> {context.courseName ? `${context.courseName} · ` : ""}{context.projectName ?? ts("projectFallback")} <ChevronDown size={13} className="ml-auto" /></Link>}
       {kind === "teacher" && <div className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><BookOpen size={15} /> {context.courseName ?? defaultCourse?.name ?? ts("courseFallback")} <ChevronDown size={13} className="ml-auto" /></div>}

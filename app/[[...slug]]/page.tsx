@@ -79,8 +79,8 @@ export default async function Page({
     redirect(next.startsWith("/account") ? next : "/account/status");
   }
 
-  if (pathname === "/home" && session.nextAction?.href === "/admin/users") {
-    redirect("/admin/users");
+  if (pathname === "/home" && ["/admin", "/admin/users"].includes(session.nextAction?.href ?? "")) {
+    redirect("/admin");
   }
 
   return (

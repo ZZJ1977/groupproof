@@ -441,6 +441,7 @@
       "settings": "Course settings"
     },
     "adminItems": {
+      "overview": "Admin overview",
       "users": "Users",
       "teacherVerifications": "Teacher reviews",
       "courses": "Courses",

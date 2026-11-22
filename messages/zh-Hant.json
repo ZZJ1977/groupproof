@@ -441,6 +441,7 @@
       "settings": "課程設定"
     },
     "adminItems": {
+      "overview": "管理總覽",
       "users": "使用者管理",
       "teacherVerifications": "教師審核",
       "courses": "課程管理",

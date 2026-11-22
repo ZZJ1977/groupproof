@@ -28,4 +28,4 @@ def test_active_admin_session_points_to_admin_workspace() -> None:
 
     payload = session_payload(context)
 
-    assert payload["nextAction"] == {"type": "enter_admin_workspace", "href": "/admin/users"}
+    assert payload["nextAction"] == {"type": "enter_admin_workspace", "href": "/admin"}
