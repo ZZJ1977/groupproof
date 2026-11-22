@@ -131,7 +131,13 @@ if (workflowId) {
 
 // ---- Service settings. Railway runs a Dockerfile start command in exec form, so wrap it to expand $PORT. ----
 const API_START_COMMAND = `sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port "\${PORT:-8000}"'`;
-await setVariables(apiId, { APP_ENV: "production", PORT: "8000", DATABASE_TIMEZONE: apiVars.DATABASE_TIMEZONE || "Asia/Shanghai" });
+const hasDedicatedReportWorker = services.some((node) => node.serviceName === "groupproof-report-worker");
+await setVariables(apiId, {
+  APP_ENV: "production",
+  PORT: "8000",
+  DATABASE_TIMEZONE: apiVars.DATABASE_TIMEZONE || "Asia/Shanghai",
+  REPORT_INLINE_MODE: hasDedicatedReportWorker ? "false" : "true",
+});
 await graphql("mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}", {
   s: apiId, e: environmentId, input: { rootDirectory: "services/api", dockerfilePath: "Dockerfile", preDeployCommand: ["alembic upgrade head"], preDeployTimeoutSeconds: 300, healthcheckPath: "/readyz", healthcheckTimeout: 120, startCommand: API_START_COMMAND },
 });

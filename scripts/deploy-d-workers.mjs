@@ -58,21 +58,26 @@ const services = nodes(instance.serviceInstances);
 const api = services.find((service) => service.serviceName === "groupproof");
 assert(api, "Unified API service was not found");
 
-// Check every dependency before changing any service configuration.
+// Check every provisioned worker service before changing any service configuration.
+const provisionedTargets = [];
 for (const target of targets) {
   target.id = services.find((service) => service.serviceName === target.name)?.serviceId;
-  assert(target.id, `Provision Railway service ${target.name} before deploying`);
+  if (!target.id) {
+    console.log(`Skipping optional unprovisioned service ${target.name} in ${state.name}/${environment}`);
+    continue;
+  }
   const data = await graphql(
     "query($projectId:String!,$environmentId:String!,$serviceId:String){variables(projectId:$projectId,environmentId:$environmentId,serviceId:$serviceId)}",
     { projectId, environmentId, serviceId: target.id },
   );
   assert(data.variables.DATABASE_URL, `${target.name} needs DATABASE_URL`);
   if (target.needsRedis) assert(data.variables.REDIS_URL, `${target.name} needs REDIS_URL`);
+  provisionedTargets.push(target);
 }
-console.log(`Validated D workers in ${state.name}/${environment}`);
-if (checkOnly) process.exit(0);
+console.log(`Validated ${provisionedTargets.length}/${targets.length} D workers in ${state.name}/${environment}`);
+if (checkOnly || provisionedTargets.length === 0) process.exit(0);
 
-for (const target of targets) {
+for (const target of provisionedTargets) {
   await graphql(
     "mutation($s:String!,$e:String!,$input:ServiceInstanceUpdateInput!){serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$input)}",
     {

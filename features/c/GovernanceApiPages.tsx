@@ -552,6 +552,17 @@ function UsagePage() {
         <Metric label="成功率" value={rate(data.succeeded, data.requests)} hint="按请求结果统计" icon={Gauge} tone="blue" />
         <Metric label="未计价记录" value={number(data.unpriced_requests)} hint={data.unpriced_requests ? "需要补充费用信息" : "计费记录完整"} icon={CircleAlert} tone={data.unpriced_requests ? "amber" : "green"} />
       </div>
+      <Box title="用量汇总">
+        <div className={styles.panelBody}>
+          <p>{tr("范围：{0} 至 {1}（UTC 日历窗口）", { 0: formatDateTime(data.since), 1: formatDateTime(data.until) })}</p>
+          <p>{tr("请求总数：{0} · 成功：{1} · 失败：{2}", { 0: data.requests, 1: data.succeeded, 2: data.failed })}</p>
+          <p>{tr("输入 Token：{0} · 输出 Token：{1}", { 0: data.input_tokens, 1: data.output_tokens })}</p>
+          <p>{tr("费用：{0}", { 0: costs(data.cost_by_currency) })}</p>
+          {data.unpriced_requests > 0 && <p>{data.unpriced_requests} 次调用尚无完整计费数据。</p>}
+          {data.incomplete_token_records > 0 && <p>{data.incomplete_token_records} 次调用的 Token 记录不完整。</p>}
+          <p>{data.aggregation_scope}</p>
+        </div>
+      </Box>
       <div className={styles.twoColumns}>
         <Box title="调用趋势" action={<Badge tone="blue">{tr("最近 {0} 天", { 0: days })}</Badge>}>
           <div className={styles.panelBody}>

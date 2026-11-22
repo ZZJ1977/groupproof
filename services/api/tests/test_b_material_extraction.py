@@ -184,3 +184,29 @@ def test_inline_upload_extracts_md_docx_pdf_and_marks_encrypted_pdf_failed(db, s
     assert enc_dto.extract_status == "failed"
     assert enc_dto.text is None
     assert enc_dto.extract_reason and "密码保护" in enc_dto.extract_reason
+
+
+def test_persisted_material_text_port_returns_unavailable_without_content_hash(db, scope):
+    leader = scope.users["leader"]
+    receipt = UploadReceiptRow(
+        id=uuid4(),
+        scope="project",
+        scope_id=scope.project.id,
+        actor_id=leader.id,
+        provider="local",
+        bucket="test",
+        object_id=f"obj-{uuid4().hex}",
+        filename="需求说明.pdf",
+        declared_mime="application/pdf",
+        declared_size=100,
+        status="completed",
+        created_at=datetime.now(UTC),
+        upload_expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    db.add(receipt)
+    db.flush()
+
+    port = PersistedMaterialTextPort(client=None)
+    result = port.get_text(db, receipt_id=receipt.id, actor_id=leader.id)
+    assert result.status == "unavailable"
+    assert result.reason
