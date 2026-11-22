@@ -32,6 +32,9 @@ function accountStatusLabel(value: string) {
 function emailStatusLabel(verified: boolean) {
   return verified ? "已验证" : "待验证";
 }
+function isIdentityUser(row: IdentityAdminUser | IdentityTeacherApplication): row is IdentityAdminUser {
+  return "roles" in row;
+}
 function message(error: unknown) {
   if (error instanceof ApiError && error.status === 409) return "记录已变化，请刷新后重新确认；刚才的输入已保留。";
   if (error instanceof ApiError && [401, 403].includes(error.status)) return "登录已失效或没有管理权限，请重新登录后再试。";
@@ -108,6 +111,16 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     else updateQuery({ user: row.id });
     setAcknowledgedVersion(recordVersion(row)); setConflict(false); setFeedback("");
   }
+  const currentPageUsers = !teachers && data ? data.items.filter(isIdentityUser) : [];
+  const enabledOnPage = currentPageUsers.filter((row) => row.status === "enabled").length;
+  const disabledOnPage = currentPageUsers.filter((row) => row.status === "disabled").length;
+  const unverifiedOnPage = currentPageUsers.filter((row) => !row.schoolEmailVerified).length;
+  const activeFilters = !teachers ? ([
+    ["q", "搜索", query.get("q")],
+    ["college", "学院", query.get("college")],
+    ["role", "角色", query.get("role") ? roleLabel(query.get("role")!) : null],
+    ["status", "状态", query.get("status") ? accountStatusLabel(query.get("status")!) : null],
+  ] as const).filter(([, , value]) => value) : [];
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data || locked.current) return;
@@ -176,39 +189,33 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     }
   }
   return <div className={`${styles.page} ${styles.identityPage}`}>
-    <PageHeader title={teachers ? "教师审核" : "用户管理"} description={teachers ? "审核待处理申请，查询已保存的审核结果与原因。" : "创建学生或教师账号，管理账号的停用与恢复。"} />
+    <PageHeader title={teachers ? "教师审核" : "用户管理"} description={teachers ? "审核待处理申请，查询已保存的审核结果与原因。" : "创建学生或教师账号，管理账号的停用与恢复。"} actions={!teachers && <div className={styles.identityHeaderActions}><button type="button" className={buttonControl} disabled={pending || result.isFetching} onClick={() => void refresh()}>刷新列表</button><button type="button" className={`${buttonControl} ${styles.primaryButton}`} disabled={pending} aria-expanded={creating} onClick={() => setCreating(!creating)}>{creating ? "取消新增" : "新增账号"}</button></div>} />
     {teachers && <section className={styles.toolbarPanel}><form className={styles.toolbar} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); updateQuery({ status: String(form.get("status")), page: null }); }}><label className={styles.fieldInline}>审核状态<select className={`${inputControl} block`} name="status" defaultValue={applicationStatus} disabled={pending}>{Object.entries(applicationStatuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button className={buttonControl} disabled={pending}>筛选申请</button></form></section>}
-    {!teachers && data && <div className={styles.identityCreateSection}>
-      <button type="button" className={buttonControl} disabled={pending} aria-expanded={creating} onClick={() => setCreating(!creating)}>{creating ? "取消新增" : "新增账号"}</button>
-      {creating && <form className={`${styles.formGrid} ${styles.identityCreateForm}`} onSubmit={createAccount}>
-        <label className={styles.field}>身份<select className={inputControl} name="identity" aria-label="身份" disabled={pending}><option value="student">学生</option><option value="teacher">教师</option></select></label>
-        {([["name", "姓名", 120], ["username", "用户名", 80], ["schoolEmail", "学校邮箱", 255], ["studentId", "学号（选填）", 80], ["college", "学院（选填）", 160]] as const).map(([key, label, length]) =>
-          <label className={styles.field} key={key}>{label}<input className={inputControl} name={key} type={key === "schoolEmail" ? "email" : "text"} required={["name", "username", "schoolEmail"].includes(key)} maxLength={length} disabled={pending} /></label>)}
-        <button className={`${buttonControl} ${styles.identityCreateSubmit}`} disabled={pending}>确认创建</button>
-        <p className={`${styles.fieldHint} ${styles.identityFormHint}`}>创建前请核对身份和学校邮箱。教师申请将进入审核列表。本人可用学校邮箱通过“忘记密码”设置密码。</p>
-      </form>}
-    </div>}
+    {!teachers && creating && <form className={`${styles.formGrid} ${styles.identityCreateForm}`} onSubmit={createAccount}>
+      <label className={styles.field}>身份<select className={inputControl} name="identity" aria-label="身份" disabled={pending}><option value="student">学生</option><option value="teacher">教师</option></select></label>
+      {([["name", "姓名", 120], ["username", "用户名", 80], ["schoolEmail", "学校邮箱", 255], ["studentId", "学号（选填）", 80], ["college", "学院（选填）", 160]] as const).map(([key, label, length]) =>
+        <label className={styles.field} key={key}>{label}<input className={inputControl} name={key} type={key === "schoolEmail" ? "email" : "text"} required={["name", "username", "schoolEmail"].includes(key)} maxLength={length} disabled={pending} /></label>)}
+      <button className={`${buttonControl} ${styles.identityCreateSubmit}`} disabled={pending}>确认创建</button>
+      <p className={`${styles.fieldHint} ${styles.identityFormHint}`}>创建前请核对身份和学校邮箱。教师申请将进入审核列表。本人可用学校邮箱通过“忘记密码”设置密码。</p>
+    </form>}
     {!teachers && <form className={`${styles.toolbarPanel} ${styles.toolbar} ${styles.identityUserFilters}`} key={query.toString()} onSubmit={(event) => {
       event.preventDefault(); const form = new FormData(event.currentTarget);
-      updateQuery(Object.fromEntries(["q", "role", "status", "college"].map((key) => [key, String(form.get(key) || "") || null]).concat([["page", null]])));
+      updateQuery(Object.fromEntries(["q", "role", "status", "college"].map((key) => [key, String(form.get(key) || "") || null]).concat([["page", null], ["user", null]])));
     }}>
-      <input className={inputControl} name="q" aria-label="姓名、邮箱或学号" placeholder="姓名、邮箱或学号" defaultValue={query.get("q") ?? ""} />
-      <input className={inputControl} name="college" aria-label="学院" placeholder="学院" defaultValue={query.get("college") ?? ""} />
-      <select className={inputControl} name="role" aria-label="角色" defaultValue={query.get("role") ?? ""}><option value="">全部角色</option>{["student", "teacher", "ta", "admin"].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
-      <select className={inputControl} name="status" aria-label="账号状态" defaultValue={query.get("status") ?? ""}><option value="">全部状态</option><option value="enabled">可用</option><option value="disabled">停用</option></select>
-      <button className={buttonControl}>查询</button>
+      <label className={styles.field}><span>搜索用户</span><input className={inputControl} name="q" aria-label="姓名、邮箱或学号" placeholder="姓名、邮箱或学号" defaultValue={query.get("q") ?? ""} /></label>
+      <label className={styles.field}><span>学院</span><input className={inputControl} name="college" aria-label="学院" placeholder="学院" defaultValue={query.get("college") ?? ""} /></label>
+      <label className={styles.field}><span>角色</span><select className={inputControl} name="role" aria-label="角色" defaultValue={query.get("role") ?? ""}><option value="">全部角色</option>{["student", "teacher", "ta", "admin"].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+      <label className={styles.field}><span>账号状态</span><select className={inputControl} name="status" aria-label="账号状态" defaultValue={query.get("status") ?? ""}><option value="">全部状态</option><option value="enabled">可用</option><option value="disabled">已停用</option></select></label>
+      <div className={styles.identityFilterActions}><button className={`${buttonControl} ${styles.primaryButton}`}>查询</button><button type="button" className={buttonControl} onClick={() => updateQuery({ q: null, college: null, role: null, status: null, page: null, user: null })}>重置筛选</button></div>
+      <div className={styles.identityQuickFilters} role="group" aria-label="快捷状态筛选">{[["", "全部"], ["enabled", "可用"], ["disabled", "已停用"]].map(([value, label]) => <button key={value || "all"} type="button" className={styles.identityQuickFilter} aria-pressed={(query.get("status") ?? "") === value} onClick={() => updateQuery({ status: value || null, page: null, user: null })}>{label}</button>)}</div>
     </form>}
-    <div className={styles.identityToolbarFooter}><button className={`${buttonControl} mb-4`} type="button" disabled={pending || result.isFetching} onClick={() => void refresh()}>刷新列表</button><span className={styles.muted}>数据来自当前环境的身份服务</span></div>
-    {result.isFetching && <p role="status">正在读取…</p>}
+    {!teachers && activeFilters.length > 0 && <div className={styles.identityFilterChips} aria-label="已生效筛选">{activeFilters.map(([key, label, value]) => <button type="button" className={styles.identityFilterChip} key={key} onClick={() => updateQuery({ [key]: null, page: null, user: null })}>{label}：{value}<span aria-hidden="true">×</span></button>)}</div>}
+    {teachers && <div className={styles.identityToolbarFooter}><button className={`${buttonControl} mb-4`} type="button" disabled={pending || result.isFetching} onClick={() => void refresh()}>刷新列表</button><span className={styles.muted}>数据来自当前环境的身份服务</span></div>}
+    {result.isFetching && <p role="status" className={styles.identityLoading}>正在读取…</p>}
     {result.isError && <p role="alert">{message(result.error)}</p>}
     {feedback && <p role="status" className="mb-4">{feedback}</p>}
-    {data && <Panel className={styles.identityTablePanel}><div className={styles.identityRows}>{data.items.map((row) => <article key={row.id} className={styles.identityRow}>
-      <div><strong>{row.name}</strong><p className="text-sm text-slate-600">{row.college} · {"roles" in row ? <><span className="mr-2 inline-flex flex-wrap gap-1">{row.roles.map((role) => <span className={styles.identityBadge} data-identity-role={role} key={role}>{roleLabel(role)}</span>)}</span><span className={`${styles.identityBadge} mr-2`} data-identity-status={row.status}>{accountStatusLabel(row.status)}</span><span className={styles.identityBadge} data-identity-email-status={row.schoolEmailVerified ? "verified" : "unverified"}>{emailStatusLabel(row.schoolEmailVerified)}</span></> : `${applicationStatuses[row.status]} · 当前邮箱：${row.emailDomain || "未绑定"} · ${row.emailVerified ? "已验证" : "未验证"}`}</p></div>
-      <button className={buttonControl} disabled={pending || ((conflict || selectionChanged) && selectedId === row.id)} onClick={() => selectRow(row)}>查看</button>
-    </article>)}</div>
-      {!data.items.length && <EmptyState title="没有符合条件的记录" />}
-      <div className={styles.tableFooter}><span>共 {data.total} 条 · 第 {data.page} 页</span><div className={styles.actions}><button className={buttonControl} disabled={page <= 1 || pending} onClick={() => { clearSelection(); updateQuery({ page: String(page - 1) }); }}>上一页</button><button className={buttonControl} disabled={page * data.pageSize >= data.total || pending} onClick={() => { clearSelection(); updateQuery({ page: String(page + 1) }); }}>下一页</button></div></div>
-    </Panel>}
+    {!teachers && data && <div className={styles.identitySummary} aria-label="用户目录摘要"><div className={styles.identitySummaryCard}><span>结果总数</span><strong>{data.total}</strong><small>当前筛选结果</small></div><div className={styles.identitySummaryCard}><span>当前页可用</span><strong>{enabledOnPage}</strong><small>本页账号</small></div><div className={styles.identitySummaryCard}><span>当前页已停用</span><strong>{disabledOnPage}</strong><small>本页账号</small></div><div className={styles.identitySummaryCard}><span>当前页待验证</span><strong>{unverifiedOnPage}</strong><small>学校邮箱</small></div></div>}
+    {data && <Panel className={styles.identityTablePanel}><>{!teachers ? <div className={styles.identityTableWrap}><table className={styles.identityTable}><thead><tr><th scope="col">用户</th><th scope="col">学院</th><th scope="col">角色</th><th scope="col">账号状态</th><th scope="col">学校邮箱</th><th scope="col">操作</th></tr></thead><tbody>{data.items.map((row) => { const user = isIdentityUser(row) ? row : null; const application = !user && "applicationVersion" in row ? row : null; return <tr key={row.id} aria-selected={selectedId === row.id}><td><div className={styles.identityUserCell}><span className={styles.identityAvatar} aria-hidden="true">{row.name.slice(0, 1) || "?"}</span><div><strong>{row.name}</strong>{user && <small>{user.studentId || "未填写学号"}</small>}</div></div></td><td>{row.college || "未填写"}</td><td>{user ? <div className={styles.identityBadgeGroup}>{user.roles.length ? user.roles.map((role) => <span className={styles.identityBadge} data-identity-role={role} key={role}>{roleLabel(role)}</span>) : <span className={styles.identityBadge}>未分配</span>}</div> : application ? <span className={styles.identityBadge}>{applicationStatuses[application.status]}</span> : "—"}</td><td>{user ? <span className={styles.identityBadge} data-identity-status={user.status}>{accountStatusLabel(user.status)}</span> : "—"}</td><td>{user ? <div className={styles.identityEmailCell}><span>{user.schoolEmail || "未绑定"}</span><span className={styles.identityBadge} data-identity-email-status={user.schoolEmailVerified ? "verified" : "unverified"}>{emailStatusLabel(user.schoolEmailVerified)}</span></div> : "—"}</td><td><button className={buttonControl} disabled={pending || ((conflict || selectionChanged) && selectedId === row.id)} onClick={() => selectRow(row)}>查看</button></td></tr>; })}</tbody></table>{!data.items.length && <EmptyState title="没有符合条件的记录" />}</div> : <div className={styles.identityRows}>{data.items.map((row) => <article key={row.id} className={styles.identityRow}><div><strong>{row.name}</strong><p className="text-sm text-slate-600">{row.college} · {"roles" in row ? row.roles.map(roleLabel).join("、") : `${applicationStatuses[row.status]} · 当前邮箱：${row.emailDomain || "未绑定"} · ${row.emailVerified ? "已验证" : "未验证"}`}</p></div><button className={buttonControl} disabled={pending || ((conflict || selectionChanged) && selectedId === row.id)} onClick={() => selectRow(row)}>查看</button></article>)}</div>}</><div className={styles.tableFooter}><span>共 {data.total} 条 · 第 {data.page} 页</span><div className={styles.actions}><button className={buttonControl} disabled={page <= 1 || pending} onClick={() => { clearSelection(); updateQuery({ page: String(page - 1) }); }}>上一页</button><button className={buttonControl} disabled={page * data.pageSize >= data.total || pending} onClick={() => { clearSelection(); updateQuery({ page: String(page + 1) }); }}>下一页</button></div></div></Panel>}
     {selected && <Panel title={selected.name} className={`${styles.identityDetailPanel} mt-4`}>
       {"schoolEmail" in selected && <p>{selected.schoolEmail ?? "尚未验证学校邮箱"} · {selected.studentId ?? "无学号"}</p>}
       {"applicationVersion" in selected && <div className="space-y-3"><div><h3 className="font-semibold">提交时的申请资料</h3><p>姓名：{selected.submittedName ?? "未记录"}</p><p>申请身份：{selected.submittedIdentity === "teacher" ? "教师" : selected.submittedIdentity === "student" ? "学生" : "未记录"}</p><p>学校邮箱域：{selected.submittedEmailDomain ?? "未记录"}</p><p>申请版本：{selected.applicationVersion} · 提交时间：{formatDate(selected.createdAt)}</p></div><div><h3 className="font-semibold">当前账号资料</h3><p>姓名：{selected.name}</p><p>当前学校邮箱域：{selected.emailDomain || "未绑定"} · {selected.emailVerified ? "已验证" : "未验证"}</p><p className="text-sm text-slate-600">当前资料可能已变化，不代表提交或审核时的资料。</p></div>{selected.status !== "pending" && <div><h3 className="font-semibold">已保存的审核结果：{applicationStatuses[selected.status]}</h3><p>审核时间：{selected.reviewedAt ? formatDate(selected.reviewedAt) : "未记录"}</p><p>审核人（当前姓名）：{selected.reviewerName ?? "未记录或账号已不存在"}</p><p className="whitespace-pre-wrap">审核原因：{selected.reviewReason ?? "未记录"}</p><p className="text-sm text-slate-600">此记录只读；结果取自当时保存的审核决定，不根据当前账号角色推断。</p></div>}</div>}
