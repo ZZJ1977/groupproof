@@ -9,6 +9,7 @@ export type DailyActivityQuery = paths["/api/v1/me/activity"]["get"]["parameters
 export type ActivitySourceType = "github" | "feishu";
 export type ActivityQuery = paths["/api/v1/projects/{project_id}/activities/{source_type}"]["get"]["parameters"]["query"];
 export type ProjectFileQuery = paths["/api/v1/projects/{project_id}/files"]["get"]["parameters"]["query"];
+export type ActivitySummary = Schema["ActivitySummaryDTO"];
 
 export class CApiError extends Error {
   constructor(
@@ -79,6 +80,31 @@ export function createCClient(client = createApiClient()) {
     async activityHistory(projectId: string, sourceType: ActivitySourceType, sourceId: string) {
       return unwrap(await client.GET("/api/v1/projects/{project_id}/activities/{source_type}/{source_id}/history", {
         params: { path: { project_id: projectId, source_type: sourceType, source_id: sourceId } },
+      }));
+    },
+    async githubActivitySummaries(projectId: string, sourceIds: string[], signal?: AbortSignal) {
+      return unwrap(await client.GET("/api/v1/a/projects/{project_id}/github/activity/summaries", {
+        signal,
+        params: { path: { project_id: projectId }, query: { source_ids: sourceIds } },
+      }));
+    },
+    async githubActivitySummary(projectId: string, activityId: string, signal?: AbortSignal) {
+      return unwrap(await client.GET("/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary", {
+        signal,
+        params: { path: { project_id: projectId, activity_id: activityId } },
+      }));
+    },
+    async generateGithubActivitySummary(projectId: string, activityId: string, signal?: AbortSignal) {
+      return unwrap(await client.POST("/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary", {
+        signal,
+        params: { path: { project_id: projectId, activity_id: activityId } },
+      }));
+    },
+    async generateGithubActivitySummaries(projectId: string, sourceIds: string[], signal?: AbortSignal) {
+      return unwrap(await client.POST("/api/v1/a/projects/{project_id}/github/activity/summaries", {
+        signal,
+        params: { path: { project_id: projectId } },
+        body: { source_ids: sourceIds },
       }));
     },
     async verifyFeishuAttachment(projectId: string, attachmentId: string) {

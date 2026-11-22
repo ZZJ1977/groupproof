@@ -283,6 +283,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Github Activity Summary */
+        get: operations["get_github_activity_summary_api_v1_a_projects__project_id__github_activity__activity_id__summary_get"];
+        put?: never;
+        /** Generate Github Activity Summary */
+        post: operations["generate_github_activity_summary_api_v1_a_projects__project_id__github_activity__activity_id__summary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/a/projects/{project_id}/github/activity/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Github Activity Summaries */
+        get: operations["list_github_activity_summaries_api_v1_a_projects__project_id__github_activity_summaries_get"];
+        put?: never;
+        /** Generate Github Activity Summaries */
+        post: operations["generate_github_activity_summaries_api_v1_a_projects__project_id__github_activity_summaries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects/{project_id}/github/analyze": {
         parameters: {
             query?: never;
@@ -4347,6 +4383,16 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ActivityEvidenceDTO */
+        ActivityEvidenceDTO: {
+            /** Quote */
+            quote: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "title" | "body" | "metadata" | "files";
+        };
         /** ActivityHistoryDTO */
         ActivityHistoryDTO: {
             /** Decisions */
@@ -4421,6 +4467,64 @@ export interface components {
             status: "candidate" | "adopted" | "ignored";
             /** Task Id */
             task_id: string | null;
+        };
+        /** ActivitySummaryBatchRequest */
+        ActivitySummaryBatchRequest: {
+            /** Source Ids */
+            source_ids: string[];
+        };
+        /** ActivitySummaryDTO */
+        ActivitySummaryDTO: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Evidence */
+            evidence?: components["schemas"]["ActivityEvidenceDTO"][];
+            /** Generated At */
+            generated_at?: string | null;
+            /** Headline */
+            headline?: string | null;
+            /** Impact */
+            impact?: string | null;
+            /** Implementation */
+            implementation?: string | null;
+            /** Input Hash */
+            input_hash: string;
+            /** Insufficient Context */
+            insufficient_context?: string[];
+            /**
+             * Is Placeholder
+             * @default false
+             */
+            is_placeholder: boolean;
+            /** Model */
+            model?: string | null;
+            /**
+             * Needs Human Review
+             * @default true
+             */
+            needs_human_review: boolean;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider?: string | null;
+            /** Risks */
+            risks?: string[];
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Revision */
+            source_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_generated" | "pending" | "ready" | "failed" | "unsupported";
+            /** Verification */
+            verification?: string[];
         };
         /** AddDeliverable */
         AddDeliverable: {
@@ -7754,6 +7858,11 @@ export interface components {
             data: components["schemas"]["ActivityStateDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[ActivitySummaryDTO] */
+        SuccessResponse_ActivitySummaryDTO_: {
+            data: components["schemas"]["ActivitySummaryDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[AdminUserDetailDTO] */
         SuccessResponse_AdminUserDetailDTO_: {
             data: components["schemas"]["AdminUserDetailDTO"];
@@ -7935,6 +8044,12 @@ export interface components {
         /** SuccessResponse[ImplementationAnalysisResult] */
         SuccessResponse_ImplementationAnalysisResult_: {
             data: components["schemas"]["ImplementationAnalysisResult"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[list[ActivitySummaryDTO]] */
+        SuccessResponse_list_ActivitySummaryDTO__: {
+            /** Data */
+            data: components["schemas"]["ActivitySummaryDTO"][];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[list[AiUsageSummaryDTO]] */
@@ -9251,6 +9366,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_GithubActivityPageDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_github_activity_summary_api_v1_a_projects__project_id__github_activity__activity_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                activity_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ActivitySummaryDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_github_activity_summary_api_v1_a_projects__project_id__github_activity__activity_id__summary_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                activity_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ActivitySummaryDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_github_activity_summaries_api_v1_a_projects__project_id__github_activity_summaries_get: {
+        parameters: {
+            query?: {
+                source_ids?: string[];
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_ActivitySummaryDTO__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_github_activity_summaries_api_v1_a_projects__project_id__github_activity_summaries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivitySummaryBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_list_ActivitySummaryDTO__"];
                 };
             };
             /** @description Validation Error */

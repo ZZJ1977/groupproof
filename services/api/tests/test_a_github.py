@@ -139,6 +139,24 @@ def test_blob_is_decoded_and_failures_are_503(private_pem):
     assert exc.value.status_code == 503
 
 
+def test_commit_detail_reads_file_changes(private_pem):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path.endswith("/access_tokens"):
+            return httpx.Response(201, json={"token": "t", "expires_at": "2026-11-11T13:00:00Z"})
+        assert request.url.path == "/repos/acme/demo/commits/abc123"
+        assert request.headers["Authorization"] == "Bearer t"
+        return httpx.Response(200, json={"sha": "abc123", "files": [{"filename": "src/app.ts"}]})
+
+    client = github.GithubClient(
+        _settings(private_pem), transport=httpx.MockTransport(handler), now=lambda: NOW
+    )
+    assert client.commit_detail("acme", "demo", "abc123", 1)["sha"] == "abc123"
+    assert calls == ["/app/installations/1/access_tokens", "/repos/acme/demo/commits/abc123"]
+
+
 def test_token_failure_is_503_not_empty_result(private_pem):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"message": "Bad credentials"})

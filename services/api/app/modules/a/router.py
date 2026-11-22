@@ -23,6 +23,7 @@ from app.db.models import User
 from app.db.session import get_session
 from app.modules.a import (
     access_grants,
+    activity_summary,
     ai,
     code_analysis,
     feishu,
@@ -551,6 +552,38 @@ class GithubActivityPageDTO(BaseModel):
     page_size: int
 
 
+class ActivityEvidenceDTO(BaseModel):
+    source: Literal["title", "body", "metadata", "files"]
+    quote: str
+
+
+class ActivitySummaryDTO(BaseModel):
+    source_id: UUID
+    status: Literal["not_generated", "pending", "ready", "failed", "unsupported"]
+    source_revision: str
+    prompt_version: str
+    input_hash: str
+    headline: str | None = None
+    implementation: str | None = None
+    impact: str | None = None
+    verification: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    evidence: list[ActivityEvidenceDTO] = Field(default_factory=list)
+    confidence: float | None = None
+    insufficient_context: list[str] = Field(default_factory=list)
+    provider: str | None = None
+    model: str | None = None
+    is_placeholder: bool = False
+    needs_human_review: bool = True
+    error_code: str | None = None
+    generated_at: datetime | None = None
+
+
+class ActivitySummaryBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_ids: list[UUID] = Field(min_length=1, max_length=20)
+
+
 @router.get(
     "/api/v1/a/projects/{project_id}/github/activity",
     response_model=SuccessResponse[GithubActivityPageDTO],
@@ -584,6 +617,82 @@ def list_github_activity(
         ),
         request,
     )
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/github/activity/summaries",
+    response_model=SuccessResponse[list[ActivitySummaryDTO]],
+    dependencies=[Depends(_private)],
+)
+def list_github_activity_summaries(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    source_ids: list[UUID] = Query(default_factory=list),
+):
+    return success(
+        [
+            ActivitySummaryDTO(**item)
+            for item in activity_summary.list_summaries(session, user, project_id, source_ids)
+        ],
+        request,
+    )
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary",
+    response_model=SuccessResponse[ActivitySummaryDTO],
+    dependencies=[Depends(_private)],
+)
+def get_github_activity_summary(
+    project_id: UUID,
+    activity_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    return success(
+        ActivitySummaryDTO(**activity_summary.get_summary(session, user, project_id, activity_id)),
+        request,
+    )
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary",
+    response_model=SuccessResponse[ActivitySummaryDTO],
+    dependencies=[Depends(_private)],
+)
+def generate_github_activity_summary(
+    project_id: UUID,
+    activity_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    result = activity_summary.generate_summary(session, user, project_id, activity_id)
+    session.commit()
+    return success(ActivitySummaryDTO(**result), request)
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/github/activity/summaries",
+    response_model=SuccessResponse[list[ActivitySummaryDTO]],
+    dependencies=[Depends(_private)],
+)
+def generate_github_activity_summaries(
+    project_id: UUID,
+    payload: ActivitySummaryBatchRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    result = [
+        activity_summary.generate_summary(session, user, project_id, source_id)
+        for source_id in payload.source_ids
+    ]
+    session.commit()
+    return success([ActivitySummaryDTO(**item) for item in result], request)
 
 
 class GithubLoginRequest(BaseModel):
