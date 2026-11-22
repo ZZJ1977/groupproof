@@ -31,7 +31,7 @@ Open [http://localhost:3000](http://localhost:3000). Sign-in supports password a
 npm run lint
 npm run typecheck
 npm run build
-npm run check:routes     # 56 页路由映射；CHECK_HTTP=1 时按匿名鉴权语义核对（redirect: manual）
+npm run check:routes     # 56 页路由 + Admin 工作台入口；CHECK_HTTP=1 时按匿名鉴权语义核对（redirect: manual）
 npm run check:access     # 权限矩阵断言（lib/access/policy.ts）
 npm run check:i18n       # 简体/繁体/英文词条 key 与插值参数一致性
 npm run check:auth       # 需开发服务器：匿名直链/旧链接兼容/登录页文案/404/语言恢复（CHECK_AUTH_API=1 加 API 负面用例）

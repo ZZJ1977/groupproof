@@ -10,6 +10,14 @@
 - 已同步 `packages/domain/openapi.json` 与 `api.generated.ts`。本轮验证：管理后台定向 API 测试 110 项通过，治理读取测试 34 项通过，OpenAPI 快照通过，Ruff、前端 lint/typecheck 通过；完整 API 测试在 SQLite 兼容夹具补齐 A 通知表后通过（具体命令与环境说明见 [阶段报告](docs/development-stages/stage-reports/2026-11-22-admin-backend.md)）。
 - Railway 新项目 `groupproof-admin` 已在负责人授权的 workspace 创建并完成部署：Postgres、Redis、API、Web 和 worker 均在线并各运行 1 个副本，worker 已连接 Redis 并进入 ready 状态。应用服务只读取 Railway Variables，仓库不保存 secrets；Google、邮箱注册和密码找回在凭据配置前保持关闭，不能把匿名健康检查当作完整账号验收。
 
+## 2026-11-22：管理后台工作台视觉刷新
+
+- 沿用 `/admin/*` 路由、真实治理 API、权限和环境 Cookie，新增后台专用浅色工作台主题：平台管理 / 运行分析分组导航、紧凑顶部栏、圆角卡片、统一焦点态和窄屏折叠菜单；学生与教师工作区不使用这套后台主题。
+- 首页保留真实用户、教师申请、课程和访问审批查询，改为 KPI 卡片、待办入口、账号/课程分布和服务连接状态；用户目录与教师审核统一筛选栏、列表、分页和详情操作区，原有“新增账号、查看、通过、拒绝、停用/恢复”等操作文案不变。
+- AI 用量页增加按 GitHub 提交分析、证据/群聊追踪、需求解析、任务规划、风险解释的场景卡片，并继续显示真实请求、Token、费用、未计价和 Token 不完整记录；无样本时显示“暂无样本”，不生成估算趋势。
+- 环境切换仍在同一后台顶部完成；切换失败会保留当前环境并提供重试入口。新增结构检查 `scripts/check-admin-ui.mjs` 与 `scripts/check-admin-pages.mjs`。
+- 本轮检查：两项管理台结构断言、`npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:routes`（56 个设计页 + `/admin` 工作台入口）、`npm run check:i18n` 通过。真实 API 浏览器联调受本机 8000 端口已有服务占用影响；另用隔离接口夹具完成桌面与 390px 浏览器视觉走查，不把夹具数据当作线上证据。
+
 更新日期：2026-11-19
 
 ## 2026-11-19 C 项目文件与课程文件
