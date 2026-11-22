@@ -172,7 +172,7 @@ def add_personal_member(
         description=(
             f"{actor.name or '项目组长'} 将你添加为项目成员，现在可以协作规划任务和同步进展。"
         ),
-        target={"kind": "project", "id": str(project_id), "href": f"/projects/{project_id}"},
+        target={"kind": "project", "id": project_id, "project_id": project_id},
     )
     return row
 
