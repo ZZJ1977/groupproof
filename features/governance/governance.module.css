@@ -801,11 +801,19 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 18px;
   padding-right: 30px;
   padding-bottom: 20px;
   border-bottom: 1px solid #e8edf4;
 }
+
+.identityDrawerHeading {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.identityDrawerHeading :global(.gp-dialog-description) { overflow-wrap: anywhere; }
 
 .identityDrawerTitle {
   margin: 0;
@@ -818,6 +826,9 @@
 .identityDrawerHeader [data-identity-status="enabled"] {
   flex: 0 0 auto;
 }
+
+.identityDrawerHeader > .button { flex: 0 0 auto; }
+.identityDrawerHeader > .identityBadgeGroup { flex: 1 1 100%; min-width: 0; }
 
 .identityDrawerContent {
   display: flex;
@@ -850,9 +861,17 @@
   font-size: 13px;
 }
 
-.identityDrawerBody > .button {
-  align-self: flex-start;
+.identityDrawerFooter {
+  position: sticky;
+  bottom: -28px;
+  z-index: 1;
+  margin: auto -28px -28px;
+  padding: 14px 28px 28px;
+  border-top: 1px solid #e8edf4;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .82), #fff 35%);
 }
+
+.identityDrawerFooter .button { min-width: 88px; }
 
 .scenarioGrid {
   display: grid;
@@ -979,6 +998,7 @@
 
   .identityDrawerBody { padding: 22px 18px; }
   .identityDrawerHeader { padding-right: 28px; }
+  .identityDrawerFooter { margin-inline: -18px; padding-inline: 18px; }
 }
 
 @media (max-width: 420px) {
