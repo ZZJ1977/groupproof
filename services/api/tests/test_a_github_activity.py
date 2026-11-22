@@ -157,6 +157,30 @@ def test_sync_stores_commits_pulls_and_runs_and_is_idempotent(db, scope):
     assert len(rows(db, scope)) == 3
 
 
+def test_commit_detail_is_bounded_and_redacts_common_secrets():
+    files, truncated, stats = github_activity._commit_detail(
+        {
+            "files": [
+                {
+                    "filename": "config.ts",
+                    "status": ["modified"],
+                    "additions": -4,
+                    "deletions": 7,
+                    "patch": "const api_token = super-secret;\nconst keep = true;",
+                },
+                {"filename": "README.md", "status": "added", "patch": "+docs"},
+            ],
+            "stats": {"additions": 4, "deletions": 7, "total": 11},
+            "changed_files": 2,
+        }
+    )
+    assert files[0]["status"] == "unknown"
+    assert "[REDACTED]" in files[0]["patch"]
+    assert files[0]["additions"] == 0
+    assert stats == {"additions": 4, "deletions": 7, "total": 11, "changed_files": 2}
+    assert truncated is False
+
+
 def test_changed_pull_request_gets_a_new_revision(db, scope):
     client = FakeGithub(pulls=[pull(3, "加登录")])
     sync(db, scope, client)

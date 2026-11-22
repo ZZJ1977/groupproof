@@ -313,10 +313,21 @@ def test_brevo_server_error_retries_then_fails(brevo_env, monkeypatch):
 
 
 def test_brevo_configuration_and_public_availability() -> None:
-    incomplete = Settings(app_mode="dev", mail_mode="brevo", mail_from="a@test.example")
+    # Keep this unit test independent from a developer's repository-level .env.
+    incomplete = Settings(
+        app_mode="dev",
+        mail_mode="brevo",
+        brevo_api_key="",
+        mail_from="a@test.example",
+        mail_public_enabled=False,
+    )
     assert not incomplete.mail_configured
     ready = Settings(
-        app_mode="dev", mail_mode="brevo", brevo_api_key="k", mail_from="a@test.example"
+        app_mode="dev",
+        mail_mode="brevo",
+        brevo_api_key="k",
+        mail_from="a@test.example",
+        mail_public_enabled=False,
     )
     assert ready.mail_configured
     assert not ready.mail_publicly_available

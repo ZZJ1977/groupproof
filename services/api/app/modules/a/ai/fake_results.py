@@ -100,3 +100,33 @@ def analyze_implementation(payload: dict[str, Any]) -> dict:
             for requirement in payload["requirements"]
         ]
     }
+
+
+def summarize_activity(payload: dict[str, Any]) -> dict:
+    title = str(payload.get("title") or "这次提交")
+    body = " ".join(str(payload.get("body") or "").split())
+    files = payload.get("files") or []
+    file_names = ", ".join(str(item.get("path")) for item in files[:4] if item.get("path"))
+    implementation = body[:560] or (
+        f"修改了 {file_names}。" if file_names else "提交说明没有提供足够的实现细节。"
+    )
+    file_path = next(
+        (str(item.get("path")) for item in files if isinstance(item, dict) and item.get("path")),
+        "",
+    )
+    if not body and file_path:
+        evidence = {"source": "files", "quote": file_path[:120]}
+    elif body:
+        evidence = {"source": "body", "quote": body[:120]}
+    else:
+        evidence = {"source": "title", "quote": title[:120]}
+    return {
+        "headline": title[:240],
+        "implementation": implementation,
+        "impact": None,
+        "verification": [],
+        "risks": [],
+        "evidence": [evidence],
+        "confidence": 0.5 if body else 0.2,
+        "insufficient_context": [] if body else ["提交正文没有说明影响范围或验证结果"],
+    }

@@ -798,6 +798,30 @@
         "title": "ActivityDecisionDTO",
         "type": "object"
       },
+      "ActivityEvidenceDTO": {
+        "properties": {
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "title",
+              "body",
+              "metadata",
+              "files"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "quote"
+        ],
+        "title": "ActivityEvidenceDTO",
+        "type": "object"
+      },
       "ActivityHistoryDTO": {
         "properties": {
           "decisions": {
@@ -1001,6 +1025,194 @@
           "lock_version"
         ],
         "title": "ActivityStateDTO",
+        "type": "object"
+      },
+      "ActivitySummaryBatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Source Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_ids"
+        ],
+        "title": "ActivitySummaryBatchRequest",
+        "type": "object"
+      },
+      "ActivitySummaryDTO": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEvidenceDTO"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact"
+          },
+          "implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implementation"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "insufficient_context": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Insufficient Context",
+            "type": "array"
+          },
+          "is_placeholder": {
+            "default": false,
+            "title": "Is Placeholder",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "needs_human_review": {
+            "default": true,
+            "title": "Needs Human Review",
+            "type": "boolean"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_revision": {
+            "title": "Source Revision",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "not_generated",
+              "pending",
+              "ready",
+              "failed",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verification": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_id",
+          "status",
+          "source_revision",
+          "prompt_version",
+          "input_hash"
+        ],
+        "title": "ActivitySummaryDTO",
         "type": "object"
       },
       "AddDeliverable": {
@@ -9793,6 +10005,22 @@
         "title": "SuccessResponse[ActivityStateDTO]",
         "type": "object"
       },
+      "SuccessResponse_ActivitySummaryDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ActivitySummaryDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[ActivitySummaryDTO]",
+        "type": "object"
+      },
       "SuccessResponse_AdminUserDetailDTO_": {
         "properties": {
           "data": {
@@ -10712,6 +10940,26 @@
           "meta"
         ],
         "title": "SuccessResponse[dict]",
+        "type": "object"
+      },
+      "SuccessResponse_list_ActivitySummaryDTO__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ActivitySummaryDTO"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[list[ActivitySummaryDTO]]",
         "type": "object"
       },
       "SuccessResponse_list_AiUsageSummaryDTO__": {
@@ -13426,6 +13674,285 @@
           }
         },
         "summary": "List Github Activity",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/activity/summaries": {
+      "get": {
+        "operationId": "list_github_activity_summaries_api_v1_a_projects__project_id__github_activity_summaries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "title": "Source Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_list_ActivitySummaryDTO__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Github Activity Summaries",
+        "tags": [
+          "a"
+        ]
+      },
+      "post": {
+        "operationId": "generate_github_activity_summaries_api_v1_a_projects__project_id__github_activity_summaries_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivitySummaryBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_list_ActivitySummaryDTO__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Github Activity Summaries",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/activity/{activity_id}/summary": {
+      "get": {
+        "operationId": "get_github_activity_summary_api_v1_a_projects__project_id__github_activity__activity_id__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ActivitySummaryDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Github Activity Summary",
+        "tags": [
+          "a"
+        ]
+      },
+      "post": {
+        "operationId": "generate_github_activity_summary_api_v1_a_projects__project_id__github_activity__activity_id__summary_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ActivitySummaryDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Github Activity Summary",
         "tags": [
           "a"
         ]
