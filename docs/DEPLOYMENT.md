@@ -18,6 +18,19 @@ PR 上的 preflight 只读取服务、备份和配置是否存在，不更改平
 
 测试站点：<https://groupproof-staging-production.up.railway.app>。
 
+## `admin-backend` 独立 Railway 项目（2026-11-22）
+
+为管理后台真实治理接线建立了独立项目 `groupproof-admin`，不复用旧 staging 数据库：
+
+| 服务 | 来源/根目录 | 当前公开地址或状态 |
+| --- | --- | --- |
+| `api` | `ZZJ1977/groupproof` / `admin-backend` / `services/api` | <https://api-production-bc8ebe8c.up.railway.app> |
+| `web` | `ZZJ1977/groupproof` / `admin-backend` / 仓库根目录 | <https://web-production-650d4574.up.railway.app> |
+| `worker` | `ZZJ1977/groupproof` / `admin-backend` / `services/worker` | 无需公开域名 |
+| `Postgres`、`Redis` | 项目内托管服务 | 仅私网可见 |
+
+项目 ID 为 `c96385e7-2109-4250-be01-5100b1d55521`，环境为 `production`。API 的迁移预部署命令为 `alembic upgrade head`，健康检查为 `/readyz`；Web 健康检查为 `/healthz`。当前部署只完成匿名健康检查，`APP_MODE=real` 下 Google、邮箱注册和密码找回在真实凭据配置前保持关闭，初始管理员需另行受控开通。密钥只放 Railway Variables，不写入仓库。
+
 当前现场核对：统一 API 和旧 `identity` 尚未配置 Resend/Google 凭据，Web 仍指向旧身份服务。发布会明确使用 `MAIL_MODE=resend`、`MAIL_PUBLIC_ENABLED=false`，禁用邮件捕获、演示身份、debug 和验收密令；使用稳定的服务端 HMAC 密钥。Google 按钮按交付代码显示，未配置凭据时实际登录返回暂不可用。没有发信凭据/域名时，真实注册、学校验证和密码恢复不作为线上已验收项；已有有效密码账号可登录。
 
 本地旧账号、密码散列及旧会话不会由 CI 自动上传或导入。旧数据导入须另行备份、dry-run 和冲突核对。回退应用时保留升级后的数据库和新记录，不自动 downgrade 或清库。

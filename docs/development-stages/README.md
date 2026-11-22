@@ -6,7 +6,7 @@
 
 - `admin-backend` 分支沿用现有统一 API 和 Admin 页面，补齐真实 AI 用量 provider、账号创建/恢复、教师审核、课程治理、共享审计和临时只读授权的联调与回归测试；不另建 Admin 服务或用户库。
 - 页面与后端的 real/Mock 边界保持显式：日志页默认读取 `/api/v1/admin/shared-audit-events`；旧 `/api/v1/admin/audit-logs` provider 未接通时返回明确 503，由页面显示不可用状态。AI 用量缺少真实费用或 Token 时返回不完整计数，不生成估算值。
-- 实际变更、测试命令、SQLite 夹具说明和 Railway 未执行原因见 [`2026-11-22-admin-backend.md`](stage-reports/2026-11-22-admin-backend.md)。本节是当前迭代记录，不改变下面历史阶段的原始状态。
+- 实际变更、测试命令、SQLite 夹具说明和 Railway 当前部署边界见 [`2026-11-22-admin-backend.md`](stage-reports/2026-11-22-admin-backend.md)。本节是当前迭代记录，不改变下面历史阶段的原始状态。
 
 本目录把已确认的成员 B 功能开发方案拆成可执行阶段。01–13 为前端功能与接口交付，14–15 为功能验收后的全项目设计规范。所有阶段当前均为待开发。
 
