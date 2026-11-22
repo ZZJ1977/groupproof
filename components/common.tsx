@@ -15,7 +15,7 @@ export function Panel({ title, action, children, className, bodyClassName, noPad
 }
 
 export function Section({ title, description, action, children, className, surface = false }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string; surface?: boolean }) {
-  return <section className={cn("gp-section", className)} data-surface={surface ? "true" : undefined}>
+  return <section className={cn("gp-section", className)} aria-label={title} data-surface={surface ? "true" : undefined}>
     {(title || description || action) && <div className="gp-section-heading"><div>{title && <h2 className="gp-section-title">{title}</h2>}{description && <p className="gp-section-description">{description}</p>}</div>{action}</div>}
     {children}
   </section>;
@@ -26,7 +26,7 @@ export function ListRow({ title, meta, leading, actions, children, className }: 
 }
 
 export function DetailDrawer({ open, onOpenChange, title, description, children, footer }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; children: ReactNode; footer?: ReactNode }) {
-  return <Sheet open={open} modal={false} onOpenChange={onOpenChange}><SheetContent className="gp-detail-drawer">
+  return <Sheet open={open} modal={false} onOpenChange={onOpenChange}><SheetContent overlayClassName="pointer-events-none" className="gp-detail-drawer">
     <div className="gp-detail-drawer-header"><SheetTitle className="gp-detail-drawer-title">{title}</SheetTitle>{description && <SheetDescription className="gp-detail-drawer-description">{description}</SheetDescription>}</div>
     <div className="gp-detail-drawer-body">{children}</div>
     {footer && <div className="gp-detail-drawer-footer">{footer}</div>}
