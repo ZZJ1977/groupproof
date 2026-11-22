@@ -1,5 +1,6 @@
 """HTTP boundary tests with real persisted rows and an explicit storage test port."""
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.api.auth import get_current_user
 from app.api.errors import install_exception_handlers
+from app.db.models import CourseStaff
 from app.db.session import get_session
 from app.modules.c.files_router import router
 from app.modules.c.files_storage import get_storage_port
@@ -220,13 +222,35 @@ def test_http_foreign_file_id_is_not_found_in_other_project(client, scope, stora
     assert response.status_code == 404 and response.json()["error"]["code"] == "FILE_NOT_FOUND"
 
 
-def test_same_course_other_group_cannot_open_project_file_by_known_ids(client, scope, storage, api):
+@pytest.mark.parametrize("actor", ["outsider", "other_teacher"])
+def test_unassigned_reader_cannot_open_project_file_by_known_ids(
+    client, scope, storage, api, actor
+):
     original = register(client, scope, storage).json()["data"]
     collection = base(scope)
     detail = f"{collection}/{original['id']}"
     link = f"{detail}/versions/{original['versions'][0]['id']}/link"
-    api.dependency_overrides[get_current_user] = lambda: scope.users["outsider"]
+    api.dependency_overrides[get_current_user] = lambda: scope.users[actor]
     for path in (collection, detail, f"{link}?purpose=preview", f"{link}?purpose=download"):
         response = client.get(path)
         assert response.status_code == 403, response.text
     assert storage.sign_calls == 0
+
+
+def test_revoked_ta_loses_collection_detail_and_version_links(api, client, db, scope, storage):
+    original = register(client, scope, storage).json()["data"]
+    collection = base(scope)
+    detail = f"{collection}/{original['id']}"
+    link = f"{detail}/versions/{original['versions'][0]['id']}/link"
+    paths = (collection, detail, f"{link}?purpose=preview", f"{link}?purpose=download")
+    ta = scope.users["ta"]
+    for user in (scope.users["teacher"], ta):
+        api.dependency_overrides[get_current_user] = lambda: user
+        for path in paths:
+            assert client.get(path).status_code == 200
+    assert storage.sign_calls == 4
+    db.get(CourseStaff, (scope.project.course_id, ta.id)).left_at = datetime.now(UTC)
+    db.commit()
+    for path in paths:
+        assert client.get(path).status_code == 403
+    assert storage.sign_calls == 4

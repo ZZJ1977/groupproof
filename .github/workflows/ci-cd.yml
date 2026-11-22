@@ -368,7 +368,7 @@ jobs:
     needs: [quality, backend, e2e, c-integration, docker]
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy && ((github.ref == 'refs/heads/develop' && inputs.environment == 'staging') || (github.ref == 'refs/heads/main' && inputs.environment == 'production'))) || (github.event_name == 'push' && ((github.ref == 'refs/heads/main' && vars.RAILWAY_DEPLOY_PRODUCTION == 'true') || (github.ref == 'refs/heads/develop' && vars.RAILWAY_DEPLOY_STAGING == 'true'))) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/develop' && 'staging' || 'production') }}
     env:
@@ -398,3 +398,6 @@ jobs:
       - name: Validate, back up, migrate, and deploy production API and Web
         if: github.ref == 'refs/heads/main'
         run: node scripts/deploy-production.mjs
+
+      - name: Deploy report worker and daily risk scheduler
+        run: node scripts/deploy-d-workers.mjs

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { BookOpen, CheckSquare, Folder } from "lucide-react";
 import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
@@ -9,6 +10,7 @@ import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-c
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { useUrlQuery } from "./use-url-query";
+import { MyAccessRequests } from "./GovernanceApiPages";
 
 const client = createCClient();
 const buttonClass = "rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50";
@@ -16,6 +18,7 @@ const inputClass = "rounded-md border border-slate-300 px-3 py-2 text-sm";
 const categoryLabels = { all: "全部", development: "开发", evidence: "证据", discussion: "讨论" } as const;
 const activityLabels = {
   task_progress: "更新任务进度或状态", task_note_saved: "保存实现说明", file_version_uploaded: "登记项目文件版本",
+  github_commit: "GitHub 提交", github_pull_request: "GitHub 拉取请求", github_ci_run: "GitHub CI 运行",
   evidence_submitted: "提交候选证据", evidence_adopted: "采纳证据", evidence_withdrawn: "撤回证据",
   evidence_source_changed: "证据来源变化", discussion_created: "发布讨论", discussion_replied: "回复讨论",
 };
@@ -71,7 +74,30 @@ export function HomeApiPage() {
       </div>
       <Link className="gp-link mt-4 inline-block" href="/activity">查看个人动态</Link>
     </>}
+    <MyAccessRequests key={userId} />
   </>;
+}
+
+function GithubAuthorForm() {
+  const [login, setLogin] = useState("");
+  const change = useMutation({
+    mutationFn: (value: string | null) => client.setGithubLogin(value),
+    retry: false,
+    onSuccess: (reply) => setLogin(reply.login ?? ""),
+  });
+  return <details className="my-4">
+    <summary className="cursor-pointer font-medium">设置个人 GitHub 用户名</summary>
+    <form className="mt-3" onSubmit={(event) => { event.preventDefault(); if (login.trim() && !change.isPending) change.mutate(login.trim()); }}>
+      <p className="mb-2 text-sm">填写本人使用的 GitHub 用户名，供下次项目同步时匹配作者。此设置只用于作者归属，仓库访问权限由项目绑定管理。</p>
+      <label className="block">GitHub 用户名<input className={`${inputClass} ml-2`} value={login} maxLength={120} autoCapitalize="none" spellCheck={false}
+        disabled={change.isPending} onChange={(event) => { change.reset(); setLogin(event.target.value); }} /></label>
+      <div className="my-2 flex gap-2"><button className={buttonClass} disabled={change.isPending || !login.trim()}>保存用户名</button>
+        <button className={buttonClass} type="button" disabled={change.isPending} onClick={() => change.mutate(null)}>清除作者映射</button></div>
+      {change.isPending && <p role="status">正在保存…</p>}
+      {change.isSuccess && <p role="status">{change.data.login ? `已保存 GitHub 用户名 @${change.data.login}。` : "已清除 GitHub 用户名映射。"}</p>}
+      {change.isError && <p role="alert">{change.error instanceof CApiError ? change.error.message : "保存失败，请重试。"}</p>}
+    </form>
+  </details>;
 }
 
 export function ActivityApiPage() {
@@ -87,8 +113,9 @@ export function ActivityApiPage() {
   const result = useQuery({ queryKey: ["c-personal-activity", userId, filters], queryFn: () => client.personalActivity(filters), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
-    <PageHeader title={t("title")} description="查看自己在当前可访问项目中的任务、文件版本、证据和讨论记录。" />
-    <p className="mb-4 text-sm text-slate-600">日期按 UTC 自然日筛选。此列表尚未提供个人 GitHub 和飞书记录。</p>
+    <PageHeader title={t("title")} description="查看自己的任务、文件版本、证据、讨论，以及项目中已同步并归属本人的 GitHub 活动。" />
+    <p className="mb-4 text-sm text-slate-600">日期按 UTC 自然日筛选。个人飞书记录仍待发送者身份匹配。</p>
+    {data && <GithubAuthorForm key={userId} />}
     <div className="gp-tabs mb-4" aria-label="动态分类">{Object.entries(categoryLabels).map(([value, label]) => <button className={`gp-tab ${category === value ? "active" : ""}`} type="button" key={value} aria-pressed={category === value} onClick={() => updateQuery({ category: value === "all" ? null : value, page: null })}>{label}</button>)}</div>
     <form key={query.toString()} className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault(); const input = new FormData(event.currentTarget);
