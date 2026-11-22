@@ -31,6 +31,6 @@
 ## Railway 状态与限制
 
 - 已确认 API 使用 `services/api` Dockerfile、`alembic upgrade head` 和 `/readyz`；Web 使用根目录 Dockerfile 和 `/healthz`；worker 使用 `services/worker` Dockerfile。匿名检查已确认 API `/healthz`、`/readyz`、capabilities 以及 Web `/healthz`、`/login` 可访问。
-- 已在已登录的 Railway workspace 中创建新项目 `groupproof-admin`（project ID `c96385e7-2109-4250-be01-5100b1d55521`，production environment ID `95b0f49f-afca-4636-81fc-222636ba16f5`），并建立 `Postgres`、`Redis`、`api`、`web`、`worker` 五个服务。`admin-backend` 已推送到 `ZZJ1977/groupproof`，API/Web/worker 均绑定该分支；Postgres/Redis、API、Web 已完成部署，worker 依赖修复提交后需要再触发一次发布。
+- 已在已登录的 Railway workspace 中创建新项目 `groupproof-admin`（project ID `c96385e7-2109-4250-be01-5100b1d55521`，production environment ID `95b0f49f-afca-4636-81fc-222636ba16f5`），并建立 `Postgres`、`Redis`、`api`、`web`、`worker` 五个服务。`admin-backend` 已推送到 `ZZJ1977/groupproof`，API/Web/worker 均绑定该分支；五个服务当前均为 `SUCCESS`，各运行 1 个副本。最新 API、Web、worker 部署分别为 `780ceb11-7075-4946-8a99-33994a0f6b8b`、`eee7ec13-0f8f-4dd4-8d9e-e571edc915ee`、`8b62ad4a-9f12-4aab-9bce-3558e46d0edd`；worker 日志已确认 Celery 连接 Redis 并进入 `ready` 状态。
 - Railway API 当前为 `APP_MODE=real`，Google、邮箱注册和密码找回保持关闭，邮件不对外发送；尚未创建初始管理员，因此当前证据是服务/匿名健康检查，不是已登录 Admin 业务验收。所有密钥只存在 Railway Variables。
 - 旧业务审计端点 `/api/v1/admin/audit-logs` 仍保留兼容契约并在 provider 未接通时返回 503；管理日志默认入口使用已接通的 `/api/v1/admin/shared-audit-events`，页面会明确显示来源与不可用状态。
