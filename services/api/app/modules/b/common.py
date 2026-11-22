@@ -53,6 +53,17 @@ def envelope(data: Any, request: Request) -> dict[str, Any]:
     return {"data": jsonable_encoder(data), "meta": {"request_id": request.state.request_id}}
 
 
+MAX_OPERATION_LENGTH = 100
+
+
+def _receipt_operation(operation: str) -> str:
+    """Keep operation within b_command_receipts.operation VARCHAR(100) without collisions."""
+    if len(operation) <= MAX_OPERATION_LENGTH:
+        return operation
+    digest = hashlib.sha256(operation.encode()).hexdigest()[:32]
+    return f"{operation[: MAX_OPERATION_LENGTH - 33]}:{digest}"
+
+
 def _hash(payload: Any) -> str:
     raw = json.dumps(jsonable_encoder(payload), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -77,12 +88,13 @@ def run_command(
     the caller may fix the input and retry with the same key.
     """
     request_hash = _hash(payload)
+    stored_operation = _receipt_operation(operation)
 
     def stored() -> BCommandReceipt | None:
         return session.scalar(
             select(BCommandReceipt).where(
                 BCommandReceipt.actor_id == actor.id,
-                BCommandReceipt.operation == operation,
+                BCommandReceipt.operation == stored_operation,
                 BCommandReceipt.idempotency_key == idempotency_key,
             )
         )
@@ -103,7 +115,7 @@ def run_command(
         session.add(
             BCommandReceipt(
                 actor_id=actor.id,
-                operation=operation,
+                operation=stored_operation,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
                 status_code=status_code,
