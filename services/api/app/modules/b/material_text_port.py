@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import ApiError
 from app.db.models import User
 from app.modules.a import permissions, storage, text_extraction
+from app.modules.a.models import UploadReceipt
 from app.modules.b.ports import MaterialText, MaterialTextPort, TextSegment
 
 _PARAGRAPH_SPLIT = re.compile(r"\n{2,}")
@@ -42,6 +43,19 @@ class PersistedMaterialTextPort(MaterialTextPort):
         actor = session.get(User, actor_id)
         if actor is None or not permissions.is_active(actor):
             raise ApiError(404, "NOT_FOUND", "上传记录不存在。")
+
+        receipt = session.get(UploadReceipt, receipt_id)
+        if receipt is None or receipt.actor_id != actor_id or receipt.status != "completed":
+            raise ApiError(404, "NOT_FOUND", "上传记录不存在。")
+
+        if not receipt.content_hash or (
+            self._client is None and storage.get_storage_client() is None
+        ):
+            return MaterialText(
+                receipt_id=receipt_id,
+                status="unavailable",
+                reason="文件存储或正文读取服务暂不可用，请同时粘贴文本资料。",
+            )
 
         try:
             extracted = text_extraction.read_receipt_text(

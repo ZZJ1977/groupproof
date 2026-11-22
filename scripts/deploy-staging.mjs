@@ -123,6 +123,7 @@ const authVariables = {};
 for (const key of ["RESEND_API_KEY", "BREVO_API_KEY", "MAIL_FROM", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "STUDENT_EMAIL_DOMAIN", "TEACHER_EMAIL_DOMAIN", "STUDENT_ID_PATTERN", "STUDENT_ID_EMAIL_RULE"]) {
   if (apiVars[key] || identityVars[key]) authVariables[key] = apiVars[key] || identityVars[key];
 }
+const hasDedicatedReportWorker = services.some((node) => node.serviceName === "groupproof-report-worker");
 Object.assign(authVariables, {
   APP_ENV: "staging", APP_MODE: apiVars.APP_MODE || identityVars.APP_MODE || "dev",
   APP_ORIGIN: origin, PORT: "8000", // Brevo works without an own domain (single verified sender); keep it when an operator picked it.
@@ -132,6 +133,7 @@ Object.assign(authVariables, {
   AUTH_GOOGLE_ENABLED: "true", AUTH_PASSWORD_ENABLED: "true",
   AUTH_EMAIL_SIGNUP_ENABLED: "true", AUTH_PASSWORD_RESET_ENABLED: "true",
   DEBUG_ENDPOINTS: "false", ENABLE_DEMO_AUTH: "false", ACCEPTANCE_TEST_TOKEN: "",
+  REPORT_INLINE_MODE: hasDedicatedReportWorker ? "false" : "true",
   EMAIL_CHALLENGE_HMAC_KEY: apiVars.EMAIL_CHALLENGE_HMAC_KEY || identityVars.EMAIL_CHALLENGE_HMAC_KEY || randomBytes(32).toString("hex"),
 });
 await setVariables(apiId, authVariables);

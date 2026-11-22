@@ -325,6 +325,16 @@ def refresh_report(
         report.includes_appendix = payload.includes_appendix
         report.lock_version += 1
         session.commit()
+        if os.getenv("REPORT_INLINE_MODE", "").strip().lower() in {"1", "true", "yes"}:
+            _complete_preview_inline(
+                session,
+                version=version,
+                report=report,
+                project=access.project,
+                appendix=payload.includes_appendix,
+                actor_id=user.id,
+            )
+            return success(serialize(version), request)
         try:
             from app.modules.d.report_tasks import generate_preview
 
@@ -744,6 +754,14 @@ def request_export(
     )
     session.add(artifact)
     session.commit()
+    if os.getenv("REPORT_INLINE_MODE", "").strip().lower() in {"1", "true", "yes"}:
+        content, _ = render_document(version.data_snapshot, artifact.file_format)
+        artifact.content = content
+        artifact.status = "ready"
+        artifact.error = None
+        artifact.completed_at = datetime.now(UTC)
+        session.commit()
+        return success({"id": str(artifact.id), "status": artifact.status}, request)
     try:
         from app.modules.d.report_tasks import generate_export
 

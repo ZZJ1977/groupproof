@@ -27,12 +27,28 @@ const FORWARDED_REQUEST_HEADERS = [
 async function proxy(request: NextRequest, pathSegments: string[]) {
   const incoming = new URL(request.url);
   const environment = normalizeAdminEnvironment(request.cookies.get(ADMIN_ENVIRONMENT_COOKIE)?.value);
+  const externalAdminTarget =
+    environment === "main" ? process.env.ADMIN_API_MAIN_URL : process.env.ADMIN_API_DEVELOP_URL;
   const target = `${adminApiBase(environment)}/api/v1/${pathSegments.join("/")}${incoming.search}`;
+
+  const requestOrigin = request.headers.get("origin");
+  if (externalAdminTarget && requestOrigin && requestOrigin !== incoming.origin) {
+    return NextResponse.json(
+      {
+        error: { code: "ORIGIN_MISMATCH", message: "Cross-origin request denied.", details: null },
+        meta: { request_id: null },
+      },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
 
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  if (requestOrigin && !externalAdminTarget) {
+    headers.set("origin", requestOrigin);
   }
 
   let upstream: Response;
