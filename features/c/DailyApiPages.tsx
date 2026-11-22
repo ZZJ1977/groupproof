@@ -15,8 +15,8 @@ import { useUrlQuery } from "./use-url-query";
 import { MyAccessRequests } from "./GovernanceApiPages";
 
 const client = createCClient();
-const buttonClass = "rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50";
-const inputClass = "rounded-md border border-slate-300 px-3 py-2 text-sm";
+const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+const inputClass = "rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
 const categoryLabels = { all: "全部", development: "开发", evidence: "证据", discussion: "讨论" } as const;
 const activityLabels = {
   task_progress: "更新任务进度或状态", task_note_saved: "保存实现说明", file_version_uploaded: "登记项目文件版本",
@@ -89,26 +89,25 @@ export function HomeApiPage() {
         <Stat label="我的已完成任务" value={data.my_completed_tasks} icon={CheckSquare} />
         <Stat label={t("pending")} value={data.pending_action_items ?? "—"} />
       </div>
-      <p className="mb-3 text-sm text-slate-600">包含仍可访问的已结束课程及归档项目；已完成任务按验收后的任务状态统计。</p>
-      <div className="mb-4 flex flex-wrap gap-4 text-sm">
-        <Link className="gp-link" href="/notifications">未读通知：{data.unread_notifications ?? "暂不可用"}</Link>
-        <Link className="gp-link" href="/action-items">待处理事项：{data.pending_action_items ?? "暂不可用"}</Link>
+      <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
+        <Link className="gp-pill hover:bg-sky-100/80" href="/notifications">未读通知：{data.unread_notifications ?? "暂不可用"}</Link>
+        <Link className="gp-pill hover:bg-sky-100/80" href="/action-items">待处理事项：{data.pending_action_items ?? "暂不可用"}</Link>
+        <Link className="gp-pill hover:bg-sky-100/80" href="/activity">查看个人动态 →</Link>
       </div>
       <div className="gp-grid-2">
-        <Section title={t("myProjects")} description="最近更新的最多 10 个项目">
-          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
-            {project.progress !== null && <ProgressBar value={project.progress} />}
+        <Section title={t("myProjects")} description="最近更新的项目" surface>
+          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<span className="inline-flex flex-wrap items-center gap-2"><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></span>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
+            {project.progress !== null && <div className="mt-2"><ProgressBar value={project.progress} /></div>}
             <ProjectIntegrationStatus projectId={project.id} userId={userId} />
           </ListRow>)}</div>
           {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
         </Section>
-        <Section title={t("myCourses")} description="最近更新的最多 10 门课程">
+        <Section title={t("myCourses")} description="最近更新的课程" surface>
           {isTeacher && <Link className="gp-link mb-3 inline-block text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link>}
-          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<><span>{course.name}</span> <StatusBadge status={course.status} /></>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
+          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<span className="inline-flex flex-wrap items-center gap-2"><span>{course.name}</span> <StatusBadge status={course.status} /></span>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
           {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
         </Section>
       </div>
-      <Link className="gp-link mt-4 inline-block" href="/activity">查看个人动态</Link>
     </>}
     <MyAccessRequests key={userId} />
   </>;

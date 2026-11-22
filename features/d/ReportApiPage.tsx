@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Download, Printer } from "lucide-react";
-import { useApp } from "@/components/app-providers";
 import { EmptyState, Feedback, PageHeader, Panel, Stat, StatusBadge } from "@/components/common";
 import { button, input, label, secondary } from "@/features/b/ui";
+import { fetchWithSession } from "@/lib/api/client";
+import { apiConfig } from "@/lib/api/config";
 
 type Version = { id: string; version: number; status: string; created_at: string | null; created_by: string | null; created_by_name: string | null; data: { project_name: string; counts: Record<string, number>; sections: Record<string, string> } };
 type Artifact = { id: string; version: number; format: "pdf" | "docx"; status: string; requested_by: string; requested_by_name: string | null; created_at: string | null };
@@ -22,25 +23,22 @@ const sectionHeadingLabels: Record<string, string> = {
   appendix: "附录：正式证据清单",
 };
 
-async function request<T>(url: string, method = "GET", body?: unknown, csrfToken?: string | null): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
-  const response = await fetch(url, {
-    method,
-    credentials: "include",
-    cache: "no-store",
-    headers: Object.keys(headers).length ? headers : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await fetchWithSession(
+    new Request(new URL(apiConfig.baseUrl + url, window.location.origin), {
+      method,
+      credentials: "include",
+      cache: "no-store",
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }),
+  );
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error?.message ?? "请求失败");
   return result.data as T;
 }
 
 export function ReportApiPage({ projectId, exportView }: { projectId: string; exportView: boolean }) {
-  const { session } = useApp();
-  const csrfToken = session?.csrfToken;
   const base = `/api/v1/projects/${projectId}/reports`;
   const [listing, setListing] = useState<Listing>({ status: "draft", versions: [], artifacts: [], downloads: [], reviews: [] });
   const [selected, setSelected] = useState<number | null>(null);
@@ -67,7 +65,7 @@ export function ReportApiPage({ projectId, exportView }: { projectId: string; ex
   async function mutate(url: string, body?: unknown, successMsg?: string) {
     setBusy(true); setError(""); setNotice("");
     try {
-      await request(url, "POST", body, csrfToken);
+      await request(url, "POST", body);
       await refresh();
       setEditing("");
       setSelected(null);
@@ -82,7 +80,7 @@ export function ReportApiPage({ projectId, exportView }: { projectId: string; ex
   async function download(artifactId: string) {
     setBusy(true); setError("");
     try {
-      const link = await request<{ url: string; expires_at: string }>(`${base}/exports/${artifactId}/download-link`, "POST", undefined, csrfToken);
+      const link = await request<{ url: string; expires_at: string }>(`${base}/exports/${artifactId}/download-link`, "POST");
       window.location.assign(link.url);
     } catch (failure) {
       setError((failure as Error).message);
@@ -98,15 +96,12 @@ export function ReportApiPage({ projectId, exportView }: { projectId: string; ex
         `${base}/exports`,
         "POST",
         { version: versionNo, file_format: format },
-        csrfToken,
       );
       await refresh();
       if (created.status === "ready") {
         const link = await request<{ url: string; expires_at: string }>(
           `${base}/exports/${created.id}/download-link`,
           "POST",
-          undefined,
-          csrfToken,
         );
         setNotice(`已生成真实 ${format.toUpperCase()} 文件并开始下载。`);
         window.location.assign(link.url);
@@ -120,19 +115,27 @@ export function ReportApiPage({ projectId, exportView }: { projectId: string; ex
     }
   }
 
-  return <div>
+  const statusLabels: Record<string, string> = {
+    draft: "草稿",
+    generating: "生成中",
+    generated: "已生成",
+    submitted: "已提交审核",
+    finalized: "已定稿",
+  };
+
+  return <div className="space-y-6">
     <PageHeader
       title="项目报告"
-      description={`状态：${listing.status} · 最新版本：${latest ? `v${latest.version}` : "尚未生成"}`}
-      actions={<div className="flex flex-wrap gap-2">
-        <Link className={!exportView ? button : secondary} href={`/projects/${projectId}/reports`}>预览</Link>
-        <Link className={exportView ? button : secondary} href={`/projects/${projectId}/reports/export`}>导出与历史</Link>
+      description={`状态：${statusLabels[listing.status] ?? listing.status} · 最新版本：${latest ? `v${latest.version}` : "尚未生成"}`}
+      actions={<div className="gp-segmented" role="navigation" aria-label="报告视图">
+        <Link className="gp-segmented-item" data-active={!exportView ? "true" : undefined} href={`/projects/${projectId}/reports`}>预览</Link>
+        <Link className="gp-segmented-item" data-active={exportView ? "true" : undefined} href={`/projects/${projectId}/reports/export`}>导出与历史</Link>
       </div>}
     />
-    {error && <div role="alert" className="mb-4"><Feedback tone="error">{error}</Feedback></div>}
-    {notice && <div className="mb-4"><Feedback tone="success">{notice}</Feedback></div>}
+    {error && <div role="alert"><Feedback tone="error">{error}</Feedback></div>}
+    {notice && <Feedback tone="success">{notice}</Feedback>}
     {viewed?.data?.counts && (
-      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+      <div className="gp-grid-4">
         <Stat label="项目成员" value={viewed.data.counts.members ?? 0} />
         <Stat label="任务完成" value={`${viewed.data.counts.completed_tasks ?? 0} / ${viewed.data.counts.tasks ?? 0}`} />
         <Stat label="正式证据" value={viewed.data.counts.evidence ?? 0} />

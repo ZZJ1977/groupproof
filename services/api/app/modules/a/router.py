@@ -8,6 +8,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import os
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -18,6 +22,7 @@ from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Fiel
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
+from app.api.errors import ApiError
 from app.api.responses import SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
@@ -396,6 +401,59 @@ def sync_github(project_id: UUID, request: Request, session: Database, user: Cur
             client.close()
     session.commit()
     return success(GithubSyncDTO(**totals), request)
+
+
+class GithubWebhookResultDTO(BaseModel):
+    event: str
+    handled: bool
+    projects: int = 0
+    commits: int = 0
+    pulls: int = 0
+    ci_runs: int = 0
+    deleted_sources: int = 0
+    associated: int = 0
+
+
+@router.post(
+    "/api/v1/webhooks/github",
+    response_model=SuccessResponse[GithubWebhookResultDTO],
+    dependencies=[Depends(_private)],
+)
+async def github_webhook(request: Request, session: Database):
+    """GitHub App Webhook：校验 X-Hub-Signature-256 后自动刷新已绑定仓库的活动记录。"""
+    secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        raise ApiError(503, "WEBHOOK_NOT_CONFIGURED", "尚未配置 GitHub Webhook 密钥。")
+    raw_body = await request.body()
+    signature = (request.headers.get("X-Hub-Signature-256") or "").strip()
+    expected = "sha256=" + hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    if not signature or not hmac.compare_digest(signature, expected):
+        raise ApiError(401, "INVALID_WEBHOOK_SIGNATURE", "GitHub Webhook 签名校验失败。")
+    event = (request.headers.get("X-GitHub-Event") or "").strip().lower()
+    if event == "ping":
+        return success(GithubWebhookResultDTO(event="ping", handled=True), request)
+    if event not in {"push", "pull_request", "workflow_run"}:
+        return success(GithubWebhookResultDTO(event=event or "unknown", handled=False), request)
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ApiError(400, "INVALID_WEBHOOK_PAYLOAD", "Webhook 请求体不是有效的 JSON。") from exc
+    repo_info = payload.get("repository") if isinstance(payload, dict) else None
+    full_name = repo_info.get("full_name") if isinstance(repo_info, dict) else None
+    if not isinstance(full_name, str) or "/" not in full_name:
+        return success(GithubWebhookResultDTO(event=event, handled=False), request)
+    owner, repo = full_name.split("/", 1)
+    client = github.get_github_client()
+    try:
+        totals = github_sync.sync_repo_links_by_webhook(session, owner, repo, client)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        if client is not None:
+            client.close()
+    session.commit()
+    return success(GithubWebhookResultDTO(event=event, handled=True, **totals), request)
 
 
 class AnalyzeCodeRequest(BaseModel):

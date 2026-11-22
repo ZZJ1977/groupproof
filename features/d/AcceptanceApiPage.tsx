@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import { EmptyState, Feedback, PageHeader, ProgressBar, Section, Stat, StatusBadge } from "@/components/common";
+import { button, input, label, secondary } from "@/features/b/ui";
 import { fetchWithSession } from "@/lib/api/client";
 import { apiConfig } from "@/lib/api/config";
 import { CApiError } from "@/lib/api/c-client";
@@ -11,6 +14,14 @@ type Criterion = { criterion_id: string; text: string; evidence: EvidenceRef[]; 
 type Check = { id: string; total_criteria: number; covered_criteria: number; coverage_rate: number; status: string; checked_at: string | null; details: Criterion[] };
 type Verification = { id: string; status: string; result: string; created_at: string | null; criteria: Criterion[] };
 type HistoryRun = Verification & { invalidated_reason: string | null; formal_outcome_id: string | null; responsible_ids: string[]; decisions: { actor_id: string; decision: string; responsibility_share: number | null; reason: string }[] };
+
+const resultMeta: Record<string, { label: string; tone: "green" | "amber" | "red" | "blue" | "gray" }> = {
+  passed: { label: "通过", tone: "green" },
+  partially_passed: { label: "部分通过", tone: "amber" },
+  uncertain: { label: "待人工复核", tone: "amber" },
+  failed: { label: "未通过", tone: "red" },
+  pending: { label: "待运行", tone: "gray" },
+};
 
 async function request<T>(url: string, method = "GET", payload?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetchWithSession(new Request(new URL(apiConfig.baseUrl + url, window.location.origin), {
@@ -84,22 +95,143 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
     finally { if (!signal?.aborted) setBusy(false); }
   }
   const taskHref = `/projects/${projectId}/tasks/${taskId}`;
-  return <main className="mx-auto max-w-5xl space-y-5 p-6">
-    <Link className="gp-link" href={taskHref}>返回任务详情</Link>
-    {screen === 16 && <Link className="ml-4 gp-link" href={`${taskHref}/submit`}>返回提交草稿</Link>}
-    <h1 className="text-2xl font-semibold">{screen === 16 ? "证据完整性检查" : "任务验收"}</h1>
-    <button className="rounded border px-3 py-2 disabled:opacity-50" type="button" disabled={busy} onClick={() => void retryRead()}>刷新验收数据</button>
-    {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{error}</p>}
-    {notice && <p role="status" className="rounded bg-green-50 p-3 text-green-700">{notice}</p>}
+  const vMeta = verification ? (resultMeta[verification.result] ?? { label: verification.result, tone: "gray" as const }) : null;
+  const formalDone = Boolean(history[0]?.formal_outcome_id);
+
+  return <div className="space-y-6">
+    <PageHeader
+      title={screen === 16 ? "证据完整性检查" : "任务验收"}
+      description={screen === 16 ? "核验每条验收标准是否均已关联有效正式证据。" : "运行 AI 逐条验收建议并由任务负责人完成人工确认与责任分配。"}
+      actions={<div className="flex flex-wrap items-center gap-2">
+        <Link className={secondary} href={taskHref}>返回任务详情</Link>
+        {screen === 16 && <Link className={secondary} href={`${taskHref}/submit`}>返回提交草稿</Link>}
+        <button className={secondary} type="button" disabled={busy} onClick={() => void retryRead()}><RefreshCw size={14} />刷新验收数据</button>
+      </div>}
+    />
+
+    <div className="gp-segmented" role="navigation" aria-label="验收步骤">
+      <Link className="gp-segmented-item" data-active={screen === 16 ? "true" : undefined} href={`${taskHref}/evidence-check`}>1. 证据完整性检查</Link>
+      <Link className="gp-segmented-item" data-active={screen === 17 ? "true" : undefined} href={`${taskHref}/verification`}>2. 自动验收与人工确认</Link>
+    </div>
+
+    {error && <div role="alert"><Feedback tone="error">{error}</Feedback></div>}
+    {notice && <Feedback tone="success">{notice}</Feedback>}
+
     {screen === 16 ? <>
-      <section className="rounded border bg-white p-4"><p>覆盖率：{check ? `${check.covered_criteria}/${check.total_criteria}（${check.coverage_rate}%）` : "尚未检查"}</p><p className="text-sm text-slate-600">仅计入当前有效的正式证据；检查结果按次保存。</p><button className="mt-3 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={busy} onClick={() => void run("integrity-check", "检查快照已保存")}>重新检查</button></section>
-      <section className="rounded border bg-white p-4"><h2 className="font-semibold">逐条标准</h2>{check?.details.map((item) => <article className="border-t py-3" key={item.criterion_id}><p>{item.text}</p><p>{item.covered ? "已有有效正式证据" : "缺少有效正式证据"}</p>{item.evidence.map((ref) => <Link className="mr-3 gp-link" key={ref.id} href={`/projects/${projectId}/evidence?evidence=${ref.id}`}>查看证据（v{ref.version}）</Link>)}</article>)}{!check && <p>点击“重新检查”读取真实数据。</p>}</section>
-      <div className="flex gap-3"><Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>补充证据</Link><button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={busy || check?.status !== "passed"} onClick={() => void run("enter-verification", "任务已进入待验收")}>进入验收</button><Link className="gp-link" href={`${taskHref}/verification`}>查看验收结果</Link></div>
+      <div className="gp-grid-3">
+        <Stat label="标准覆盖率" value={check ? `${check.coverage_rate}%` : "—"} sub={check ? `${check.covered_criteria} / ${check.total_criteria} 条已覆盖` : "尚未检查"} icon={CheckCircle2} />
+        <Stat label="检查结论" value={check ? (check.status === "passed" ? "完整" : "待补充") : "未检查"} accent={check?.status === "passed" ? "#047857" : "#b45309"} />
+        <Stat label="最近检查" value={check?.checked_at ? check.checked_at.slice(5, 16).replace("T", " ") : "—"} />
+      </div>
+
+      <Section title="完整性核验" surface action={<div className="flex flex-wrap gap-2">
+        <button className={secondary} type="button" disabled={busy} onClick={() => void run("integrity-check", "检查快照已保存")}>重新检查</button>
+        <button className={button} type="button" disabled={busy || check?.status !== "passed"} onClick={() => void run("enter-verification", "任务已进入待验收")}>进入验收</button>
+      </div>}>
+        <p className="text-sm text-slate-600">覆盖率：{check ? `${check.covered_criteria}/${check.total_criteria}（${check.coverage_rate}%）` : "尚未检查"}。仅计入当前有效的正式证据。</p>
+        {check && <div className="mt-3"><ProgressBar value={check.coverage_rate} /></div>}
+        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
+          <Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>补充证据</Link>
+          <Link className="gp-link" href={`${taskHref}/verification`}>查看验收结果 →</Link>
+        </div>
+      </Section>
+
+      <Section title="逐条标准" surface>
+        {check?.details.length ? (
+          <div className="divide-y divide-slate-100">
+            {check.details.map((item) => (
+              <article className="flex flex-wrap items-start justify-between gap-3 py-3.5 first:pt-0 last:pb-0" key={item.criterion_id}>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-medium text-slate-900">{item.text}</p>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    {item.evidence.map((ref) => <Link className="gp-link" key={ref.id} href={`/projects/${projectId}/evidence?evidence=${ref.id}`}>查看证据（v{ref.version}）</Link>)}
+                  </div>
+                </div>
+                <StatusBadge tone={item.covered ? "green" : "amber"} label={item.covered ? "已有有效正式证据" : "缺少有效正式证据"} />
+              </article>
+            ))}
+          </div>
+        ) : <EmptyState title="尚未执行检查" description="点击“重新检查”核验当前有效正式证据。" />}
+      </Section>
     </> : <>
-      <section className="rounded border bg-white p-4"><p>验收结果：{verification?.result ?? "尚未运行"}</p><p className="text-sm text-slate-600">AI 结果只作建议，不能代替负责人确认。CI、PR 合并等未取得可信状态时会标为待人工复核。</p><button className="mt-3 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" type="button" disabled={busy || check?.status !== "passed"} onClick={() => void run("verification", "已保存逐条验收建议")}>运行自动验收</button></section>
-      <section className="rounded border bg-white p-4"><h2 className="font-semibold">逐条结果</h2>{verification?.criteria.map((item) => <article className="border-t py-3" key={item.criterion_id}><h3 className="font-medium">{item.text}</h3><p>判断：{item.result}</p><p>{item.reason}</p>{item.remediation && <p>{item.remediation}</p>}{item.evidence.map((ref) => <Link className="mr-3 gp-link" key={ref.id} href={`/projects/${projectId}/evidence?evidence=${ref.id}`}>查看证据（v{ref.version}）</Link>)}</article>)}{!verification && <p>尚无验收运行记录。</p>}</section>
-      {verification && <section className="space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">负责人确认</h2><p className="text-sm text-slate-600">每位负责人填写自己的实际承担比例并确认；全部确认且比例合计 100% 后生成正式成果并完成任务。自动结果仅供参考。</p><label className="block text-sm">人工判断原因<textarea className="mt-1 block w-full rounded border p-2" value={reason} onChange={(event) => setReason(event.target.value)} /></label><label className="block text-sm">我的实际承担比例（%）<input className="ml-2 w-24 rounded border p-2" type="number" min="0" max="100" step="0.0001" value={share} onChange={(event) => setShare(event.target.value)} /></label><div className="flex gap-3"><button className="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50" disabled={busy || !reason.trim() || !share.trim() || Boolean(history[0]?.invalidated_reason) || Boolean(history[0]?.formal_outcome_id)} onClick={() => void decide("confirmed")}>确认验收结果</button><button className="rounded border px-3 py-2 disabled:opacity-50" disabled={busy || !reason.trim() || Boolean(history[0]?.formal_outcome_id)} onClick={() => void decide("rejected")}>要求补充证据</button></div><Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}&capture=1`}>按任务补充证据</Link></section>}
-      <section className="rounded border bg-white p-4"><h2 className="font-semibold">验收历史（最新在前）</h2>{history.map((entry) => <article className="border-t py-3 text-sm" key={entry.id}><p>{entry.created_at ? new Date(entry.created_at).toLocaleString("zh-CN") : "时间未知"} · {entry.result} · {entry.formal_outcome_id ? "正式成果" : entry.invalidated_reason ? `已失效：${entry.invalidated_reason}` : "待人工确认"}</p><p>负责人确认：{entry.decisions.length}/{entry.responsible_ids.length}</p>{entry.decisions.map((decision) => <p key={decision.actor_id}>{decision.actor_id}：{decision.decision === "confirmed" ? `确认（${decision.responsibility_share}%）` : "要求补充"} · {decision.reason}</p>)}{entry.criteria.map((criterion) => <p key={criterion.criterion_id}>{criterion.text}：{criterion.result} {criterion.evidence.map((ref) => <Link className="ml-2 gp-link" key={ref.id} href={`/projects/${projectId}/evidence?evidence=${ref.id}`}>证据</Link>)}<Link className="ml-2 gp-link" href={`/projects/${projectId}/evidence?task=${taskId}&criterion=${criterion.criterion_id}&capture=1`}>补充此标准证据</Link></p>)}</article>)}{history.length === 0 && <p>尚无验收历史。</p>}</section>
+      <div className="gp-grid-3">
+        <Stat label="自动验收建议" value={vMeta?.label ?? "尚未运行"} icon={ShieldCheck} accent={vMeta?.tone === "green" ? "#047857" : vMeta?.tone === "red" ? "#be123c" : "#0369a1"} />
+        <Stat label="正式成果" value={formalDone ? "已确认完成" : "待负责人确认"} accent={formalDone ? "#047857" : "#b45309"} />
+        <Stat label="验收记录" value={history.length} sub="按时间倒序保存" />
+      </div>
+
+      <Section title="自动验收建议" description="AI 结果仅作建议，不能替代负责人确认。" surface action={<button className={button} type="button" disabled={busy || check?.status !== "passed"} onClick={() => void run("verification", "已保存逐条验收建议")}>运行自动验收</button>}>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
+          <span>验收结果：</span>
+          {vMeta ? <StatusBadge tone={vMeta.tone} label={vMeta.label} /> : <span className="text-slate-500">尚未运行</span>}
+          {formalDone && <Link className="gp-link ml-auto" href={`/projects/${projectId}/contribution`}>前往贡献总览 →</Link>}
+        </div>
+      </Section>
+
+      <Section title="逐条结果" surface>
+        {verification?.criteria.length ? (
+          <div className="divide-y divide-slate-100">
+            {verification.criteria.map((item) => {
+              const cm = item.result ? (resultMeta[item.result] ?? { label: item.result, tone: "gray" as const }) : null;
+              return (
+                <article className="space-y-1.5 py-3.5 first:pt-0 last:pb-0" key={item.criterion_id}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">{item.text}</h3>
+                    {cm && <StatusBadge tone={cm.tone} label={`判断：${cm.label}`} />}
+                  </div>
+                  {item.reason && <p className="text-sm text-slate-600">{item.reason}</p>}
+                  {item.remediation && <p className="text-xs text-amber-800">整改建议：{item.remediation}</p>}
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    {item.evidence.map((ref) => <Link className="gp-link" key={ref.id} href={`/projects/${projectId}/evidence?evidence=${ref.id}`}>查看证据（v{ref.version}）</Link>)}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : <EmptyState title="尚无验收运行记录" description="确认证据完整后点击“运行自动验收”。" />}
+      </Section>
+
+      {verification && (
+        <Section title="负责人确认" description="每位负责人填写实际承担比例并确认；全部确认且合计 100% 后生成正式成果并完成任务。" surface>
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px]">
+              <div>
+                <label className={label} htmlFor="accept-reason">人工判断原因</label>
+                <textarea id="accept-reason" className={input} rows={2} placeholder="说明核查结论与依据" value={reason} onChange={(event) => setReason(event.target.value)} />
+              </div>
+              <div>
+                <label className={label} htmlFor="accept-share">我的实际承担比例（%）</label>
+                <input id="accept-share" className={input} type="number" min="0" max="100" step="0.0001" placeholder="例如 100" value={share} onChange={(event) => setShare(event.target.value)} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className={button} disabled={busy || !reason.trim() || !share.trim() || Boolean(history[0]?.invalidated_reason) || formalDone} onClick={() => void decide("confirmed")}>确认验收结果</button>
+              <button type="button" className={secondary} disabled={busy || !reason.trim() || formalDone} onClick={() => void decide("rejected")}>要求补充证据</button>
+              <Link className="gp-link ml-auto text-sm" href={`/projects/${projectId}/evidence?task=${taskId}&capture=1`}>按任务补充证据</Link>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      <Section title="验收历史（最新在前）" surface>
+        {history.length ? (
+          <div className="divide-y divide-slate-100 text-sm">
+            {history.map((entry) => (
+              <article className="space-y-2 py-3.5 first:pt-0 last:pb-0" key={entry.id}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-slate-900">{entry.created_at ? new Date(entry.created_at).toLocaleString("zh-CN") : "时间未知"}</span>
+                  <StatusBadge tone={entry.formal_outcome_id ? "green" : entry.invalidated_reason ? "red" : "amber"} label={entry.formal_outcome_id ? "正式成果" : entry.invalidated_reason ? `已失效：${entry.invalidated_reason}` : "待人工确认"} />
+                  <span className="text-xs text-slate-500">负责人确认：{entry.decisions.length}/{entry.responsible_ids.length}</span>
+                </div>
+                {entry.decisions.map((decision) => <p className="text-xs text-slate-600" key={decision.actor_id}>{decision.actor_id}：{decision.decision === "confirmed" ? `确认（${decision.responsibility_share}%）` : "要求补充"} · {decision.reason}</p>)}
+                <div className="space-y-1 text-xs text-slate-600">
+                  {entry.criteria.map((criterion) => <p key={criterion.criterion_id}>{criterion.text}：{resultMeta[criterion.result ?? ""]?.label ?? criterion.result} {criterion.evidence.map((ref) => <Link className="ml-2 gp-link" key={ref.id} href={`/projects/${projectId}/evidence?evidence=${ref.id}`}>证据</Link>)}<Link className="ml-2 gp-link" href={`/projects/${projectId}/evidence?task=${taskId}&criterion=${criterion.criterion_id}&capture=1`}>补充此标准证据</Link></p>)}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : <p className="text-sm text-slate-500">尚无验收历史。</p>}
+      </Section>
     </>}
-  </main>;
+  </div>;
 }

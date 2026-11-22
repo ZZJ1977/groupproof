@@ -73,6 +73,28 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const defaultCourse = mockShell ? data.courses.find((item) => item.teacherId === data.currentUserId) ?? data.courses[0] : undefined;
   const navCourseId = context.courseId ?? defaultCourse?.id;
   const projectMode = kind === "student" && pathname.startsWith("/projects/") && Boolean(context.projectId);
+  const cachedCContext = useQuery<{ project?: { name?: string } }>({
+    queryKey: ["c-project-context", userId, context.projectId],
+    queryFn: () => Promise.resolve({}),
+    enabled: false,
+  });
+  const cachedBOverview = useQuery<{ name?: string; project?: { name?: string } }>({
+    queryKey: ["b-project-overview", userId, context.projectId],
+    queryFn: () => Promise.resolve({}),
+    enabled: false,
+  });
+  const cachedHome = useQuery<{ projects?: { id: string; name: string }[] }>({
+    queryKey: ["c-home-summary", userId],
+    queryFn: () => Promise.resolve({}),
+    enabled: false,
+  });
+  const resolvedProjectName =
+    context.projectName ??
+    (cachedCContext.status === "success" && !cachedCContext.error ? cachedCContext.data?.project?.name : undefined) ??
+    (cachedBOverview.status === "success" && !cachedBOverview.error ? (cachedBOverview.data?.name ?? cachedBOverview.data?.project?.name) : undefined) ??
+    (cachedCContext.status !== "error" && cachedBOverview.status !== "error"
+      ? cachedHome.data?.projects?.find((item) => item.id === context.projectId)?.name
+      : undefined);
 
   const globalLinks = [
     { key: "home", href: "/home", icon: Home },
@@ -211,7 +233,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
       <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
       {kind === "admin" && <div className="px-[22px] text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
-      {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b]"><Folder size={16} className="text-[#246bfa]" /> {context.courseName ? `${context.courseName} · ` : ""}{context.projectName ?? ts("projectFallback")} <ChevronDown size={13} className="ml-auto" /></Link>}
+      {projectMode && <Link href={`/projects/${context.projectId}`} className="mx-3 mt-2 flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300/80 hover:bg-slate-100/80"><Folder size={15} className="shrink-0 text-[var(--gp-action)]" /> <span className="truncate">{context.courseName ? `${context.courseName} · ` : ""}{resolvedProjectName ?? ts("projectFallback")}</span> <ChevronDown size={13} className="ml-auto shrink-0 text-slate-400" /></Link>}
       {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={15} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
       <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
         {kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>

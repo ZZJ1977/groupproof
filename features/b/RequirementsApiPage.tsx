@@ -45,31 +45,31 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
   const board = useQuery({ queryKey: ["b-requirements", userId, projectId], queryFn: () => bRequirementsApi.board(projectId), ...queryPolicy });
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
   return <div>
-    <PageHeader title={tr("需求工作区")} description={tr("手动整理、AI 分析和基线确认都是独立操作，不需按顺序走完向导。")} actions={<><Link href={`/projects/${projectId}/setup#project-materials`} className={secondary}>{tr("添加资料")}</Link><Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link></>} />
-    <Panel className="mt-5">
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <button type="button" aria-pressed={workspaceSection === "work"} className={workspaceSection === "work" ? button : secondary} onClick={() => setWorkspaceSection("work")}>{tr("整理需求")}</button>
-        {!board.isPending && (board.data?.open_conflicts ?? 0) > 0 && <button type="button" aria-pressed={workspaceSection === "conflicts"} className={workspaceSection === "conflicts" ? button : secondary} onClick={() => setWorkspaceSection("conflicts")}>{tr("冲突处理")}<StatusBadge tone="amber" label={String(board.data?.open_conflicts ?? 0)} /></button>}
-        <button type="button" aria-pressed={workspaceSection === "baseline"} className={workspaceSection === "baseline" ? button : secondary} onClick={() => setWorkspaceSection("baseline")}>{tr("基线确认")}</button>
+    <PageHeader title={tr("需求工作区")} description={tr("整理项目模块与需求，完成后确认并冻结基线。")} actions={<><Link href={`/projects/${projectId}/setup#project-materials`} className={secondary}>{tr("添加资料")}</Link><Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link></>} />
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="gp-segmented" role="group" aria-label={tr("需求工作区视图")}>
+        <button type="button" aria-pressed={workspaceSection === "work"} className="gp-segmented-item" onClick={() => setWorkspaceSection("work")}>{tr("整理需求")}</button>
+        {!board.isPending && (board.data?.open_conflicts ?? 0) > 0 && <button type="button" aria-pressed={workspaceSection === "conflicts"} className="gp-segmented-item" onClick={() => setWorkspaceSection("conflicts")}>{tr("冲突处理")}<StatusBadge tone="amber" label={String(board.data?.open_conflicts ?? 0)} /></button>}
+        <button type="button" aria-pressed={workspaceSection === "baseline"} className="gp-segmented-item" onClick={() => setWorkspaceSection("baseline")}>{tr("基线确认")}</button>
       </div>
-      <p className="mt-3 text-xs text-slate-500">{tr("资料可以随时补充；AI 用于辅助整理，不会阻止手动录入。")}</p>
-    </Panel>
+      <Link href={`/projects/${projectId}/tasks/plan`} className="gp-link text-sm">{tr("前往任务规划 →")}</Link>
+    </div>
     {board.isError && <div role="alert" className="mt-4"><Feedback tone="error">{errorText(board.error)}</Feedback></div>}
     {workspaceSection === "conflicts" && (board.data?.open_conflicts ?? 0) === 0 ? <div className="mt-4"><Feedback tone="info">{tr("当前没有待处理冲突。")}</Feedback></div> : null}
     {workspaceSection === "conflicts" && (board.data?.open_conflicts ?? 0) > 0 && <div className="mt-4"><ConflictsStep projectId={projectId} /></div>}
     {workspaceSection === "baseline" && <div className="mt-4"><BaselineStep projectId={projectId} /></div>}
-    {workspaceSection === "work" && <><div className="mt-4"><RequirementsStep projectId={projectId} /></div><h2 className="mt-8 text-xl font-semibold text-slate-900">{tr("需求清单")}</h2><p className="mt-1 text-sm text-slate-500">{tr("查找、编辑并追踪已保存需求的版本和证据链。")}</p><div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="space-y-3">
-        <Panel>
-          <form className="grid grid-cols-2 gap-2 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); setFilters({ code: draft.code.trim() || null, q: draft.q.trim() || null, page: null }); }}>
+    {workspaceSection === "work" && <><div className="mt-4"><RequirementsStep projectId={projectId} /></div><h2 className="mt-10 text-lg font-semibold tracking-tight text-slate-900">{tr("需求清单")}</h2><p className="mt-1 text-xs text-slate-500">{tr("筛选、编辑并追踪已保存需求的版本与证据链。")}</p><div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
+      <div className="space-y-4">
+        <div className="gp-surface-card">
+          <form className="grid grid-cols-2 gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); setFilters({ code: draft.code.trim() || null, q: draft.q.trim() || null, page: null }); }}>
             <div><label className={label} htmlFor="req-f-code">{tr("编号")}</label><input id="req-f-code" className={input} placeholder="R-001" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} /></div>
-            <div><label className={label} htmlFor="req-f-q">{tr("名称或说明")}</label><input id="req-f-q" className={input} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} /></div>
+            <div><label className={label} htmlFor="req-f-q">{tr("名称或说明")}</label><input id="req-f-q" className={input} placeholder={tr("关键字检索")} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} /></div>
             <div><label className={label} htmlFor="req-f-source">{tr("来源")}</label><select id="req-f-source" className={input} value={filters.source} onChange={(e) => setFilters({ source: e.target.value || null, page: null })}><option value="">{tr("全部")}</option><option value="ai">{tr("AI 分析")}</option><option value="manual">{tr("手工录入")}</option></select></div>
             <div><label className={label} htmlFor="req-f-module">{tr("模块")}</label><select id="req-f-module" className={input} value={filters.module} onChange={(e) => setFilters({ module: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{list.data?.modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
             <div><label className={label} htmlFor="req-f-status">{tr("状态")}</label><select id="req-f-status" className={input} value={filters.status} onChange={(e) => setFilters({ status: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{tr(v)}</option>)}</select></div>
             <div className="col-span-2 flex items-end justify-end gap-2 md:col-span-1"><button type="submit" className={button}><Search size={14} />{tr("查询")}</button><button type="button" className={secondary} onClick={clearFilters}>{tr("清空")}</button></div>
           </form>
-        </Panel>
+        </div>
         {list.isPending ? <div role="status" className="gp-empty">{tr("正在加载需求…")}</div>
           : list.isError ? <div role="alert"><Feedback tone="error">{errorText(list.error)}</Feedback></div>
           : list.data.items.length === 0 ? <Panel><EmptyState title={tr("没有符合条件的需求")} /></Panel>
