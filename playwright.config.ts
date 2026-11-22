@@ -6,8 +6,9 @@ const identityPort = 18005;
 
 export default defineConfig({
   testDir: "./e2e",
-  // C's authenticated mock-workspace cases use their own loopback identity fixture.
-  testIgnore: ["c-*.spec.ts", "workspace-real.spec.ts", "b-*-real.spec.ts"],
+  // C's and B's authenticated cases use their own loopback identity fixtures
+  // (playwright.c*.config.ts and playwright.b*.config.ts).
+  testIgnore: ["c-*.spec.ts", "workspace-real.spec.ts", "b-*.spec.ts"],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
