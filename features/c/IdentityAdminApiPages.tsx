@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
 import { ApiError, authClient } from "@/lib/api/auth-client";
@@ -14,12 +14,23 @@ const control = "rounded border border-slate-300 px-3 py-2 text-sm disabled:opac
 const buttonControl = `${control} ${styles.button}`;
 const inputControl = `${control} ${styles.input}`;
 const applicationStatuses = { pending: "待审核", approved: "已通过", rejected: "已拒绝", all: "全部状态" } as const;
+const roleLabels = { student: "学生", teacher: "教师", ta: "助教", admin: "管理员", leader: "组长" } as const;
+const accountStatusLabels = { enabled: "可用", disabled: "已停用" } as const;
 function normalizedPage(value: string | null) {
   const page = Number(value ?? 1);
   return Number.isSafeInteger(page) && page > 0 && page <= 1_000_000 ? page : 1;
 }
 function teacherStatus(value: string | null): TeacherApplicationStatus {
   return value && Object.hasOwn(applicationStatuses, value) ? value as TeacherApplicationStatus : "pending";
+}
+function roleLabel(value: string) {
+  return roleLabels[value as keyof typeof roleLabels] ?? value;
+}
+function accountStatusLabel(value: string) {
+  return accountStatusLabels[value as keyof typeof accountStatusLabels] ?? value;
+}
+function emailStatusLabel(verified: boolean) {
+  return verified ? "已验证" : "待验证";
 }
 function message(error: unknown) {
   if (error instanceof ApiError && error.status === 409) return "记录已变化，请刷新后重新确认；刚才的输入已保留。";
@@ -49,8 +60,8 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
   const result = useQuery<IdentityAdminPage<IdentityAdminUser | IdentityTeacherApplication>>({ queryKey: ["c-identity-admin", userId, teachers, filters.toString()],
     queryFn: () => teachers ? cIdentityClient.applications(page, applicationStatus) : cIdentityClient.users(filters),
     enabled: !accessBlocked, staleTime: 0, gcTime: 0, retry: false });
-  const data = result.isSuccess && !result.isFetching && !accessBlocked ? result.data : undefined;
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const data = !accessBlocked ? result.data : undefined;
+  const [selectedIdState, setSelectedIdState] = useState<string | null>(null);
   const [acknowledgedVersion, setAcknowledgedVersion] = useState<number | null>(null);
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -58,15 +69,44 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
   const [creating, setCreating] = useState(false);
   const [conflict, setConflict] = useState(false);
   const locked = useRef(false);
+  // User directory selection is URL-replayable; teacher history keeps its existing local selection.
+  const selectedId = teachers ? selectedIdState : query.get("user");
   // Display fresh details, but require an explicit refresh before accepting a changed version.
   const selected = data?.items.find((row) => row.id === selectedId);
   const selectionChanged = Boolean(selected && recordVersion(selected) !== acknowledgedVersion);
-  if (!accessBlocked && result.error instanceof ApiError && [401, 403].includes(result.error.status)) {
-    setAccessBlocked(true); setSelectedId(null); setAcknowledgedVersion(null); setReason(""); setConflict(false); setFeedback("");
-  } else if (selectedId && data && !selected) {
-    setSelectedId(null); setAcknowledgedVersion(null); setReason("");
-  } else if (selected && "applicationVersion" in selected && selected.status !== "pending" && reason) {
-    setReason(""); setConflict(false);
+  useEffect(() => {
+    if (!accessBlocked && result.error instanceof ApiError && [401, 403].includes(result.error.status)) {
+      setAccessBlocked(true);
+      if (teachers) setSelectedIdState(null);
+      else if (query.get("user")) updateQuery({ user: null });
+      setAcknowledgedVersion(null); setReason(""); setConflict(false); setFeedback("");
+    }
+  }, [accessBlocked, result.error, teachers, query, updateQuery]);
+  useEffect(() => {
+    if (!teachers && data && selectedId && !selected) {
+      updateQuery({ user: null });
+      setAcknowledgedVersion(null); setReason(""); setConflict(false);
+      setFeedback("这条记录不在当前结果中，请调整筛选后重试。");
+    }
+  }, [data, selected, selectedId, teachers, updateQuery]);
+  useEffect(() => {
+    if (selected && acknowledgedVersion === null) setAcknowledgedVersion(recordVersion(selected));
+  }, [selected, acknowledgedVersion]);
+  useEffect(() => {
+    if (selected && "applicationVersion" in selected && selected.status !== "pending" && reason) {
+      setReason(""); setConflict(false);
+    }
+  }, [selected, reason]);
+  function clearSelection() {
+    if (teachers) setSelectedIdState(null);
+    else updateQuery({ user: null });
+    setAcknowledgedVersion(null); setReason(""); setConflict(false);
+  }
+  function selectRow(row: IdentityAdminUser | IdentityTeacherApplication) {
+    if (selectedId !== row.id) setReason("");
+    if (teachers) setSelectedIdState(row.id);
+    else updateQuery({ user: row.id });
+    setAcknowledgedVersion(recordVersion(row)); setConflict(false); setFeedback("");
   }
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,7 +127,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
       await result.refetch();
     } catch (error) {
       if (error instanceof ApiError && [401, 403].includes(error.status)) {
-        setAccessBlocked(true); setCreating(false); setSelectedId(null); setReason("");
+        setAccessBlocked(true); setCreating(false); clearSelection();
       }
       setFeedback(error instanceof ApiError && error.status === 409 ? "用户名或学校邮箱已登记，请核对后再提交。" : message(error));
     } finally { locked.current = false; setPending(false); }
@@ -106,16 +146,16 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
         saved = "账号已恢复，可重新登录。";
       } else if ((decision === "approve" || decision === "reject") && "applicationVersion" in selected && selected.status === "pending") await cIdentityClient.review(selected, decision, reason.trim(), userId);
       else return;
-      setSelectedId(null); setReason(""); setFeedback(saved); await result.refetch();
+      clearSelection(); setFeedback(saved); await result.refetch();
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
-        setSelectedId(null); setAcknowledgedVersion(null); setReason(""); setConflict(false);
+        clearSelection();
         setFeedback("这条记录已不存在，详情已关闭。");
         await result.refetch();
       } else {
         setFeedback(message(error));
         if (error instanceof ApiError && error.status === 409) setConflict(true);
-        if (error instanceof ApiError && [401, 403].includes(error.status)) { setAccessBlocked(true); setSelectedId(null); setAcknowledgedVersion(null); setReason(""); }
+        if (error instanceof ApiError && [401, 403].includes(error.status)) { setAccessBlocked(true); clearSelection(); }
       }
     } finally { locked.current = false; setPending(false); }
   }
@@ -154,7 +194,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     }}>
       <input className={inputControl} name="q" aria-label="姓名、邮箱或学号" placeholder="姓名、邮箱或学号" defaultValue={query.get("q") ?? ""} />
       <input className={inputControl} name="college" aria-label="学院" placeholder="学院" defaultValue={query.get("college") ?? ""} />
-      <select className={inputControl} name="role" aria-label="角色" defaultValue={query.get("role") ?? ""}><option value="">全部角色</option>{["student", "teacher", "ta", "admin"].map((role) => <option key={role}>{role}</option>)}</select>
+      <select className={inputControl} name="role" aria-label="角色" defaultValue={query.get("role") ?? ""}><option value="">全部角色</option>{["student", "teacher", "ta", "admin"].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
       <select className={inputControl} name="status" aria-label="账号状态" defaultValue={query.get("status") ?? ""}><option value="">全部状态</option><option value="enabled">可用</option><option value="disabled">停用</option></select>
       <button className={buttonControl}>查询</button>
     </form>}
@@ -163,18 +203,18 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     {result.isError && <p role="alert">{message(result.error)}</p>}
     {feedback && <p role="status" className="mb-4">{feedback}</p>}
     {data && <Panel className={styles.identityTablePanel}><div className={styles.identityRows}>{data.items.map((row) => <article key={row.id} className={styles.identityRow}>
-      <div><strong>{row.name}</strong><p className="text-sm text-slate-600">{row.college} · {"roles" in row ? `${row.roles.join("、")} · ${row.status}` : `${applicationStatuses[row.status]} · 当前邮箱：${row.emailDomain || "未绑定"} · ${row.emailVerified ? "已验证" : "未验证"}`}</p></div>
-      <button className={buttonControl} disabled={pending || ((conflict || selectionChanged) && selectedId === row.id)} onClick={() => { if (selectedId !== row.id) setReason(""); setSelectedId(row.id); setAcknowledgedVersion(recordVersion(row)); setConflict(false); setFeedback(""); }}>查看</button>
+      <div><strong>{row.name}</strong><p className="text-sm text-slate-600">{row.college} · {"roles" in row ? <><span className="mr-2 inline-flex flex-wrap gap-1">{row.roles.map((role) => <span className={styles.identityBadge} data-identity-role={role} key={role}>{roleLabel(role)}</span>)}</span><span className={`${styles.identityBadge} mr-2`} data-identity-status={row.status}>{accountStatusLabel(row.status)}</span><span className={styles.identityBadge} data-identity-email-status={row.schoolEmailVerified ? "verified" : "unverified"}>{emailStatusLabel(row.schoolEmailVerified)}</span></> : `${applicationStatuses[row.status]} · 当前邮箱：${row.emailDomain || "未绑定"} · ${row.emailVerified ? "已验证" : "未验证"}`}</p></div>
+      <button className={buttonControl} disabled={pending || ((conflict || selectionChanged) && selectedId === row.id)} onClick={() => selectRow(row)}>查看</button>
     </article>)}</div>
       {!data.items.length && <EmptyState title="没有符合条件的记录" />}
-      <div className={styles.tableFooter}><span>共 {data.total} 条 · 第 {data.page} 页</span><div className={styles.actions}><button className={buttonControl} disabled={page <= 1 || pending} onClick={() => { setSelectedId(null); updateQuery({ page: String(page - 1) }); }}>上一页</button><button className={buttonControl} disabled={page * 10 >= data.total || pending} onClick={() => { setSelectedId(null); updateQuery({ page: String(page + 1) }); }}>下一页</button></div></div>
+      <div className={styles.tableFooter}><span>共 {data.total} 条 · 第 {data.page} 页</span><div className={styles.actions}><button className={buttonControl} disabled={page <= 1 || pending} onClick={() => { clearSelection(); updateQuery({ page: String(page - 1) }); }}>上一页</button><button className={buttonControl} disabled={page * data.pageSize >= data.total || pending} onClick={() => { clearSelection(); updateQuery({ page: String(page + 1) }); }}>下一页</button></div></div>
     </Panel>}
     {selected && <Panel title={selected.name} className={`${styles.identityDetailPanel} mt-4`}>
       {"schoolEmail" in selected && <p>{selected.schoolEmail ?? "尚未验证学校邮箱"} · {selected.studentId ?? "无学号"}</p>}
       {"applicationVersion" in selected && <div className="space-y-3"><div><h3 className="font-semibold">提交时的申请资料</h3><p>姓名：{selected.submittedName ?? "未记录"}</p><p>申请身份：{selected.submittedIdentity === "teacher" ? "教师" : selected.submittedIdentity === "student" ? "学生" : "未记录"}</p><p>学校邮箱域：{selected.submittedEmailDomain ?? "未记录"}</p><p>申请版本：{selected.applicationVersion} · 提交时间：{formatDate(selected.createdAt)}</p></div><div><h3 className="font-semibold">当前账号资料</h3><p>姓名：{selected.name}</p><p>当前学校邮箱域：{selected.emailDomain || "未绑定"} · {selected.emailVerified ? "已验证" : "未验证"}</p><p className="text-sm text-slate-600">当前资料可能已变化，不代表提交或审核时的资料。</p></div>{selected.status !== "pending" && <div><h3 className="font-semibold">已保存的审核结果：{applicationStatuses[selected.status]}</h3><p>审核时间：{selected.reviewedAt ? formatDate(selected.reviewedAt) : "未记录"}</p><p>审核人（当前姓名）：{selected.reviewerName ?? "未记录或账号已不存在"}</p><p className="whitespace-pre-wrap">审核原因：{selected.reviewReason ?? "未记录"}</p><p className="text-sm text-slate-600">此记录只读；结果取自当时保存的审核决定，不根据当前账号角色推断。</p></div>}</div>}
       {selectionChanged && <p role="alert">此记录已被其他人修改，请刷新列表并核对后再提交；处理原因已保留。</p>}
       {("canDisable" in selected || selected.status === "pending") && <><label className={`${styles.field} my-3`}>处理原因<textarea className={`${inputControl} mt-1 block w-full`} aria-label="处理原因" value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} maxLength={2000} /></label><div className={styles.actions}>{"canDisable" in selected ? <button className={buttonControl} disabled={pending || conflict || selectionChanged || !reason.trim() || (selected.status !== "disabled" && !selected.canDisable)} onClick={() => void decide(selected.status === "disabled" ? "enable" : "disable")}>{selected.status === "disabled" ? "确认恢复" : "确认停用"}</button> : <><button className={buttonControl} disabled={pending || conflict || selectionChanged || !reason.trim() || !selected.emailVerified} onClick={() => void decide("approve")}>通过</button><button className={buttonControl} disabled={pending || conflict || selectionChanged || !reason.trim()} onClick={() => void decide("reject")}>拒绝</button></>}</div></>}
-      <button className={`${buttonControl} mt-3`} disabled={pending} onClick={() => { setSelectedId(null); setAcknowledgedVersion(null); setReason(""); setConflict(false); }}>取消</button>
+      <button className={`${buttonControl} mt-3`} disabled={pending} onClick={clearSelection}>取消</button>
     </Panel>}
   </div>;
 }

@@ -570,6 +570,26 @@
   line-height: 1.45;
 }
 
+.identityBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  background: #f8fbff;
+  color: #385273;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+[data-identity-status="enabled"].identityBadge,
+[data-identity-email-status="verified"].identityBadge { border-color: #b7ead4; background: #ecfbf4; color: #087f5b; }
+[data-identity-status="disabled"].identityBadge { border-color: #fecaca; background: #fff1f2; color: #b42318; }
+[data-identity-email-status="unverified"].identityBadge { border-color: #fcd9a2; background: #fff8eb; color: #a15c00; }
+
 .identityDetailPanel {
   padding: 2px;
 }

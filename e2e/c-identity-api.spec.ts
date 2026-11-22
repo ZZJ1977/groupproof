@@ -48,6 +48,18 @@ test("C7-01/02 identity filters survive refresh and disabling uses current versi
   await expect(page.getByText("账号已恢复，可重新登录。")).toBeVisible();
 });
 
+test("user directory translates identity states and replays the selected user from the URL", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users");
+
+  await expect(page.locator('[data-identity-role="student"]')).toHaveText("学生");
+  await expect(page.locator('[data-identity-status="enabled"]')).toHaveText("可用");
+  await expect(page.locator('[data-identity-email-status="verified"]')).toHaveText("已验证");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page).toHaveURL(/user=identity-student/);
+});
+
 test("C7-02 submits the selected identity and school email to A's account service", async ({ page }) => {
   await session(page);
   await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));
