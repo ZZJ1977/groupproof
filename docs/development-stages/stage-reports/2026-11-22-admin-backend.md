@@ -27,5 +27,6 @@
 ## Railway 状态与限制
 
 - 已确认 API 使用 `services/api/railway.toml` 的 Dockerfile、`alembic upgrade head` 和 `/readyz`；Web/API/Postgres/Redis/可选 worker 的边界沿用现有部署文档。
-- 本机尚未提供有效 Railway 登录凭证，因此没有创建新项目、服务、变量或部署；不能把本地测试结果当作线上验收。下一步需要负责人在本机完成 Railway CLI 登录或提供受控 token，再逐项创建服务并核对 `APP_ORIGIN`、`API_INTERNAL_URL`、数据库/Redis 引用、`APP_MODE` 和 `NEXT_PUBLIC_ENABLE_MOCKS=false`。
+- 已在已登录的 Railway workspace 中创建新项目 `groupproof-admin`（project ID `c96385e7-2109-4250-be01-5100b1d55521`，production environment ID `95b0f49f-afca-4636-81fc-222636ba16f5`），并建立 `Postgres`、`Redis`、`api`、`web`、`worker` 五个服务。Postgres/Redis 已由 Railway 自动部署；应用服务暂未连接代码源、变量或部署，避免未配置 secrets 时触发失败发布。
+- `admin-backend` 已推送到 `ZZJ1977/groupproof` 远端分支；下一步可在确认变量和根目录/启动命令后，把 `api`/`web`/`worker` 分别绑定此分支并逐项部署。当前不能把本地测试或数据库服务在线当作应用线上验收。
 - 旧业务审计端点 `/api/v1/admin/audit-logs` 仍保留兼容契约并在 provider 未接通时返回 503；管理日志默认入口使用已接通的 `/api/v1/admin/shared-audit-events`，页面会明确显示来源与不可用状态。
