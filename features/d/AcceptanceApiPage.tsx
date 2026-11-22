@@ -132,7 +132,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
         {check && <div className="mt-3"><ProgressBar value={check.coverage_rate} /></div>}
         <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
           <Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>补充证据</Link>
-          <Link className="gp-link" href={`${taskHref}/verification`}>查看验收结果 →</Link>
+          <Link className="gp-link" href={`${taskHref}/verification`}>查看验收结果</Link>
         </div>
       </Section>
 
