@@ -66,9 +66,29 @@ export interface CapabilitiesDTO {
 export interface RegistrationTxDTO {
   id: string;
   email: string;
-  status: "pending" | "accepted" | "failed" | "unknown";
+  status: "pending" | "accepted" | "captured" | "failed" | "unknown";
   expiresAt: string;
   resendAvailableAt: string | null;
+}
+
+export interface RegistrationProfileDTO {
+  email: string;
+  allowedIdentities: ("student" | "teacher")[];
+}
+
+export interface RegistrationProfileInput {
+  name: string;
+  requestedIdentity: "student" | "teacher";
+  studentId?: string;
+  college?: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface GithubIdentityDTO {
+  available: boolean;
+  login: string | null;
+  verifiedAt: string | null;
 }
 
 /** 验收临时密令（仅非 real）：直接开通测试账户，形状同会话 DTO */
@@ -76,12 +96,13 @@ export interface TestEntryDTO extends SessionDTO {
   testEntry: true;
 }
 
-async function request<T>(path: string, options: { method?: string; body?: unknown; csrf?: string } = {}): Promise<T> {
+async function request<T>(path: string, options: { method?: string; body?: unknown; csrf?: string; signal?: AbortSignal } = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method: options.method ?? "GET",
       credentials: "same-origin",
+      signal: options.signal,
       headers: {
         ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(options.csrf ? { "X-CSRF-Token": options.csrf } : {}),
@@ -140,6 +161,8 @@ export interface MeDTO {
     username: string | null;
     studentId?: string | null;
     college?: string | null;
+    githubUsername?: string | null;
+    feishuAccount?: string | null;
     requestedIdentity?: string | null;
     roles: string[];
     preferredLocale: string;
@@ -200,14 +223,16 @@ export const authClient = {
   passwordLogin: (identifier: string, password: string) =>
     request<SessionDTO>("/api/v1/auth/password/login", { method: "POST", body: { identifier, password } }),
   capabilities: () => request<CapabilitiesDTO>("/api/v1/auth/capabilities"),
-  startEmailRegistration: (email: string, locale?: string) =>
-    request<RegistrationTxDTO | TestEntryDTO>("/api/v1/auth/email/registrations", { method: "POST", body: { email, locale } }),
-  resendEmailRegistration: (txId: string, locale?: string) =>
-    request<RegistrationTxDTO>(`/api/v1/auth/email/registrations/${txId}/resend`, { method: "POST", body: { email: "", locale } }),
-  verifyEmailRegistration: (txId: string, code: string) =>
-    request<{ verified: boolean; email: string; creationGrantExpiresAt: string }>(`/api/v1/auth/email/registrations/${txId}/verify`, { method: "POST", body: { code } }),
-  completeEmailRegistration: (txId: string, username: string, password: string) =>
-    request<SessionDTO | { status: "already_completed" }>(`/api/v1/auth/email/registrations/${txId}/complete`, { method: "POST", body: { username, password } }),
+  startEmailRegistration: (email: string, locale?: string, signal?: AbortSignal) =>
+    request<RegistrationTxDTO | TestEntryDTO>("/api/v1/auth/email/registrations", { method: "POST", body: { email, locale }, signal }),
+  resendEmailRegistration: (txId: string, locale?: string, signal?: AbortSignal) =>
+    request<RegistrationTxDTO>(`/api/v1/auth/email/registrations/${encodeURIComponent(txId)}/resend`, { method: "POST", body: { email: "", locale }, signal }),
+  verifyEmailRegistration: (txId: string, code: string, signal?: AbortSignal) =>
+    request<{ verified: boolean; email: string; creationGrantExpiresAt: string }>(`/api/v1/auth/email/registrations/${encodeURIComponent(txId)}/verify`, { method: "POST", body: { code }, signal }),
+  registrationProfile: (txId: string, signal?: AbortSignal) =>
+    request<RegistrationProfileDTO>(`/api/v1/auth/email/registrations/${encodeURIComponent(txId)}/profile`, { signal }),
+  completeEmailRegistration: (txId: string, profile: RegistrationProfileInput) =>
+    request<SessionDTO | { status: "already_completed" }>(`/api/v1/auth/email/registrations/${encodeURIComponent(txId)}/complete`, { method: "POST", body: profile }),
   forgotPassword: (email: string, locale?: string) =>
     request<{ status: string }>("/api/v1/auth/password/forgot", { method: "POST", body: { email, locale } }),
   resetPassword: (token: string, newPassword: string) =>
@@ -223,6 +248,9 @@ export const authClient = {
     request<{ authorizeUrl: string }>("/api/v1/me/identities/google/link", { method: "POST", body: {}, csrf }),
   unlinkGoogle: (csrf: string) =>
     request<{ googleEmailBound: boolean }>("/api/v1/me/identities/google", { method: "DELETE", csrf }),
+  githubIdentity: (signal?: AbortSignal) => request<GithubIdentityDTO>("/api/v1/me/identities/github", { signal }),
+  linkGithub: (csrf: string) => request<{ authorizeUrl: string }>("/api/v1/me/identities/github/link", { method: "POST", csrf }),
+  unlinkGithub: (csrf: string) => request<void>("/api/v1/me/identities/github", { method: "DELETE", csrf }),
   updateProfile: (csrf: string, body: Record<string, unknown>) =>
     request<MeDTO>("/api/v1/me/profile", { method: "PATCH", body, csrf }),
   preferences: (csrf: string, preferredLocale: string) =>

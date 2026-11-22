@@ -22,13 +22,13 @@ import test_c_files as files
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import MetaData, Table, create_engine, event, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer, load_only
 
 from app.auth.models import AuthAuditEvent, OAuthTransaction, TeacherApplication
-from app.db.models import TaskAssignee, User
+from app.db.models import Course, CourseStaff, TaskAssignee, User
 from app.db.settings import normalize_database_url
 from app.modules.c.note_schemas import SaveTaskNote
 from app.modules.c.note_service import save_note
@@ -120,8 +120,85 @@ def snapshot(engine, columns):
 
 def seed_retained_history(engine):
     """Use actual C services to persist historical records on the old schema."""
+    historical_users = Table("users", MetaData(), autoload_with=engine)
+    historical_courses = Table("courses", MetaData(), autoload_with=engine)
+    historical_staff = Table("course_staff", MetaData(), autoload_with=engine)
+    historical_fields = load_only(*(getattr(User, name) for name in historical_users.c.keys()))
+    historical_course_fields = load_only(
+        *(getattr(Course, name) for name in historical_courses.c.keys())
+    )
+
+    def persist_historical_user(session, user):
+        # Seed against the actual 0013 table. The current User mapper also knows 0033 columns.
+        session.execute(
+            historical_users.insert(),
+            {
+                "id": user.id,
+                "name": user.name,
+                "username": user.username,
+                "email": user.email,
+                "college": user.college,
+                "global_role": user.global_role,
+                "status": user.status,
+            },
+        )
+        historical_user = session.get(User, user.id, options=(historical_fields,))
+        binding = user.email_binding
+        user.email_binding = None
+        historical_user.email_binding = binding
+        return historical_user
+
+    def persist_historical_course(session, course):
+        # Seed against the actual 0013 courses table (before 0043 added description/archived_at).
+        session.execute(
+            historical_courses.insert(),
+            {
+                "id": course.id,
+                "owner_id": course.owner_id,
+                "code": course.code,
+                "name": course.name,
+                "college": course.college,
+                "semester": course.semester,
+                "status": course.status,
+            },
+        )
+        return session.get(Course, course.id, options=(historical_course_fields,))
+
+    def persist_historical_staff(session, staff):
+        # Seed against the actual 0013 course_staff table (before 0042 added permissions).
+        session.execute(
+            historical_staff.insert(),
+            {
+                "course_id": staff.course_id,
+                "user_id": staff.user_id,
+                "role": staff.role,
+            },
+        )
+        return staff
+
     with Session(engine, expire_on_commit=False) as session:
-        scope = evidence.scope.__wrapped__(session)
+
+        @event.listens_for(session, "do_orm_execute")
+        def _defer_post_0013_columns(execute_state):
+            if not execute_state.is_select:
+                return
+            entities = {desc.get("entity") for desc in execute_state.statement.column_descriptions}
+            options = []
+            if Course in entities:
+                options.extend((defer(Course.description), defer(Course.archived_at)))
+            if CourseStaff in entities:
+                options.append(defer(CourseStaff.permissions))
+            if User in entities:
+                options.extend((defer(User.github_username), defer(User.feishu_account)))
+            if options:
+                execute_state.statement = execute_state.statement.options(*options)
+
+        scope = evidence.build_scope(
+            session,
+            persist_user=persist_historical_user,
+            persist_course=persist_historical_course,
+            persist_staff=persist_historical_staff,
+        )
         author = scope.users["author"]
         scope.task.status = "not_started"
         session.add(TaskAssignee(task_id=scope.task.id, user_id=author.id, role="responsible"))
@@ -296,7 +373,7 @@ def test_upgrade_0013_through_d_and_google_preserves_c_history(migration_databas
     assert D_TABLES <= set(inspect(engine).get_table_names())
     assert snapshot(engine, columns) == before
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0036"
+    assert current_revision(engine) == "0046"
     assert RISK_TABLES <= set(inspect(engine).get_table_names())
     assert snapshot(engine, columns) == before
     with Session(engine) as session:
@@ -310,9 +387,9 @@ def test_upgrade_0013_through_d_and_google_preserves_c_history(migration_databas
 def test_clean_database_rebuild_has_one_head_and_matches_models(migration_database):
     engine, config = migration_database.engine, migration_database.config
     assert inspect(engine).get_table_names() == []
-    assert ScriptDirectory.from_config(config).get_heads() == ["0036"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0046"]
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0036"
+    assert current_revision(engine) == "0046"
     inspector = inspect(engine)
     assert D_TABLES <= set(inspector.get_table_names())
     assert RISK_TABLES <= set(inspector.get_table_names())
@@ -323,6 +400,9 @@ def test_clean_database_rebuild_has_one_head_and_matches_models(migration_databa
     columns = {column["name"]: column for column in inspector.get_columns("oauth_transactions")}
     assert columns["purpose"]["nullable"] is False and "login" in columns["purpose"]["default"]
     assert columns["user_id"]["nullable"] is True
+    user_columns = {column["name"]: column for column in inspector.get_columns("users")}
+    for field in ("github_username", "feishu_account"):
+        assert user_columns[field]["nullable"] is True
     assert any(
         fk["constrained_columns"] == ["user_id"]
         and fk["referred_table"] == "users"
@@ -332,4 +412,4 @@ def test_clean_database_rebuild_has_one_head_and_matches_models(migration_databa
     command.check(config)
     # Re-running head is a no-op, not a duplicate D/OAuth schema installation.
     command.upgrade(config, "head")
-    assert current_revision(engine) == "0036"
+    assert current_revision(engine) == "0046"

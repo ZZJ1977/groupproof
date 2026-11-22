@@ -369,3 +369,24 @@ def test_scope_of_reads_and_writes(setup):
     assert api.post(p(world, "/modules"), {"name": "x"}).status_code == 403
     api.as_user(None)
     assert api.get(p(world, "/baseline/checklist")).status_code == 401
+
+
+def test_analysis_does_not_write_results_after_course_ends(setup, b_engine, monkeypatch):
+    from app.db.models import Course
+    from app.modules.a.ai.provider import FakeProvider
+
+    api, world, _ = setup
+    add_text(api, world, "学生可以提交课程项目")
+    generate = FakeProvider.generate
+
+    def end_during_analysis(provider, feature, payload, *, timeout):
+        with Session(b_engine) as closer:
+            closer.get(Course, world.course_id).status = "ended"
+            closer.commit()
+        return generate(provider, feature, payload, timeout=timeout)
+
+    monkeypatch.setattr(FakeProvider, "generate", end_during_analysis)
+    run = analyse(api, world)
+    assert run["status"] == "failed"
+    assert run["error_code"] == "PROJECT_READ_ONLY"
+    assert board(api, world)["requirements"] == []

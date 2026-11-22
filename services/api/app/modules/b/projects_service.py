@@ -2,7 +2,7 @@
 and materials (B3-04).
 
 * One project per group: checked under the group row lock and enforced by the
-  ``uq_projects_group`` index, so concurrent creates make exactly one.
+  ``uq_projects_group_id`` index, so concurrent creates make exactly one.
 * A new project copies the current group members, the course project deadline
   and the course milestone template, all in one transaction.
 * Overview progress uses C's ``progress_projection`` (root-weighted) so B and C
@@ -36,7 +36,7 @@ from app.modules.a.audit import record_audit
 from app.modules.a.inbox import notify
 from app.modules.a.models import UploadReceipt
 from app.modules.a.permissions import Target
-from app.modules.b.common import now, require_version
+from app.modules.b.common import lock_project_for_write, now, require_version
 from app.modules.b.courses_schemas import PersonDTO
 from app.modules.b.models import (
     BCourseProjectTemplate,
@@ -62,6 +62,8 @@ from app.modules.b.projects_schemas import (
     SetupDTO,
 )
 from app.modules.c.task_execution import progress_projection
+from app.modules.d.models import CourseTemplateApplication
+from app.modules.d.teacher_course import apply_template, latest_rule
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 # Setup can change only while the baseline is a draft (not in confirmation, not frozen).
@@ -88,11 +90,30 @@ def get_template(session: Session, user: User, course_id: UUID) -> ProjectTempla
         or permissions.is_course_staff(session, user, course_id)
     ):
         raise ApiError(404, "COURSE_NOT_FOUND", "课程不存在或你不是该课程成员。")
+    course = session.get(Course, course_id)
     row = session.get(BCourseProjectTemplate, course_id)
+    rule = latest_rule(session, course_id)
+    template = rule.rules.get("template") if rule else None
+    if template:
+        milestones = [
+            MilestoneTemplateItem(
+                title=item["name"],
+                description="必交材料："
+                + "、".join(item.get("required_materials", []))
+                + f"；权重：{item['weight']}%",
+            )
+            for item in template.get("milestones", [])
+        ]
+    else:
+        milestones = [MilestoneTemplateItem(**m) for m in (row.milestones if row else [])]
     return ProjectTemplateDTO(
         course_id=course_id,
-        milestones=[MilestoneTemplateItem(**m) for m in (row.milestones if row else [])],
+        milestones=milestones,
         lock_version=row.lock_version if row else 0,
+        course_rule_version_id=rule.id if rule else None,
+        course_rule_version=rule.version_no if rule else None,
+        min_group_size=course.min_group_size,
+        max_group_size=course.max_group_size,
     )
 
 
@@ -131,9 +152,7 @@ def set_template(
         after={"milestones": len(items)},
         request=request,
     )
-    return ProjectTemplateDTO(
-        course_id=course_id, milestones=command.milestones, lock_version=row.lock_version
-    )
+    return get_template(session, user, course_id)
 
 
 # ---------------------------------------------------------------- B3-01 draft + create
@@ -202,18 +221,52 @@ def create_project(
     group = session.get(ProjectGroup, group_id)
     if group is None or not permissions.is_group_member(session, user, group_id):
         raise ApiError(404, "GROUP_NOT_FOUND", "小组不存在或你不是该组成员。")
-    permissions.require_action(session, user, "project.create", Target("group", group_id))
+    # Lock the course before its group, matching the teacher lifecycle write order.
+    # This keeps settings/end changes out until the project and rule binding commit.
+    course = session.scalar(
+        select(Course)
+        .where(Course.id == group.course_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
     group = session.scalar(
         select(ProjectGroup)
         .where(ProjectGroup.id == group_id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    course = session.get(Course, group.course_id)
+    # A leader change may have committed while this request waited for the lock.
+    permissions.require_action(session, user, "project.create", Target("group", group_id))
     if course.status != "active":
         raise ApiError(409, "COURSE_CLOSED", "课程已经结束。")
     if _project_of_group(session, group_id) is not None:
         raise ApiError(409, "PROJECT_ALREADY_EXISTS", "本组已经创建了项目。")
+    if command.expected_group_version is not None:
+        require_version(group.lock_version, command.expected_group_version)
+    rule = latest_rule(session, course.id)
+    if rule is None:
+        raise ApiError(409, "COURSE_RULES_NOT_PUBLISHED", "课程尚未发布规则，请联系老师。")
+    if (
+        command.expected_course_rule_version_id is not None
+        and command.expected_course_rule_version_id != rule.id
+    ):
+        raise ApiError(
+            409, "COURSE_RULE_VERSION_CONFLICT", "课程规则已更新，请刷新并确认后再创建。"
+        )
+    members = session.scalars(
+        select(GroupMember).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
+    ).all()
+    if not course.min_group_size <= len(members) <= course.max_group_size:
+        raise ApiError(
+            409,
+            "GROUP_SIZE_INVALID",
+            f"小组人数需在 {course.min_group_size}–{course.max_group_size} 人之间。",
+            details={
+                "min": course.min_group_size,
+                "max": course.max_group_size,
+                "member_count": len(members),
+            },
+        )
     name = command.name.strip()
     if not name:
         raise ApiError(422, "PROJECT_NAME_REQUIRED", "请填写项目名称。", details={"field": "name"})
@@ -234,9 +287,6 @@ def create_project(
     session.add(
         BProjectSchedule(project_id=project.id, start_date=now().astimezone(LOCAL_TZ).date())
     )
-    members = session.scalars(
-        select(GroupMember).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
-    ).all()
     for member in members:
         session.add(
             ProjectMember(
@@ -245,17 +295,38 @@ def create_project(
                 role="leader" if member.user_id == group.leader_id else "member",
             )
         )
-    template = session.get(BCourseProjectTemplate, course.id)
-    for index, item in enumerate(template.milestones if template else []):
+    published_template = rule.rules.get("template")
+    optional_template = session.get(BCourseProjectTemplate, course.id)
+    optional_milestones = optional_template.milestones if optional_template else []
+    if published_template:
+        apply_template(session, project.id, rule, published_template)
+        milestone_count = len(published_template.get("milestones", []))
+    else:
+        # Older B optional templates carry dates/titles, not grading weights.
+        # Preserve their real snapshot without inventing D grading requirements.
         session.add(
-            Milestone(
+            CourseTemplateApplication(
                 project_id=project.id,
-                title=item["title"],
-                description=item.get("description"),
-                deadline=datetime.fromisoformat(item["deadline"]) if item.get("deadline") else None,
-                sort_order=index + 1,
+                version_id=rule.id,
+                template={
+                    "source": "optional_course_milestones",
+                    "milestones": optional_milestones,
+                },
             )
         )
+        for index, item in enumerate(optional_milestones):
+            session.add(
+                Milestone(
+                    project_id=project.id,
+                    title=item["title"],
+                    description=item.get("description"),
+                    deadline=datetime.fromisoformat(item["deadline"])
+                    if item.get("deadline")
+                    else None,
+                    sort_order=index + 1,
+                )
+            )
+        milestone_count = len(optional_milestones)
     draft = session.get(BProjectDraft, group.id)
     if draft is not None:
         session.delete(draft)
@@ -267,7 +338,7 @@ def create_project(
                 recipient=member.user_id,
                 category="project",
                 title=f"小组「{group.name}」创建了项目「{name}」",
-                description="请进入项目完成初始化。",
+                description="请进入项目完善设置并开始协作。",
                 target={"kind": "project", "id": project.id, "project_id": project.id},
                 dedupe_key=f"b:project-created:{project.id}",
             )
@@ -281,11 +352,12 @@ def create_project(
         after={
             "name": name,
             "members": [m.user_id for m in members],
-            "milestones": len(template.milestones) if template else 0,
+            "milestones": milestone_count,
+            "course_rule_version_id": rule.id,
         },
         request=request,
     )
-    return CreatedProjectDTO(project_id=project.id, href=f"/projects/{project.id}/setup")
+    return CreatedProjectDTO(project_id=project.id, href=f"/projects/{project.id}")
 
 
 # ---------------------------------------------------------------- B3-02 overview
@@ -402,13 +474,8 @@ def setup(session: Session, user: User, project_id: UUID) -> SetupDTO:
 
 
 def _require_setup_writer(session: Session, user: User, project_id: UUID):
-    relation = permissions.require_project_member(session, user, project_id)
-    project = session.scalar(
-        select(Project)
-        .where(Project.id == project_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    relation = lock_project_for_write(session, user, project_id)
+    project = relation.project
     if project.setup_status == "frozen":
         raise ApiError(409, "BASELINE_FROZEN", "需求基线已冻结，初始化信息不能再修改。")
     if project.setup_status not in EDITABLE_SETUP:

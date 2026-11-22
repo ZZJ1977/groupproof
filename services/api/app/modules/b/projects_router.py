@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 
 from app.api.errors import ApiError
+from app.api.responses import SuccessResponse
 from app.modules.b import projects_service as service
 from app.modules.b.common import (
     ERROR_RESPONSES,
@@ -21,10 +22,16 @@ from app.modules.b.common import (
 from app.modules.b.ports import MaterialTextPort, get_material_text_port
 from app.modules.b.projects_schemas import (
     AddMaterial,
+    CreatedProjectDTO,
     CreateProject,
+    DraftDTO,
+    MaterialDTO,
+    OverviewDTO,
+    ProjectTemplateDTO,
     SaveBasic,
     SaveDraft,
     SetProjectTemplate,
+    SetupDTO,
 )
 
 router = APIRouter(
@@ -47,12 +54,16 @@ def _write(session, request, user, key, operation, payload, execute, status_code
     )
 
 
-@router.get("/courses/{course_id}/project-template")
+@router.get(
+    "/courses/{course_id}/project-template", response_model=SuccessResponse[ProjectTemplateDTO]
+)
 def project_template(course_id: UUID, request: Request, session: Database, user: CurrentUser):
     return envelope(service.get_template(session, user, course_id), request)
 
 
-@router.put("/courses/{course_id}/project-template")
+@router.put(
+    "/courses/{course_id}/project-template", response_model=SuccessResponse[ProjectTemplateDTO]
+)
 def set_project_template(
     course_id: UUID,
     command: SetProjectTemplate,
@@ -72,12 +83,12 @@ def set_project_template(
     )
 
 
-@router.get("/groups/{group_id}/project-draft")
+@router.get("/groups/{group_id}/project-draft", response_model=SuccessResponse[DraftDTO])
 def project_draft(group_id: UUID, request: Request, session: Database, user: CurrentUser):
     return envelope(service.get_draft(session, user, group_id), request)
 
 
-@router.put("/groups/{group_id}/project-draft")
+@router.put("/groups/{group_id}/project-draft", response_model=SuccessResponse[DraftDTO])
 def save_project_draft(
     group_id: UUID,
     command: SaveDraft,
@@ -97,7 +108,11 @@ def save_project_draft(
     )
 
 
-@router.post("/groups/{group_id}/projects", status_code=201)
+@router.post(
+    "/groups/{group_id}/projects",
+    status_code=201,
+    response_model=SuccessResponse[CreatedProjectDTO],
+)
 def create_project(
     group_id: UUID,
     command: CreateProject,
@@ -119,17 +134,17 @@ def create_project(
     )
 
 
-@router.get("/projects/{project_id}/overview")
+@router.get("/projects/{project_id}/overview", response_model=SuccessResponse[OverviewDTO])
 def project_overview(project_id: UUID, request: Request, session: Database, user: CurrentUser):
     return envelope(service.overview(session, user, project_id), request)
 
 
-@router.get("/projects/{project_id}/setup")
+@router.get("/projects/{project_id}/setup", response_model=SuccessResponse[SetupDTO])
 def project_setup(project_id: UUID, request: Request, session: Database, user: CurrentUser):
     return envelope(service.setup(session, user, project_id), request)
 
 
-@router.patch("/projects/{project_id}/setup/basic")
+@router.patch("/projects/{project_id}/setup/basic", response_model=SuccessResponse[SetupDTO])
 def save_basic(
     project_id: UUID,
     command: SaveBasic,
@@ -149,7 +164,9 @@ def save_basic(
     )
 
 
-@router.post("/projects/{project_id}/materials", status_code=201)
+@router.post(
+    "/projects/{project_id}/materials", status_code=201, response_model=SuccessResponse[MaterialDTO]
+)
 def add_material(
     project_id: UUID,
     command: AddMaterial,
@@ -172,7 +189,9 @@ def add_material(
     )
 
 
-@router.get("/projects/{project_id}/materials/{material_id}")
+@router.get(
+    "/projects/{project_id}/materials/{material_id}", response_model=SuccessResponse[MaterialDTO]
+)
 def material(
     project_id: UUID, material_id: UUID, request: Request, session: Database, user: CurrentUser
 ):

@@ -13,6 +13,7 @@ from app.modules.b.models import BCriterionRecheck
 from app.modules.b.ports import (
     InvalidationOutcome,
     TaskVerificationStatus,
+    UnavailableVerificationPort,
     get_verification_port,
 )
 from app.modules.c.models import Evidence, EvidenceCriterion
@@ -223,6 +224,7 @@ def test_impact_preview_then_save_flags_criteria_and_tells_d(setup, b_engine):
 
 def test_recheck_flag_is_kept_when_d_is_unavailable(setup, b_engine):
     api, world, other, modules, reqs = setup
+    api._app.dependency_overrides[get_verification_port] = UnavailableVerificationPort
     task_id, criterion_id, _ = link_task(b_engine, world, reqs[0]["id"])
     freeze(b_engine, world)
     assert update(api, world, reqs[0], title="新标题", reason="调整").status_code == 200
@@ -236,6 +238,7 @@ def test_recheck_flag_is_kept_when_d_is_unavailable(setup, b_engine):
 
 def test_trace_walks_module_task_criterion_evidence_and_says_when_d_is_missing(setup, b_engine):
     api, world, other, modules, reqs = setup
+    api._app.dependency_overrides[get_verification_port] = UnavailableVerificationPort
     task_id, criterion_id, evidence_id = link_task(b_engine, world, reqs[0]["id"])
     data = api.get(p(world, f"/requirements/{reqs[0]['id']}/trace")).json()["data"]
     assert data["module"]["name"] == "登录"

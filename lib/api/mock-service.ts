@@ -1,8 +1,10 @@
-import { seedData } from "@/mocks/seed";
 import { migrateWorkspace } from "@/lib/versioning";
+import { emptyWorkspace } from "@/lib/empty-workspace";
+import { apiMode } from "@/lib/api/config";
+import { mockWorkspaceBackupKey as backupKey, mockWorkspaceStorageKey as storageKey, workspaceScope } from "@/lib/api/mock-storage";
 import type { Evidence, MockData, Task, Verification } from "@/types/domain";
 
-const backupKey = "groupproof-v1-workspace-legacy-backup";
+export { setWorkspaceScope } from "@/lib/api/mock-storage";
 
 /**
  * 业务数据适配边界（P2 未完成项）：
@@ -10,22 +12,15 @@ const backupKey = "groupproof-v1-workspace-legacy-backup";
  * 存储键按 userId 隔离，退出/切换账号必须清理，防止跨账号缓存串数据。
  * 接入真实业务 API 时整体替换本适配器，页面调用约定保持不变。
  */
-let scopeUserId = "anonymous";
-
-export function setWorkspaceScope(userId: string) {
-  scopeUserId = userId || "anonymous";
-}
-
-function storageKey() {
-  return `groupproof-v1-workspace:${scopeUserId}`;
-}
-
-function cloneSeed(): MockData {
+async function cloneSeed(): Promise<MockData> {
+  // The fixture belongs to the explicitly enabled demo; real workspaces never load this module.
+  const { seedData } = await import("@/mocks/seed");
   return structuredClone(seedData);
 }
 
 export const mockService = {
   async getWorkspace(): Promise<MockData> {
+    if (apiMode("workspace") !== "mock") return emptyWorkspace(workspaceScope());
     if (typeof window === "undefined") return cloneSeed();
     const saved = window.localStorage.getItem(storageKey());
     if (!saved) return cloneSeed();
@@ -53,6 +48,7 @@ export const mockService = {
   },
 
   async saveWorkspace(data: MockData): Promise<void> {
+    if (apiMode("workspace") !== "mock") throw new Error("真实工作区不能保存浏览器演示数据。");
     if (typeof window !== "undefined") {
       window.localStorage.setItem(storageKey(), JSON.stringify(data));
     }

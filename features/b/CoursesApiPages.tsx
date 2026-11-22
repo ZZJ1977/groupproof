@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ArrowRight, CheckCircle2, Clock, Plus } from "lucide-react";
@@ -29,6 +30,7 @@ export function MyCoursesApiPage() {
   const ts = useTranslations("pages.shared");
   const { userId, role } = useWorkspace();
   const isTeacher = role === "teacher" || role === "ta";
+  const createIntent = useSearchParams().get("intent") === "create-project";
   const errorText = useBErrorMessage();
   const { filters, setFilters } = useUrlFilters(myCourseFilters);
   const [search, setSearch] = useState(filters.q);
@@ -42,18 +44,13 @@ export function MyCoursesApiPage() {
   return <div>
     <AnnouncementBanner />
     <PageHeader
-      title={t("title")}
-      description={t("description")}
-      actions={
-        isTeacher ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/teacher/courses" className={button}><Plus size={15} />我的班级 / 创建班级</Link>
-            <Link href="/courses/join" className={secondary}>{t("join")}</Link>
-          </div>
-        ) : (
-          <Link href="/courses/join" className={button}><Plus size={15} />{t("join")}</Link>
-        )
-      }
+      title={createIntent ? t("createCourseProjectTitle") : t("title")}
+      description={createIntent ? t("chooseProjectCourse") : t("description")}
+      actions={<div className="flex flex-wrap gap-2">
+        {isTeacher && !createIntent && <Link href="/teacher/courses" className={button}><Plus size={15} />我的班级 / 创建班级</Link>}
+        {!isTeacher && !createIntent && <Link href="/projects/new" className={button}><Plus size={15} />{t("createProjectTitle")}</Link>}
+        <Link href="/courses/join" className={createIntent ? button : secondary}><Plus size={15} />{t("join")}</Link>
+      </div>}
     />
     <div role="tablist" className="mb-4 mt-5 flex flex-wrap gap-6 border-b border-slate-200">{myCourseTabs.map((key) => <button key={key} type="button" role="tab" aria-selected={filters.tab === key} onClick={() => setFilters({ tab: key })} className={`border-b-2 pb-3 text-sm font-medium ${filters.tab === key ? "border-blue-600 text-[var(--gp-action)]" : "border-transparent text-slate-500 hover:text-slate-800"}`}>{t(`tabs.${key}`)}{data ? ` ${data.counts[key]}` : ""}</button>)}</div>
     <form className="mb-4 flex max-w-md gap-2" onSubmit={(event) => { event.preventDefault(); setFilters({ q: search.trim() }); }}>
@@ -67,9 +64,9 @@ export function MyCoursesApiPage() {
       : data && data.items.length ? <div className="space-y-3">{data.items.map((course) => <Panel key={course.id}>
         <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900">{course.name}</h2><p className="mt-1 text-xs text-slate-500">{t("teacherLine", { teacher: course.teacher?.name ?? t("toBeAssigned"), code: course.code, semester: course.semester })}</p></div><StatusBadge tone={course.status === "active" ? "green" : "gray"} label={course.status === "active" ? t("statusActive") : course.status === "ended" ? t("statusEnded") : t("statusNotStarted")} /></div>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500"><span>{course.group ? t("currentGroup", { name: course.group.name }) : t("noGroup")}</span><span>{t("formationDeadline", { date: dateOnly(course.formation_deadline, ts("notSet")) })}</span><span>{t("projectDeadline", { date: dateOnly(course.project_deadline, ts("notSet")) })}</span>{course.pending_count > 0 && <span className="text-amber-600">{t("pendingCount", { count: course.pending_count })}</span>}</div>
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm"><Link href={course.project ? `/projects/${course.project.id}` : course.group ? `/courses/${course.id}/projects/new` : `/courses/${course.id}/groups`} className="font-medium text-[var(--gp-action)] hover:underline">{course.project ? t("enterProject") : course.group ? t("createProject") : t("startGrouping")} <ArrowRight size={14} className="inline" /></Link></div>
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-sm"><Link href={`/courses/${course.id}/rules`} className="gp-link">{t("viewRules")}</Link><Link href={`/courses/${course.id}/files`} className="gp-link">{t("viewFiles")}</Link><Link href={course.project ? `/projects/${course.project.id}` : course.group ? `/courses/${course.id}/projects/new` : `/courses/${course.id}/groups`} className="font-medium text-[var(--gp-action)] hover:underline">{course.project ? t("enterProject") : course.group ? t("createProject") : t("startGrouping")} <ArrowRight size={14} className="inline" /></Link></div>
       </Panel>)}</div>
-      : <Panel><EmptyState title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")} action={isTeacher ? <Link href="/teacher/courses" className={button}>前往我的班级创建课程</Link> : <Link href="/courses/join" className={button}>{t("joinWithCode")}</Link>} /></Panel>}
+      : <Panel><EmptyState title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")} description={createIntent ? t("joinBeforeCreate") : undefined} action={isTeacher ? <Link href="/teacher/courses" className={button}>前往我的班级创建课程</Link> : <Link href="/courses/join" className={button}>{t("joinWithCode")}</Link>} /></Panel>}
     {data && pages > 1 && <nav aria-label={ts("pagination")} className="mt-4 flex items-center justify-end gap-2 text-sm"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>{ts("prev")}</button><span>{ts("pagerOf", { page: filters.page, pages })}</span><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>{ts("next")}</button></nav>}
   </div>;
 }
@@ -101,17 +98,17 @@ export function JoinCourseApiPage() {
   });
   const join = useMutation({
     mutationFn: () => bCoursesApi.join(code.trim(), joinKey.current),
-    onSuccess: (data) => { setResult(data); setError(undefined); void cache.invalidateQueries({ queryKey: ["b-my-courses", userId] }); },
+    onSuccess: (data) => { setResult(data); setError(undefined); void cache.invalidateQueries({ queryKey: ["b-my-courses", userId] }); void cache.invalidateQueries({ queryKey: ["c-home-summary"] }); },
     onError: setError,
   });
-  const submitCode = () => { if (!code.trim()) { setError(new BApiError(422, "COURSE_INVITE_NOT_FOUND", "", null)); return; } lookup.mutate(); };
+  const submitCode = () => { if (lookup.isPending) return; if (!code.trim()) { setError(new BApiError(422, "COURSE_INVITE_NOT_FOUND", "", null)); return; } lookup.mutate(); };
 
   return <div><PageHeader title={t("joinTitle")} description={t("joinDesc")} />
     <div className="mx-auto mt-6 max-w-[740px]">
       <ol aria-label={t("steps")} className="mb-6 flex justify-center gap-6 text-xs">{[t("stepCode"), t("stepConfirm"), t("stepDone")].map((item, index) => <li key={item} aria-current={index === step ? "step" : undefined} className={index === step ? "font-semibold text-[var(--gp-action)]" : "text-slate-400"}>{index + 1}. {item}</li>)}</ol>
       {step === 0 && <Panel title={t("codePanel")}>
         <label className={label} htmlFor="b-invite-code">{t("codeLabel")}</label>
-        <input id="b-invite-code" className={input} value={code} autoComplete="off" onChange={(event) => { setCode(event.target.value); setError(undefined); }} onKeyDown={(event) => { if (event.key === "Enter") submitCode(); }} />
+        <input id="b-invite-code" className={input} value={code} disabled={lookup.isPending} autoComplete="off" onChange={(event) => { setCode(event.target.value); setError(undefined); }} onKeyDown={(event) => { if (event.key === "Enter") submitCode(); }} />
         {error !== undefined && <p role="alert" className="mt-3 text-sm text-red-600">{errorText(error)}{blockedByEmail && <Link className="ml-1 underline" href="/account">{t("goVerify")}</Link>}</p>}
         <div className="mt-4 flex justify-end"><button type="button" className={button} disabled={lookup.isPending || blockedByEmail} onClick={submitCode}>{lookup.isPending ? t("looking") : t("nextStep")} <ArrowRight size={15} /></button></div>
       </Panel>}

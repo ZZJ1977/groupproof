@@ -7,8 +7,8 @@ See docs/B_INTERFACES.md for the agreed signatures.
   reports ``unavailable`` and B shows "正文提取不可用"; it never invents text.
 * ``VerificationPort`` — D. Used by B5-02 (invalidate old criterion results when
   an accepted task's criteria change, D1-07) and B7-03 (are a milestone's tasks
-  verified?). D exposes no API yet, so the default refuses: B must never treat
-  "unknown" as "verified".
+  verified?). D's persisted acceptance adapter distinguishes human-confirmed results from
+  AI suggestions; B must never treat "unknown" as "verified".
 """
 
 from __future__ import annotations
@@ -148,5 +148,7 @@ def get_material_text_port() -> MaterialTextPort:
 
 
 def get_verification_port() -> VerificationPort:
-    """FastAPI dependency; D replaces the default once its API exists."""
-    return UnavailableVerificationPort()
+    """Use D's persisted acceptance; callers retain their transaction boundary."""
+    from app.modules.b.verification_port import PersistedVerificationPort
+
+    return PersistedVerificationPort()

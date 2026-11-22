@@ -14,6 +14,7 @@ const staticRoutes: Record<string, number> = {
   "/onboarding/profile": 2,
   "/onboarding/email-verification": 3,
   "/home": 4,
+  "/projects/new": 35,
   "/notifications": 5,
   "/action-items": 6,
   "/activity": 30,
@@ -79,6 +80,7 @@ export function resolveRoute(pathname: string, view?: string | null): ResolvedRo
     if (parts[2] === "projects" && parts[3] === "reopen") return { screen: 39, courseId };
     if (parts[2] === "rule-changes") return { screen: 38, courseId };
     if (parts[2] === "rules") return { screen: 40, courseId };
+    if (parts[2] === "files") return { screen: 50, courseId };
   }
 
   if (parts[0] === "teacher" && parts[1] === "courses" && parts[2]) {

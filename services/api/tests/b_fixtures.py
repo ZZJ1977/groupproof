@@ -50,8 +50,27 @@ from app.db.models import (
 )
 from app.modules.a import models as _a_models  # noqa: F401 - register A tables
 from app.modules.b import models as _b_models  # noqa: F401 - register B tables
-from app.modules.c import governance_models as _c_governance  # noqa: F401
+from app.modules.c import (
+    activity_models as _c_activity,  # noqa: F401
+)
+from app.modules.c import (
+    course_files_models as _c_course_files,  # noqa: F401
+)
+from app.modules.c import (
+    discussion_models as _c_discussions,  # noqa: F401
+)
+from app.modules.c import (
+    files_models as _c_files,  # noqa: F401
+)
+from app.modules.c import (
+    governance_models as _c_governance,  # noqa: F401
+)
+from app.modules.c import (
+    models as _c_models,  # noqa: F401
+)
 from app.modules.c.governance_models import CourseInvite
+from app.modules.d import models as _d_models  # noqa: F401 - register real acceptance tables
+from app.modules.d.models import CourseRuleVersion
 
 UTC = ZoneInfo("UTC")
 B_TEST_DATABASE_ENV = "B_TEST_DATABASE_URL"
@@ -136,6 +155,23 @@ def build_b_world(
     )
     session.add(course)
     session.flush()
+    # A real course rule publication is required before students create projects.
+    session.add(
+        CourseRuleVersion(
+            course_id=course.id,
+            version_no=1,
+            actor_id=teacher.id,
+            reason="Publish fixture course rules",
+            effective_at=now,
+            rules={
+                "settings": {
+                    "min_group_size": course.min_group_size,
+                    "max_group_size": course.max_group_size,
+                    "project_deadline": course.project_deadline.isoformat(),
+                }
+            },
+        )
+    )
     session.add(CourseStaff(course_id=course.id, user_id=teacher.id, role="teacher"))
     session.add(CourseMember(course_id=course.id, user_id=teacher.id, role="teacher"))
     for student in students:

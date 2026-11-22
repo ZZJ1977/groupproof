@@ -4,8 +4,8 @@ Every unfinished task of the departing member must name a receiver who stays
 in the group. Before the formation deadline the change applies at once;
 afterwards it becomes a teacher action item on page 48.
 
-Applying a change happens in one transaction: lock the group's projects (the
-same order as C and B planning writes), then the group, re-check that the
+Applying a change happens in one transaction: share-lock the active course,
+then lock the group's projects and the group, re-check that the
 member is still here, that the handover still covers every unfinished task
 and that every receiver is still in the group; then end the memberships, move
 ``task_assignees``, stamp the handovers, close the action items and notify.
@@ -64,6 +64,18 @@ def _course_target(course_id: UUID) -> dict:
 
 
 # ---------------------------------------------------------------- lookups
+
+
+def _lock_open_course(session: Session, course_id: UUID) -> Course:
+    course = session.scalar(
+        select(Course)
+        .where(Course.id == course_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if course is None or course.status != "active":
+        raise ApiError(409, "COURSE_CLOSED", "课程已经结束，成员变更申请不可再修改或审批。")
+    return course
 
 
 def _group(session: Session, group_id: UUID, *, lock: bool = False) -> ProjectGroup:
@@ -381,6 +393,8 @@ def _ask_teachers(session: Session, row: BMembershipChangeRequest, group: Projec
 def start(
     session: Session, user: User, group_id: UUID, cmd: StartMembershipChange, request=None
 ) -> MembershipChangeDTO:
+    probe = _group(session, group_id)
+    course = _lock_open_course(session, probe.course_id)
     projects = _projects(session, group_id, lock=True)
     group = _group(session, group_id, lock=True)
     active = _active(session, group.id)
@@ -401,9 +415,6 @@ def start(
             raise ApiError(409, "LEADER_MUST_TRANSFER", "组长需要先把组长交给别人才能退出。")
         member_id = user.id
     reason = require_reason(cmd.reason)
-    course = session.get(Course, group.course_id)
-    if course.status != "active":
-        raise ApiError(409, "COURSE_CLOSED", "课程已经结束。")
     plan = _check_handovers(session, group, projects, member_id, cmd.handovers)
     if session.scalar(
         select(BMembershipChangeRequest.id).where(
@@ -474,6 +485,7 @@ def edit(
     probe = session.get(BMembershipChangeRequest, request_id)
     if probe is None or probe.requested_by != user.id:
         raise ApiError(404, "MEMBERSHIP_CHANGE_NOT_FOUND", "申请不存在。")
+    _lock_open_course(session, probe.course_id)
     projects = _projects(session, probe.group_id, lock=True)
     group = _group(session, probe.group_id, lock=True)
     row = _lock_row(session, request_id)
@@ -511,8 +523,10 @@ def decide(
     if probe is None:
         raise ApiError(404, "MEMBERSHIP_CHANGE_NOT_FOUND", "申请不存在。")
     permissions.require_course_teacher(session, user, probe.course_id)
+    _lock_open_course(session, probe.course_id)
     _projects(session, probe.group_id, lock=True)
     group = _group(session, probe.group_id, lock=True)
+    permissions.require_course_teacher(session, user, probe.course_id)
     row = _lock_row(session, request_id)
     require_version(row.lock_version, cmd.expected_version)
     if row.status != "pending":
@@ -564,6 +578,7 @@ def decide(
 
 def _dto(session: Session, user: User, row: BMembershipChangeRequest) -> MembershipChangeDTO:
     group = session.get(ProjectGroup, row.group_id)
+    course = session.get(Course, row.course_id, populate_existing=True)
     handovers = list(
         session.scalars(
             select(BTaskHandover)
@@ -615,7 +630,10 @@ def _dto(session: Session, user: User, row: BMembershipChangeRequest) -> Members
             )
             for h in handovers
         ],
-        can_edit=row.status == "needs_info" and row.requested_by == user.id,
+        can_edit=course is not None
+        and course.status == "active"
+        and row.status == "needs_info"
+        and row.requested_by == user.id,
     )
 
 

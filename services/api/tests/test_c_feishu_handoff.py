@@ -36,7 +36,7 @@ def port(db, scope, monkeypatch):
     from app.db import session as sessions
 
     monkeypatch.setattr(sessions, "SessionLocal", lambda: nullcontext(db))
-    feishu.link_chat(db, scope.users["leader"], scope.project.id, upstream.CHAT)
+    upstream.link_visible_chat(db, scope.users["leader"], scope.project.id, upstream.CHAT)
     return get_activity_source_port()
 
 
@@ -242,7 +242,7 @@ def test_attachment_adoption_requires_current_verified_bytes_and_retains_initial
 def test_bound_group_and_local_triage_filter_before_pagination(db, scope, port):
     second_chat = "oc_secondgroup"
     actor, project = scope.users["author"], scope.project.id
-    feishu.link_chat(db, scope.users["leader"], project, second_chat)
+    upstream.link_visible_chat(db, scope.users["leader"], project, second_chat)
     assert {chat.chat_id for chat in feishu.list_linked_chats(db, actor, project)} == {
         upstream.CHAT,
         second_chat,
@@ -332,7 +332,7 @@ def test_postgres_committed_sync_reaches_authorized_member_in_independent_sessio
     monkeypatch.setattr(sessions, "SessionLocal", factory)
     port = get_activity_source_port()
     with factory.begin() as writer:
-        feishu.link_chat(writer, scope.users["leader"], scope.project.id, upstream.CHAT)
+        upstream.link_visible_chat(writer, scope.users["leader"], scope.project.id, upstream.CHAT)
         sync(writer, scope, upstream._raw_text("om_pg", "接口验证完成", upstream.T1))
     with factory() as reader:
         page = query_activities(reader, scope.users["member"], scope.project.id, "feishu", port)

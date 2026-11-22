@@ -118,6 +118,31 @@ def db():
 
 @pytest.fixture()
 def scope(db):
+    return build_scope(db)
+
+
+def _persist_user(db, user):
+    db.add(user)
+    return user
+
+
+def _persist_course(db, course):
+    db.add(course)
+    return course
+
+
+def _persist_staff(db, staff):
+    db.add(staff)
+    return staff
+
+
+def build_scope(
+    db,
+    *,
+    persist_user=_persist_user,
+    persist_course=_persist_course,
+    persist_staff=_persist_staff,
+):
     users = {}
     for name, role in [
         ("author", "student"),
@@ -130,7 +155,7 @@ def scope(db):
         ("admin", "admin"),
     ]:
         identity = uuid4()
-        users[name] = User(
+        user = User(
             id=identity,
             name=name,
             username=f"c-{identity}",
@@ -145,18 +170,20 @@ def scope(db):
                 verification_method="documented_manual_review",
             ),
         )
-        db.add(users[name])
+        users[name] = persist_user(db, user)
     db.flush()
-    course = Course(
-        id=uuid4(),
-        owner_id=users["teacher"].id,
-        code=str(uuid4()),
-        name="Test course",
-        college="Test",
-        semester="2026",
-        status="active",
+    course = persist_course(
+        db,
+        Course(
+            id=uuid4(),
+            owner_id=users["teacher"].id,
+            code=str(uuid4()),
+            name="Test course",
+            college="Test",
+            semester="2026",
+            status="active",
+        ),
     )
-    db.add(course)
     db.flush()
     project = Project(
         id=uuid4(),
@@ -188,7 +215,7 @@ def scope(db):
             id=uuid4(), project_id=other_project.id, user_id=users["outsider"].id, role="leader"
         )
     )
-    db.add(CourseStaff(course_id=course.id, user_id=users["ta"].id, role="ta"))
+    persist_staff(db, CourseStaff(course_id=course.id, user_id=users["ta"].id, role="ta"))
     module = FunctionalModule(id=uuid4(), project_id=project.id, name="Main")
     other_module = FunctionalModule(id=uuid4(), project_id=other_project.id, name="Other")
     db.add_all([module, other_module])

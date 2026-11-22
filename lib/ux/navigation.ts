@@ -1,4 +1,5 @@
 import type { MockData } from "@/types/domain";
+import { projectNavGroups } from "./student-workspace";
 
 /**
  * 工作区导航上下文（UX 改版定向复核）。
@@ -51,23 +52,7 @@ export interface NavItemLite {
 
 /** 项目导航跟随目标项目；任务树/看板/列表合并为单一“任务”入口（旧链接保留兼容） */
 export function projectNavItems(projectId: string): { label: string; href: string; iconKey: string }[] {
-  const base = `/projects/${projectId}`;
-  return [
-    { label: "overview", href: base, iconKey: "folder" },
-    { label: "setup", href: `${base}/setup`, iconKey: "fileClock" },
-    { label: "requirements", href: `${base}/requirements`, iconKey: "fileText" },
-    { label: "planning", href: `${base}/planning`, iconKey: "clipboardList" },
-    { label: "tasks", href: `${base}/tasks?view=tree`, iconKey: "listTree" },
-    { label: "milestones", href: `${base}/milestones`, iconKey: "fileCheck" },
-    { label: "evidence", href: `${base}/evidence`, iconKey: "shieldCheck" },
-    { label: "GitHub", href: `${base}/github`, iconKey: "gitBranch" },
-    { label: "collaboration", href: `${base}/collaboration`, iconKey: "messageSquare" },
-    { label: "files", href: `${base}/files`, iconKey: "folder" },
-    { label: "discussions", href: `${base}/discussions`, iconKey: "messageSquare" },
-    { label: "contribution", href: `${base}/contribution`, iconKey: "users" },
-    { label: "reports", href: `${base}/reports`, iconKey: "fileText" },
-    { label: "settings", href: `${base}/settings`, iconKey: "settings" },
-  ];
+  return projectNavGroups(projectId).flatMap((group) => group.items);
 }
 
 export function teacherNavItems(courseId: string): { label: string; href: string; iconKey: string }[] {

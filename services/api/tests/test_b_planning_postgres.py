@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from app.db.models import Milestone, Project, Task
 from app.modules.a.models import AuditEvent, Notification
 from app.modules.b.models import BCriterionInvalidation, BTaskVersion
-from app.modules.b.ports import InvalidationOutcome, get_verification_port
+from app.modules.b.ports import (
+    InvalidationOutcome,
+    UnavailableVerificationPort,
+    get_verification_port,
+)
 from tests.b_fixtures import b_api, b_postgres_schema, b_test_database_url, build_b_world
 
 
@@ -136,6 +140,24 @@ def confirm(api, world, user):
 # ---------------------------------------------------------------- B5-01
 
 
+def test_personal_project_can_plan_without_a_frozen_baseline(b_engine):
+    with Session(b_engine) as session:
+        world = build_b_world(session)
+        project = session.get(Project, world.project_id)
+        project.course_id = None
+        project.group_id = None
+        project.setup_status = "not_initialized"
+        session.commit()
+    with b_api(b_engine) as api:
+        modules, _ = seed(api, world)
+        view = plan(api, world)
+        assert view["baseline_required"] is False
+        assert view["baseline_frozen"] is False
+        assert view["can_edit"] is True
+        response = create(api, world, body(modules))
+        assert response.status_code == 201, response.text
+
+
 def test_plan_needs_a_frozen_baseline_and_members(b_engine):
     with Session(b_engine) as session:
         world = build_b_world(session)
@@ -143,6 +165,7 @@ def test_plan_needs_a_frozen_baseline_and_members(b_engine):
     with b_api(b_engine) as api:
         modules, _ = seed(api, world)
         assert plan(api, world)["status"] == "none"
+        assert plan(api, world)["baseline_required"] is True
         assert plan(api, world)["can_edit"] is False
         assert error(create(api, world, body(modules))) == "BASELINE_NOT_FROZEN"
         freeze_baseline(b_engine, world)
@@ -264,6 +287,7 @@ def test_changing_criteria_of_a_started_task_tells_d_once(setup, b_engine):
 
 def test_invalidation_is_kept_when_d_is_unavailable(setup, b_engine):
     api, world, other, modules, reqs, _ = setup
+    api._app.dependency_overrides[get_verification_port] = UnavailableVerificationPort
     task = created(api, world, body(modules))
     with Session(b_engine) as session:
         session.get(Task, task["id"]).started_at = datetime.now(UTC)
@@ -272,7 +296,7 @@ def test_invalidation_is_kept_when_d_is_unavailable(setup, b_engine):
     assert put(api, world, task, criteria=edit).status_code == 200
     with Session(b_engine) as session:
         row = session.scalar(select(BCriterionInvalidation))
-    assert row.accepted is False  # D not connected yet: stays pending, not "voided"
+    assert row.accepted is False  # D unavailable: stays pending, not "voided"
 
 
 # ---------------------------------------------------------------- B5-03

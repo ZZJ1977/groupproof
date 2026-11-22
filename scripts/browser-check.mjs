@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn, execSync } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 /**
@@ -11,7 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9333;
 const BASE = process.env.GP_BASE_URL ?? "http://localhost:3000";
-const SHOTS = "docs/design/screenshots";
+const SHOTS = process.env.GP_BROWSER_SCREENSHOTS ?? "docs/design/screenshots";
 
 let chromeProc = null;
 
@@ -275,18 +276,42 @@ export async function readWorkspace(tab) {
   })()`));
 }
 
+/** Prove the browser's origin uses the selected isolated API before sending test mail. */
+export async function assertCaptureApi(base) {
+  const origin = new URL(base);
+  assert(["localhost", "127.0.0.1"].includes(origin.hostname), "Browser checks require loopback");
+  const container = process.env.GP_AUTH_TEST_API_CONTAINER ?? "gp-signup-browser-test-api";
+  const port = execFileSync("docker", ["port", container, "8000/tcp"], { encoding: "utf8" }).trim();
+  assert.match(port, /^127\.0\.0\.1:\d+$/, "Bind the test API to loopback only");
+  execFileSync("docker", ["exec", container, "python", "-c", [
+    "from urllib.parse import urlsplit",
+    "from app.auth.config import get_settings",
+    "s = get_settings()",
+    "assert s.mail_mode == 'capture' and s.app_mode == 'dev'",
+    "assert urlsplit(s.database_url).path == '/groupproof_signup_test'",
+    `assert s.app_origin == '${origin.origin}'`,
+  ].join("\n")]);
+  const probePath = `/api/v1/auth/capabilities?capture_probe=${randomUUID()}`;
+  const response = await fetch(new URL(probePath, origin));
+  assert(response.ok, "Auth capabilities must be reachable through the web proxy");
+  const logs = execFileSync("docker", ["logs", "--tail", "40", container], {
+    encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+  });
+  assert(logs.includes(`GET ${probePath} HTTP/1.1`), "The web app must proxy to the isolated capture API");
+}
+
 /**
  * 确保浏览器处于已激活会话（真实门禁下业务页需要 active + full）。
- * 走真实接口完成三步注册、资料与学校邮箱验证（隔离开发环境），再把会话 Cookie
+ * 走真实接口完成学校邮箱验证和资料建档（隔离开发环境），再把会话 Cookie
  * 注入浏览器（CDP）。验证码仅从开发邮件捕获器读取；真实收件验证另行人工联调。
  */
 export async function ensureSignedIn(tab) {
   const base = process.env.GP_BASE_URL ?? "http://localhost:3000";
+  await assertCaptureApi(base);
   const stamp = Date.now().toString().slice(-8);
-  const email = `ux-${stamp}@example.com`;
-  const username = `ux${stamp}`;
+  const studentId = `20991${stamp}`;
+  const email = `${studentId}@student.must.edu.mo`;
   const password = "correct-horse-battery-1";
-  const schoolEmail = `20991${stamp}@student.must.edu.mo`;
   const jar = [];
   const call = async (path, body, csrf, method) => {
     const res = await fetch(`${base}${path}`, {
@@ -309,17 +334,19 @@ export async function ensureSignedIn(tab) {
     return res;
   };
 
-  const created = await (await call("/api/v1/auth/email/registrations", { email, locale: "zh-Hans" })).json();
-  await call(`/api/v1/auth/email/registrations/${created.id}/verify`, { code: readCapturedCode(email) });
-  await call(`/api/v1/auth/email/registrations/${created.id}/complete`, { username, password });
-  const session = await (await call("/api/v1/auth/session")).json();
-  const csrf = session.csrfToken;
-  await call("/api/v1/me/profile", {
-    name: "UX走查用户", username, studentId: `20991${stamp}`, requestedIdentity: "student",
-    schoolEmail, expectedVersion: 1,
-  }, csrf, "PATCH");
-  const challenge = await (await call("/api/v1/me/school-email/challenges", {}, csrf)).json();
-  await call("/api/v1/me/school-email/verify", { challengeId: challenge.challengeId, code: readCapturedCode(schoolEmail) }, csrf);
+  const start = await call("/api/v1/auth/email/registrations", { email, locale: "zh-Hans" });
+  assert.equal(start.status, 200, "开始学校邮箱注册");
+  const payload = await start.json();
+  const { id, status } = payload.data ?? payload;
+  assert.equal(status, "captured", "浏览器夹具需使用隔离邮件捕获环境");
+  const path = `/api/v1/auth/email/registrations/${id}`;
+  const verify = await call(`${path}/verify`, { code: readCapturedCode(email) });
+  assert.equal(verify.status, 200, "验证学校邮箱验证码");
+  const complete = await call(`${path}/complete`, {
+    name: "UX走查用户", requestedIdentity: "student", studentId,
+    password, confirmPassword: password,
+  });
+  assert.equal(complete.status, 201, "填写资料后完成注册");
 
   const sessionCookie = jar.find((item) => item.startsWith("gp_session=") || item.startsWith("__Host-gp_session="));
   assert(sessionCookie, "未取得会话 Cookie");
@@ -330,12 +357,11 @@ export async function ensureSignedIn(tab) {
 
 /** 仅隔离开发环境：从邮件捕获器读取验证码（生产无任何读码通道） */
 export function readCapturedCode(email) {
-  const body = execSync(
-    `docker exec gp-pg-test psql -U gp -d gp_dev -t -A -c "SELECT body FROM email_outbox WHERE to_email='${email}' ORDER BY id DESC LIMIT 1"`,
-    { encoding: "utf8" },
-  );
-  const match = /(\d{6})/.exec(body);
-  return match ? match[1] : "";
+  const container = process.env.GP_AUTH_TEST_DB_CONTAINER ?? "gp-signup-browser-test-db";
+  return execFileSync("docker", ["exec", "-i", container, "psql", "-XAt", "-U", "groupproof", "-d", "groupproof_signup_test", "-v", "ON_ERROR_STOP=1", "-v", `mail=${email}`], {
+    encoding: "utf8",
+    input: "SELECT substring(body from '[0-9]{6}') FROM email_outbox WHERE to_email = :'mail' ORDER BY id DESC LIMIT 1;\n",
+  }).trim();
 }
 
 /** 模拟存储失败（夹具）：下一次 setItem 抛错，用于验证保存失败反馈 */

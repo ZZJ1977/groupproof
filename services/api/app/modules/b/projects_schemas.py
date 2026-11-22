@@ -28,6 +28,10 @@ class ProjectTemplateDTO(BaseModel):
     course_id: UUID
     milestones: list[MilestoneTemplateItem]
     lock_version: int
+    course_rule_version_id: UUID | None
+    course_rule_version: int | None
+    min_group_size: int
+    max_group_size: int
 
 
 class SaveDraft(Strict):
@@ -53,6 +57,8 @@ class DraftDTO(BaseModel):
 
 
 class CreateProject(Strict):
+    expected_group_version: int | None = Field(default=None, ge=0, strict=True)
+    expected_course_rule_version_id: UUID | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     project_type: str | None = Field(default=None, max_length=80)

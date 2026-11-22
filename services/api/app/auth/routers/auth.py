@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hmac
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Path, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -320,8 +321,14 @@ class EmailRegistrationVerifyIn(BaseModel):
 
 
 class EmailRegistrationCompleteIn(BaseModel):
-    username: str
+    name: str
+    requestedIdentity: pre_registration.RegistrationIdentity
+    studentId: str | None = None
+    college: str | None = None
+    githubUsername: str | None = None
+    feishuAccount: str | None = None
     password: str
+    confirmPassword: str
 
 
 class PasswordForgotIn(BaseModel):
@@ -540,7 +547,7 @@ def verify_email_registration(
     token, _is_new = _reg_browser_token(request, None)
     tx = pre_registration.verify_code(db, tx_id, code=body.code, browser_token=token)
     db.commit()
-    return JSONResponse(
+    response = JSONResponse(
         {
             "verified": True,
             "email": _mask(tx.email),
@@ -548,17 +555,49 @@ def verify_email_registration(
         },
         headers={"Cache-Control": "private, no-store"},
     )
+    _set_reg_cookie(response, token)
+    return response
+
+
+@router.get("/email/registrations/{tx_id}/profile")
+def read_email_registration_profile(
+    tx_id: Annotated[str, Path(max_length=64)],
+    request: Request,
+    db: DbSession = Depends(get_db),
+) -> JSONResponse:
+    token = request.cookies.get(get_settings().pre_registration_cookie_name)
+    tx = pre_registration.read_registration_profile(db, tx_id, browser_token=token)
+    return JSONResponse(
+        {
+            "email": tx.email,
+            "allowedIdentities": pre_registration.school_identities(tx.email_normalized),
+        },
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @router.post("/email/registrations/{tx_id}/complete")
 def complete_email_registration(
-    tx_id: str, request: Request, body: EmailRegistrationCompleteIn, db: DbSession = Depends(get_db)
+    tx_id: Annotated[str, Path(max_length=64)],
+    request: Request,
+    body: EmailRegistrationCompleteIn,
+    db: DbSession = Depends(get_db),
 ) -> JSONResponse:
     if not _origin_allowed(request):
         raise AppError("FORBIDDEN", 403, params={"reason": "origin"})
     token, _is_new = _reg_browser_token(request, None)
     user, created = pre_registration.complete_registration(
-        db, tx_id, username=body.username, password=body.password, browser_token=token
+        db,
+        tx_id,
+        name=body.name,
+        requested_identity=body.requestedIdentity,
+        student_id=body.studentId,
+        college=body.college,
+        password=body.password,
+        confirm_password=body.confirmPassword,
+        browser_token=token,
+        github_username=body.githubUsername,
+        feishu_account=body.feishuAccount,
     )
     if not created:
         # E10：同一事务重复提交 → “已完成，请登录”安全结果，不重复创建
@@ -570,7 +609,7 @@ def complete_email_registration(
         )
     user.last_login_at = utcnow()
     facts = _facts_with_checks(db, user)
-    issued = pre_registration.issue_onboarding_session(db, user, facts)
+    issued = pre_registration.issue_registration_session(db, user, facts)
     db.commit()
     response = JSONResponse(
         session_payload(AuthContext(user, issued.record, facts)),

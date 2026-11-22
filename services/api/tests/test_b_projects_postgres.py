@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
-from threading import Barrier
+from threading import Barrier, Event
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -16,6 +16,7 @@ from app.db.models import (
     FunctionalModule,
     Milestone,
     Project,
+    ProjectGroup,
     ProjectMember,
     Task,
 )
@@ -95,7 +96,7 @@ def test_create_copies_members_deadline_and_template(setup, b_engine):
     response = create(api, group_id)
     assert response.status_code == 201, response.text
     data = response.json()["data"]
-    assert data["href"] == f"/projects/{data['project_id']}/setup"
+    assert data["href"] == f"/projects/{data['project_id']}"
     with Session(b_engine) as session:
         project = session.get(Project, data["project_id"])
         course = session.get(Course, world.course_id)
@@ -454,3 +455,150 @@ def test_material_scope(setup):
         ).status_code
         == 403
     )
+
+
+# Creation must enforce the published D rules used by the existing teacher pages.
+def test_project_creation_requires_published_course_rules(setup, b_engine):
+    from sqlalchemy import delete
+
+    from app.modules.d.models import CourseRuleVersion
+
+    api, world, other, loose = setup
+    group_id = new_group(api, world, loose)
+    with Session(b_engine) as session:
+        session.execute(
+            delete(CourseRuleVersion).where(CourseRuleVersion.course_id == world.course_id)
+        )
+        session.commit()
+    response = create(api, group_id)
+    assert response.status_code == 409
+    assert error(response) == "COURSE_RULES_NOT_PUBLISHED"
+    with Session(b_engine) as session:
+        assert session.scalar(select(Project.id).where(Project.group_id == group_id)) is None
+
+
+@pytest.mark.parametrize("minimum,maximum", [(3, 5), (1, 1)])
+def test_project_creation_enforces_current_course_group_size(setup, b_engine, minimum, maximum):
+    api, world, other, loose = setup
+    group_id = new_group(api, world, loose)
+    with Session(b_engine) as session:
+        course = session.get(Course, world.course_id)
+        course.min_group_size = minimum
+        course.max_group_size = maximum
+        session.commit()
+    response = create(api, group_id)
+    assert response.status_code == 409
+    assert error(response) == "GROUP_SIZE_INVALID"
+
+
+def test_creation_uses_published_teacher_template_and_binds_its_version(setup, b_engine):
+    from app.modules.d.models import CourseTemplateApplication
+
+    api, world, other, loose = setup
+    group_id = new_group(api, world, loose)
+    api.as_user(world.teacher_id)
+    published = api.post(
+        f"/api/v1/courses/{world.course_id}/teacher-template",
+        {
+            "milestones": [
+                {"name": "老师发布的里程碑", "required_materials": ["研究报告"], "weight": 100}
+            ],
+            "reason": "发布本课程项目要求",
+        },
+    )
+    assert published.status_code == 200, published.text
+    version_id = published.json()["data"]["id"]
+    api.as_user(loose[0])
+    template = api.get(f"/api/v1/courses/{world.course_id}/project-template").json()["data"]
+    assert template["course_rule_version_id"] == version_id
+    assert template["milestones"][0]["title"] == "老师发布的里程碑"
+    response = api.post(
+        f"/api/v1/groups/{group_id}/projects",
+        {
+            "name": "遵循课程规则的项目",
+            "expected_group_version": 0,
+            "expected_course_rule_version_id": version_id,
+        },
+    )
+    assert response.status_code == 201, response.text
+    project_id = response.json()["data"]["project_id"]
+    with Session(b_engine) as session:
+        applied = session.scalar(
+            select(CourseTemplateApplication).where(
+                CourseTemplateApplication.project_id == project_id
+            )
+        )
+        assert str(applied.version_id) == version_id
+        assert applied.template["milestones"][0]["weight"] == 100
+        milestone = session.scalar(select(Milestone).where(Milestone.project_id == project_id))
+        assert milestone.title == "老师发布的里程碑"
+        assert "研究报告" in milestone.description
+
+
+def test_creation_refuses_stale_reviewed_rule_or_group_version(setup):
+    api, world, other, loose = setup
+    group_id = new_group(api, world, loose)
+    rule = api.get(f"/api/v1/courses/{world.course_id}/project-template").json()["data"]
+    stale_rule = api.post(
+        f"/api/v1/groups/{group_id}/projects",
+        {
+            "name": "项目",
+            "expected_course_rule_version_id": str(uuid4()),
+        },
+    )
+    assert stale_rule.status_code == 409
+    assert error(stale_rule) == "COURSE_RULE_VERSION_CONFLICT"
+    stale_group = api.post(
+        f"/api/v1/groups/{group_id}/projects",
+        {
+            "name": "项目",
+            "expected_course_rule_version_id": rule["course_rule_version_id"],
+            "expected_group_version": 99,
+        },
+    )
+    assert stale_group.status_code == 409
+    assert error(stale_group) == "VERSION_CONFLICT"
+
+
+@pytest.mark.parametrize("change", ["leader", "course_end"])
+def test_creation_rechecks_changes_committed_while_waiting_for_locks(setup, b_engine, change):
+    api, world, other, loose = setup
+    group_id = new_group(api, world, loose)
+    waiting = Event()
+    clause = "FROM groups" if change == "leader" else "FROM courses"
+    lock_clause = "FOR UPDATE" if change == "leader" else "FOR SHARE"
+
+    def observe(connection, cursor, statement, parameters, context, executemany):
+        if clause in statement and lock_clause in statement:
+            waiting.set()
+
+    with Session(b_engine) as blocker:
+        if change == "leader":
+            locked = blocker.scalar(
+                select(ProjectGroup).where(ProjectGroup.id == group_id).with_for_update()
+            )
+        else:
+            locked = blocker.scalar(
+                select(Course).where(Course.id == world.course_id).with_for_update()
+            )
+        event.listen(b_engine, "before_cursor_execute", observe)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(create, api, group_id)
+                try:
+                    assert waiting.wait(15), "Creation never locked the course/group before writing"
+                    if change == "leader":
+                        locked.leader_id = loose[1]
+                    else:
+                        locked.status = "ended"
+                    blocker.commit()
+                finally:
+                    blocker.rollback()
+                response = pending.result(timeout=15)
+        finally:
+            event.remove(b_engine, "before_cursor_execute", observe)
+    assert response.status_code == (403 if change == "leader" else 409), response.text
+    if change == "course_end":
+        assert error(response) == "COURSE_CLOSED"
+    with Session(b_engine) as session:
+        assert session.scalar(select(Project.id).where(Project.group_id == group_id)) is None

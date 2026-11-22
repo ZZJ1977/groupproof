@@ -30,7 +30,8 @@ async function signIn(page: Page, fixture: Fixture, actor: string, target: strin
   return session;
 }
 
-test("Google identity persists C execution, note versions and candidate snapshots through the real proxy", async ({ page, request }) => {
+test("Google identity persists C evidence and completes D acceptance through the real proxy", async ({ page, request }) => {
+  test.setTimeout(180_000);
   const fixture = await seed(request);
   const path = `/projects/${fixture.project}/tasks/${fixture.task}`;
   await signIn(page, fixture, "member", path);
@@ -69,6 +70,32 @@ test("Google identity persists C execution, note versions and candidate snapshot
   expect(saved.progress).toHaveLength(2);
   expect(saved.progress.every((row: { actor: string }) => row.actor === fixture.users.member.id)).toBe(true);
   expect(saved.sessions).toEqual([expect.objectContaining({ method: "google", revoked: false })]);
+
+  // Continue through D's UI with the same real session and C's retained evidence.
+  await page.goto(`/projects/${fixture.project}/evidence?evidence=${saved.evidence[0].id}`);
+  await page.getByRole("button", { name: "采纳为正式证据", exact: true }).click();
+  await page.getByRole("textbox", { name: "证据决定原因", exact: true }).fill("逐条核对说明及来源版本");
+  await page.getByRole("button", { name: "确认决定", exact: true }).click();
+  await expect(page.getByText("证据已采纳为正式；验收结论需由验收服务决定。", { exact: true })).toBeVisible();
+  await page.goto(`${path}/submit`);
+  await page.getByRole("button", { name: "检查完整性", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "证据完整性检查", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重新检查", exact: true }).click();
+  await expect(page.getByText("检查快照已保存", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "进入验收", exact: true }).click();
+  await expect(page.getByText("任务已进入待验收", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "查看验收结果", exact: true }).click();
+  await page.getByRole("button", { name: "运行自动验收", exact: true }).click();
+  await expect(page.getByText("已保存逐条验收建议", { exact: true })).toBeVisible();
+  expect((await database(request, fixture)).task.status).toBe("pending_verification");
+  await page.getByRole("textbox", { name: "人工判断原因", exact: true }).fill("人工逐项确认完成");
+  await page.getByRole("spinbutton", { name: "我的实际承担比例（%）", exact: true }).fill("100");
+  await page.getByRole("button", { name: "确认验收结果", exact: true }).click();
+  await expect(page.getByText("人工决定已保存", { exact: true })).toBeVisible();
+  expect((await database(request, fixture)).task.status).toBe("completed");
+  await page.goto(`${path}?tab=verification`);
+  await expect(page.getByText("状态：已完成 · 进度：100%", { exact: true })).toBeVisible();
+  await expect(page.getByText("已生成正式成果", { exact: true })).toBeVisible();
 });
 
 test("another Google user cannot read or start a foreign task and writes leave the database unchanged", async ({ page, request }) => {

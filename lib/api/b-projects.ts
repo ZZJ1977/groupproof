@@ -24,15 +24,25 @@ export type BProjectSetup = {
   setup_status: BProjectOverview["setup_status"]; setup_step: number; can_edit: boolean; materials: BMaterial[]; lock_version: number;
 };
 export type BBasicInfo = { name: string; project_type?: string; description?: string; start_date: string; end_date: string };
+export type BProjectTemplate = {
+  course_id: string;
+  course_rule_version_id: string | null;
+  course_rule_version: number | null;
+  min_group_size: number;
+  max_group_size: number;
+  milestones: { title: string; description: string | null; deadline: string | null }[];
+  lock_version: number;
+};
 
 type UploadTicket = { receipt_id: string; upload_url: string; method: string; expires_at: string };
 
 const id = encodeURIComponent;
 export const bProjectsApi = {
+  template: (courseId: string) => bRequest<BProjectTemplate>({ path: `/api/v1/courses/${id(courseId)}/project-template` }),
   draft: (groupId: string) => bRequest<BProjectDraft>({ path: `/api/v1/groups/${id(groupId)}/project-draft` }),
   saveDraft: (groupId: string, draft: Pick<BProjectDraft, "payload" | "step" | "lock_version">) =>
     bRequest<BProjectDraft>({ method: "PUT", path: `/api/v1/groups/${id(groupId)}/project-draft`, body: { payload: draft.payload, step: draft.step, expected_version: draft.lock_version } }),
-  create: (groupId: string, body: { name: string; project_type?: string; description?: string }, idempotencyKey?: string) =>
+  create: (groupId: string, body: { name: string; project_type?: string; description?: string; expected_group_version?: number; expected_course_rule_version_id?: string }, idempotencyKey?: string) =>
     bRequest<{ project_id: string; href: string }>({ method: "POST", path: `/api/v1/groups/${id(groupId)}/projects`, body, idempotencyKey }),
   overview: (projectId: string) => bRequest<BProjectOverview>({ path: `/api/v1/projects/${id(projectId)}/overview` }),
   setup: (projectId: string) => bRequest<BProjectSetup>({ path: `/api/v1/projects/${id(projectId)}/setup` }),

@@ -84,7 +84,7 @@ export function FileUploadForm({ scope, scopeId, target, saved, denied }: Props)
           setError("文件已有变动。请核对最新版本后再追加草稿。");
           return;
         }
-        if (["UPLOAD_NOT_FOUND", "UPLOAD_REJECTED", "UPLOAD_RECEIPT_INVALID", "UPLOAD_RECEIPT_EXPIRED"].includes(failure.code)) receipt.current = null;
+        if (["UPLOAD_NOT_FOUND", "UPLOAD_NOT_RECEIVED", "UPLOAD_REJECTED", "UPLOAD_RECEIPT_INVALID", "UPLOAD_RECEIPT_EXPIRED"].includes(failure.code)) receipt.current = null;
         setError(failure.status === 404 || failure.status === 503 ? "上传服务暂不可用，请稍后重试。" : failure.message);
       } else {
         setError(failure instanceof Error ? failure.message : "上传失败，请重试。");

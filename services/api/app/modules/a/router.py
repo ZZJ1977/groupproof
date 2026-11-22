@@ -172,7 +172,12 @@ def bind_feishu_chat(
     session: Database,
     user: CurrentUser,
 ):
-    link = feishu.link_chat(session, user, project_id, payload.chat_id)
+    reader = feishu.get_feishu_reader()
+    try:
+        link = feishu.link_chat(session, user, project_id, payload.chat_id, reader)
+    finally:
+        if isinstance(reader, feishu.FeishuClient):
+            reader.close()
     session.commit()
     return success(FeishuChatLinkDTO(project_id=project_id, chat_id=link.chat_id), request)
 
@@ -567,7 +572,12 @@ def list_github_activity(
     )
     return success(
         GithubActivityPageDTO(
-            items=[GithubActivityDTO.model_validate(row, from_attributes=True) for row in rows],
+            items=[
+                GithubActivityDTO.model_validate(row, from_attributes=True).model_copy(
+                    update={"author_user_id": verified_author_id}
+                )
+                for row, verified_author_id in rows
+            ],
             total=total,
             page=page,
             page_size=page_size,
@@ -593,7 +603,7 @@ class GithubLoginDTO(BaseModel):
 def set_my_github_login(
     payload: GithubLoginRequest, request: Request, session: Database, user: CurrentUser
 ):
-    """声明自己的 GitHub 用户名，让提交作者能对应到本站账号；传空则清除。"""
+    """维护旧版客户端自行声明的 GitHub 用户名。"""
     link = github_activity.set_github_login(session, user, payload.login)
     session.commit()
     return success(GithubLoginDTO(login=link.login if link else None), request)

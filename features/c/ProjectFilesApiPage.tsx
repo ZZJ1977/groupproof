@@ -11,7 +11,6 @@ import { FileUploadForm } from "./FileUploadForm";
 import { FileVersionHistory, groupVersionDecisions } from "./FileVersionHistory";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, ApiFailure, ApiPager, apiButton, apiInput, isUuid, pageNumber, projectApi, queryPolicy, safeHttps, useCommandKey, versionFailure } from "./c-project-api";
-import { tr } from "@/lib/i18n/tr";
 
 type FileVersion = components["schemas"]["FileVersionDTO"];
 type SignedLink = components["schemas"]["SignedFileLinkDTO"];
@@ -22,17 +21,20 @@ const sorts = { updated_desc: "最近更新", updated_asc: "较早更新", name_
 
 export function ProjectFilesApiPage({ projectId }: { projectId: string }) {
   const { userId } = useWorkspace();
-  return <FilesPage key={`${userId}:${projectId}`} projectId={projectId} userId={userId} />;
+  const location = useUrlQuery();
+  const selectedId = location.query.get("file")?.toLowerCase() ?? null;
+  const versionId = location.query.get("version")?.toLowerCase() ?? null;
+  return <FilesPage key={`${userId}:${projectId}:${selectedId}:${versionId}`} projectId={projectId} userId={userId}
+    {...location} selectedId={selectedId} versionId={versionId} />;
 }
 
-function FilesPage({ projectId, userId }: { projectId: string; userId: string }) {
-  const { query, updateQuery } = useUrlQuery();
+function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionId }: ReturnType<typeof useUrlQuery> & {
+  projectId: string; userId: string; selectedId: string | null; versionId: string | null;
+}) {
   const category = query.get("category") ?? "all";
   const sort = query.get("sort") ?? "updated_desc";
   const status = query.get("status");
   const filters: ProjectFileQuery = { category: Object.hasOwn(categories, category) ? category as keyof typeof categories : "all", sort: Object.hasOwn(sorts, sort) ? sort as keyof typeof sorts : "updated_desc", q: query.get("q") || undefined, file_type: query.get("file_type") || undefined, status: status && Object.hasOwn(statuses, status) ? status as keyof typeof statuses : undefined, page: pageNumber(query.get("page")), page_size: 10 };
-  const selectedId = query.get("file");
-  const versionId = query.get("version");
   const enabled = isUuid(projectId);
   const context = useQuery({ queryKey: ["c-project-context", userId, projectId], queryFn: () => projectApi.projectContext(projectId), enabled, ...queryPolicy });
   const list = useQuery({ queryKey: ["c-project-files", userId, projectId, filters], queryFn: () => projectApi.files(projectId, filters), enabled, ...queryPolicy });
@@ -138,10 +140,11 @@ function FilesPage({ projectId, userId }: { projectId: string; userId: string })
               className={`rounded-md border p-3 ${version === referencedVersion ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}>
               {version === referencedVersion && <p className="mb-1 text-sm font-semibold text-blue-800">证据引用的版本</p>}<strong>v{version.version_no} · {statuses[version.status]}</strong><p>{version.original_name}</p><p className="mb-2 text-xs text-slate-500">{formatDate(version.created_at)} · {(version.size_bytes / 1024).toFixed(1)} KB</p>
               <FileVersionHistory version={version.version_no} decisions={decisionsByVersion?.get(version.id)} labels={actions} />
-              <div className="flex flex-wrap gap-2"><button className={apiButton} disabled={busy} onClick={() => void issueLink(version, "preview")}>{tr("申请预览 v{0}", { 0: version.version_no })}</button><button className={apiButton} disabled={busy} onClick={() => void issueLink(version, "download")}>{tr("申请下载 v{0}", { 0: version.version_no })}</button>{freshContext.permissions.can_manage_files && version.status === "draft" && version.version_no === file.latest_version_no && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ fileId: file.id, versionId: version.id, expected: file.lock_version, name: `v${version.version_no}`, reason: "" }); setOperationError(null); setNotice(""); }}>{tr("设为正式 v{0}", { 0: version.version_no })}</button>}</div></article>)}</div></>}
+              <div className="flex flex-wrap gap-2"><button className={apiButton} disabled={busy} onClick={() => void issueLink(version, "preview")}>申请预览 v{version.version_no}</button><button className={apiButton} disabled={busy} onClick={() => void issueLink(version, "download")}>申请下载 v{version.version_no}</button>{freshContext.permissions.can_manage_files && version.status === "draft" && version.version_no === file.latest_version_no && <button className={apiButton} disabled={busy} onClick={() => { setCommand({ fileId: file.id, versionId: version.id, expected: file.lock_version, name: `v${version.version_no}`, reason: "" }); setOperationError(null); setNotice(""); }}>设为正式 v{version.version_no}</button>}</div>
+              {link?.version_id === version.id && <p className="my-3"><a className="gp-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.purpose === "preview" ? "打开预览" : "下载文件"}</a><span className="ml-2 text-xs text-slate-500">v{version.version_no} 临时链接，过期后请重新申请。</span></p>}
+            </article>)}</div></>}
         </Panel>}
-        {command && command.fileId === selectedId && freshContext.permissions.can_manage_files && <Panel title={tr("确认将 {0} 设为正式", { 0: command.name })}><p className="mb-3 text-sm">旧正式版本仍可在版本历史中查看。</p><label htmlFor="file-designation-reason">设为正式的原因</label><textarea id="file-designation-reason" className={`${apiInput} mt-1 block w-full`} maxLength={4000} value={command.reason} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy || !file} onClick={() => void designate()}>{busy ? "保存中…" : "确认设为正式"}</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{versionFailure(operationError) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对版本</button>}</div></Panel>}
-        {link && file?.versions.some((version) => version.id === link.version_id) && <p className="my-3"><a className="gp-link" href={link.url} target="_blank" rel="noopener noreferrer">{link.purpose === "preview" ? "打开预览" : "下载文件"}</a><span className="ml-2 text-xs text-slate-500">临时链接，过期后请重新申请。</span></p>}
+        {command && command.fileId === selectedId && freshContext.permissions.can_manage_files && <Panel title={`确认将 ${command.name} 设为正式`}><p className="mb-3 text-sm">旧正式版本仍可在版本历史中查看。</p><label htmlFor="file-designation-reason">设为正式的原因</label><textarea id="file-designation-reason" className={`${apiInput} mt-1 block w-full`} maxLength={4000} value={command.reason} disabled={busy} onChange={(event) => setCommand({ ...command, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy || !file} onClick={() => void designate()}>{busy ? "保存中…" : "确认设为正式"}</button><button className={apiButton} disabled={busy} onClick={() => setCommand(null)}>取消</button>{versionFailure(operationError) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对版本</button>}</div></Panel>}
         {operationError && <ApiFailure error={operationError} />}{notice && <p role="status" className="my-3">{notice}</p>}
       </>}
     </>}
