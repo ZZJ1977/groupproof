@@ -31,13 +31,13 @@ PR 上的 preflight 只读取服务、备份和配置是否存在，不更改平
 
 项目 ID 为 `c96385e7-2109-4250-be01-5100b1d55521`，环境为 `production`。API 的迁移预部署命令为 `alembic upgrade head`，健康检查为 `/readyz`；Web 健康检查为 `/healthz`。当前部署只完成匿名健康检查，`APP_MODE=real` 下 Google、邮箱注册和密码找回在真实凭据配置前保持关闭，初始管理员需另行受控开通。密钥只放 Railway Variables，不写入仓库。
 
-当前现场核对：统一 API 和旧 `identity` 尚未配置 Resend/Google 凭据，Web 仍指向旧身份服务。发布会明确使用 `MAIL_MODE=resend`、`MAIL_PUBLIC_ENABLED=false`，禁用邮件捕获、演示身份、debug 和验收密令；使用稳定的服务端 HMAC 密钥。Google 按钮按交付代码显示，未配置凭据时实际登录返回暂不可用。没有发信凭据/域名时，真实注册、学校验证和密码恢复不作为线上已验收项；已有有效密码账号可登录。
+当前现场核对：`groupproof-admin` 的 API、Web 和 worker 均跟踪 `admin-backend`；API 密码登录能力为 enabled/available，Google、邮箱注册和密码找回关闭，学校邮箱验证虽启用但因未配置邮件服务而不可用。旧 `groupproof-staging` 的 Resend/Google 凭据仍未配置；因此真实注册、学校验证、密码恢复和已登录 Admin 业务不作为线上已验收项。发布配置禁用邮件捕获、演示身份、debug 和验收密令，使用稳定的服务端 HMAC 密钥。
 
 本地旧账号、密码散列及旧会话不会由 CI 自动上传或导入。旧数据导入须另行备份、dry-run 和冲突核对。回退应用时保留升级后的数据库和新记录，不自动 downgrade 或清库。
 
-本轮只改造 Staging 发布链路。生产发布仍需由负责人完成生产认证配置、迁移和成套 API/Web 验收，再决定发布。
+旧 staging/production 发布链路仍按下文环境策略管理；本轮另建独立的 `groupproof-admin` 项目用于 `admin-backend` 的真实后端验证。该项目在 Railway 中的环境名虽然是 `production`，但不等同正式生产发布；正式发布仍需由负责人完成生产认证配置、迁移和成套 API/Web 验收，再决定发布。
 
-当前仓库是 GroupProof 的 Next.js 前端原型。它可以作为一个独立的 Railway Web 服务运行；真实 API、管理后台、异步任务和数据服务接入后，再按服务边界扩展 Railway 项目。
+旧环境基线是 GroupProof 的 Next.js 前端原型，可作为独立 Railway Web 服务运行；在本轮 `groupproof-admin` 项目中，真实 API、管理后台、异步 worker、PostgreSQL 和 Redis 已按服务边界接入，Web 的 Mock 开关保持关闭。
 
 ## 环境策略
 
