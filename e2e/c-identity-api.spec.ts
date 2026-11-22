@@ -129,6 +129,25 @@ test("identity directory exposes a retry and request id for service errors", asy
   expect(attempts).toBe(2);
 });
 
+test("a transient directory read error clears the selected detail but keeps the last list", async ({ page }) => {
+  await session(page);
+  let healthy = true;
+  await page.route("**/api/v1/c-admin/users?**", (route) => healthy
+    ? route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } })
+    : route.fulfill({ status: 503, json: { error: { code: "SERVICE_UNAVAILABLE" }, meta: { request_id: "req-identity-refresh" } } }));
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  healthy = false;
+  await page.getByRole("dialog").getByRole("button", { name: "刷新列表", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toContainText("请求编号：req-identity-refresh");
+  healthy = true;
+  await page.locator("main").getByRole("alert").getByRole("button", { name: "重试", exact: true }).click();
+  await expect(page.getByText("真实账号", { exact: true })).toBeVisible();
+});
+
 test("create account keeps values and shows field-level validation errors", async ({ page }) => {
   await session(page);
   await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 10 } }));

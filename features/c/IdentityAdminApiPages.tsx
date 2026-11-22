@@ -101,6 +101,12 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     }
   }, [accessBlocked, result.error, teachers, query, updateQuery]);
   useEffect(() => {
+    if (!result.isError || !selectedId || (result.error instanceof ApiError && [401, 403].includes(result.error.status))) return;
+    if (teachers) setSelectedIdState(null);
+    else updateQuery({ user: null });
+    setAcknowledgedVersion(null); setReason(""); setConflict(false); setFeedback("");
+  }, [result.error, result.isError, selectedId, teachers, updateQuery]);
+  useEffect(() => {
     if (!teachers && data && selectedId && !selected) {
       updateQuery({ user: null });
       setAcknowledgedVersion(null); setReason(""); setConflict(false);
@@ -230,7 +236,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     }}>
       <label className={styles.field}><span>搜索用户</span><input className={inputControl} name="q" aria-label="姓名、邮箱或学号" placeholder="姓名、邮箱或学号" defaultValue={query.get("q") ?? ""} /></label>
       <label className={styles.field}><span>学院</span><input className={inputControl} name="college" aria-label="学院" placeholder="学院" defaultValue={query.get("college") ?? ""} /></label>
-      <label className={styles.field}><span>角色</span><select className={inputControl} name="role" aria-label="角色" defaultValue={query.get("role") ?? ""}><option value="">全部角色</option>{["student", "teacher", "ta", "admin"].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
+      <label className={styles.field}><span>角色</span><select className={inputControl} name="role" aria-label="角色" defaultValue={query.get("role") ?? ""}><option value="">全部角色</option>{["student", "teacher", "ta", "admin", "leader"].map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
       <label className={styles.field}><span>账号状态</span><select className={inputControl} name="status" aria-label="账号状态" defaultValue={query.get("status") ?? ""}><option value="">全部状态</option><option value="enabled">可用</option><option value="disabled">已停用</option></select></label>
       <div className={styles.identityFilterActions}><button className={`${buttonControl} ${styles.primaryButton}`}>查询</button><button type="button" className={buttonControl} onClick={() => updateQuery({ q: null, college: null, role: null, status: null, page: null, user: null })}>重置筛选</button></div>
       <div className={styles.identityQuickFilters} role="group" aria-label="快捷状态筛选">{[["", "全部"], ["enabled", "可用"], ["disabled", "已停用"]].map(([value, label]) => <button key={value || "all"} type="button" className={styles.identityQuickFilter} aria-pressed={(query.get("status") ?? "") === value} onClick={() => updateQuery({ status: value || null, page: null, user: null })}>{label}</button>)}</div>
@@ -253,7 +259,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
       <SheetContent className={styles.identityDrawer} aria-describedby="identity-drawer-description" aria-modal="true">
         {selected && <div className={styles.identityDrawerBody}>
           <div className={styles.identityDrawerHeader}>
-            <div><SheetTitle className={styles.identityDrawerTitle}>{selected.name}</SheetTitle><SheetDescription id="identity-drawer-description">用户账号详情 · {selected.college || "未填写学院"}</SheetDescription></div>
+            <div className={styles.identityDrawerHeading}><SheetTitle className={styles.identityDrawerTitle}>{selected.name}</SheetTitle><SheetDescription id="identity-drawer-description">用户账号详情 · {selected.college || "未填写学院"}</SheetDescription></div>
             <button type="button" className={buttonControl} disabled={pending || result.isFetching} onClick={() => void refresh()}>刷新列表</button>
             <div className={styles.identityBadgeGroup}>{"roles" in selected && selected.roles.map((role) => <span className={styles.identityBadge} key={role}>{roleLabel(role)}</span>)}{"status" in selected && <span className={styles.identityBadge} data-identity-status={selected.status}>{accountStatusLabel(selected.status)}</span>}</div>
           </div>
@@ -262,7 +268,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
             {selectionChanged && <p role="alert">此记录已被其他人修改，请刷新列表并核对后再提交；处理原因已保留。</p>}
             {"canDisable" in selected && <><div className={styles.identityDetailIntro}><strong>账号状态</strong><p>{selected.canDisable ? "当前账号可停用" : selected.status === "disabled" ? "当前账号已停用，可恢复" : "当前账号暂不可停用"}</p></div><label className={styles.field}>处理原因<textarea className={`${inputControl} mt-1 block w-full`} aria-label="处理原因" value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} maxLength={2000} placeholder="说明本次停用或恢复的依据" /></label><div className={styles.actions}><button className={`${buttonControl} ${styles.primaryButton}`} disabled={pending || conflict || selectionChanged || !reason.trim() || (selected.status !== "disabled" && !selected.canDisable)} onClick={() => void decide(selected.status === "disabled" ? "enable" : "disable")}>{selected.status === "disabled" ? "确认恢复" : "确认停用"}</button></div></>}
           </div>
-          <button className={buttonControl} disabled={pending} onClick={closeDetail}>取消</button>
+          <div className={styles.identityDrawerFooter}><button className={buttonControl} disabled={pending} onClick={closeDetail}>取消</button></div>
         </div>}
       </SheetContent>
     </Sheet>}
