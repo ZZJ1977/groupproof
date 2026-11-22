@@ -55,7 +55,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
 
   return (
     <Panel title="GitHub 仓库" bodyClassName="space-y-4 min-w-0">
-      <p className="text-sm text-[var(--gp-ink-soft)]">同步默认分支的代码和开发活动。</p>
+      <p className="text-sm text-[var(--gp-ink-soft)]">同步默认分支代码与活跃分支（含 develop）的提交、PR 及 CI 活动。</p>
       {repos.isPending && <p role="status">正在读取仓库绑定…</p>}
       {repos.isError && <Feedback tone="error">{integrationErrorText(repos.error, "GitHub", "read")} <button type="button" className="gp-link ml-2" onClick={() => void repos.refetch()}>重试读取</button></Feedback>}
       {entries?.length === 0 && <p className="text-sm text-slate-600">项目还没有绑定仓库。</p>}

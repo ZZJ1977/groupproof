@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Award, Calculator, Lock } from "lucide-react";
+import { Avatar, EmptyState, Feedback, PageHeader, ProgressBar, Section, Stat, StatusBadge } from "@/components/common";
+import { button, secondary } from "@/features/b/ui";
 import { fetchWithSession } from "@/lib/api/client";
 import { apiConfig } from "@/lib/api/config";
 import { ContributionWeek7Panel } from "./ContributionWeek7Panel";
@@ -51,27 +54,98 @@ export function ContributionApiPage({ projectId, memberId }: { projectId: string
   }
   const selected = memberId ? snapshot?.members.find((item) => item.user_id === memberId) : null;
   const isFrozen = snapshot?.status === "frozen" && !snapshot.stale;
-  return <main className="mx-auto max-w-5xl space-y-5 p-6">
-    <Link className="gp-link" href={`/projects/${projectId}`}>返回项目</Link>
-    <h1 className="text-2xl font-semibold">{memberId ? "成员贡献详情" : "贡献总览"}</h1>
-    {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{error}</p>}
-    {notice && <p role="status" className="rounded bg-emerald-50 p-3 text-emerald-800">{notice}</p>}
-    {!memberId && (
-      <div className="flex flex-wrap items-center gap-3">
-        <button className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50" disabled={busy} onClick={() => void calculate()}>按当前正式成果重新计算</button>
-        {snapshot && !snapshot.stale && snapshot.status !== "frozen" && (
-          <button className="rounded border border-emerald-600 bg-emerald-600 px-4 py-2 text-white disabled:opacity-50" disabled={busy} onClick={() => void freeze()}>确认并冻结贡献快照</button>
+
+  return <div className="space-y-6">
+    <PageHeader
+      title={memberId ? "成员贡献详情" : "贡献总览"}
+      description={memberId ? "查看成员在正式验收成果中的任务权重与证据明细。" : "基于已确认的正式成果与责任占比计算团队贡献，确认后冻结快照用于结项报告。"}
+      actions={<div className="flex flex-wrap items-center gap-2">
+        {memberId ? <Link className={secondary} href={`/projects/${projectId}/contribution`}>返回贡献总览</Link> : <Link className={secondary} href={`/projects/${projectId}`}>返回项目</Link>}
+        {!memberId && (
+          <button type="button" className={button} disabled={busy} onClick={() => void calculate()}><Calculator size={14} />按当前正式成果重新计算</button>
         )}
-        {isFrozen && (
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">已冻结（v{snapshot.version}）</span>
+        {!memberId && snapshot && !snapshot.stale && snapshot.status !== "frozen" && (
+          <button type="button" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 disabled:opacity-50" disabled={busy} onClick={() => void freeze()}><Lock size={14} />确认并冻结贡献快照</button>
         )}
+      </div>}
+    />
+
+    {error && <div role="alert"><Feedback tone="error">{error}</Feedback></div>}
+    {notice && <Feedback tone="success">{notice}</Feedback>}
+    {snapshot?.stale && <Feedback tone="warning">正式成果或证据已变化；以下为历史计算快照，请重新计算当前贡献。</Feedback>}
+
+    {snapshot && (
+      <div className="gp-grid-4">
+        <Stat label="快照状态" value={isFrozen ? `已冻结 (v${snapshot.version})` : `草稿 (v${snapshot.version})`} accent={isFrozen ? "#047857" : "#0369a1"} icon={Award} />
+        <Stat label="参与成员" value={snapshot.members.length} sub="按正式验收成果计入" />
+        <Stat label="计算模型" value="正式成果加权 v1" sub={snapshot.formula_version} />
+        <Stat label="最近计算" value={new Date(snapshot.calculated_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} />
       </div>
     )}
-    {snapshot ? <p className="text-sm text-slate-600">计算时间：{new Date(snapshot.calculated_at).toLocaleString("zh-CN")} · 版本 {snapshot.version} · 状态 {snapshot.status === "frozen" ? "已冻结" : "草稿"} · 公式 {snapshot.formula_version}</p> : <p>尚无正式贡献计算结果。</p>}
-    {snapshot?.stale && <p role="status" className="rounded bg-amber-50 p-3 text-amber-800">正式成果或证据已变化；以下为历史计算快照，请重新计算当前贡献。</p>}
-    {memberId ? <>
-      <Link className="gp-link" href={`/projects/${projectId}/contribution`}>返回贡献总览</Link>
-      {selected ? <><section className="space-y-3 rounded border bg-white p-4"><h2 className="font-semibold">{selected.name} · {selected.share}%</h2><p>正式任务权重积分：{selected.task_credit}</p>{selected.tasks.map((task) => <article className="border-t py-3" key={task.task_id}><p>{task.title} · 任务权重 {task.weight} · 实际承担 {task.responsibility_share}%</p><Link className="gp-link" href={task.evidence_url}>查看验收记录</Link>{task.evidence.map((ref) => <p key={`${ref.criterion_id}:${ref.evidence_id}`}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${ref.evidence_id}`}>查看正式证据（v{ref.version}）</Link><Link className="ml-3 gp-link" href={`/projects/${projectId}/evidence?task=${task.task_id}&criterion=${ref.criterion_id}&capture=1`}>按此标准补充证据</Link></p>)}</article>)}</section><ContributionWeek7Panel projectId={projectId} memberId={memberId} tasks={selected.tasks} /></> : snapshot && <p>此计算版本没有该成员的正式贡献。</p>}
-    </> : <section className="space-y-3 rounded border bg-white p-4">{snapshot?.members.map((member) => <article className="border-t py-3" key={member.user_id}><div className="flex items-center justify-between"><span>{member.name}</span><strong>{member.share}%</strong></div><div className="mt-2 h-2 rounded bg-slate-100"><div className="h-2 rounded bg-blue-600" style={{ width: `${member.share}%` }} /></div><p className="text-sm">正式任务权重积分：{member.task_credit}</p><Link className="gp-link" href={`/projects/${projectId}/contribution/${member.user_id}`}>查看任务与证据</Link></article>)}{snapshot?.members.length === 0 && <p>暂无正式贡献。</p>}</section>}
-  </main>;
+
+    {isFrozen && !memberId && (
+      <div className="gp-surface-card flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 text-sm text-slate-700">
+          <StatusBadge tone="green" label={`已冻结（v${snapshot?.version}）`} />
+          <span>贡献快照已锁定，可以生成并提交正式项目报告。</span>
+        </div>
+        <Link className={button} href={`/projects/${projectId}/reports`}>前往项目报告 →</Link>
+      </div>
+    )}
+
+    {memberId ? (
+      selected ? (
+        <div className="space-y-6">
+          <Section title={`${selected.name} · ${selected.share}%`} description={`正式任务权重积分：${selected.task_credit}`} surface>
+            <div className="mb-4"><ProgressBar value={selected.share} /></div>
+            <div className="divide-y divide-slate-100">
+              {selected.tasks.map((task) => (
+                <article className="space-y-2 py-3.5 first:pt-0 last:pb-0" key={task.task_id}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">{task.title}</h3>
+                    <span className="gp-pill">权重 {task.weight} · 承担 {task.responsibility_share}%</span>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <Link className="gp-link" href={task.evidence_url}>查看验收记录</Link>
+                    {task.evidence.map((ref) => (
+                      <span key={`${ref.criterion_id}:${ref.evidence_id}`} className="inline-flex items-center gap-2">
+                        <Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${ref.evidence_id}`}>查看正式证据（v{ref.version}）</Link>
+                        <Link className="text-slate-500 hover:text-slate-700 hover:underline" href={`/projects/${projectId}/evidence?task=${task.task_id}&criterion=${ref.criterion_id}&capture=1`}>按此标准补充证据</Link>
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </Section>
+          <ContributionWeek7Panel projectId={projectId} memberId={memberId} tasks={selected.tasks} />
+        </div>
+      ) : snapshot ? <div className="gp-surface-card"><EmptyState title="此计算版本没有该成员的正式贡献" /></div> : null
+    ) : (
+      <Section title="成员贡献分布" surface>
+        {snapshot?.members.length ? (
+          <div className="divide-y divide-slate-100">
+            {snapshot.members.map((member) => (
+              <article className="space-y-2.5 py-4 first:pt-0 last:pb-0" key={member.user_id}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={member.name} size={34} />
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{member.name}</div>
+                      <div className="text-xs text-slate-500">正式任务权重积分：{member.task_credit} · 涉及 {member.tasks.length} 项任务</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-lg font-bold tabular-nums text-slate-900">{member.share}%</span>
+                    <Link className="gp-link text-sm" href={`/projects/${projectId}/contribution/${member.user_id}`}>查看任务与证据</Link>
+                  </div>
+                </div>
+                <ProgressBar value={member.share} />
+              </article>
+            ))}
+          </div>
+        ) : <EmptyState title={snapshot ? "暂无正式贡献" : "尚无正式贡献计算结果"} description="完成至少一项任务的人工验收确认后，点击上方“按当前正式成果重新计算”。" />}
+      </Section>
+    )}
+  </div>;
 }

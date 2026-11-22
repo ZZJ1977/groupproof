@@ -171,7 +171,7 @@ export function RouteDispatcher() {
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
     else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
   }
-  if (screen === 18 && projectId && (bReal || apiMode("projects") === "real")) realContent = <><MilestonesApiPage projectId={projectId} />{apiMode("cworkspace") === "real" && <div className="mt-6"><RiskApiPage projectId={projectId} /></div>}</>;
+  if (screen === 18 && projectId && (bReal || apiMode("projects") === "real")) realContent = <><MilestonesApiPage projectId={projectId} />{apiMode("cworkspace") === "real" && <div className="mt-8"><RiskApiPage projectId={projectId} embedded /></div>}</>;
   if (screen === 50 && courseId && !realContent && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if (screen === 62 && apiMode("cidentity") === "real" && apiMode("governance") === "real") realContent = <AdminDashboardPage />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;

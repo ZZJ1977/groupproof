@@ -7752,6 +7752,54 @@
         "title": "GithubSyncDTO",
         "type": "object"
       },
+      "GithubWebhookResultDTO": {
+        "properties": {
+          "associated": {
+            "default": 0,
+            "title": "Associated",
+            "type": "integer"
+          },
+          "ci_runs": {
+            "default": 0,
+            "title": "Ci Runs",
+            "type": "integer"
+          },
+          "commits": {
+            "default": 0,
+            "title": "Commits",
+            "type": "integer"
+          },
+          "deleted_sources": {
+            "default": 0,
+            "title": "Deleted Sources",
+            "type": "integer"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "handled": {
+            "title": "Handled",
+            "type": "boolean"
+          },
+          "projects": {
+            "default": 0,
+            "title": "Projects",
+            "type": "integer"
+          },
+          "pulls": {
+            "default": 0,
+            "title": "Pulls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event",
+          "handled"
+        ],
+        "title": "GithubWebhookResultDTO",
+        "type": "object"
+      },
       "GlobalSearchResponseDTO": {
         "properties": {
           "items": {
@@ -11647,6 +11695,22 @@
           "meta"
         ],
         "title": "SuccessResponse[GithubSyncDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubWebhookResultDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubWebhookResultDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubWebhookResultDTO]",
         "type": "object"
       },
       "SuccessResponse_GlobalSearchResponseDTO_": {
@@ -49797,6 +49861,28 @@
         "tags": [
           "b",
           "b-teacher-dashboard"
+        ]
+      }
+    },
+    "/api/v1/webhooks/github": {
+      "post": {
+        "description": "GitHub App Webhook：校验 X-Hub-Signature-256 后自动刷新已绑定仓库的活动记录。",
+        "operationId": "github_webhook_api_v1_webhooks_github_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubWebhookResultDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Github Webhook",
+        "tags": [
+          "a"
         ]
       }
     },

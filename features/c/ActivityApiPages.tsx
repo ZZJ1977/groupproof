@@ -3,16 +3,19 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import {
   Avatar,
   DetailDrawer,
   EmptyState,
+  Feedback,
   ListRow,
   PageHeader,
   Section,
   StateBlock,
   StatusBadge,
 } from "@/components/common";
+import { projectRequest } from "@/features/github-binding/integration-request";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import {
@@ -30,6 +33,7 @@ import {
   ApiPager,
   apiButton,
   apiInput,
+  apiPrimaryButton,
   isUuid,
   pageNumber,
   projectApi,
@@ -91,6 +95,17 @@ function summaryTone(status: ActivitySummary["status"]): "blue" | "green" | "amb
   return "gray";
 }
 
+function formatActivityPreview(raw: string): string {
+  if (!raw) return "";
+  const cleaned = raw
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*]\s*\[\s*[xX]?\s*\]\s*/, "").trim())
+    .filter((line) => Boolean(line))
+    .join(" · ");
+  return cleaned.length > 180 ? `${cleaned.slice(0, 180)}…` : cleaned;
+}
+
 export function ActivityApiPage({ projectId, sourceType }: { projectId: string; sourceType: ActivitySourceType }) {
   const { userId } = useWorkspace();
   return <ActivityPage key={`${userId}:${projectId}:${sourceType}`} projectId={projectId} sourceType={sourceType} userId={userId} />;
@@ -127,6 +142,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const history = useQuery({ queryKey: ["c-project-activity-history", userId, projectId, sourceType, selectedId], queryFn: () => projectApi.activityHistory(projectId, sourceType, selectedId!), enabled: selectedEnabled, ...queryPolicy });
   const [command, setCommand] = useState<Command | null>(null);
   const [busy, setBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const busyRef = useRef(false);
   const [summaryBusy, setSummaryBusy] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<unknown>(null);
@@ -207,6 +223,34 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       setCommand(null);
     } else if (results[0].isSuccess) {
       setBlocked(null);
+    }
+  }
+
+  async function syncExternalSource() {
+    if (syncing || busyRef.current || !access?.actor.is_leader) return;
+    setSyncing(true);
+    setOperationError(null);
+    setNotice("");
+    try {
+      if (sourceType === "github") {
+        const result = await projectRequest<components["schemas"]["GithubSyncDTO"]>(
+          `/api/v1/a/projects/${projectId}/github/sync`,
+          { method: "POST" },
+        );
+        await refresh();
+        setNotice(`已同步最新仓库数据（覆盖默认及活跃分支）：文件 ${result.files} 个、新增提交 ${result.commits ?? 0} 条、PR ${result.pulls ?? 0} 个、CI ${result.ci_runs ?? 0} 次。`);
+      } else {
+        const result = await projectRequest<{ messages?: number; chats?: number }>(
+          `/api/v1/a/projects/${projectId}/feishu/sync`,
+          { method: "POST" },
+        );
+        await refresh();
+        setNotice(`已同步飞书协作记录${typeof result.messages === "number" ? `（新增 ${result.messages} 条消息）` : ""}。`);
+      }
+    } catch (error) {
+      fail(error);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -311,26 +355,52 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
 
   if (!enabled) return <EmptyState title="项目地址无效" description="请从已授权项目入口打开活动页。" />;
 
+  const canSyncExternal = Boolean(
+    access?.actor.is_leader &&
+    access.project.lifecycle === "active" &&
+    connected &&
+    connected.items.length > 0,
+  );
+
   return <>
     <PageHeader
       title={sourceType === "github" ? "GitHub 开发活动" : "飞书协作记录"}
       description={access?.project.name ?? "正在验证项目权限…"}
       actions={<div className="flex flex-wrap items-center gap-2">
-        {sourceType === "github" && summaryIds.length > 0 && <button className={apiButton} disabled={Boolean(summaryBusy) || summaries.isFetching} onClick={() => void generatePageSummaries()}>{summaryBusy === "batch" ? "生成中…" : "生成本页摘要"}</button>}
-        <button className={apiButton} disabled={busy || Boolean(summaryBusy) || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新活动</button>
+        {canSyncExternal && (
+          <button
+            type="button"
+            className={apiPrimaryButton}
+            disabled={syncing || busy || Boolean(summaryBusy)}
+            onClick={() => void syncExternalSource()}
+          >
+            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "同步中…" : sourceType === "github" ? "同步 GitHub" : "同步飞书记录"}
+          </button>
+        )}
+        {access?.actor.is_leader && connected && connected.items.length === 0 && (
+          <Link
+            className={apiPrimaryButton}
+            href={`/projects/${projectId}/settings#${sourceType === "github" ? "github-integration" : "feishu-integration"}`}
+          >
+            {sourceType === "github" ? "连接 GitHub 仓库" : "绑定飞书群"}
+          </Link>
+        )}
+        {sourceType === "github" && summaryIds.length > 0 && <button className={apiButton} disabled={Boolean(summaryBusy) || syncing || summaries.isFetching} onClick={() => void generatePageSummaries()}>{summaryBusy === "batch" ? "生成中…" : "生成本页摘要"}</button>}
+        <button className={apiButton} disabled={busy || syncing || Boolean(summaryBusy) || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新活动</button>
       </div>}
     />
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isFetching && <StateBlock tone="loading" title="正在验证项目权限" />}
       {context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}
       {access && <>
-        {access.actor.is_member && <Section title="项目绑定状态" description="连接状态只读展示；原始记录和同步快照始终保留。" className="mb-5">
-          {bindings.isFetching && <p role="status">正在读取绑定状态…</p>}
-          {bindings.isError && <p>暂时无法读取绑定状态。 <button type="button" className={apiButton} onClick={() => void bindings.refetch()}>重试绑定查询</button></p>}
-          {connected?.kind === "feishu" && <p>{connected.items.length ? `已绑定 ${connected.items.length} 个飞书群` : "此项目尚未绑定飞书群。"}{access.actor.is_leader && <Link className="gp-link ml-3" href={`/feishu/${projectId}`}>管理飞书群绑定</Link>}</p>}
-          {connected?.kind === "github" && (connected.items.length ? <ul className="gp-list">{connected.items.map((repo) => <li key={repo.owner + "/" + repo.repo} className="gp-list-row"><div><a className="gp-link" href={`https://github.com/${repo.owner}/${repo.repo}`} target="_blank" rel="noopener noreferrer">{repo.owner}/{repo.repo}</a><p className="gp-list-row-meta">默认分支 {repo.default_branch} · {repo.last_synced_at ? "仓库文件与开发活动上次同步 " + formatDate(repo.last_synced_at) : "尚未同步仓库文件与开发活动"}</p></div></li>)}</ul> : <p>此项目尚未绑定 GitHub 仓库。</p>)}
-          {connected?.kind === "github" && <p className="mt-3 text-xs text-slate-500">首期 AI 摘要只处理 commit；拉取请求和 CI 保留为原始来源证据。每次同步读取默认分支最近 100 条提交、最近更新的 100 条拉取请求和最近 100 次 CI 运行。分页总数按当前筛选统计本项目已同步的活动快照。</p>}
-          {connected?.kind === "github" && access.actor.is_leader && <Link className="gp-link mt-2 inline-block" href={`/github/${projectId}`}>管理 GitHub 仓库绑定</Link>}
+        {notice && <div className="mb-4"><Feedback tone="success">{notice}</Feedback></div>}
+        {operationError ? <ApiFailure error={operationError} /> : null}
+        {access.actor.is_member && <Section title="项目绑定状态" surface className="mb-5" action={connected && access.actor.is_leader ? <Link className="gp-link text-sm" href={sourceType === "github" ? `/github/${projectId}` : `/feishu/${projectId}`}>{sourceType === "github" ? "管理 GitHub 仓库绑定" : "管理飞书群绑定"}</Link> : undefined}>
+          {bindings.isFetching && <p role="status" className="text-sm text-slate-500">正在读取绑定状态…</p>}
+          {bindings.isError && <p className="text-sm text-slate-600">暂时无法读取绑定状态。 <button type="button" className={apiButton} onClick={() => void bindings.refetch()}>重试绑定查询</button></p>}
+          {connected?.kind === "feishu" && <p className="text-sm text-slate-700">{connected.items.length ? `已绑定 ${connected.items.length} 个飞书群` : "此项目尚未绑定飞书群。"}</p>}
+          {connected?.kind === "github" && (connected.items.length ? <div className="space-y-2"><div className="flex flex-wrap items-center gap-3">{connected.items.map((repo) => <div key={repo.owner + "/" + repo.repo} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50/90 px-3.5 py-2 text-sm"><a className="gp-link font-semibold" href={`https://github.com/${repo.owner}/${repo.repo}`} target="_blank" rel="noopener noreferrer">{repo.owner}/{repo.repo}</a><span className="gp-pill">默认分支 {repo.default_branch} + 活跃分支</span><span className="text-xs text-slate-500">{repo.last_synced_at ? `仓库文件与开发活动上次同步 ${formatDate(repo.last_synced_at)}` : "尚未同步仓库文件与开发活动"}</span></div>)}</div><p className="text-xs text-slate-500">分页总数按当前筛选统计本项目已同步的活动快照；支持同步默认分支及 develop 等活跃分支提交。</p></div> : <p className="text-sm text-slate-600">此项目尚未绑定 GitHub 仓库。</p>)}
         </Section>}
         {!access.permissions.can_manage_activity && <p className="mb-4 text-sm text-slate-500">当前活动记录只读。</p>}
         <form key={`${filters.q}:${filters.status}:${filters.task_id}:${filters.author_id}:${filters.since}:${filters.until}:${filters.group_id}:${filters.kind}`} className="gp-toolbar mb-5" onSubmit={(event) => {
@@ -340,7 +410,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           updateQuery({ ...fields, group_id: sourceType === "feishu" ? String(form.get("group_id") ?? "") || null : null, group: null, page: null, record: null });
           setCommand(null);
         }}>
-          <label>搜索记录<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} /></label>
+          <label>搜索记录<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} placeholder="标题或关键字" /></label>
           {sourceType === "feishu" && <label>来源群组<select className={`${apiInput} block max-w-xs`} name="group_id" defaultValue={filters.group_id ?? ""}><option value="">全部群组</option>{filters.group_id && <option value={filters.group_id}>{groups.includes(filters.group_id) ? filters.group_id : "当前 URL 群组筛选（待来源核对）"}</option>}{groups.filter((group) => group !== filters.group_id).map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
           <label>记录类型<select className={`${apiInput} block`} name="kind" defaultValue={filters.kind ?? ""}><option value="">全部类型</option>{filters.kind && <option value={filters.kind}>{Object.hasOwn(kindLabels, filters.kind) ? kindLabels[filters.kind] : kinds.includes(filters.kind) ? filters.kind : "当前 URL 类型筛选（待来源核对）"}</option>}{kinds.filter((kind) => kind !== filters.kind).map((kind) => <option key={kind} value={kind}>{Object.hasOwn(kindLabels, kind) ? kindLabels[kind] : kind}</option>)}</select></label>
           <label>处理状态<select className={`${apiInput} block`} name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -350,20 +420,23 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           <label>结束日期<input className={`${apiInput} block`} type="date" name="date_to" defaultValue={query.get("date_to") ?? ""} /></label>
           <div className="flex flex-wrap gap-2"><button className={apiButton} type="submit">查询活动</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, task: null, author: null, date_from: null, date_to: null, group_id: null, group: null, kind: null, page: null, record: null }); setCommand(null); }}>重置</button></div>
         </form>
-        <p className="mb-4 text-xs text-slate-500">日期按 UTC 自然日筛选。{sourceType === "feishu" && "群组选项包括已读取的绑定群和本页历史记录中的群。"}作者选项包括当前项目的可选成员及本页记录。</p>
         {list.isFetching && <StateBlock tone="loading" title="正在读取活动" />}
         {list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
-        {rows && <Section title={`${sourceType === "github" ? "开发活动" : "协作记录"} · ${rows.total}`} description={sourceType === "github" ? "列表只呈现提交者和实现摘要；原始提交、diff、PR 与 CI 位于详情抽屉。" : "先看来源和摘要，需要处理时再打开详情。"}>
+        {rows && <Section title={`${sourceType === "github" ? "开发活动" : "协作记录"} · ${rows.total}`}>
           <div className="gp-list">
             {rows.items.map((item) => {
               const isCommit = sourceType === "github" && item.kind === "commit";
               const summary = isCommit ? summaryById.get(item.source_id) : undefined;
               const displayTitle = isCommit ? summary?.headline || item.title : item.title;
-              const displaySummary = isCommit ? summary?.implementation || "尚未生成 AI 摘要。点击生成后，列表只显示可追溯的实现说明。" : item.summary;
-              return <ListRow key={item.source_id} leading={<Avatar name={item.author_name || "来"} />} title={displayTitle} meta={<>{item.author_name || "来源未提供作者名称"} · {kindLabels[item.kind] ?? item.kind}{item.github_state && ` · ${item.github_state}`} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</>} actions={<div className="flex flex-wrap items-center gap-2"><StatusBadge status={item.status} label={statuses[item.status]} />{isCommit && summary && <StatusBadge label={summaryStatusLabels[summary.status]} tone={summaryTone(summary.status)} />}{isCommit && (!summary || summary.status === "not_generated" || summary.status === "failed") && <button className={apiButton} type="button" disabled={Boolean(summaryBusy)} onClick={() => void generateSummary(item.source_id)}>{summaryBusy === item.source_id ? "生成中…" : summary?.status === "failed" ? "重试摘要" : "生成摘要"}</button>}<button className={apiButton} type="button" onClick={() => selectRecord(item.source_id)}>查看记录</button></div>}><p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-600">{displaySummary}</p>{isCommit && summary?.status === "ready" && <p className="mt-2 text-xs text-slate-500">AI 摘要仅作建议，打开详情可查看证据引用与原始提交。</p>}</ListRow>;
+              const cleanedPreview = formatActivityPreview(item.summary);
+              const distinctPreview = cleanedPreview && cleanedPreview !== item.title.trim() ? cleanedPreview : "";
+              const displaySummary = isCommit
+                ? summary?.implementation || distinctPreview || "尚未生成 AI 摘要。点击“生成摘要”查看实现说明，或点“查看记录”浏览原始提交。"
+                : cleanedPreview;
+              return <ListRow key={item.source_id} leading={<Avatar name={item.author_name || "来"} />} title={displayTitle} meta={<>{item.author_name || "来源未提供作者名称"} · {kindLabels[item.kind] ?? item.kind}{item.github_state && ` · ${item.github_state}`} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</>} actions={<div className="flex flex-wrap items-center gap-2"><StatusBadge status={item.status} label={statuses[item.status]} />{isCommit && summary && <StatusBadge label={summaryStatusLabels[summary.status]} tone={summaryTone(summary.status)} />}{isCommit && (!summary || summary.status === "not_generated" || summary.status === "failed") && <button className={apiButton} type="button" disabled={Boolean(summaryBusy)} onClick={() => void generateSummary(item.source_id)}>{summaryBusy === item.source_id ? "生成中…" : summary?.status === "failed" ? "重试摘要" : "生成摘要"}</button>}<button className={apiButton} type="button" onClick={() => selectRecord(item.source_id)}>查看记录</button></div>}>{displaySummary && <p className="mt-1.5 line-clamp-2 max-w-3xl text-sm leading-6 text-slate-600">{displaySummary}</p>}</ListRow>;
             })}
           </div>
-          {!rows.items.length && <EmptyState title="没有符合条件的来源记录" description={sourceType === "github" ? "同步仓库后，提交、PR 和 CI 会在这里按时间线出现。" : "同步飞书群后，消息会在这里出现。"} />}
+          {!rows.items.length && <EmptyState title="没有符合条件的来源记录" description={sourceType === "github" ? "点击右上角“同步 GitHub”后，默认分支与活跃分支的提交、PR 和 CI 会在这里出现。" : "点击右上角“同步飞书记录”后，消息会在这里出现。"} />}
           <ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), record: null }); setCommand(null); }} />
         </Section>}
         <DetailDrawer open={Boolean(selectedId)} onOpenChange={(open) => { if (!open) closeRecord(); }} title={record?.title ?? "记录详情"} description={record ? `${record.author_name || "来源未提供作者名称"} · ${kindLabels[record.kind] ?? record.kind} · ${formatDate(record.occurred_at)}` : "正在读取来源快照…"}>
@@ -396,8 +469,6 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             </Section>}
           </div>}
         </DetailDrawer>
-        {operationError && <ApiFailure error={operationError} />}
-        {notice && <p role="status" className="my-3">{notice}</p>}
       </>}
     </>}
   </>;
