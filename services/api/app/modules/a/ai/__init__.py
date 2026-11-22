@@ -7,9 +7,13 @@ from app.modules.a.ai.functions import (
     extract_requirements,
     match_evidence,
     suggest_tasks,
+    summarize_activity,
 )
 from app.modules.a.ai.provider import AIProvider, AIUnavailable, FakeProvider, get_provider
 from app.modules.a.ai.schemas import (
+    ActivityFileChange,
+    ActivitySummaryInput,
+    ActivitySummaryResult,
     CodeFile,
     EvidenceMatchInput,
     EvidenceMatchResult,
@@ -42,6 +46,9 @@ __all__ = [
     "RiskExplanationResult",
     "TaskSuggestionInput",
     "TaskSuggestionResult",
+    "ActivitySummaryInput",
+    "ActivitySummaryResult",
+    "ActivityFileChange",
     "ai_unavailable",
     "analyze_implementation",
     "explain_risk",
@@ -49,4 +56,5 @@ __all__ = [
     "get_provider",
     "match_evidence",
     "suggest_tasks",
+    "summarize_activity",
 ]

@@ -23,6 +23,8 @@ from app.modules.a.ai.provider import (
     get_provider,
 )
 from app.modules.a.ai.schemas import (
+    ActivitySummaryInput,
+    ActivitySummaryResult,
     EvidenceMatchInput,
     EvidenceMatchResult,
     ImplementationAnalysisInput,
@@ -132,6 +134,32 @@ def analyze_implementation(
             text = texts.get(item.path)
             if text is None or _squash(item.quote) not in _squash(text):
                 raise ai_unavailable()
+    return result
+
+
+@metered("summarize_activity")
+def summarize_activity(
+    payload: ActivitySummaryInput, *, provider: AIProvider | None = None
+) -> ActivitySummaryResult:
+    """为来源活动生成可追溯的两层摘要；不得凭空生成文件、测试或功能。"""
+    result = _run("summarize_activity", payload, ActivitySummaryResult, provider)
+    source_text = {
+        "title": payload.title,
+        "body": payload.body,
+        "metadata": " ".join(
+            f"{key}: {value}"
+            for key, value in sorted(payload.metadata.items())
+            if value is not None
+        ),
+        "files": "\n".join(
+            f"{item.path} ({item.status}, +{item.additions}/-{item.deletions})\n{item.patch or ''}"
+            for item in payload.files
+        ),
+    }
+    for evidence in result.evidence:
+        quote = _squash(evidence.quote)
+        if not quote or quote not in _squash(source_text[evidence.source]):
+            raise ai_unavailable()
     return result
 
 

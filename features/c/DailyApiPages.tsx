@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
-import { EmptyState, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
+import { EmptyState, ListRow, PageHeader, ProgressBar, Section, Stat, StatusBadge } from "@/components/common";
 import { buttonVariants } from "@/components/ui/button";
 import { projectRequest } from "@/features/github-binding/integration-request";
+import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
-import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { useUrlQuery } from "./use-url-query";
 import { MyAccessRequests } from "./GovernanceApiPages";
 
@@ -95,24 +95,18 @@ export function HomeApiPage() {
         <Link className="gp-link" href="/action-items">待处理事项：{data.pending_action_items ?? "暂不可用"}</Link>
       </div>
       <div className="gp-grid-2">
-        <Panel title={t("myProjects")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 个项目</p>
-          <div className="space-y-4">{data.projects.map((project) => <div key={project.id} className="border-b border-slate-100 pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{project.name}</strong><StatusBadge status={project.lifecycle} /></div>
-            <p className="my-2 text-xs text-slate-600">任务进度：{project.progress === null ? "暂不可计算" : `${project.progress}%`}</p>
+        <Section title={t("myProjects")} description="最近更新的最多 10 个项目">
+          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<>{project.name} <StatusBadge status={project.lifecycle} /></>} meta={`任务进度：${project.progress === null ? "暂不可计算" : `${project.progress}%`}`} actions={<Link className="gp-link" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
             {project.progress !== null && <ProgressBar value={project.progress} />}
             <ProjectIntegrationStatus projectId={project.id} userId={userId} />
-            <Link className="gp-link mt-2 inline-block text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>
-          </div>)}</div>
+          </ListRow>)}</div>
           {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
-        </Panel>
-        <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 门课程</p>
-          {isTeacher && <div className="mb-3"><Link className="gp-link text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link></div>}
-          <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div><strong>{course.name}</strong><span className="ml-2"><StatusBadge status={course.status} /></span></div>
-            <Link className="gp-link text-sm" href={course.href}>查看课程</Link>
-          </div>)}</div>
+        </Section>
+        <Section title={t("myCourses")} description="最近更新的最多 10 门课程">
+          {isTeacher && <Link className="gp-link mb-3 inline-block text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link>}
+          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<>{course.name} <StatusBadge status={course.status} /></>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
           {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
-        </Panel>
+        </Section>
       </div>
       <Link className="gp-link mt-4 inline-block" href="/activity">查看个人动态</Link>
     </>}
@@ -151,21 +145,17 @@ export function ActivityApiPage() {
     {filters.project_id && <p className="mb-3 text-sm">当前仅显示指定项目；重置可查看全部可访问项目。</p>}
     {result.isFetching && <p role="status">正在读取个人动态…</p>}
     {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
-    {data && <Panel>
-      <div className="space-y-4">{data.items.map((item) => {
+    {data && <Section title="动态时间线" description="按时间查看自己的开发、证据和协作记录。">
+      <div className="gp-list">{data.items.map((item) => {
         const prefix = `/projects/${item.project_id}/`;
         const href = item.href.startsWith(prefix) && !/[\\\u0000-\u001f]/.test(item.href) ? item.href : null;
-        return <article key={item.id} className="border-b border-slate-100 pb-3">
-          <p className="mb-1 text-xs text-slate-500">{activityLabels[item.event_type] ?? categoryLabels[item.category]} · {item.project_name}</p>
-          {href ? <Link className="gp-link" href={href}>{item.title}</Link> : <span>{item.title}</span>}
-          <p className="mt-1 text-xs text-slate-500"><time dateTime={item.occurred_at}>{formatDate(item.occurred_at, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></p>
-        </article>;
+        return <ListRow key={item.id} title={href ? <Link className="gp-link" href={href}>{item.title}</Link> : item.title} meta={`${activityLabels[item.event_type] ?? categoryLabels[item.category]} · ${item.project_name} · ${formatDate(item.occurred_at, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}`} />;
       })}</div>
       {!data.items.length && <EmptyState title="没有符合条件的个人动态" />}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span>共 {data.total} 条 · 第 {data.page} 页</span><div className="flex gap-2">
         <button className={buttonClass} type="button" disabled={page <= 1} onClick={() => updateQuery({ page: String(page - 1) })}>上一页</button>
         <button className={buttonClass} type="button" disabled={data.page * data.page_size >= data.total} onClick={() => updateQuery({ page: String(page + 1) })}>下一页</button>
       </div></div>
-    </Panel>}
+    </Section>}
   </>;
 }

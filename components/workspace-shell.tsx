@@ -138,7 +138,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     }
   };
 
-  return <div className="gp-shell">
+  return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace")}>
     {mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
       <Link href={kind === "admin" ? "/admin/users" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>

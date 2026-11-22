@@ -38,8 +38,14 @@ logger = logging.getLogger("groupproof.a.github_activity")
 
 KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
+MAX_COMMIT_FILES = 80
+MAX_PATCH_CHARS = 6000
+MAX_TOTAL_PATCH_CHARS = 120_000
 _LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
 _ACTOR_ACCOUNT_ID = "_github_actor_account_id"
+_SECRET = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|private[_-]?key)(\s*[=:]\s*)([^\s,;]+)"
+)
 
 
 def _parse_time(value: str | None) -> datetime:
@@ -74,6 +80,72 @@ def _safe_url(value: Any) -> str | None:
 def _line(text: str | None, limit: int = 240) -> str:
     first = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
     return first[:limit]
+
+
+def _redact_patch(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    text = value[:MAX_PATCH_CHARS]
+    return _SECRET.sub(r"\1\2[REDACTED]", text)
+
+
+def _commit_detail(detail: dict[str, Any]) -> tuple[list[dict[str, Any]], bool, dict[str, int]]:
+    """保留可供摘要引用的文件级变更，限制大小并做常见凭据脱敏。"""
+    raw_files = detail.get("files")
+    if not isinstance(raw_files, list):
+        return [], bool(detail.get("files_truncated")), {}
+    files: list[dict[str, Any]] = []
+    total_patch = 0
+    truncated = bool(detail.get("files_truncated"))
+    for raw in raw_files:
+        if not isinstance(raw, dict) or not isinstance(raw.get("filename"), str):
+            continue
+        path = raw["filename"].strip()
+        if not path:
+            continue
+        raw_status = raw.get("status")
+        status = (
+            raw_status
+            if isinstance(raw_status, str)
+            and raw_status
+            in {
+                "added",
+                "modified",
+                "deleted",
+                "renamed",
+            }
+            else "unknown"
+        )
+        additions = raw.get("additions") if type(raw.get("additions")) is int else 0
+        deletions = raw.get("deletions") if type(raw.get("deletions")) is int else 0
+        patch = _redact_patch(raw.get("patch"))
+        if patch is not None:
+            if total_patch + len(patch) > MAX_TOTAL_PATCH_CHARS:
+                truncated = True
+                patch = None
+            else:
+                total_patch += len(patch)
+        if len(files) >= MAX_COMMIT_FILES:
+            truncated = True
+            break
+        files.append(
+            {
+                "path": path[:500],
+                "status": status,
+                "additions": max(0, min(additions, 1_000_000)),
+                "deletions": max(0, min(deletions, 1_000_000)),
+                "patch": patch,
+            }
+        )
+    stats = detail.get("stats") if isinstance(detail.get("stats"), dict) else {}
+    totals = {
+        key: max(0, min(stats.get(key, 0), 1_000_000))
+        for key in ("additions", "deletions", "total")
+        if type(stats.get(key)) is int
+    }
+    if type(detail.get("changed_files")) is int:
+        totals["changed_files"] = max(0, min(detail["changed_files"], 1_000_000))
+    return files, truncated, totals
 
 
 # ---------------------------------------------------------------- 作者识别
@@ -238,6 +310,36 @@ def sync_activity(
         account_id = _github_account_id(account)
         login = account.get("login")
         email = author.get("email")
+        existing_row = existing.get(("commit", sha))
+        detail = (
+            dict(_source_detail(existing_row.detail))
+            if existing_row is not None
+            and isinstance(existing_row.detail, dict)
+            and existing_row.detail.get("files_fetched") is True
+            else {"sha": sha, "branch": link.default_branch}
+        )
+        detail_reader = getattr(client, "commit_detail", None)
+        if callable(detail_reader) and (
+            existing_row is None
+            or not isinstance(existing_row.detail, dict)
+            or existing_row.detail.get("files_fetched") is not True
+        ):
+            try:
+                commit_detail = detail_reader(owner, repo, sha, inst)
+                if not isinstance(commit_detail, dict):
+                    raise ApiError(503, "GITHUB_UNAVAILABLE", "提交详情格式不正确。")
+                files, files_truncated, stats = _commit_detail(commit_detail)
+                detail.update(
+                    {"files_fetched": True, "files": files, "files_truncated": files_truncated}
+                )
+                detail.update(stats)
+            except (ApiError, TypeError, ValueError) as exc:
+                # 提交正文仍然是可用的原始来源；文件详情失败不应清空同步结果。
+                logger.info(
+                    "commit detail unavailable for %s: %s",
+                    sha[:12],
+                    getattr(exc, "code", type(exc).__name__),
+                )
         _upsert(
             session, link, existing, totals, now, kind="commit", external_id=sha,
             account_id=account_id,
@@ -250,7 +352,7 @@ def sync_activity(
                 "author_email": email,
                 "author_user_id": resolver.resolve(account_id),
                 "url": _safe_url(item.get("html_url")),
-                "detail": {"sha": sha, "branch": link.default_branch},
+                "detail": detail,
                 "occurred_at": _parse_time(author.get("date")),
             },
             new_commits=new_commits,
