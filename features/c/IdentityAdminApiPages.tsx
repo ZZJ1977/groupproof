@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, PageHeader, Panel } from "@/components/common";
-import { ApiError } from "@/lib/api/auth-client";
+import { ApiError, authClient } from "@/lib/api/auth-client";
 import { cIdentityClient, type IdentityAdminPage, type IdentityAdminUser, type IdentityTeacherApplication, type TeacherApplicationStatus } from "@/lib/api/c-identity-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
@@ -52,6 +52,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
   const [reason, setReason] = useState("");
   const [feedback, setFeedback] = useState("");
   const [pending, setPending] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [conflict, setConflict] = useState(false);
   const locked = useRef(false);
   // Display fresh details, but require an explicit refresh before accepting a changed version.
@@ -64,7 +65,31 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
   } else if (selected && "applicationVersion" in selected && selected.status !== "pending" && reason) {
     setReason(""); setConflict(false);
   }
-  async function decide(decision: "approve" | "reject" | "disable") {
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data || locked.current) return;
+    const form = new FormData(event.currentTarget);
+    const value = (key: string) => String(form.get(key) ?? "").trim();
+    const teacher = value("identity") === "teacher";
+    locked.current = true; setPending(true); setFeedback("");
+    try {
+      await cIdentityClient.create({
+        identity: teacher ? "teacher" : "student", submitForReview: teacher || undefined,
+        name: value("name"), username: value("username"), schoolEmail: value("schoolEmail"),
+        studentId: value("studentId") || undefined, college: value("college") || undefined,
+      }, userId);
+      setCreating(false); setFeedback(teacher
+        ? "账号已创建，教师申请已提交审核。审核通过后获得教师权限。"
+        : "账号已创建。本人可用学校邮箱通过“忘记密码”设置登录密码。");
+      await result.refetch();
+    } catch (error) {
+      if (error instanceof ApiError && [401, 403].includes(error.status)) {
+        setAccessBlocked(true); setCreating(false); setSelectedId(null); setReason("");
+      }
+      setFeedback(error instanceof ApiError && error.status === 409 ? "用户名或学校邮箱已登记，请核对后再提交。" : message(error));
+    } finally { locked.current = false; setPending(false); }
+  }
+  async function decide(decision: "approve" | "reject" | "disable" | "enable") {
     if (!selected || !reason.trim() || locked.current || conflict || selectionChanged) return;
     locked.current = true; setPending(true); setFeedback("");
     try {
@@ -73,7 +98,10 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
         const receipt = await cIdentityClient.disable(selected, reason.trim(), userId);
         if (receipt.inboxNotified === true) saved = "账号已停用，停用原因已写入该账号的站内收件箱。";
         if (receipt.inboxNotified === false) saved = "账号已停用，站内通知服务尚未接入。";
-      } else if (decision !== "disable" && "applicationVersion" in selected && selected.status === "pending") await cIdentityClient.review(selected, decision, reason.trim(), userId);
+      } else if (decision === "enable" && "canDisable" in selected && selected.status === "disabled") {
+        await cIdentityClient.enable(selected, reason.trim(), userId);
+        saved = "账号已恢复，可重新登录。";
+      } else if ((decision === "approve" || decision === "reject") && "applicationVersion" in selected && selected.status === "pending") await cIdentityClient.review(selected, decision, reason.trim(), userId);
       else return;
       setSelectedId(null); setReason(""); setFeedback(saved); await result.refetch();
     } catch (error) {
@@ -89,9 +117,15 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     } finally { locked.current = false; setPending(false); }
   }
   async function refresh() {
-    if (accessBlocked) { window.location.reload(); return; }
+    if (accessBlocked) {
+      try {
+        const session = await authClient.session();
+        if (!session.authenticated || session.user?.id !== userId) { window.location.reload(); return; }
+      } catch { setFeedback("暂时无法验证登录状态，请重新登录后再试。"); return; }
+    }
     const response = await result.refetch();
     if (response.isSuccess) {
+      setAccessBlocked(false);
       const latest = response.data.items.find((row) => row.id === selectedId);
       setAcknowledgedVersion(latest ? recordVersion(latest) : null);
       setConflict(false);
@@ -99,9 +133,18 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     }
   }
   return <>
-    <PageHeader title={teachers ? "教师审核" : "用户管理"} description={teachers ? "审核待处理申请，查询已保存的审核结果与原因。" : "查询账号并按规则停用；停用会撤销该账号的现有会话。"} />
+    <PageHeader title={teachers ? "教师审核" : "用户管理"} description={teachers ? "审核待处理申请，查询已保存的审核结果与原因。" : "创建学生或教师账号，管理账号的停用与恢复。"} />
     {teachers && <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); updateQuery({ status: String(form.get("status")), page: null }); }}><label>审核状态<select className={`${control} block`} name="status" defaultValue={applicationStatus} disabled={pending}>{Object.entries(applicationStatuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button className={control} disabled={pending}>筛选申请</button></form>}
-    {!teachers && <p className="mb-4 text-sm text-slate-600">恢复账号和新增账号暂不可用。</p>}
+    {!teachers && data && <div className="mb-4">
+      <button type="button" className={control} disabled={pending} aria-expanded={creating} onClick={() => setCreating(!creating)}>{creating ? "取消新增" : "新增账号"}</button>
+      {creating && <form className="my-3 flex flex-wrap items-end gap-2" onSubmit={createAccount}>
+        <label>身份<select className={control} name="identity" aria-label="身份" disabled={pending}><option value="student">学生</option><option value="teacher">教师</option></select></label>
+        {([["name", "姓名", 120], ["username", "用户名", 80], ["schoolEmail", "学校邮箱", 255], ["studentId", "学号（选填）", 80], ["college", "学院（选填）", 160]] as const).map(([key, label, length]) =>
+          <label key={key}>{label}<input className={control} name={key} type={key === "schoolEmail" ? "email" : "text"} required={["name", "username", "schoolEmail"].includes(key)} maxLength={length} disabled={pending} /></label>)}
+        <button className={control} disabled={pending}>确认创建</button>
+        <p className="w-full text-sm">创建前请核对身份和学校邮箱。教师申请将进入审核列表。本人可用学校邮箱通过“忘记密码”设置密码。</p>
+      </form>}
+    </div>}
     {!teachers && <form className="mb-4 flex flex-wrap gap-2" key={query.toString()} onSubmit={(event) => {
       event.preventDefault(); const form = new FormData(event.currentTarget);
       updateQuery(Object.fromEntries(["q", "role", "status", "college"].map((key) => [key, String(form.get(key) || "") || null]).concat([["page", null]])));
@@ -127,7 +170,7 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
       {"schoolEmail" in selected && <p>{selected.schoolEmail ?? "尚未验证学校邮箱"} · {selected.studentId ?? "无学号"}</p>}
       {"applicationVersion" in selected && <div className="space-y-3"><div><h3 className="font-semibold">提交时的申请资料</h3><p>姓名：{selected.submittedName ?? "未记录"}</p><p>申请身份：{selected.submittedIdentity === "teacher" ? "教师" : selected.submittedIdentity === "student" ? "学生" : "未记录"}</p><p>学校邮箱域：{selected.submittedEmailDomain ?? "未记录"}</p><p>申请版本：{selected.applicationVersion} · 提交时间：{formatDate(selected.createdAt)}</p></div><div><h3 className="font-semibold">当前账号资料</h3><p>姓名：{selected.name}</p><p>当前学校邮箱域：{selected.emailDomain || "未绑定"} · {selected.emailVerified ? "已验证" : "未验证"}</p><p className="text-sm text-slate-600">当前资料可能已变化，不代表提交或审核时的资料。</p></div>{selected.status !== "pending" && <div><h3 className="font-semibold">已保存的审核结果：{applicationStatuses[selected.status]}</h3><p>审核时间：{selected.reviewedAt ? formatDate(selected.reviewedAt) : "未记录"}</p><p>审核人（当前姓名）：{selected.reviewerName ?? "未记录或账号已不存在"}</p><p className="whitespace-pre-wrap">审核原因：{selected.reviewReason ?? "未记录"}</p><p className="text-sm text-slate-600">此记录只读；结果取自当时保存的审核决定，不根据当前账号角色推断。</p></div>}</div>}
       {selectionChanged && <p role="alert">此记录已被其他人修改，请刷新列表并核对后再提交；处理原因已保留。</p>}
-      {("canDisable" in selected || selected.status === "pending") && <><label className="block my-3">处理原因<textarea className={`${control} mt-1 block w-full`} aria-label="处理原因" value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} maxLength={2000} /></label><div className="flex gap-3">{"canDisable" in selected ? <button className={control} disabled={pending || conflict || selectionChanged || !reason.trim() || !selected.canDisable} onClick={() => void decide("disable")}>确认停用</button> : <><button className={control} disabled={pending || conflict || selectionChanged || !reason.trim() || !selected.emailVerified} onClick={() => void decide("approve")}>通过</button><button className={control} disabled={pending || conflict || selectionChanged || !reason.trim()} onClick={() => void decide("reject")}>拒绝</button></>}</div></>}
+      {("canDisable" in selected || selected.status === "pending") && <><label className="block my-3">处理原因<textarea className={`${control} mt-1 block w-full`} aria-label="处理原因" value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)} maxLength={2000} /></label><div className="flex gap-3">{"canDisable" in selected ? <button className={control} disabled={pending || conflict || selectionChanged || !reason.trim() || (selected.status !== "disabled" && !selected.canDisable)} onClick={() => void decide(selected.status === "disabled" ? "enable" : "disable")}>{selected.status === "disabled" ? "确认恢复" : "确认停用"}</button> : <><button className={control} disabled={pending || conflict || selectionChanged || !reason.trim() || !selected.emailVerified} onClick={() => void decide("approve")}>通过</button><button className={control} disabled={pending || conflict || selectionChanged || !reason.trim()} onClick={() => void decide("reject")}>拒绝</button></>}</div></>}
       <button className={`${control} mt-3`} disabled={pending} onClick={() => { setSelectedId(null); setAcknowledgedVersion(null); setReason(""); setConflict(false); }}>取消</button>
     </Panel>}
   </>;

@@ -3222,6 +3222,11 @@ export interface components {
             schoolEmail: string;
             /** Studentid */
             studentId?: string | null;
+            /**
+             * Submitforreview
+             * @default false
+             */
+            submitForReview: boolean;
             /** Username */
             username: string;
         };
@@ -5323,6 +5328,8 @@ export interface components {
             completed_at: string | null;
             /** Dependencies */
             dependencies: components["schemas"]["TaskDependencyView"][];
+            /** Description */
+            description?: string | null;
             /** Module Progress */
             module_progress: {
                 [key: string]: number | null;
@@ -5352,6 +5359,13 @@ export interface components {
              * Format: uuid
              */
             task_id: string;
+            /**
+             * Temporary Read
+             * @default false
+             */
+            temporary_read: boolean;
+            /** Title */
+            title?: string | null;
             /** Version */
             version: number;
         };
@@ -5543,6 +5557,11 @@ export interface components {
             };
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Key */
@@ -5553,6 +5572,11 @@ export interface components {
             requests: number;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
         };
         /** UsageDayDTO */
         UsageDayDTO: {
@@ -5567,6 +5591,11 @@ export interface components {
             date: string;
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -5575,6 +5604,11 @@ export interface components {
             requests: number;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
         };
         /** UsageSummaryDTO */
         UsageSummaryDTO: {
@@ -5597,6 +5631,11 @@ export interface components {
             days: 7 | 30 | 90;
             /** Failed */
             failed: number;
+            /**
+             * Incomplete Token Records
+             * @default 0
+             */
+            incomplete_token_records: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -5612,6 +5651,11 @@ export interface components {
             source_snapshot_id: string;
             /** Succeeded */
             succeeded: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
             /**
              * Until
              * Format: date-time

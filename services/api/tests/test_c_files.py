@@ -62,6 +62,9 @@ def db():
 
         names = {
             "users",
+            "a_inboxes",
+            "a_notifications",
+            "a_access_grants",
             "school_email_bindings",
             "courses",
             "course_staff",
