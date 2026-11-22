@@ -27,6 +27,7 @@ RESULT_MODELS = {
     "match_evidence": schemas.EvidenceMatchResult,
     "explain_risk": schemas.RiskExplanationResult,
     "analyze_implementation": schemas.ImplementationAnalysisResult,
+    "summarize_activity": schemas.ActivitySummaryResult,
 }
 
 INSTRUCTIONS = {
@@ -38,6 +39,12 @@ INSTRUCTIONS = {
         "判断每条需求是否已经在给定的代码文件中实现。status 只能是 implemented、partial、not_found、unclear。"
         "声称 implemented 或 partial 时，必须在 evidence 里给出真实文件路径和该文件里逐字存在的短引文（不超过 300 字）；"
         "找不到依据时用 not_found 或 unclear，不要猜测。只能使用输入里出现过的需求 id 和文件路径。"
+    ),
+    "summarize_activity": (
+        "这是一个跨项目、跨代码托管平台的通用变更摘要任务。优先阅读 files 中的路径、变更统计和 patch，"
+        "再结合 title、body 与 metadata，总结实际实现而不是播报 PR 元数据。headline 是简短标题；"
+        "implementation 必须说明做了什么；impact、verification、risks 只有输入有依据时才填写；"
+        "evidence 的 quote 必须逐字来自 title/body/metadata/files，无法判断的内容列入 insufficient_context。"
     ),
 }
 

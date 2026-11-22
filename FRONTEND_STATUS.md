@@ -1,6 +1,16 @@
 # GroupProof V1 前端交付状态
 
-更新日期：2026-11-21
+更新日期：2026-11-22
+
+## 2026-11-22 学生端统一工作台与 GitHub AI 摘要
+
+- 学生端统一使用开放画布、轻量分区、连续列表行和按需详情抽屉：共享令牌与基础组件位于 `app/globals.css`、`components/common.tsx` 和 `components/workspace-shell.tsx`；学生工作区通过 `gp-student-workspace` 统一覆盖，不新增一套角色导航或改变现有路由。
+- 首页、个人动态和项目活动页已迁移到同一套列表/状态/详情语言。普通内容不再重复包裹厚重卡片；摘要、决策和设置区域仍保留表面容器。列表支持 URL 筛选、键盘聚焦/Enter 打开、Escape 关闭详情抽屉，以及加载、空数据、失败和权限失效状态。
+- GitHub 活动首屏改为“提交者 + 实现内容 + 时间/状态”；原始提交、完整正文、文件差异、证据引用和历史只在详情抽屉展示。PR、CI 继续作为原始来源证据，不冒充 AI 实现摘要。
+- 新增通用活动摘要契约：输入包含平台、记录类型、作者、标题、正文、元数据、文件变更和截断标记；提示词版本为 `activity-summary-v1`。输出必须能引用输入证据，结果标记 `AI 已生成 · 待人工确认`，不写入正式任务/证据状态。
+- GitHub commit 首期支持文件级差异同步（限制文件数、patch 总量并脱敏常见密钥）；文件详情读取失败时保留原始提交并明确上下文不足。摘要缓存按来源版本、提示词版本和输入哈希区分，失败不会清空来源。
+- 后端新增迁移 `0047_a_activity_summaries` 和四个摘要接口（列表状态、单条状态、单条生成、批量生成）；前端 API 类型与 OpenAPI 已重新生成。`0047` 接在远端 develop 已有的 B 模块迁移 `0046` 之后，避免与 `0042_b_staff_permissions` 产生同 revision 冲突。默认 `AI_PROVIDER=fake` 只用于开发/测试，真实摘要需配置 OpenRouter 等正式提供方和用量策略。
+- 本轮验证：`npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:routes`、`npm run check:student-ui`、针对性后端 AI/GitHub/OpenAPI 测试通过；迁移头为 `0047`。真实 PostgreSQL 升级、外部 GitHub App 权限和正式 AI 凭据仍需在部署环境单独验收。
 
 ## 2026-11-21 独立项目与学生入口复核
 
@@ -137,7 +147,7 @@
 
 - [`mocks/seed.ts`](./mocks/seed.ts) 使用稳定 ID 关联 Course → Group → Project → Requirement → Functional Module → Task/Subtask → Acceptance Criterion → Evidence → Verification → Contribution → Report，并包含通知、待处理、GitHub、飞书、教师和审计样本。
 - [`lib/api/mock-service.ts`](./lib/api/mock-service.ts) 以 Promise 提供数据读取，浏览器 `localStorage`（按 userId 隔离）保存演示状态；[`lib/workspace.tsx`](./lib/workspace.tsx) 提供 TanStack Query 缓存、集合级新增/更新/移除。相关任务/证据/标准变更会使当前验收结果失效。
-- 登录/注册/会话/邮箱验证/教师审核已为真实服务；AI 分析/验收、GitHub/飞书同步、文件上传记录、报告生成仍为浏览器本地模拟（仅在真实 active 会话后挂载）。业务权限展示为前端门禁，最终授权由 FastAPI 在数据接口执行（业务接口迁移中）。
+- 登录/注册/会话/邮箱验证/教师审核已为真实服务；需求分析/验收、飞书同步、文件上传记录、报告生成仍为浏览器本地模拟（仅在真实 active 会话后挂载）。GitHub 仓库/活动读取、项目绑定和 commit 摘要已提供 FastAPI 真实适配路径，但只有部署环境配置 GitHub App、数据库迁移和 AI 提供方后才会产生真实外部数据。业务权限展示为前端门禁，最终授权由 FastAPI 在数据接口执行（其余业务接口仍在迁移中）。
 
 ## 权限资格层（2026-10-06，阶段 01）
 
@@ -172,7 +182,7 @@
 - 身份与鉴权已落地（`server/`，2026-10-08）；**未联调**：真实 Google OAuth（缺 GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI 与控制台回调登记）、真实学校邮件投递（缺 SMTP 凭据/发信策略）。代码路径已用隔离测试 OIDC/邮件捕获器验证，未宣称真实联调通过。
 - 业务数据：课程/小组/项目/任务/证据/验收/贡献/报告业务 API 与状态机待迁入 FastAPI（接口契约见 [`docs/development-stages/13-接口交接表.md`](./docs/development-stages/13-接口交接表.md)）；FastAPI 侧授权管线（会话+注册资格+资源权限）已实现并测试，real 模式未接真实业务存储时对应接口返回 SERVICE_UNAVAILABLE（不回退 Mock）。
 - 存储：PostgreSQL 已用于身份/注册/会话（真实迁移/约束/并发已验证）；文件对象存储、Redis/Celery 后台任务、SSE 进度推送尚未连接。
-- 第三方：GitHub 仓库/Commit/PR/CI 同步、飞书只读协作记录、AI 需求分析和验收仍使用关联 Mock 记录与模拟动作。
+- 第三方：GitHub 仓库/Commit/PR/CI 同步和 commit 摘要已经接入 A 的真实只读适配与缓存；飞书只读协作记录、AI 需求分析和验收仍使用关联 Mock 记录与模拟动作。GitHub/AI 的生产可用性仍取决于部署凭据和迁移验收，不能把本地 fake provider 当作真实模型结果。
 - 导出：PDF 目前调用浏览器打印；Word 下载为 HTML 兼容的 `.doc` 演示文件。正式 PDF/DOCX 生成应由后端或专门导出服务接管。
 
 ## 已知限制与设计差异

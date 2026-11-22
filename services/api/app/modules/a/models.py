@@ -106,6 +106,55 @@ class AiUsageEvent(Base):
     )
 
 
+class ActivitySummary(Base):
+    """通用来源活动的 AI 摘要缓存；首期由 GitHub commit 写入。"""
+
+    __tablename__ = "a_activity_summaries"
+
+    id: Mapped[UUID] = mapped_column(UUIDType, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDType, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[UUID] = mapped_column(UUIDType, nullable=False)
+    source_revision: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default=sa_text("'pending'")
+    )
+    result_json: Mapped[dict | None] = mapped_column(JSONB)
+    provider: Mapped[str | None] = mapped_column(String(32))
+    model: Mapped[str | None] = mapped_column(String(120))
+    is_placeholder: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text("false")
+    )
+    needs_human_review: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text("true")
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_type",
+            "source_id",
+            "source_revision",
+            "prompt_version",
+            "input_hash",
+            name="uq_a_activity_summaries_source_version",
+        ),
+        Index("ix_a_activity_summaries_project_source", "project_id", "source_type", "source_id"),
+        Index("ix_a_activity_summaries_status", "project_id", "status"),
+    )
+
+
 class Inbox(Base):
     """每个收件人一行：任何投递或已读变化都让 version+1 并换新 snapshot_id。"""
 
