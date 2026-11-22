@@ -8,7 +8,7 @@
 - Admin 页面保留现有 `/admin/*` URL 与 `cidentity=real` / `governance=real` 开关。日志页默认使用真实的共享业务审计；旧 `/admin/audit-logs` 兼容端点在 provider 未接通时明确显示不可用，不把 503 当空数据。AI 用量缺少费用或 Token 时显示未计价/不完整计数，不补零或虚构趋势。
 - 账号恢复/创建、教师申请审核、课程状态变更和访问审批仍要求服务端管理员资格、验证邮箱、CSRF、幂等键、版本校验和理由；临时授权每次实际读取重新检查范围、撤销和到期状态。
 - 已同步 `packages/domain/openapi.json` 与 `api.generated.ts`。本轮验证：管理后台定向 API 测试 110 项通过，治理读取测试 34 项通过，OpenAPI 快照通过，Ruff、前端 lint/typecheck 通过；完整 API 测试在 SQLite 兼容夹具补齐 A 通知表后通过（具体命令与环境说明见 [阶段报告](docs/development-stages/stage-reports/2026-11-22-admin-backend.md)）。
-- Railway 新项目 `groupproof-admin` 已在负责人授权的 workspace 创建并完成首轮部署：Postgres、Redis、API 和 Web 已在线，worker 的依赖兼容修复正在随 `admin-backend` 分支重新发布。应用服务只读取 Railway Variables，仓库不保存 secrets；Google、邮箱注册和密码找回在凭据配置前保持关闭，不能把匿名健康检查当作完整账号验收。
+- Railway 新项目 `groupproof-admin` 已在负责人授权的 workspace 创建并完成部署：Postgres、Redis、API、Web 和 worker 均在线并各运行 1 个副本，worker 已连接 Redis 并进入 ready 状态。应用服务只读取 Railway Variables，仓库不保存 secrets；Google、邮箱注册和密码找回在凭据配置前保持关闭，不能把匿名健康检查当作完整账号验收。
 
 ## 2026-10-15：C 复用 A 的认证审计与教师审核历史
 
