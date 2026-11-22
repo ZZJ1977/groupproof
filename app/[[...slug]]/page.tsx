@@ -79,6 +79,10 @@ export default async function Page({
     redirect(next.startsWith("/account") ? next : "/account/status");
   }
 
+  if (pathname === "/home" && session.nextAction?.href === "/admin/users") {
+    redirect("/admin/users");
+  }
+
   return (
     <WorkspaceProvider user={session.user ?? { id: "unknown", name: null, preferredLocale: "zh-Hans" }}>
       <RouteDispatcher />
