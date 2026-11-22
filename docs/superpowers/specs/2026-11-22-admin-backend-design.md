@@ -30,7 +30,7 @@
 - 不重写已有学生/教师业务模块，不改变 Task、Evidence 或正式验收规则。
 - 不创建第二个用户库、第二套 RBAC 或第二个后台 API。
 - 不在没有真实 provider 数据时生成“零用量”、虚构趋势或伪造授权成功。
-- 不把 Railway 项目创建、密钥配置或生产发布冒充为已完成；这些动作需要有效的 Railway 账号/API token 和逐项部署验收。
+- 不把 Railway 服务创建、密钥配置或账号能力冒充为已完成；本轮项目与服务已在负责人授权的 workspace 建立并完成匿名部署验收，邮件、Google 和初始管理员仍需按真实凭据与受控流程配置。
 - 不在本轮加入与 Admin 治理无关的视觉改版或动效。
 
 ## 核心业务与安全边界
@@ -65,4 +65,4 @@
 - 六个 Admin 页面在 real 模式下只消费真实 API；provider 未接通时显示明确不可用状态。
 - 账号、教师审核、课程、审计、AI 用量、访问审批的成功/失败/冲突/重复提交路径均有可重复测试。
 - Alembic 可升级到最新 head，旧迁移不被重写；API OpenAPI 与前端生成类型同步。
-- `ruff check`、`ruff format --check`、API pytest、前端 lint/typecheck/build、路由检查通过；Railway 创建/部署若因凭据缺失未执行，报告中明确记录限制。
+- `ruff check`、`ruff format --check`、API pytest、前端 lint/typecheck/build、路由检查通过；Railway 服务状态、匿名健康检查和未配置的身份/邮件能力在阶段报告中明确记录。

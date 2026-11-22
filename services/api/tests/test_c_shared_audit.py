@@ -93,6 +93,34 @@ def test_admin_passes_filters_to_a_and_reads_only_approved_snapshot_metadata(
     assert row.after == {"version_no": 2} and row.metadata_redacted
 
 
+def test_admin_does_not_expose_free_form_audit_reason(db, scope, monkeypatch):
+    event = SimpleNamespace(
+        id=uuid4(),
+        occurred_at=datetime(2026, 11, 11, tzinfo=UTC),
+        action="project.plan.frozen",
+        actor_id=None,
+        actor_role="teacher",
+        result="success",
+        target_type="plan_version",
+        target_id="imported-id",
+        reason="Contact alice@example.com; token=secret-value; private project text",
+        before_json=None,
+        after_json=None,
+    )
+
+    def read(_session, **_filters):
+        return SimpleNamespace(items=(event,), total=1)
+
+    monkeypatch.setitem(sys.modules, "app.modules.a.audit", SimpleNamespace(list_audit_events=read))
+
+    (row,) = shared_audit_page(db, scope.users["admin"], SharedAuditFilters()).items
+
+    assert row.reason == "[redacted]"
+    assert "alice@example.com" not in row.reason
+    assert "secret-value" not in row.reason
+    assert "private project text" not in row.reason
+
+
 def test_student_denied_before_resolving_a_service(db, scope, monkeypatch):
     monkeypatch.setitem(sys.modules, "app.modules.a.audit", None)
     with pytest.raises(ApiError) as denied:

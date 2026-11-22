@@ -18,7 +18,7 @@
 - AI 结果必须标记为需要人工确认；缺少真实用量时返回明确不可用状态，不生成零用量或虚构趋势。
 - 临时访问只允许 `read` 与 `project|task|evidence` 范围，每次读取重新检查未过期、未撤销的授权。
 - 不改写旧迁移，不改变 Task、Evidence 或正式验收规则；真实服务未接通时 UI 必须显示不可用而不是空数据。
-- Railway 凭据只放 Railway Variables/GitHub Secrets；没有有效登录凭证时只做预检，不创建或声称已部署外部项目。
+- Railway 凭据只放 Railway Variables/GitHub Secrets；本轮在负责人授权的 workspace 创建了独立项目并部署了服务骨架，应用密钥仍不进入仓库，线上账号能力以实际配置和匿名健康检查结果为准。
 
 ## Review Focus
 
@@ -106,7 +106,7 @@
 - [ ] **Step 3: 更新状态文档**：标明 real/Mock 边界、测试证据、Railway 尚未创建的原因，不把计划写成已实现。
 - [ ] **Step 4: 提交**：`git add <generated-api-files> FRONTEND_STATUS.md docs/development-stages/README.md && git commit -m "docs: record admin backend verification status"`
 
-### Task 5: Railway 新项目部署预检（不擅自创建外部资源）
+### Task 5: Railway 新项目部署与匿名验收
 
 **Files:**
 - Modify: `docs/DEPLOYMENT.md` (only if the new service boundary or variable checklist needs clarification)
@@ -114,11 +114,11 @@
 
 **Interfaces:**
 - Consumes: Tasks 1–4 的验证结果、`services/api/railway.toml`、现有 deploy scripts 和 Railway CLI 登录状态。
-- Produces: `web`/`api`/`postgres`/`redis`/可选 `worker` 的变量与健康检查清单；若没有 Railway token，只记录阻塞，不创建项目。
+- Produces: `web`/`api`/`postgres`/`redis`/`worker` 的变量与健康检查清单；应用服务绑定 `admin-backend` 分支后逐项部署，未配置的邮件/Google 能力保持关闭。
 
 - [ ] **Step 1: 只读检查 CLI 和凭据状态**：`command -v railway`、`railway whoami`；不得输出 token，不得读取或提交 secrets。
 - [ ] **Step 2: 校验部署配置**：确认 API 使用 `alembic upgrade head` 和 `/readyz`，Web 使用 `API_INTERNAL_URL`，真实模式关闭 `NEXT_PUBLIC_ENABLE_MOCKS`。
-- [ ] **Step 3: 写阶段报告**：列出已验证命令、数据库/Redis 前置条件、尚未执行的 Railway 创建/部署步骤和负责人需要提供的登录方式。
+- [x] **Step 3: 写阶段报告**：列出已验证命令、数据库/Redis 前置条件、Railway 项目/服务 ID、匿名健康检查和仍关闭的外部身份/邮件能力。
 - [ ] **Step 4: 提交**：`git add docs/DEPLOYMENT.md docs/development-stages/stage-reports/2026-11-22-admin-backend.md && git commit -m "docs: add admin backend deployment preflight"`
 
 ### Final Verification
