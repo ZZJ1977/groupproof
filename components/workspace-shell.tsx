@@ -18,6 +18,7 @@ import { authClient } from "@/lib/api/auth-client";
 import { projectNavItems, resolveObjectContext, resolveCanonicalRouteContext, teacherNavItems } from "@/lib/ux/navigation";
 import type { Role } from "@/types/domain";
 import { cn } from "@/lib/utils";
+import { AdminEnvironmentSwitcher } from "@/components/admin-environment-switcher";
 
 type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
 
@@ -139,6 +140,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
           </div>
         </div>
         <div className="gp-topbar-right">
+          {kind === "admin" && <AdminEnvironmentSwitcher />}
           <LanguageSwitcher compact />
           <span className="gp-topbar-link hidden lg:inline">{ts("helpCenter")}</span>
           <Link href="/notifications" className="gp-icon-button relative" aria-label={ts("notifications")} title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}><Bell size={18} />{unreadCount !== null && unreadCount > 0 && <span data-testid="unread-notification-dot" className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]" />}</Link>

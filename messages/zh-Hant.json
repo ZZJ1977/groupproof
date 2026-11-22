@@ -451,6 +451,12 @@
     }
   },
   "shell": {
+    "adminEnvironment": {
+      "label": "資料環境",
+      "description": "切換管理後台讀取和操作的資料環境",
+      "develop": "develop / Staging",
+      "main": "main / Production"
+    },
     "searchPlaceholder": "搜尋課程、專案或任務...",
     "searchNoResult": "無符合結果",
     "searchTypeProject": "專案",
