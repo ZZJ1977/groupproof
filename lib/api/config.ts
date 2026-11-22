@@ -56,7 +56,13 @@ export function resolveApiMode(
 const globalMocksEnabled = readBoolean(process.env.NEXT_PUBLIC_ENABLE_MOCKS, true);
 const featureOverrides = parseFeatureOverrides(process.env.NEXT_PUBLIC_API_FEATURES);
 // 正式网站在构建变量里设置 NEXT_PUBLIC_APP_ENV=production，即可保证不会出现示例数据。
-const productionLock = process.env.NEXT_PUBLIC_APP_ENV?.trim().toLowerCase() === "production";
+// Next.js inlines NEXT_PUBLIC_* values during `next build`. Railway runtime
+// variables may therefore be unavailable while the Docker image is built.
+// A production bundle must never fall back to the demo workspace when that
+// public marker is missing from the build environment.
+const productionLock =
+  process.env.NEXT_PUBLIC_APP_ENV?.trim().toLowerCase() === "production" ||
+  process.env.NODE_ENV === "production";
 
 export function apiMode(feature: ApiFeature): ApiMode {
   return resolveApiMode(feature, {
