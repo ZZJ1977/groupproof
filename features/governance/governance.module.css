@@ -813,7 +813,7 @@
   flex: 1 1 180px;
 }
 
-.identityDrawerHeading :global(.gp-dialog-description) { overflow-wrap: anywhere; }
+.identityDrawerHeading p { overflow-wrap: anywhere; }
 
 .identityDrawerTitle {
   margin: 0;
