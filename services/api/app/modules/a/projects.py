@@ -190,7 +190,7 @@ def remove_personal_member(
             "课程项目的成员由课程小组统一管理，不能在这里移除。",
         )
     is_self = member_user_id == actor.id
-    if not is_self and not relation.is_leader:
+    if not is_self and not relation.leader:
         raise ApiError(403, "FORBIDDEN", "只有项目组长可以移除其他成员。")
     target = session.scalar(
         select(ProjectMember).where(
