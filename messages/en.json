@@ -473,13 +473,13 @@
   "nav": {
     "global": "Global",
     "currentProject": "Current project",
-  "projectGroups": {
-    "overviewGroup": "Overview",
-    "planGroup": "Plan",
-    "collaborateGroup": "Collaborate",
-    "reviewGroup": "Review & outcomes",
-    "settingsGroup": "Settings"
-  },
+    "projectGroups": {
+      "overviewGroup": "Overview",
+      "planGroup": "Plan",
+      "collaborateGroup": "Collaborate",
+      "reviewGroup": "Review & outcomes",
+      "settingsGroup": "Settings"
+    },
     "home": "Home",
     "myCourses": "My courses",
     "actionItems": "Action items",
@@ -506,7 +506,13 @@
       "overview": "Course overview",
       "groups": "Groups",
       "actions": "Action items",
+      "projects": "Projects",
       "reports": "Reports",
+      "rules": "Course rules",
+      "files": "Materials",
+      "announcements": "Announcements",
+      "appeals": "Appeals",
+      "staff": "TA & permissions",
       "settings": "Course settings"
     },
     "adminItems": {

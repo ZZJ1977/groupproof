@@ -3,6 +3,8 @@ export const apiFeatures = [
   "daily",
   "inbox",
   "cworkspace",
+  // B workspace pages (31–37, 07–13, 18–19, 48); default mock until each stage lands.
+  "bworkspace",
   "coursefiles",
   "cidentity",
   "governance",

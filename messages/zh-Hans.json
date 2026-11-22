@@ -473,13 +473,13 @@
   "nav": {
     "global": "全局",
     "currentProject": "当前项目",
-  "projectGroups": {
-    "overviewGroup": "总览",
-    "planGroup": "规划",
-    "collaborateGroup": "协作",
-    "reviewGroup": "验收与成果",
-    "settingsGroup": "设置"
-  },
+    "projectGroups": {
+      "overviewGroup": "总览",
+      "planGroup": "规划",
+      "collaborateGroup": "协作",
+      "reviewGroup": "验收与成果",
+      "settingsGroup": "设置"
+    },
     "home": "首页",
     "myCourses": "我的课程",
     "actionItems": "待处理事项",
@@ -506,7 +506,13 @@
       "overview": "课程总览",
       "groups": "小组",
       "actions": "待处理",
+      "projects": "项目总览",
       "reports": "报告",
+      "rules": "课程规则",
+      "files": "课程资料",
+      "announcements": "课程公告",
+      "appeals": "申诉处理",
+      "staff": "助教管理",
       "settings": "课程设置"
     },
     "adminItems": {

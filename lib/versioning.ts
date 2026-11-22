@@ -13,6 +13,7 @@ import type {
   Revision,
   Task,
 } from "@/types/domain";
+import { tr } from "@/lib/i18n/tr";
 
 /**
  * 版本模型（阶段 02）。
@@ -274,7 +275,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function validateWorkspace(raw: unknown): { ok: true } | { ok: false; error: string } {
   if (!isRecord(raw)) return { ok: false, error: "工作区数据不是对象" };
   for (const key of ["users", "courses", "groups", "projects", "tasks", "requirements"]) {
-    if (!Array.isArray(raw[key])) return { ok: false, error: `工作区数据缺少集合 ${key} 或其不是数组` };
+    if (!Array.isArray(raw[key])) return { ok: false, error: tr("工作区数据缺少集合 {0} 或其不是数组", { 0: key }) };
   }
   return { ok: true };
 }

@@ -10,6 +10,7 @@ import { projectRequest } from "@/features/github-binding/integration-request";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
+import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { useUrlQuery } from "./use-url-query";
 import { MyAccessRequests } from "./GovernanceApiPages";
 
@@ -66,13 +67,16 @@ function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; us
 
 /** Canonical queries only; workspace data and demo roles are never a data source. */
 export function HomeApiPage() {
-  const { userId } = useWorkspace();
+  const { userId, role } = useWorkspace();
+  const isTeacher = role === "teacher" || role === "ta";
   const t = useTranslations("core.home");
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   return <>
+    <AnnouncementBanner />
     <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<div className="flex flex-wrap items-center gap-2">
-      <Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>
+      {isTeacher && <Link href="/teacher/courses" className={buttonVariants()}>我的班级 / 创建班级</Link>}
+      <Link href="/projects/new" className={buttonVariants(isTeacher ? { variant: "outline" } : undefined)}><Plus size={16} />{t("createProject")}</Link>
       <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>
       <button className={buttonVariants({ variant: "ghost" })} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}><RefreshCw size={15} />刷新统计</button>
     </div>} />
@@ -102,6 +106,7 @@ export function HomeApiPage() {
           {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
         </Panel>
         <Panel title={t("myCourses")}><p className="mb-3 text-xs text-slate-500">最近更新的最多 10 门课程</p>
+          {isTeacher && <div className="mb-3"><Link className="gp-link text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link></div>}
           <div className="space-y-4">{data.courses.map((course) => <div key={course.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div><strong>{course.name}</strong><span className="ml-2"><StatusBadge status={course.status} /></span></div>
             <Link className="gp-link text-sm" href={course.href}>查看课程</Link>
