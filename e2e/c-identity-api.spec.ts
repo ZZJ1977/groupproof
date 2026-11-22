@@ -68,8 +68,47 @@ test("user directory summarizes the current result and resets URL filters", asyn
   await expect(page.getByText("当前页可用", { exact: true })).toBeVisible();
   await expect(page.getByText("当前页已停用", { exact: true })).toBeVisible();
   await expect(page.getByText("当前页待验证", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "重置筛选", exact: true }).click();
   await expect(page).not.toHaveURL(/q=|role=|status=|college=|user=/);
+});
+
+test("user detail opens as an accessible drawer and restores focus after Escape", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } }));
+  await page.goto("/admin/users");
+  const view = page.getByRole("button", { name: "查看", exact: true });
+  await view.focus();
+  await page.keyboard.press("Enter");
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute("aria-modal", "true");
+  await expect(drawer).toContainText("真实账号");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(view).toBeFocused();
+  await expect(page).not.toHaveURL(/user=/);
+});
+
+test("user detail drawer closes from the mask and stays within a mobile viewport", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/c-admin/users?**", (route) => route.fulfill({ json: { items: [target], total: 1, page: 1, pageSize: 10 } }));
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await page.goto("/admin/users");
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await page.locator('[data-radix-dialog-overlay]').click({ position: { x: 3, y: 3 } });
+  await expect(drawer).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "查看", exact: true }).click();
+  const mobileDrawer = page.getByRole("dialog");
+  await expect(mobileDrawer).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(await mobileDrawer.evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(390);
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(mobileDrawer).toHaveCount(0);
 });
 
 test("C7-02 submits the selected identity and school email to A's account service", async ({ page }) => {
@@ -143,7 +182,7 @@ test("C7-01 a background version change requires explicit refresh and preserves 
   row = { ...target, version: 4, schoolEmail: "changed@must.edu.mo" };
   // React Query refetches on reconnect without invoking the page's manual refresh handler.
   await page.evaluate(() => { window.dispatchEvent(new Event("offline")); window.dispatchEvent(new Event("online")); });
-  await expect(page.getByText(/changed@must\.edu\.mo/)).toBeVisible();
+  await expect(page.getByRole("dialog").getByText(/changed@must\.edu\.mo/)).toBeVisible();
   await expect(page.getByText("此记录已被其他人修改，请刷新列表并核对后再提交；处理原因已保留。", { exact: true })).toBeVisible();
   await expect(page.getByLabel("处理原因", { exact: true })).toHaveValue("保留正在核对的理由");
   await expect(page.getByRole("button", { name: "确认停用", exact: true })).toBeDisabled();
