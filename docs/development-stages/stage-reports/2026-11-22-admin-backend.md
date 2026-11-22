@@ -40,3 +40,4 @@
 - `admin-backend` 已合入 `develop` 的后端代码和迁移历史，Alembic head 为 `0046`；完整 API 回归为 `1045 passed, 258 skipped`。
 - `groupproof-staging/admin-api` 使用 Staging 项目内 PostgreSQL，`groupproof-production/admin-api` 使用 Production 项目内 PostgreSQL；两套管理 Web 均在线并通过真实管理员登录验证。
 - Staging 管理面板读取到 3 个账号（1 个管理员、2 个学生）；Production 管理面板读取到 1 个管理员。课程和待审核数据按各自数据库真实状态显示。
+- 统一管理 Web 为 `https://web-production-650d4574.up.railway.app`，顶部环境选择器切换 `develop / Staging` 与 `main / Production`，已用真实浏览器完成两次登录和数据切换验证。

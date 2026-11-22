@@ -41,14 +41,14 @@ PR 上的 preflight 只读取服务、备份和配置是否存在，不更改平
 
 ## 双环境管理后台（2026-11-22）
 
-管理后台现在分别接入原有的 Staging 和 Production 数据库，两个入口使用同一套 `admin-backend` 代码和迁移链：
+管理后台现在通过一个统一 Web 入口接入原有的 Staging 和 Production 数据库。页面顶部的数据环境选择器写入 `gp_admin_environment` Cookie，API 代理按当前环境选择对应的管理 API：
 
 | 数据环境 | Railway 项目 | 管理 API | 管理 Web | 数据状态 |
 | --- | --- | --- | --- | --- |
-| `develop` / Staging | `groupproof-staging` | `admin-api` | <https://admin-web-production-a1429db7.up.railway.app> | 已读取原 Staging 数据 |
-| `main` / Production | `groupproof-production` | `admin-api` | <https://admin-web-production-e82e4681.up.railway.app> | 已读取原 Production 数据 |
+| `develop` / Staging | `groupproof-staging` | `admin-api` | 统一入口 | 已读取原 Staging 数据 |
+| `main` / Production | `groupproof-production` | `admin-api` | 统一入口 | 已读取原 Production 数据 |
 
-`admin-backend` 已合入 `develop` 的后端代码和迁移历史，Alembic head 为 `0046`。Staging 与 Production 的管理 API 分别使用各自项目内的 `Postgres.DATABASE_URL`，数据不会在两个环境之间混合。之前创建的 `groupproof-admin` 是独立验证项目，保留作隔离环境，不是上述两个管理入口的数据源。
+统一入口为 <https://web-production-650d4574.up.railway.app>。`admin-backend` 已合入 `develop` 的后端代码和迁移历史，Alembic head 为 `0046`。Staging 与 Production 的管理 API 分别使用各自项目内的 `Postgres.DATABASE_URL`，数据不会在两个环境之间混合。之前创建的 `groupproof-admin` 是独立验证项目，保留作隔离环境，不是统一入口的数据源。
 
 ## 环境策略
 
