@@ -34,6 +34,7 @@ const ContributionApiPage = dynamic(() => import("@/features/d/ContributionApiPa
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
 const DiscussionsApiPage = dynamic(() => import("@/features/c/DiscussionsApiPage").then((module) => module.DiscussionsApiPage));
 const IdentityAdminApiPage = dynamic(() => import("@/features/c/IdentityAdminApiPages").then((module) => module.IdentityAdminApiPage));
+const AdminDashboardPage = dynamic(() => import("@/features/c/AdminDashboardPage").then((module) => module.AdminDashboardPage));
 const GovernanceApiPage = dynamic(() => import("@/features/c/GovernanceApiPages").then((module) => module.GovernanceApiPage));
 const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.NotificationsApiPage));
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
@@ -66,6 +67,7 @@ const TeacherSettingsApiPage = dynamic(() => import("@/features/teacher/TeacherS
 const TeacherRulesApiPage = dynamic(() => import("@/features/teacher/TeacherRulesApiPage").then((module) => module.TeacherRulesApiPage));
 const TeacherActionsApiPage = dynamic(() => import("@/features/teacher/TeacherActionsApiPage").then((module) => module.TeacherActionsApiPage));
 const TeacherFilesApiPage = dynamic(() => import("@/features/teacher/TeacherFilesApiPage").then((module) => module.TeacherFilesApiPage));
+const StudentCourseFilesApiPage = dynamic(() => import("@/features/b/StudentCourseFilesApiPage").then((module) => module.StudentCourseFilesApiPage));
 const TeacherAnnouncementsApiPage = dynamic(() => import("@/features/teacher/TeacherAnnouncementsApiPage").then((module) => module.TeacherAnnouncementsApiPage));
 const TeacherReportsApiPage = dynamic(() => import("@/features/teacher/TeacherReportsApiPage").then((module) => module.TeacherReportsApiPage));
 const TeacherAppealsApiPage = dynamic(() => import("@/features/teacher/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
@@ -142,6 +144,7 @@ export function RouteDispatcher() {
     else if (screen === 47 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="rules"><TeacherRulesApiPage courseId={courseId} /></TeacherClassLayout>;
     else if (screen === 49 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="appeals"><TeacherAppealsApiPage courseId={courseId} /></TeacherClassLayout>;
     else if (screen === 50 && courseId && pathname.startsWith("/teacher/")) realContent = <TeacherClassLayout courseId={courseId} activeTab="files"><TeacherFilesApiPage courseId={courseId} /></TeacherClassLayout>;
+    else if (screen === 50 && courseId && pathname.startsWith("/courses/")) realContent = <StudentCourseFilesApiPage courseId={courseId} />;
     else if (screen === 59 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="staff"><TeacherStaffApiPage courseId={courseId} /></TeacherClassLayout>;
     else if (screen === 60 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="announcements"><TeacherAnnouncementsApiPage courseId={courseId} /></TeacherClassLayout>;
     else if (screen === 61 && courseId) realContent = <TeacherClassLayout courseId={courseId} activeTab="projects"><TeacherProjectsApiPage courseId={courseId} /></TeacherClassLayout>;
@@ -170,6 +173,7 @@ export function RouteDispatcher() {
   }
   if (screen === 18 && projectId && (bReal || apiMode("projects") === "real")) realContent = <><MilestonesApiPage projectId={projectId} />{apiMode("cworkspace") === "real" && <div className="mt-6"><RiskApiPage projectId={projectId} /></div>}</>;
   if (screen === 50 && courseId && !realContent && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
+  if (screen === 62 && apiMode("cidentity") === "real" && apiMode("governance") === "real") realContent = <AdminDashboardPage />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;
   if (screen >= 53 && screen <= 56 && apiMode("governance") === "real") {
     const section = ({ 53: "courses", 54: "logs", 55: "ai-usage", 56: "access-requests" } as const)[screen as 53 | 54 | 55 | 56];

@@ -34,6 +34,7 @@ from app.modules.a import (
     projects,
     storage,
 )
+from app.modules.a import search as global_search
 from app.modules.a.ai import usage as ai_usage
 
 router = APIRouter(tags=["a"])
@@ -838,3 +839,19 @@ def revoke_access_grant(
     grant = access_grants.revoke_grant(session, user, grant_id, payload.reason)
     session.commit()
     return success(AccessGrantDTO.model_validate(grant, from_attributes=True), request)
+
+
+@router.get(
+    "/api/v1/search",
+    response_model=SuccessResponse[global_search.GlobalSearchResponseDTO],
+    dependencies=[Depends(_private)],
+)
+def search_workspace_endpoint(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=12, ge=1, le=30),
+):
+    """按当前登录用户的真实权限范围检索课程、项目、任务、证据与项目文件。"""
+    return success(global_search.search_workspace(session, user, q, limit=limit), request)

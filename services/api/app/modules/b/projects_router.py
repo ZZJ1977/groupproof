@@ -32,6 +32,7 @@ from app.modules.b.projects_schemas import (
     SaveDraft,
     SetProjectTemplate,
     SetupDTO,
+    UploadInlineMaterial,
 )
 
 router = APIRouter(
@@ -186,6 +187,40 @@ def add_material(
         lambda: service.add_material(session, user, project_id, command, texts, request),
         201,
         integrity_error=ApiError(409, "MATERIAL_ALREADY_ADDED", "这个文件已经添加过了。"),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/materials/upload-inline",
+    status_code=201,
+    response_model=SuccessResponse[MaterialDTO],
+)
+def upload_inline_material(
+    project_id: UUID,
+    command: UploadInlineMaterial,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    key: IdempotencyKey,
+):
+    import hashlib
+
+    raw_b64 = command.content_base64.encode("ascii", errors="ignore")
+    fingerprint = hashlib.sha256(raw_b64).hexdigest()
+    return _write(
+        session,
+        request,
+        user,
+        key,
+        f"project_material.inline:{project_id}",
+        {
+            "filename": command.filename,
+            "mime_type": command.mime_type,
+            "title": command.title,
+            "sha256_b64": fingerprint,
+        },
+        lambda: service.upload_inline_material(session, user, project_id, command, request),
+        201,
     )
 
 

@@ -47,7 +47,7 @@ scope = evidence_tests.scope
 
 @pytest.fixture()
 def flow(db, scope, monkeypatch):
-    def unavailable(_):
+    def unavailable(_, **_kwargs):
         raise ApiError(503, "AI_UNAVAILABLE", "External AI disabled in service tests")
 
     monkeypatch.setattr(verification, "match_evidence", unavailable)

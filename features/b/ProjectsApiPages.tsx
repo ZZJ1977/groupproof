@@ -9,6 +9,7 @@ import { EmptyState, Feedback, PageHeader, Panel, ProgressBar, Stat, StatusBadge
 import { BApiError, newIdempotencyKey } from "@/lib/api/b-client";
 import { bGroupsApi } from "@/lib/api/b-groups";
 import { bProjectsApi, type BMaterial, type BProjectDraft, type BProjectSetup } from "@/lib/api/b-projects";
+import { bRequirementsApi } from "@/lib/api/b-requirements";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { ProjectSetupCenter } from "@/features/b/ProjectSetupCenter";
@@ -162,15 +163,54 @@ export function ProjectSetupApiPage({ projectId }: { projectId: string }) {
   const { userId } = useWorkspace();
   const setup = useQuery({ queryKey: ["b-project-setup", userId, projectId], queryFn: () => bProjectsApi.setup(projectId), ...queryPolicy });
   const overview = useQuery({ queryKey: ["b-project-overview", userId, projectId], queryFn: () => bProjectsApi.overview(projectId), ...queryPolicy });
+  const hasBaselineRef = Boolean(overview.data?.course_id) && (setup.data?.setup_status === "frozen" || setup.data?.setup_status === "pending_confirmation");
+  const currentBaseline = useQuery({
+    queryKey: ["b-project-baseline-current", userId, projectId],
+    queryFn: () => bRequirementsApi.current(projectId),
+    enabled: hasBaselineRef,
+    ...queryPolicy,
+  });
   if (setup.isPending || overview.isPending) return <Loading />;
   if (setup.isError) return <LoadError error={setup.error} onRetry={() => void setup.refetch()} />;
   if (overview.isError) return <LoadError error={overview.error} onRetry={() => void overview.refetch()} />;
   const data = setup.data;
+  const courseId = overview.data.course_id;
+  const frozenCourseFiles = currentBaseline.data?.snapshot?.course_files ?? [];
   return <div>
     <PageHeader title={data.name} description={`${tr("项目设置中心")} · ${tr(setupLabel[data.setup_status]) ?? data.setup_status}`} actions={<Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>} />
     <ProjectSetupCenter projectId={projectId} overview={overview.data} initialSetup={data} />
     <div className="mx-auto mt-5 max-w-[960px] space-y-4">
       {!data.can_edit && <Feedback tone="info">{data.setup_status === "frozen" ? tr("需求基线已冻结，项目信息只能查看。") : data.setup_status === "pending_confirmation" ? tr("基线正在等待组员确认，暂时不能修改。") : tr("你可以查看项目信息，但不能修改。")}</Feedback>}
+      {courseId && frozenCourseFiles.length > 0 && (
+        <Panel title={tr("基线冻结引用的课程资料")}>
+          <ul className="divide-y divide-slate-100 text-sm">
+            {frozenCourseFiles.map((item) => (
+              <li key={`${item.file_id}:${item.version_id}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                <span className="flex items-center gap-2">
+                  <FileText size={14} className="text-slate-500" />
+                  <strong>{item.name}</strong>
+                  <span className="text-xs text-slate-500">v{item.version_no}</span>
+                </span>
+                {item.source === "b_material" ? (
+                  <a
+                    className="text-xs font-medium text-blue-700 hover:underline"
+                    href={`/api/v1/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(item.file_id)}/download?version_no=${item.version_no}`}
+                  >
+                    {tr("下载冻结引用版本 v{0}", { 0: item.version_no })}
+                  </a>
+                ) : (
+                  <Link
+                    className="text-xs font-medium text-blue-700 hover:underline"
+                    href={`/courses/${encodeURIComponent(courseId)}/files?file=${encodeURIComponent(item.file_id)}&version=${encodeURIComponent(item.version_id)}`}
+                  >
+                    {tr("查看冻结引用版本 v{0}", { 0: item.version_no })}
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
       <div id="project-details" className="scroll-mt-20"><BasicInfoStep projectId={projectId} data={data} onSaved={() => void overview.refetch()} /></div>
       <div id="project-materials" className="scroll-mt-20"><MaterialsStep projectId={projectId} data={data} /></div>
     </div>
@@ -252,7 +292,7 @@ function MaterialsStep({ projectId, data }: { projectId: string; data: BProjectS
       <Panel title={tr("上传文件")}>
         <label className={label} htmlFor="b-material-file">{tr("选择文件")}</label>
         <input id="b-material-file" type="file" className="text-sm" disabled={addFile.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) addFile.mutate(file); event.target.value = ""; }} />
-        <p className="mt-2 text-xs text-slate-500">{addFile.isPending ? tr("正在上传…") : tr("文件正文由平台提取；提取服务未接通时会显示“正文暂不可用”，不会用假正文代替。")}</p>
+        <p className="mt-2 text-xs text-slate-500">{addFile.isPending ? tr("正在上传…") : tr("支持 PDF、DOCX、MD、TXT 自动提取正文供需求分析使用；无法读取时会明确提示原因，不会用假正文代替。")}</p>
       </Panel>
     </>}
   </div>;

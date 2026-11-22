@@ -26,7 +26,7 @@ test("C real shell retains UUID project links without seed data or demo search",
   await expect(projectNav.getByRole("button", { name: "验收与成果" })).toHaveAttribute("aria-expanded", "true");
   await expect(projectNav.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", `/projects/${project}/github`);
   await expect(projectNav.getByRole("link", { name: "项目初始化" })).toHaveCount(0);
-  await expect(page.locator('input[placeholder="请使用页面内筛选"]')).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "全局搜索" })).toBeEnabled();
   await expect(page.locator('a[href*="project-1"],a[href*="course-1"]')).toHaveCount(0);
   await expect(page.locator("main").getByRole("alert")).toBeVisible();
   await expect(page.locator("select[title]")).toHaveCount(0);

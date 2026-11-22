@@ -664,6 +664,15 @@ def _student_access_context(session: Session, user: User, course_id: UUID) -> tu
 
 def list_student_materials(session: Session, user: User, course_id: UUID) -> StudentMaterialsDTO:
     is_grouped, allowed = _student_access_context(session, user, course_id)
+    folders = session.scalars(
+        select(BCourseFileFolder)
+        .where(BCourseFileFolder.course_id == course_id)
+        .order_by(
+            BCourseFileFolder.sort_order.asc(),
+            BCourseFileFolder.created_at.asc(),
+            BCourseFileFolder.name.asc(),
+        )
+    ).all()
     items = session.scalars(
         select(BCourseMaterialItem)
         .where(
@@ -677,6 +686,7 @@ def list_student_materials(session: Session, user: User, course_id: UUID) -> Stu
     return StudentMaterialsDTO(
         course_id=course_id,
         is_grouped=is_grouped,
+        folders=[FolderRefDTO(id=f.id, name=f.name, parent_id=f.parent_id) for f in folders],
         items=[_material_dto(item, names, student_route=True) for item in items],
     )
 

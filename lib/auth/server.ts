@@ -4,6 +4,7 @@
  */
 import { cookies } from "next/headers";
 import type { SessionDTO } from "@/lib/api/auth-client";
+import { adminApiBase, ADMIN_ENVIRONMENT_COOKIE, normalizeAdminEnvironment } from "@/lib/admin-environment";
 
 export { sanitizeReturnTo } from "@/lib/auth/return-to";
 
@@ -15,7 +16,8 @@ export async function getAuthSession(): Promise<AuthLookup> {
     .getAll()
     .map((item) => `${item.name}=${item.value}`)
     .join("; ");
-  const base = (process.env.API_INTERNAL_URL ?? "http://localhost:8000").replace(/\/$/, "");
+  const environment = normalizeAdminEnvironment(cookieStore.get(ADMIN_ENVIRONMENT_COOKIE)?.value);
+  const base = adminApiBase(environment);
   try {
     const response = await fetch(`${base}/api/v1/auth/session`, {
       headers: { cookie: cookieHeader },

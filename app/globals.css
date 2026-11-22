@@ -102,6 +102,22 @@ button { cursor: pointer; }
 ::selection { background: #cbdfff; }
 
 .gp-shell { min-height: 100vh; display: flex; }
+.gp-shell-admin {
+  --gp-admin-canvas: #f6f8fc;
+  --gp-admin-surface: #ffffff;
+  --gp-admin-ink: #0f172a;
+  --gp-admin-muted: #64748b;
+  --gp-admin-border: #e2e8f0;
+  --gp-admin-action: #2563eb;
+  --gp-admin-action-hover: #1d4ed8;
+  --gp-admin-purple: #7c3aed;
+  --gp-admin-success: #059669;
+  --gp-admin-warning: #d97706;
+  --gp-admin-danger: #dc2626;
+  min-height: 100vh;
+  background: var(--gp-admin-canvas);
+  color: var(--gp-admin-ink);
+}
 .gp-sidebar { position: sticky; top: 0; height: 100vh; width: 232px; flex: 0 0 232px; background: #fff; border-right: 1px solid var(--gp-border); display: flex; flex-direction: column; z-index: 30; }
 .gp-sidebar.admin { background: #19283c; color: #dbe5f3; border-color: #24364f; }
 .gp-brand { min-height: 66px; padding: 19px 22px; display: flex; align-items: center; gap: 9px; color: #17243c; font-size: 22px; font-weight: 750; line-height: 1; }
@@ -263,7 +279,36 @@ button { cursor: pointer; }
 .gp-student-workspace .gp-field input, .gp-student-workspace .gp-field select, .gp-student-workspace .gp-field textarea { border-radius: 9px; }
 .gp-student-workspace :is(button, a, input, select, textarea):focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
 
+/* Admin foundation is scoped to the admin shell so student/teacher workspaces
+   keep their existing tokens while the governance pages adopt the new canvas. */
+.gp-shell-admin .gp-sidebar.admin {
+  background: var(--gp-admin-surface);
+  color: var(--gp-admin-muted);
+  border-color: var(--gp-admin-border);
+  box-shadow: 8px 0 24px rgba(15, 23, 42, .03);
+}
+.gp-shell-admin .gp-sidebar.admin .gp-brand { color: var(--gp-admin-ink); }
+.gp-shell-admin .gp-sidebar.admin .gp-brand-mark { border-color: var(--gp-admin-action); }
+.gp-shell-admin .gp-sidebar.admin .gp-nav-link { color: #475569; border-radius: 12px; }
+.gp-shell-admin .gp-sidebar.admin .gp-nav-link:hover { background: #eff6ff; color: var(--gp-admin-action-hover); }
+.gp-shell-admin .gp-sidebar.admin .gp-nav-link.active { background: #dbeafe; color: var(--gp-admin-action-hover); font-weight: 700; }
+.gp-shell-admin .gp-sidebar.admin .gp-nav-section { color: #94a3b8; letter-spacing: .02em; text-transform: none; }
+.gp-shell-admin .gp-sidebar.admin .gp-sidebar-footer { color: #94a3b8; }
+.gp-shell-admin .gp-main { background: var(--gp-admin-canvas); }
+.gp-shell-admin .gp-topbar { background: rgba(255, 255, 255, .96); border-color: var(--gp-admin-border); }
+.gp-shell-admin .gp-content { background: var(--gp-admin-canvas); }
+.gp-shell-admin .gp-admin-environment { display: inline-flex; align-items: center; gap: 8px; }
+.gp-shell-admin .gp-admin-environment-current { color: var(--gp-admin-muted); font-size: 11px; white-space: nowrap; }
+.gp-shell-admin .gp-admin-environment-retry { border: 0; border-radius: 999px; padding: 4px 8px; background: #eff6ff; color: var(--gp-admin-action-hover); font-size: 11px; font-weight: 700; }
+.gp-shell-admin .gp-admin-environment-retry:hover { background: #dbeafe; }
+.gp-shell-admin .gp-nav-group + .gp-nav-group { margin-top: 8px; }
+.gp-shell-admin :where(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .35);
+  outline-offset: 2px;
+}
+
 @media (max-width: 1040px) { .gp-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .gp-grid-2 { grid-template-columns: minmax(0, 1fr); } .gp-setup-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .gp-shell-admin .gp-admin-environment-current { display: none; } }
 @media (max-width: 720px) {
   .gp-sidebar { position: fixed; left: 0; transform: translateX(-100%); transition: transform .2s; box-shadow: 10px 0 30px #14233d14; }
   .gp-sidebar.open { transform: translateX(0); }

@@ -65,6 +65,8 @@ def db():
             Inbox.__tablename__,
             Notification.__tablename__,
             "users",
+            "a_inboxes",
+            "a_notifications",
             "a_access_grants",
             "school_email_bindings",
             "courses",

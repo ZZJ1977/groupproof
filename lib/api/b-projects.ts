@@ -36,6 +36,40 @@ export type BProjectTemplate = {
 
 type UploadTicket = { receipt_id: string; upload_url: string; method: string; expires_at: string };
 
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  md: "text/markdown",
+  txt: "text/plain",
+  zip: "application/zip",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+};
+
+function inferMimeType(file: File): string {
+  const ext = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+  if (ext === "md" && (!file.type || file.type === "application/octet-stream")) return "text/markdown";
+  if (file.type && file.type !== "application/octet-stream") return file.type;
+  return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 const id = encodeURIComponent;
 export const bProjectsApi = {
   template: (courseId: string) => bRequest<BProjectTemplate>({ path: `/api/v1/courses/${id(courseId)}/project-template` }),
@@ -51,15 +85,30 @@ export const bProjectsApi = {
   addText: (projectId: string, body: { title?: string; text: string }) =>
     bRequest<BMaterial>({ method: "POST", path: `/api/v1/projects/${id(projectId)}/materials`, body: { kind: "text", ...body } }),
   material: (projectId: string, materialId: string) => bRequest<BMaterial>({ path: `/api/v1/projects/${id(projectId)}/materials/${id(materialId)}` }),
-  /** A4-04 upload (ticket → bytes → complete), then register the receipt as a material. */
+  /** A4-04 upload (ticket → bytes → complete), falling back to inline server extraction when object storage is unconfigured. */
   addFile: async (projectId: string, file: File) => {
-    const ticket = await bRequest<UploadTicket>({
-      method: "POST", path: "/api/v1/storage/uploads",
-      body: { scope: "project", scope_id: projectId, filename: file.name, mime_type: file.type || "application/octet-stream", size_bytes: file.size },
-    });
+    const mimeType = inferMimeType(file);
+    let ticket: UploadTicket;
+    try {
+      ticket = await bRequest<UploadTicket>({
+        method: "POST", path: "/api/v1/storage/uploads",
+        body: { scope: "project", scope_id: projectId, filename: file.name, mime_type: mimeType, size_bytes: file.size },
+      });
+    } catch (error) {
+      if (error instanceof BApiError && error.code === "FILE_STORAGE_UNAVAILABLE") {
+        const contentBase64 = await fileToBase64(file);
+        return bRequest<BMaterial>({
+          method: "POST",
+          path: `/api/v1/projects/${id(projectId)}/materials/upload-inline`,
+          body: { filename: file.name, mime_type: mimeType, content_base64: contentBase64 },
+          idempotencyKey: newIdempotencyKey(),
+        });
+      }
+      throw error;
+    }
     let put: Response;
     try {
-      put = await fetch(ticket.upload_url, { method: ticket.method || "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+      put = await fetch(ticket.upload_url, { method: ticket.method || "PUT", body: file, headers: { "Content-Type": mimeType } });
     } catch {
       throw new BApiError(0, "UPLOAD_FAILED", "文件上传失败，请重试。", null);
     }

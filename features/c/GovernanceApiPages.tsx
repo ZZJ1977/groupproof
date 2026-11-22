@@ -2,11 +2,12 @@
 
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, BarChart3, CircleAlert, Coins, Gauge, Layers3, ListFilter, RefreshCw, Zap } from "lucide-react";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type SharedAuditQuery, type UsageQuery } from "@/lib/api/c-governance-client";
 import { useWorkspace } from "@/lib/workspace";
 import type { components } from "@/packages/domain/api.generated";
-import { Box, Empty, Header, Notice, Table, formatDateTime } from "@/features/governance/primitives";
+import { Badge, Box, Empty, Header, Metric, Notice, Table, formatDateTime } from "@/features/governance/primitives";
 import styles from "@/features/governance/governance.module.css";
 import { useUrlQuery } from "./use-url-query";
 import { tr } from "@/lib/i18n/tr";
@@ -19,6 +20,13 @@ const courseStatuses = { draft: "草稿", active: "已发布", ended: "已结束
 const requestStatuses = { pending: "待审批", approved: "已批准", rejected: "已拒绝" } as const;
 const auditRoles = { student: "学生", leader: "组长", teacher: "教师", ta: "助教", admin: "管理员", system: "系统" } as const;
 const targetTypes = { user: "用户", course: "课程", project: "项目", task: "任务", evidence: "证据", system: "系统" } as const;
+const usageScenarioDefinitions = [
+  { key: "github-analysis", label: "GitHub 仓库提交分析", description: "根据同步代码与需求核对实现状态", feature: "analyze_implementation" },
+  { key: "chat-tracking", label: "证据与群聊追踪", description: "群聊记录进入证据流后辅助验收匹配", feature: "match_evidence" },
+  { key: "requirement-analysis", label: "需求文档解析", description: "从项目资料提取需求、模块与冲突", feature: "extract_requirements" },
+  { key: "task-planning", label: "任务规划建议", description: "识别未覆盖需求并生成任务建议", feature: "suggest_tasks" },
+  { key: "risk-analysis", label: "风险与进度解释", description: "结合任务进度和风险记录生成解释", feature: "explain_risk" },
+] as const;
 const authActions = {
   "admin.bootstrapped": "初始化管理员", "auth.acceptance_test_entry": "验收测试入口", "auth.email_registered": "邮箱注册完成",
   "auth.google.account_exists": "Google 登录邮箱与已有账号冲突", "auth.google.cancelled": "取消 Google 登录",
@@ -491,8 +499,17 @@ function LogsPage() {
 }
 
 function costs(value: Record<string, string>) { return Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" / ") || "无费用样本"; }
+function metricCost(value: Record<string, string>, unpricedRequests = 0, requests = 0) {
+  const formatted = Object.entries(value).map(([currency, amount]) => `${currency} ${amount}`).join(" · ");
+  if (formatted) return formatted;
+  if (unpricedRequests > 0) return "未计价";
+  return requests > 0 ? "无费用样本" : "—";
+}
+function number(value: number) { return new Intl.NumberFormat("zh-CN").format(value); }
+function rate(value: number, total: number) { return total ? `${Math.round((value / total) * 100)}%` : "—"; }
 function UsageTable({ title, items }: { title: string; items: (Schema["UsageBreakdownDTO"] | Schema["UsageDayDTO"])[] }) {
-  return <Box title={title}><Table><thead><tr><th>维度</th><th>请求数</th><th>成功 / 失败</th><th>输入 / 输出 Token</th><th>费用（按币种）</th></tr></thead><tbody>{items.map((item) => <tr key={"key" in item ? item.key : item.date}><td>{"key" in item ? item.key : item.date}</td><td>{item.requests}</td><td>{item.succeeded} / {item.failed}</td><td>{item.input_tokens} / {item.output_tokens}</td><td>{costs(item.cost_by_currency)}{item.unpriced_requests > 0 && ` · ${item.unpriced_requests} 次费用未记录`}{item.incomplete_token_records > 0 && ` · ${item.incomplete_token_records} 次 Token 不完整`}</td></tr>)}</tbody></Table>{!items.length && <Empty>当前范围没有用量样本</Empty>}</Box>;
+  const hasSamples = items.some((item) => item.requests > 0 || item.succeeded > 0 || item.failed > 0 || item.input_tokens > 0 || item.output_tokens > 0 || Object.keys(item.cost_by_currency).length > 0);
+  return <Box title={title}>{hasSamples ? <Table><thead><tr><th>维度</th><th>请求数</th><th>成功 / 失败</th><th>输入 / 输出 Token</th><th>费用（按币种）</th></tr></thead><tbody>{items.map((item) => <tr key={"key" in item ? item.key : item.date}><td>{"key" in item ? item.key : item.date}</td><td>{item.requests}</td><td>{item.succeeded} / {item.failed}</td><td>{item.input_tokens} / {item.output_tokens}</td><td>{costs(item.cost_by_currency)}{item.unpriced_requests > 0 && ` · ${item.unpriced_requests} 次费用未记录`}{item.incomplete_token_records > 0 && ` · ${item.incomplete_token_records} 次 Token 不完整`}</td></tr>)}</tbody></Table> : <Empty>当前范围没有用量样本</Empty>}</Box>;
 }
 function UsagePage() {
   const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
@@ -504,12 +521,82 @@ function UsagePage() {
   const result = useQuery({ queryKey: ["c-governance-usage", userId, filters], queryFn: () => readWithAccessCheck(() => api.usage(filters), setDenied), enabled: !denied, ...querySettings });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   if (denied) return <ErrorBox error={denied} retry={() => window.location.reload()} label="重新验证管理权限" />;
-  return <><Header title="AI 使用情况" description="按 UTC 日期聚合真实请求样本，费用按币种分别统计。" action={<button className={styles.button} type="button" onClick={() => void result.refetch()}>刷新用量</button>} />
-    <div className={styles.actions}>{[7, 30, 90].map((value) => <button key={value} className={styles.button} type="button" aria-pressed={days === value} onClick={() => updateQuery({ days: String(value) })}>{tr("最近 {0} 天", { 0: value })}</button>)}</div>
-    <UserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
-    <form className={styles.filters} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}><Field label="功能"><input className={styles.input} name="feature" maxLength={100} defaultValue={filters.feature ?? ""} /></Field><Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} /></Field><button className={styles.primaryButton} type="submit">查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></form>
+  const maxDailyRequests = Math.max(...(data?.daily.map((item) => item.requests) ?? [0]), 1);
+  const modelRows = data ? [...data.by_model].sort((left, right) => right.requests - left.requests) : [];
+  const featureRows = data ? [...data.by_feature].sort((left, right) => right.requests - left.requests) : [];
+  const maxModelRequests = Math.max(...modelRows.map((item) => item.requests), 1);
+  return <>
+    <Header title="AI 使用情况" description="OpenRouter 模型调用看板，按 UTC 日期聚合真实请求、Token 与费用。" action={<button className={styles.button} type="button" onClick={() => void result.refetch()}><RefreshCw size={15} aria-hidden="true" />刷新用量</button>} />
+    <Box className={styles.usageFilterPanel} title="查询范围" action={<span className={styles.muted}>数据来源：OpenRouter 用量记录</span>}>
+      <div className={styles.panelBody}>
+        <div className={styles.usageToolbar}>
+          <div className={styles.actions} aria-label="时间范围">{[7, 30, 90].map((value) => <button key={value} className={`${styles.button} ${days === value ? styles.primaryButton : ""}`} type="button" aria-pressed={days === value} onClick={() => updateQuery({ days: String(value) })}>{tr("最近 {0} 天", { 0: value })}</button>)}</div>
+          <span className={styles.subtle}>{data ? `${formatDateTime(data.since)} — ${formatDateTime(data.until)} UTC` : "正在读取范围…"}</span>
+        </div>
+        <div className={styles.usageFilterGrid}>
+          <UserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
+          <form className={styles.usageInlineForm} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}>
+            <Field label="功能"><input className={styles.input} name="feature" maxLength={100} defaultValue={filters.feature ?? ""} placeholder="例如：chat" /></Field>
+            <Field label="模型"><input className={styles.input} name="model" maxLength={160} defaultValue={filters.model ?? ""} placeholder="例如：provider/model" /></Field>
+            <div className={styles.usageFormActions}><button className={styles.primaryButton} type="submit"><ListFilter size={15} aria-hidden="true" />查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></div>
+          </form>
+        </div>
+      </div>
+    </Box>
     {result.isFetching && <p role="status">正在读取用量…</p>}<ErrorBox error={result.error} retry={() => void result.refetch()} />
-    {data && <><Box title="用量汇总"><div className={styles.panelBody}><p>{tr("范围：{0} 至 {1}（UTC 日历窗口）", { 0: formatDateTime(data.since), 1: formatDateTime(data.until) })}</p><p>{tr("请求总数：{0} · 成功：{1} · 失败：{2}", { 0: data.requests, 1: data.succeeded, 2: data.failed })}</p><p>{tr("输入 Token：{0} · 输出 Token：{1}", { 0: data.input_tokens, 1: data.output_tokens })}</p><p>{tr("费用：{0}", { 0: costs(data.cost_by_currency) })}</p>{data.unpriced_requests > 0 && <p>{data.unpriced_requests} 次调用尚无完整计费数据。</p>}{data.incomplete_token_records > 0 && <p>{data.incomplete_token_records} 次调用的 Token 记录不完整。</p>}<p>{data.aggregation_scope}</p></div></Box><UsageTable title="按日期" items={data.daily} /><UsageTable title="按功能" items={data.by_feature} /><UsageTable title="按模型" items={data.by_model} /></>}
+    {data && <>
+      <div className={`${styles.metrics} ${styles.usageMetrics}`} aria-label="用量关键指标">
+        <Metric label="请求总数" value={number(data.requests)} hint={`${number(data.succeeded)} 次成功 · ${number(data.failed)} 次失败`} icon={Activity} />
+        <Metric label="总费用" value={metricCost(data.cost_by_currency, data.unpriced_requests, data.requests)} hint="按币种累计已记录费用" icon={Coins} tone="green" />
+        <Metric label="总 Token" value={number(data.input_tokens + data.output_tokens)} hint={`输入 ${number(data.input_tokens)} · 输出 ${number(data.output_tokens)}`} icon={Layers3} tone="blue" />
+        <Metric label="成功率" value={rate(data.succeeded, data.requests)} hint="按请求结果统计" icon={Gauge} tone="blue" />
+        <Metric label="未计价记录" value={number(data.unpriced_requests)} hint={data.unpriced_requests ? "需要补充费用信息" : "计费记录完整"} icon={CircleAlert} tone={data.unpriced_requests ? "amber" : "green"} />
+      </div>
+      <div className={styles.twoColumns}>
+        <Box title="调用趋势" action={<Badge tone="blue">{tr("最近 {0} 天", { 0: days })}</Badge>}>
+          <div className={styles.panelBody}>
+            <div className={styles.chartSummary}><span><strong>{number(data.requests)}</strong> 次请求</span><span><strong>{number(data.input_tokens + data.output_tokens)}</strong> Token</span></div>
+            {data.requests === 0 ? <Empty>当前筛选范围没有用量记录</Empty> : <div className={styles.usageChart} role="img" aria-label="按 UTC 日期统计的请求数趋势">{data.daily.map((item) => <div className={styles.usageBarColumn} key={item.date}><div className={styles.usageBarValue}>{item.requests || ""}</div><div className={styles.usageBarTrack}><div className={styles.usageBar} style={{ height: `${Math.max(item.requests ? 8 : 0, (item.requests / maxDailyRequests) * 100)}%` }} /></div><span>{item.date.slice(5)}</span></div>)}</div>}
+          </div>
+        </Box>
+        <Box title="数据质量" action={<Zap size={18} aria-hidden="true" color="#b77a02" />}>
+          <div className={styles.panelBody}>
+            <div className={styles.qualityRow}><span>成功请求</span><strong>{number(data.succeeded)}</strong><div className={styles.qualityTrack}><div className={styles.qualitySuccess} style={{ width: `${data.requests ? (data.succeeded / data.requests) * 100 : 0}%` }} /></div></div>
+            <div className={styles.qualityRow}><span>失败请求</span><strong>{number(data.failed)}</strong><div className={styles.qualityTrack}><div className={styles.qualityFailure} style={{ width: `${data.requests ? (data.failed / data.requests) * 100 : 0}%` }} /></div></div>
+            <div className={styles.qualityRow}><span>Token 不完整</span><strong>{number(data.incomplete_token_records)}</strong><div className={styles.qualityTrack}><div className={styles.qualityWarning} style={{ width: `${data.requests ? (data.incomplete_token_records / data.requests) * 100 : 0}%` }} /></div></div>
+            <p className={styles.chartNote}>{data.aggregation_scope}</p>
+          </div>
+        </Box>
+      </div>
+      <Box title="业务场景分布" action={<Badge tone="blue">按方案映射</Badge>}>
+        <div className={styles.scenarioGrid} aria-label="业务场景用量概览">{usageScenarioDefinitions.map((scenario, index) => {
+          const item = featureRows.find((row) => row.key === scenario.feature);
+          const hasData = Boolean(item && item.requests > 0);
+          return <article className={styles.scenarioCard} data-has-data={hasData} key={`${scenario.key}-card`}>
+            <div className={styles.scenarioCardTop}><span className={styles.scenarioIndex}>{String(index + 1).padStart(2, "0")}</span><Badge tone={hasData ? "green" : "gray"}>{hasData ? "有记录" : "暂无样本"}</Badge></div>
+            <h3>{scenario.label}</h3><p>{scenario.description}</p>
+            <div className={styles.scenarioStats}><div><strong>{item ? number(item.requests) : "—"}</strong><span>请求</span></div><div><strong>{item ? rate(item.succeeded, item.requests) : "—"}</strong><span>成功率</span></div><div><strong>{item ? number(item.input_tokens + item.output_tokens) : "—"}</strong><span>Token</span></div></div>
+          </article>;
+        })}</div>
+        <Table><thead><tr><th>业务场景</th><th>用途</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th></tr></thead><tbody>{usageScenarioDefinitions.map((scenario) => {
+          const item = featureRows.find((row) => row.key === scenario.feature);
+          return <tr key={scenario.key}><td><strong>{scenario.label}</strong><div className={styles.rowMeta}>{item ? `功能键：${scenario.feature}` : scenario.feature === "match_evidence" ? "群聊同步本身不调用模型" : "当前范围暂无调用"}</div></td><td>{scenario.description}</td><td>{item ? number(item.requests) : "—"}</td><td>{item ? rate(item.succeeded, item.requests) : "—"}</td><td>{item ? number(item.input_tokens + item.output_tokens) : "—"}</td><td>{item ? costs(item.cost_by_currency) : "—"}</td></tr>;
+        })}</tbody></Table>
+        <div className={styles.panelBody}><p className={styles.chartNote}>群聊记录同步属于来源接入，会记录同步结果但不会产生 OpenRouter 费用。只有群聊内容进入证据匹配等 AI 流程后，才会计入模型用量。</p></div>
+      </Box>
+      <div className={styles.equalColumns}>
+        <Box title="模型调用分析" action={<Badge tone="purple">OpenRouter</Badge>}>
+          <div className={styles.panelBody}>
+            {!modelRows.length ? <Empty>当前范围没有模型调用记录</Empty> : <div className={styles.breakdownList}>{modelRows.map((item) => <div className={styles.breakdownRow} key={item.key}><div className={styles.breakdownHeader}><span className={styles.breakdownName}>{item.key}</span><strong>{number(item.requests)}</strong></div><div className={styles.breakdownTrack}><div className={styles.breakdownFill} style={{ width: `${(item.requests / maxModelRequests) * 100}%` }} /></div><div className={styles.breakdownMeta}><span>{rate(item.succeeded, item.requests)} 成功率</span><span>{number(item.input_tokens + item.output_tokens)} Token</span><span>{costs(item.cost_by_currency)}</span></div></div>)}</div>}
+          </div>
+        </Box>
+        <Box title="功能分布" action={<BarChart3 size={18} aria-hidden="true" color="#1767e7" />}>
+          {featureRows.length ? <Table><thead><tr><th>功能</th><th>请求</th><th>成功率</th><th>费用</th></tr></thead><tbody>{featureRows.map((item) => <tr key={item.key}><td>{item.key}</td><td>{number(item.requests)}</td><td>{rate(item.succeeded, item.requests)}</td><td>{costs(item.cost_by_currency)}</td></tr>)}</tbody></Table> : <Empty>当前范围没有功能调用记录</Empty>}
+        </Box>
+      </div>
+      <UsageTable title="按功能明细" items={data.by_feature} />
+      <UsageTable title="按日期明细" items={data.daily} />
+    </>}
   </>;
 }
 

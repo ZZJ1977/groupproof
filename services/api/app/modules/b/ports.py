@@ -143,8 +143,10 @@ class UnavailableVerificationPort:
 
 
 def get_material_text_port() -> MaterialTextPort:
-    """FastAPI dependency; A replaces the default once A4-05 exists."""
-    return UnavailableMaterialTextPort()
+    """Use A4-05 text extraction over verified upload receipts."""
+    from app.modules.b.material_text_port import PersistedMaterialTextPort
+
+    return PersistedMaterialTextPort()
 
 
 def get_verification_port() -> VerificationPort:

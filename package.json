@@ -39,6 +39,8 @@
     "check:ux": "tsx scripts/check-ux.mjs",
     "check:student-workspace": "tsx scripts/check-student-workspace.mjs",
     "check:student-ui": "node scripts/check-student-ui.mjs",
+    "check:admin-ui": "node scripts/check-admin-ui.mjs",
+    "check:admin-pages": "node scripts/check-admin-pages.mjs",
     "check:browser": "tsx scripts/check-browser.mjs",
     "check:auth": "node scripts/check-auth.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",

@@ -1,5 +1,6 @@
 """D4 report versions built from a single frozen database read."""
 
+import os
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from io import BytesIO
@@ -116,6 +117,15 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
         if contribution
         else []
     )
+    share_user_ids = {item.user_id for item in shares}
+    share_names = (
+        {
+            u.id: (u.name or u.email or str(u.id))
+            for u in session.scalars(select(User).where(User.id.in_(share_user_ids)))
+        }
+        if share_user_ids
+        else {}
+    )
     completed = sum(task.status == "completed" for task in tasks)
     sections = {
         "overview": (
@@ -130,7 +140,9 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
         )
         or "No milestones.",
         "evidence": f"{len(evidence)} formal evidence records.",
-        "contribution": "\n".join(f"{item.user_id}: {item.share}%" for item in shares)
+        "contribution": "\n".join(
+            f"{share_names.get(item.user_id, item.user_id)}: {item.share}%" for item in shares
+        )
         or "No frozen contribution snapshot.",
         "risks": f"{len(risks)} active risks.\n"
         + "\n".join(f"{risk.title}: {risk.level}" for risk in risks),
@@ -318,6 +330,16 @@ def refresh_report(
 
             generate_preview.delay(str(version.id), payload.includes_appendix)
         except Exception:
+            if _allow_inline_worker_fallback():
+                _complete_preview_inline(
+                    session,
+                    version=version,
+                    report=report,
+                    project=access.project,
+                    appendix=payload.includes_appendix,
+                    actor_id=user.id,
+                )
+                return success(serialize(version), request)
             version.status = "failed"
             report.status = "failed"
             session.commit()
@@ -497,44 +519,195 @@ def review_report(
         raise
 
 
+SECTION_LABELS: dict[str, str] = {
+    "overview": "1. 项目概览 (Overview)",
+    "tasks": "2. 任务进展 (Tasks)",
+    "milestones": "3. 里程碑执行 (Milestones)",
+    "evidence": "4. 正式证据统计 (Evidence)",
+    "contribution": "5. 成员贡献快照 (Contribution)",
+    "risks": "6. 风险记录 (Risks)",
+    "risk_explanation": "7. 风险分析与建议 (AI Risk Advice)",
+    "appendix": "附录：正式证据清单 (Formal Evidence Appendix)",
+}
+
+
+def _allow_inline_worker_fallback() -> bool:
+    return os.getenv("APP_MODE", "dev").strip().lower() != "real"
+
+
+def _complete_preview_inline(
+    session: Session,
+    *,
+    version: ReportSnapshot,
+    report: Report,
+    project,
+    appendix: bool,
+    actor_id: UUID,
+) -> None:
+    from app.modules.d.contribution_week7 import archive_contribution
+    from app.modules.d.risk_read import risk_advice
+
+    data = snapshot_data(session, project.id, project.name, appendix)
+    contribution_id = data.get("contribution_snapshot_id")
+    version.contribution_snapshot_id = UUID(contribution_id) if contribution_id else None
+    if version.contribution_snapshot_id is not None:
+        archive_contribution(
+            session,
+            project.id,
+            "report",
+            version.id,
+            version.contribution_snapshot_id,
+        )
+    try:
+        advice = risk_advice(session, project.id, actor_id)
+    except Exception:
+        advice = None
+    if advice:
+        data = {
+            **data,
+            "sections": {
+                **data["sections"],
+                "risk_explanation": (
+                    advice["summary"]
+                    + "\n"
+                    + advice["explanation"]
+                    + "\n"
+                    + "\n".join(advice["suggestions"])
+                    + "\nAI advice requires human review."
+                ),
+            },
+        }
+    version.data_snapshot = data
+    version.status = "generated"
+    report.status = "generated"
+    session.commit()
+
+
+def _wrap_pdf_line(text: str, font_name: str, font_size: int, max_width: float) -> list[str]:
+    if not text:
+        return [""]
+    chunks: list[str] = []
+    remaining = text
+    while remaining:
+        width = 0.0
+        split_at = 0
+        for character in remaining:
+            next_width = width + pdfmetrics.stringWidth(character, font_name, font_size)
+            if next_width > max_width and split_at > 0:
+                break
+            width = next_width
+            split_at += 1
+        chunks.append(remaining[:split_at])
+        remaining = remaining[split_at:]
+    return chunks
+
+
 def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
-    title = data["project_name"] + " project report"
+    project_name = str(data.get("project_name") or "GroupProof")
+    title = f"{project_name} 项目报告 (Project Report)"
+    counts = data.get("counts") if isinstance(data.get("counts"), dict) else None
+    sections = data.get("sections") if isinstance(data.get("sections"), dict) else {}
+    evidence_records = (
+        data.get("evidence_records") if isinstance(data.get("evidence_records"), list) else []
+    )
+
     if file_format == "docx":
         document = Document()
         document.add_heading(title, 0)
-        for heading, body in data["sections"].items():
-            document.add_heading(heading.title(), level=1)
-            document.add_paragraph(body)
+        if counts:
+            summary_table = document.add_table(rows=2, cols=5)
+            headers = ["成员数", "任务总数", "已完成任务", "正式证据", "活跃风险"]
+            values = [
+                str(counts.get("members", 0)),
+                str(counts.get("tasks", 0)),
+                str(counts.get("completed_tasks", 0)),
+                str(counts.get("evidence", 0)),
+                str(counts.get("risks", 0)),
+            ]
+            for idx, text_val in enumerate(headers):
+                summary_table.cell(0, idx).text = text_val
+                summary_table.cell(1, idx).text = values[idx]
+        for heading, body in sections.items():
+            label = SECTION_LABELS.get(heading, heading.replace("_", " ").title())
+            document.add_heading(label, level=1)
+            lines = str(body).splitlines() or [""]
+            for line in lines:
+                document.add_paragraph(line)
+        if "appendix" in sections and evidence_records:
+            document.add_heading("正式证据明细表", level=2)
+            ev_table = document.add_table(rows=len(evidence_records) + 1, cols=2)
+            ev_table.cell(0, 0).text = "证据标题"
+            ev_table.cell(0, 1).text = "关联任务 ID"
+            for row_idx, item in enumerate(evidence_records, start=1):
+                ev_table.cell(row_idx, 0).text = str(item.get("title", ""))
+                ev_table.cell(row_idx, 1).text = str(item.get("task_id", ""))
         stream = BytesIO()
         document.save(stream)
         return (
             stream.getvalue(),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
     stream = BytesIO()
     pdf = canvas.Canvas(stream, pagesize=A4)
-    pdf.setFont("STSong-Light", 16)
-    pdf.drawString(40, 800, title[:40])
-    y = 770
-    for heading, body in data["sections"].items():
-        for line in [heading.title(), *body.splitlines()]:
-            while line:
-                width = 0
-                split_at = 0
-                for character in line:
-                    next_width = width + pdfmetrics.stringWidth(character, "STSong-Light", 12)
-                    if next_width > A4[0] - 80:
-                        break
-                    width = next_width
-                    split_at += 1
-                chunk, line = line[:split_at], line[split_at:]
-                if y < 50:
-                    pdf.showPage()
-                    y = 800
-                pdf.setFont("STSong-Light", 12)
-                pdf.drawString(40, y, chunk)
-                y -= 19
+    page_width, page_height = A4
+    margin_x = 42.0
+    usable_width = page_width - margin_x * 2
+    page_no = 1
+    y = page_height - 52.0
+
+    def draw_footer(num: int) -> None:
+        pdf.setFont("STSong-Light", 9)
+        pdf.drawRightString(page_width - margin_x, 26, f"GroupProof · 第 {num} 页")
+
+    def ensure_space(needed: float) -> None:
+        nonlocal y, page_no
+        if y < 52.0 + needed:
+            draw_footer(page_no)
+            pdf.showPage()
+            page_no += 1
+            y = page_height - 52.0
+
+    for chunk in _wrap_pdf_line(title, "STSong-Light", 16, usable_width):
+        ensure_space(24)
+        pdf.setFont("STSong-Light", 16)
+        pdf.drawString(margin_x, y, chunk)
+        y -= 24
+
+    if counts:
+        summary_line = (
+            f"成员：{counts.get('members', 0)} 人  |  "
+            f"任务：{counts.get('completed_tasks', 0)}/{counts.get('tasks', 0)} 已完成  |  "
+            f"正式证据：{counts.get('evidence', 0)} 条  |  "
+            f"活跃风险：{counts.get('risks', 0)} 项"
+        )
+        for chunk in _wrap_pdf_line(summary_line, "STSong-Light", 10, usable_width):
+            ensure_space(16)
+            pdf.setFont("STSong-Light", 10)
+            pdf.drawString(margin_x, y, chunk)
+            y -= 16
+        y -= 6
+
+    for heading, body in sections.items():
+        y -= 6
+        label = SECTION_LABELS.get(heading, heading.replace("_", " ").title())
+        for chunk in _wrap_pdf_line(label, "STSong-Light", 13, usable_width):
+            ensure_space(20)
+            pdf.setFont("STSong-Light", 13)
+            pdf.drawString(margin_x, y, chunk)
+            y -= 20
+        for raw_line in str(body).splitlines() or [""]:
+            if not raw_line.strip():
+                y -= 8
+                continue
+            for chunk in _wrap_pdf_line(raw_line, "STSong-Light", 11, usable_width):
+                ensure_space(17)
+                pdf.setFont("STSong-Light", 11)
+                pdf.drawString(margin_x, y, chunk)
+                y -= 17
+
+    draw_footer(page_no)
     pdf.save()
     return stream.getvalue(), "application/pdf"
 
@@ -576,6 +749,21 @@ def request_export(
 
         generate_export.delay(str(artifact.id))
     except Exception:
+        if _allow_inline_worker_fallback():
+            try:
+                content, _ = render_document(version.data_snapshot, artifact.file_format)
+                artifact.content = content
+                artifact.status = "ready"
+                artifact.error = None
+                artifact.completed_at = datetime.now(UTC)
+                session.commit()
+                return success({"id": str(artifact.id), "status": artifact.status}, request)
+            except Exception as render_err:
+                artifact.status = "failed"
+                artifact.error = "Report generation failed; retry from the export page."
+                artifact.completed_at = datetime.now(UTC)
+                session.commit()
+                raise ApiError(500, "REPORT_EXPORT_FAILED", artifact.error) from render_err
         artifact.status = "failed"
         artifact.error = "Report worker is unavailable; retry the export."
         session.commit()
