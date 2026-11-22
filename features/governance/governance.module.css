@@ -474,6 +474,43 @@
   font-size: 12px;
 }
 
+.identityError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff7f7;
+  color: #9f1239;
+}
+
+.identityError p { margin: 0; line-height: 1.5; }
+
+.fieldError {
+  display: block;
+  margin-top: 5px;
+  color: #b42318;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.input[aria-invalid="true"] {
+  border-color: #f0a4a4;
+  background: #fffafa;
+}
+
+.identityActionHint {
+  margin: 8px 0 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #fff8eb;
+  color: #9a5b00;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .identitySummary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
