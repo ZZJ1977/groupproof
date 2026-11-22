@@ -26,7 +26,7 @@ export function ListRow({ title, meta, leading, actions, children, className }: 
 }
 
 export function DetailDrawer({ open, onOpenChange, title, description, children, footer }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; children: ReactNode; footer?: ReactNode }) {
-  return <Sheet open={open} modal={false} onOpenChange={onOpenChange}><SheetContent overlayClassName="pointer-events-none" className="gp-detail-drawer">
+  return <Sheet open={open} modal={false} onOpenChange={onOpenChange}><SheetContent overlayClassName="pointer-events-none" className="gp-detail-drawer gp-detail-drawer-nonmodal">
     <div className="gp-detail-drawer-header"><SheetTitle className="gp-detail-drawer-title">{title}</SheetTitle>{description && <SheetDescription className="gp-detail-drawer-description">{description}</SheetDescription>}</div>
     <div className="gp-detail-drawer-body">{children}</div>
     {footer && <div className="gp-detail-drawer-footer">{footer}</div>}

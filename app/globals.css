@@ -250,6 +250,8 @@ button { cursor: pointer; }
 .gp-state-block-title { color: var(--gp-ink-soft); font-size: 13px; font-weight: 680; }
 .gp-state-block-description { max-width: 520px; font-size: 12px; line-height: 1.6; }
 .gp-detail-drawer { width: min(100vw, 620px); padding: 28px; }
+.gp-detail-drawer-nonmodal { pointer-events: none; }
+.gp-detail-drawer-nonmodal button, .gp-detail-drawer-nonmodal a, .gp-detail-drawer-nonmodal input, .gp-detail-drawer-nonmodal select, .gp-detail-drawer-nonmodal textarea, .gp-detail-drawer-nonmodal summary { pointer-events: auto; }
 .gp-detail-drawer-header { padding-right: 28px; }
 .gp-detail-drawer-title { margin: 0; color: var(--gp-ink); font-size: 20px; font-weight: 760; letter-spacing: -.02em; }
 .gp-detail-drawer-description { margin-top: 6px; color: var(--gp-muted); font-size: 12px; line-height: 1.6; }
