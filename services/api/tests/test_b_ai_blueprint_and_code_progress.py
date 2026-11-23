@@ -617,7 +617,14 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     bp_db.add(task)
     bp_db.flush()
     bp_db.add(BTaskMeta(task_id=task.id, project_id=project.id, seq=1, origin="ai"))
-    bp_db.add(TaskAssignee(task_id=task.id, user_id=member.id, role="responsible"))
+    bp_db.add(
+        TaskAssignee(
+            task_id=task.id,
+            user_id=member.id,
+            role="responsible",
+            assigned_at=datetime.now(UTC),
+        )
+    )
     bp_db.add(
         AcceptanceCriterion(
             id=uuid4(),
@@ -704,3 +711,86 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     assert "原提交：chore: setup github actions workflow" in ev.description
     # 归属给任务负责人 member，确保 member 可以自行采纳此证据而不会被 author_id 拦截
     assert ev.author_id == member.id
+
+    # 新建自动证据的 snapshot 应使用与 DatabaseGithubActivityPort 一致的 commit:<sha> 标识，
+    # reconcile_github_evidence 不会触发 409 SOURCE_IDENTITY_CONFLICT，也不会误标 source_changed。
+    from app.modules.a import activity_summary
+    from app.modules.c.github_evidence import reconcile_github_evidence
+    from app.modules.c.models import EvidenceSourceSnapshot
+
+    sha = "abc1234567890"
+    snap = bp_db.scalar(
+        select(EvidenceSourceSnapshot).where(
+            EvidenceSourceSnapshot.evidence_id == ev.id,
+            EvidenceSourceSnapshot.version_no == 1,
+        )
+    )
+    assert snap is not None
+    assert snap.source_identity == f"commit:{sha}"
+
+    reconcile_github_evidence(bp_db, leader, project.id)
+    bp_db.refresh(ev)
+    assert ev.source_changed is False
+
+    # 模拟旧版自动证据写入的裸 SHA snapshot：reconcile_github_evidence 应自动平滑升级并保持不冲突
+    snap.source_identity = sha
+    snap.source_revision = sha
+    snap.content_hash = "0" * 64
+    bp_db.flush()
+
+    reconcile_github_evidence(bp_db, leader, project.id)
+    bp_db.refresh(snap)
+    bp_db.refresh(ev)
+    assert snap.source_identity == f"commit:{sha}"
+    assert ev.source_changed is False
+
+    # 未生成 AI 摘要的已关联证据提交（即使时间更早）应优先被 recent_unanalyzed_commit_ids 选中
+    old_act = GithubActivity(
+        id=uuid4(),
+        project_id=project.id,
+        link_id=link.id,
+        kind="commit",
+        external_id="9988776655443322110099887766554433221100",
+        revision="rev-old",
+        title="chore: older commit linked to evidence",
+        summary="",
+        url="https://github.com/org/repo/commit/9988776655443322110099887766554433221100",
+        author_login="dev",
+        author_name="Dev",
+        author_user_id=member.id,
+        occurred_at=datetime(2025, 1, 1, tzinfo=UTC),
+        synced_at=datetime(2025, 1, 1, tzinfo=UTC),
+        detail={"files": [{"path": ".github/workflows/ci.yml"}]},
+        deleted=False,
+    )
+    bp_db.add(old_act)
+    bp_db.flush()
+    old_ev = Evidence(
+        id=uuid4(),
+        project_id=project.id,
+        task_id=task.id,
+        author_id=member.id,
+        title="[9988776] old",
+        description="old",
+        source_type="github",
+        source_url=old_act.url,
+        status="candidate",
+        lock_version=0,
+        source_changed=False,
+    )
+    bp_db.add(old_ev)
+    bp_db.flush()
+    bp_db.add(
+        EvidenceSourceSnapshot(
+            evidence_id=old_ev.id,
+            version_no=1,
+            source_identity=f"commit:{old_act.external_id}",
+            source_revision=old_act.revision,
+            content_hash="1" * 64,
+            content_json={"source_id": str(old_act.id), "availability": "available", "source": {}},
+            captured_by=member.id,
+        )
+    )
+    bp_db.flush()
+    pending = activity_summary.recent_unanalyzed_commit_ids(bp_db, project.id, limit=5)
+    assert pending[0] == old_act.id
