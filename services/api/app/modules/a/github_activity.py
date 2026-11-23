@@ -16,7 +16,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -41,7 +41,7 @@ KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
 MAX_BRANCHES_PER_SYNC = 10
 MAX_NON_DEFAULT_BRANCH_COMMITS = 30
-MAX_COMMIT_DETAIL_PER_SYNC = 15
+MAX_COMMIT_DETAIL_PER_SYNC = 30
 MAX_COMMIT_FILES = 80
 MAX_PATCH_CHARS = 6000
 MAX_TOTAL_PATCH_CHARS = 120_000
@@ -398,7 +398,7 @@ def sync_activity(
                 if len(detail_shas) >= MAX_COMMIT_DETAIL_PER_SYNC:
                     break
         if detail_shas:
-            with ThreadPoolExecutor(max_workers=min(6, len(detail_shas))) as pool:
+            with ThreadPoolExecutor(max_workers=min(8, len(detail_shas))) as pool:
                 detail_futures = {
                     sha: pool.submit(detail_reader, owner, repo, sha, inst) for sha in detail_shas
                 }
@@ -753,3 +753,168 @@ def list_activity(
         .limit(page_size)
     ).all()
     return [(row, verified_author_id) for row, verified_author_id in rows], total
+
+
+def _extract_commit_diff_stats(detail: Any) -> tuple[int, int, int, bool]:
+    """从 GithubActivity.detail 提取单条提交的新增行、删除行、变更文件数及是否含统计。"""
+    if not isinstance(detail, dict):
+        return 0, 0, 0, False
+    additions = detail.get("additions") if type(detail.get("additions")) is int else None
+    deletions = detail.get("deletions") if type(detail.get("deletions")) is int else None
+    files = detail.get("files") if isinstance(detail.get("files"), list) else None
+    changed_files = (
+        detail.get("changed_files")
+        if type(detail.get("changed_files")) is int
+        else (len(files) if files is not None else 0)
+    )
+    if additions is None and files is not None:
+        additions = sum(
+            item.get("additions", 0)
+            for item in files
+            if isinstance(item, dict) and type(item.get("additions")) is int
+        )
+    if deletions is None and files is not None:
+        deletions = sum(
+            item.get("deletions", 0)
+            for item in files
+            if isinstance(item, dict) and type(item.get("deletions")) is int
+        )
+    has_stats = bool(
+        detail.get("files_fetched") is True or additions is not None or deletions is not None
+    )
+    return max(0, additions or 0), max(0, deletions or 0), max(0, changed_files or 0), has_stats
+
+
+def get_activity_stats(
+    session: Session, actor: User, project_id: UUID, *, days: int = 14
+) -> dict[str, Any]:
+    """按成员和日期聚合本项目已同步的 GitHub 提交次数与代码增减统计（只读）。"""
+    permissions.require_project_member(session, actor, project_id, write=False)
+    days = max(7, min(days, 90))
+    rows = session.execute(
+        select(GithubActivity, _verified_author_id())
+        .where(GithubActivity.project_id == project_id, GithubActivity.deleted.is_(False))
+        .order_by(GithubActivity.occurred_at.desc())
+    ).all()
+
+    total_commits = 0
+    total_pull_requests = 0
+    total_ci_runs = 0
+    total_additions = 0
+    total_deletions = 0
+    commits_with_stats = 0
+
+    user_ids = {uid for row, uid in rows if row.kind == "commit" and uid is not None}
+    user_names: dict[UUID, str] = {}
+    if user_ids:
+        for uid, name in session.execute(select(User.id, User.name).where(User.id.in_(user_ids))):
+            if name:
+                user_names[uid] = name
+
+    by_contributor: dict[str, dict[str, Any]] = {}
+    daily_counts: dict[str, dict[str, int]] = {}
+    latest_commit_day = datetime.now(UTC).date()
+    saw_commit = False
+
+    for row, verified_uid in rows:
+        if row.kind == "pull_request":
+            total_pull_requests += 1
+            continue
+        if row.kind == "ci_run":
+            total_ci_runs += 1
+            continue
+        if row.kind != "commit":
+            continue
+
+        total_commits += 1
+        adds, dels, files_cnt, has_stats = _extract_commit_diff_stats(row.detail)
+        total_additions += adds
+        total_deletions += dels
+        if has_stats:
+            commits_with_stats += 1
+
+        occurred = (
+            row.occurred_at
+            if row.occurred_at.tzinfo is not None
+            else row.occurred_at.replace(tzinfo=UTC)
+        )
+        occurred_utc = occurred.astimezone(UTC)
+        commit_day = occurred_utc.date()
+        if not saw_commit:
+            latest_commit_day = max(latest_commit_day, commit_day)
+            saw_commit = True
+
+        day_key = commit_day.isoformat()
+        bucket = daily_counts.setdefault(day_key, {"commits": 0, "additions": 0, "deletions": 0})
+        bucket["commits"] += 1
+        bucket["additions"] += adds
+        bucket["deletions"] += dels
+
+        login = (row.author_login or "").strip() or None
+        raw_name = (row.author_name or "").strip() or login or "未知作者"
+        if verified_uid is not None:
+            key = f"user:{verified_uid}"
+            display = user_names.get(verified_uid) or raw_name
+        elif login:
+            key = f"login:{login.lower()}"
+            display = raw_name
+        else:
+            key = f"name:{raw_name.lower()}"
+            display = raw_name
+
+        entry = by_contributor.get(key)
+        if entry is None:
+            entry = {
+                "author_key": key,
+                "author_user_id": verified_uid,
+                "author_name": display,
+                "author_login": login,
+                "commits": 0,
+                "additions": 0,
+                "deletions": 0,
+                "files_changed": 0,
+                "commits_with_stats": 0,
+                "last_commit_at": occurred_utc,
+            }
+            by_contributor[key] = entry
+        entry["commits"] += 1
+        entry["additions"] += adds
+        entry["deletions"] += dels
+        entry["files_changed"] += files_cnt
+        if has_stats:
+            entry["commits_with_stats"] += 1
+        if login and not entry["author_login"]:
+            entry["author_login"] = login
+        if occurred_utc > entry["last_commit_at"]:
+            entry["last_commit_at"] = occurred_utc
+
+    contributors = sorted(
+        by_contributor.values(),
+        key=lambda item: (item["commits"], item["additions"] + item["deletions"]),
+        reverse=True,
+    )
+
+    start_day = latest_commit_day - timedelta(days=days - 1)
+    daily = []
+    for offset in range(days):
+        day = (start_day + timedelta(days=offset)).isoformat()
+        stats = daily_counts.get(day, {"commits": 0, "additions": 0, "deletions": 0})
+        daily.append(
+            {
+                "date": day,
+                "commits": stats["commits"],
+                "additions": stats["additions"],
+                "deletions": stats["deletions"],
+            }
+        )
+
+    return {
+        "total_commits": total_commits,
+        "total_pull_requests": total_pull_requests,
+        "total_ci_runs": total_ci_runs,
+        "total_additions": total_additions,
+        "total_deletions": total_deletions,
+        "commits_with_stats": commits_with_stats,
+        "contributors": contributors,
+        "daily": daily,
+    }

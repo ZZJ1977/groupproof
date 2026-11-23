@@ -357,6 +357,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/a/projects/{project_id}/github/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Github Activity Stats */
+        get: operations["get_github_activity_stats_api_v1_a_projects__project_id__github_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/a/projects/{project_id}/github/sync": {
         parameters: {
             query?: never;
@@ -8187,6 +8204,62 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** GithubActivityStatsDTO */
+        GithubActivityStatsDTO: {
+            /** Commits With Stats */
+            commits_with_stats: number;
+            /** Contributors */
+            contributors?: components["schemas"]["GithubContributorStatDTO"][];
+            /** Daily */
+            daily?: components["schemas"]["GithubDailyStatDTO"][];
+            /** Total Additions */
+            total_additions: number;
+            /** Total Ci Runs */
+            total_ci_runs: number;
+            /** Total Commits */
+            total_commits: number;
+            /** Total Deletions */
+            total_deletions: number;
+            /** Total Pull Requests */
+            total_pull_requests: number;
+        };
+        /** GithubContributorStatDTO */
+        GithubContributorStatDTO: {
+            /** Additions */
+            additions: number;
+            /** Author Key */
+            author_key: string;
+            /** Author Login */
+            author_login?: string | null;
+            /** Author Name */
+            author_name: string;
+            /** Author User Id */
+            author_user_id?: string | null;
+            /** Commits */
+            commits: number;
+            /** Commits With Stats */
+            commits_with_stats: number;
+            /** Deletions */
+            deletions: number;
+            /** Files Changed */
+            files_changed: number;
+            /**
+             * Last Commit At
+             * Format: date-time
+             */
+            last_commit_at: string;
+        };
+        /** GithubDailyStatDTO */
+        GithubDailyStatDTO: {
+            /** Additions */
+            additions: number;
+            /** Commits */
+            commits: number;
+            /** Date */
+            date: string;
+            /** Deletions */
+            deletions: number;
+        };
         /** GithubIdentityStatus */
         GithubIdentityStatus: {
             /** Available */
@@ -9693,6 +9766,11 @@ export interface components {
         /** SuccessResponse[GithubActivityPageDTO] */
         SuccessResponse_GithubActivityPageDTO_: {
             data: components["schemas"]["GithubActivityPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[GithubActivityStatsDTO] */
+        SuccessResponse_GithubActivityStatsDTO_: {
+            data: components["schemas"]["GithubActivityStatsDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[GithubLoginDTO] */
@@ -11433,6 +11511,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_GithubRepoDTO_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_github_activity_stats_api_v1_a_projects__project_id__github_stats_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_GithubActivityStatsDTO_"];
                 };
             };
             /** @description Validation Error */
