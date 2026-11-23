@@ -103,6 +103,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
       title={screen === 16 ? "证据完整性检查" : "任务验收"}
       description={screen === 16 ? "核验每条验收标准是否均已关联有效正式证据。" : "运行 AI 逐条验收建议并由任务负责人完成人工确认与责任分配。"}
       actions={<div className="flex flex-wrap items-center gap-2">
+        <Link className={secondary} href={`/projects/${projectId}/tasks`}>返回任务列表</Link>
         <Link className={secondary} href={taskHref}>返回任务详情</Link>
         {screen === 16 && <Link className={secondary} href={`${taskHref}/submit`}>返回提交草稿</Link>}
         <button className={secondary} type="button" disabled={busy} onClick={() => void retryRead()}><RefreshCw size={14} />刷新验收数据</button>

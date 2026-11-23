@@ -224,7 +224,22 @@ export function TaskCriteriaPanel({
                     </span>
                     {url && <a className="inline-flex items-center gap-0.5 text-sky-700 hover:underline" href={url} target="_blank" rel="noopener noreferrer">GitHub <ExternalLink size={11} /></a>}
                   </div>
-                  {ev.description && <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-[11px] text-slate-500">{ev.description}</p>}
+                  {ev.description && (
+                    <div className="mt-1.5 space-y-1">
+                      {ev.description.split(/\r?\n/).filter((line) => line.trim()).map((line, lineIdx) => {
+                        const isDetail = line.startsWith("实现内容：") || line.startsWith("AI 代码实现分析：") || line.startsWith("影响范围：") || line.startsWith("验证说明：");
+                        const colonIdx = line.indexOf("：");
+                        return isDetail && colonIdx > 0 ? (
+                          <p key={lineIdx} className="text-xs leading-5 text-slate-700">
+                            <strong className="font-semibold text-slate-800">{line.slice(0, colonIdx + 1)}</strong>
+                            {line.slice(colonIdx + 1)}
+                          </p>
+                        ) : (
+                          <p key={lineIdx} className="text-[11px] leading-4 text-slate-500">{line}</p>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 {canAdopt(ev) && (
                   <button

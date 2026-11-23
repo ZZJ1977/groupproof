@@ -228,7 +228,14 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
     </>;
   }
   return <>
-    <PageHeader title="项目证据" description={access?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新证据</button>} />
+    <PageHeader
+      title="项目证据"
+      description={access?.project.name ?? "正在验证项目权限…"}
+      actions={<div className="flex flex-wrap items-center gap-2">
+        {selectedTask && <Link className={apiButton} href={`/projects/${projectId}/tasks`}>返回任务列表</Link>}
+        <button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新证据</button>
+      </div>}
+    />
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}{context.isFetching && <p role="status">正在验证项目权限…</p>}
       {access && <>
@@ -303,20 +310,38 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
                           {linked.map((ev) => {
                             const url = safeHttps(ev.source_url, ev.source_type === "github");
                             const adoptable = ["candidate", "pending_confirmation"].includes(ev.status) && canDecide(ev);
-                            return <div key={ev.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs">
-                              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                                <FileCode2 size={13} className="shrink-0 text-sky-600" />
-                                <button
-                                  type="button"
-                                  className="truncate font-medium text-slate-800 hover:underline"
-                                  onClick={() => { updateQuery({ evidence: ev.id, decision: null }); setCommand(null); setError(null); }}
-                                >
-                                  {ev.title}
-                                </button>
-                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ev.effective ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                                  {ev.effective ? "正式" : "候选"}
-                                </span>
-                                {url && <a className="inline-flex items-center gap-0.5 text-sky-700 hover:underline" href={url} target="_blank" rel="noopener noreferrer">来源 <ExternalLink size={11} /></a>}
+                            return <div key={ev.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <FileCode2 size={13} className="shrink-0 text-sky-600" />
+                                  <button
+                                    type="button"
+                                    className="text-left font-medium text-slate-800 hover:underline"
+                                    onClick={() => { updateQuery({ evidence: ev.id, decision: null }); setCommand(null); setError(null); }}
+                                  >
+                                    {ev.title}
+                                  </button>
+                                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ev.effective ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                                    {ev.effective ? "正式" : "候选"}
+                                  </span>
+                                  {url && <a className="inline-flex items-center gap-0.5 text-sky-700 hover:underline" href={url} target="_blank" rel="noopener noreferrer">来源 <ExternalLink size={11} /></a>}
+                                </div>
+                                {ev.description && (
+                                  <div className="space-y-0.5">
+                                    {ev.description.split(/\r?\n/).filter((line) => line.trim()).map((line, lineIdx) => {
+                                      const isDetail = line.startsWith("实现内容：") || line.startsWith("AI 代码实现分析：") || line.startsWith("影响范围：") || line.startsWith("验证说明：");
+                                      const colonIdx = line.indexOf("：");
+                                      return isDetail && colonIdx > 0 ? (
+                                        <p key={lineIdx} className="text-xs leading-5 text-slate-700">
+                                          <strong className="font-semibold text-slate-800">{line.slice(0, colonIdx + 1)}</strong>
+                                          {line.slice(colonIdx + 1)}
+                                        </p>
+                                      ) : (
+                                        <p key={lineIdx} className="text-[11px] leading-4 text-slate-500">{line}</p>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                               {adoptable && (
                                 <button
@@ -339,7 +364,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
             })()}
           </Panel>
         )}
-        {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p>{entry.criterion_ids.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1.5">{entry.criterion_ids.map((cid) => <span key={cid} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700">对应标准：{criterionTextById.get(cid) ?? "已关联标准"}</span>)}</div>}<p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><div className="flex flex-wrap items-center gap-2"><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id, decision: null }); setCommand(null); setError(null); }}>查看证据历史</button>{["candidate", "pending_confirmation"].includes(entry.status) && !entry.source_changed && canDecide(entry) && <button type="button" className={apiButton} disabled={busy || quickAdoptBusy !== null} onClick={() => void quickAdoptOne(entry)}>{quickAdoptBusy === entry.id ? "采纳中…" : "确认采纳此证据"}</button>}</div></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null, decision: null }); setCommand(null); }} /></Panel>}
+        {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p>{entry.description && <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-700">{entry.description}</p>}{entry.criterion_ids.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1.5">{entry.criterion_ids.map((cid) => <span key={cid} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700">对应标准：{criterionTextById.get(cid) ?? "已关联标准"}</span>)}</div>}<p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><div className="flex flex-wrap items-center gap-2"><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id, decision: null }); setCommand(null); setError(null); }}>查看证据历史</button>{["candidate", "pending_confirmation"].includes(entry.status) && !entry.source_changed && canDecide(entry) && <button type="button" className={apiButton} disabled={busy || quickAdoptBusy !== null} onClick={() => void quickAdoptOne(entry)}>{quickAdoptBusy === entry.id ? "采纳中…" : "确认采纳此证据"}</button>}</div></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null, decision: null }); setCommand(null); }} /></Panel>}
         {selectedId && <Panel title="证据详情与不可变快照" action={<button className={apiButton} onClick={() => { updateQuery({ evidence: null, decision: null }); setCommand(null); }}>关闭详情</button>}>
           {detail.isFetching && <p role="status">正在读取证据历史…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
           {received && !item && <p role="alert">无法核对这条证据的项目或记录编号。</p>}

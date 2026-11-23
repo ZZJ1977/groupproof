@@ -517,7 +517,7 @@ def _load_ai_summaries(session: Session, project_id: UUID) -> dict[UUID, dict]:
         .where(
             ActivitySummary.project_id == project_id,
             ActivitySummary.source_type == "github",
-            ActivitySummary.status == "succeeded",
+            ActivitySummary.status.in_(("ready", "succeeded")),
         )
         .order_by(ActivitySummary.generated_at.desc(), ActivitySummary.created_at.desc())
     ).all()
@@ -526,6 +526,30 @@ def _load_ai_summaries(session: Session, project_id: UUID) -> dict[UUID, dict]:
         if row.source_id not in out and isinstance(row.result_json, dict):
             out[row.source_id] = row.result_json
     return out
+
+
+def _extract_ai_summary_fields(ai_summary: dict | None) -> tuple[str, str, str, list[str]]:
+    """统一读取 ActivitySummaryResult 字段（headline/implementation/impact/verification）。"""
+    if not isinstance(ai_summary, dict):
+        return "", "", "", []
+
+    def _pick(*keys: str) -> str:
+        for key in keys:
+            val = ai_summary.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return ""
+
+    headline = _pick("headline", "summary_title")
+    implementation = _pick("implementation", "implemented_features")
+    impact = _pick("impact", "impact_scope")
+    raw_ver = ai_summary.get("verification")
+    verification = (
+        [str(v).strip() for v in raw_ver if isinstance(v, str) and v.strip()][:3]
+        if isinstance(raw_ver, list)
+        else []
+    )
+    return headline, implementation, impact, verification
 
 
 def _commit_text_and_files(
@@ -538,12 +562,8 @@ def _commit_text_and_files(
         for item in raw_files
         if isinstance(item, dict) and item.get("path")
     ]
-    ai_parts: list[str] = []
-    if isinstance(ai_summary, dict):
-        for key in ("summary_title", "implemented_features", "impact_scope"):
-            val = ai_summary.get(key)
-            if isinstance(val, str) and val.strip():
-                ai_parts.append(val.strip())
+    headline, implementation, impact, verification = _extract_ai_summary_fields(ai_summary)
+    ai_parts = [p for p in (headline, implementation, impact, *verification) if p]
     ai_text = "\n".join(ai_parts)
     title_lower = (row.title or "").lower()
     combined = f"{row.title}\n{row.summary}\n{ai_text}\n" + "\n".join(paths)
@@ -741,6 +761,7 @@ def _create_candidate_evidences(
     stats_by_task: dict[UUID, TaskMatchStat],
     ai_summaries: dict[UUID, dict],
     criteria_by_task: dict[UUID, list[AcceptanceCriterion]],
+    assignees_by_task: dict[UUID, set[UUID]],
     fallback_actor_id: UUID | None,
     *,
     recalculate: bool = False,
@@ -889,17 +910,6 @@ def _create_candidate_evidences(
         for aid in kept_acts:
             act = act_obj[aid]
             cids = sorted(selected_cids_by_act[aid], key=str)
-            key = (task.id, str(act.id))
-            if key in existing_by_key:
-                ev_id, ev_status = existing_by_key[key]
-                # 只为仍处于 candidate 的自动证据补充新命中的标准关联，绝不覆盖人工采纳/撤回
-                if ev_status == "candidate":
-                    for cid in cids:
-                        if (ev_id, cid) not in existing_ec:
-                            session.add(EvidenceCriterion(evidence_id=ev_id, criterion_id=cid))
-                            existing_ec.add((ev_id, cid))
-                continue
-
             sha = (act.revision or act.external_id or str(act.id))[:40]
             short_sha = sha[:7]
             detail = act.detail if isinstance(act.detail, dict) else {}
@@ -909,41 +919,67 @@ def _create_candidate_evidences(
                 for item in raw_files
                 if isinstance(item, dict) and item.get("path")
             ]
-            ai_sum = ai_summaries.get(act.id)
-            ai_title = (
-                ai_sum.get("summary_title").strip()
-                if isinstance(ai_sum, dict) and isinstance(ai_sum.get("summary_title"), str)
-                else ""
+            ai_headline, ai_impl, ai_impact, ai_ver = _extract_ai_summary_fields(
+                ai_summaries.get(act.id)
             )
-            ai_feat = (
-                ai_sum.get("implemented_features").strip()
-                if isinstance(ai_sum, dict) and isinstance(ai_sum.get("implemented_features"), str)
-                else ""
-            )
-            ev_title = f"[{short_sha}] {ai_title or act.title or 'GitHub 代码提交'}"[:240]
+            ev_title = f"[{short_sha}] {ai_headline or act.title or 'GitHub 代码提交'}"[:240]
             desc_lines: list[str] = []
-            if ai_feat:
-                desc_lines.append(f"AI 代码实现分析：{ai_feat}")
-            elif act.summary:
-                desc_lines.append(act.summary.strip())
+            if ai_impl:
+                desc_lines.append(f"实现内容：{ai_impl}")
+                if ai_impact:
+                    desc_lines.append(f"影响范围：{ai_impact}")
+                if ai_ver:
+                    desc_lines.append(f"验证说明：{'；'.join(ai_ver[:2])}")
+            elif act.summary and act.summary.strip() != (act.title or "").strip():
+                desc_lines.append(f"实现内容：{act.summary.strip()}")
             else:
-                desc_lines.append(f"GitHub 提交：{act.title}")
+                desc_lines.append(f"实现内容：{act.title or 'GitHub 代码提交'}")
             if file_paths:
                 preview = "、".join(file_paths[:8])
                 suffix = f" 等 {len(file_paths)} 个文件" if len(file_paths) > 8 else ""
                 desc_lines.append(f"改动文件：{preview}{suffix}")
             author_label = act.author_name or act.author_login or "项目成员"
-            desc_lines.append(f"提交人：{author_label} · 提交编号：{short_sha}")
+            orig_title = (act.title or "").strip()
+            if ai_headline and orig_title:
+                desc_lines.append(f"原提交：{orig_title} · 提交人：{author_label}（{short_sha}）")
+            else:
+                desc_lines.append(f"提交人：{author_label} · 提交编号：{short_sha}")
             ev_desc = "\n".join(desc_lines)
 
-            author_id = act.author_user_id or fallback_actor_id
+            # 自动归集的代码候选证据归属给本任务负责人，确保每位负责人都能确认自己任务上的全部标准
+            task_assignees = assignees_by_task.get(task.id, set())
+            if act.author_user_id and act.author_user_id in task_assignees:
+                author_id = act.author_user_id
+            elif task_assignees:
+                author_id = sorted(task_assignees, key=str)[0]
+            else:
+                author_id = act.author_user_id or fallback_actor_id
+
+            key = (task.id, str(act.id))
+            if key in existing_by_key:
+                ev_id, ev_status = existing_by_key[key]
+                # 仅更新 candidate 自动证据的标准关联、AI 描述与归属人，绝不修改 formal/withdrawn
+                if ev_status == "candidate":
+                    ev_row = session.get(Evidence, ev_id)
+                    if ev_row is not None:
+                        if ai_impl or not (ev_row.description or "").startswith("实现内容："):
+                            ev_row.title = ev_title
+                            ev_row.description = ev_desc
+                        if author_id is not None and ev_row.author_id != author_id:
+                            ev_row.author_id = author_id
+                    for cid in cids:
+                        if (ev_id, cid) not in existing_ec:
+                            session.add(EvidenceCriterion(evidence_id=ev_id, criterion_id=cid))
+                            existing_ec.add((ev_id, cid))
+                continue
+
             ev_id = uuid4()
             source_url = _safe_github_url(act.url)
             source_payload = {
                 "kind": "commit",
                 "sha": sha,
                 "title": act.title,
-                "summary": ai_feat or act.summary or act.title,
+                "summary": ai_impl or act.summary or act.title,
                 "body": ev_desc,
                 "url": source_url,
                 "author_login": act.author_login,
@@ -1213,6 +1249,7 @@ def sync_task_code_progress(
         stats_by_task,
         ai_summaries,
         criteria_by_task,
+        assignees_by_task,
         fallback_actor_id,
         recalculate=recalculate,
     )
