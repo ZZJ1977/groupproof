@@ -128,10 +128,10 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
         <button className={secondary} type="button" disabled={busy} onClick={() => void run("integrity-check", "检查快照已保存")}>重新检查</button>
         <button className={button} type="button" disabled={busy || check?.status !== "passed"} onClick={() => void run("enter-verification", "任务已进入待验收")}>进入验收</button>
       </div>}>
-        <p className="text-sm text-slate-600">覆盖率：{check ? `${check.covered_criteria}/${check.total_criteria}（${check.coverage_rate}%）` : "尚未检查"}。仅计入当前有效的正式证据。</p>
+        <p className="text-sm text-slate-600">覆盖率：{check ? `${check.covered_criteria}/${check.total_criteria}（${check.coverage_rate}%）` : "尚未检查"}。仅计入当前有效的正式证据（候选代码证据需先在提交页或证据中心确认采纳为正式证据）。</p>
         {check && <div className="mt-3"><ProgressBar value={check.coverage_rate} /></div>}
         <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
-          <Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>补充证据</Link>
+          <Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>补充或采纳正式证据</Link>
           <Link className="gp-link" href={`${taskHref}/verification`}>查看验收结果</Link>
         </div>
       </Section>
