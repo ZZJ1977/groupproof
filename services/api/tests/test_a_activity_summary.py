@@ -130,3 +130,43 @@ def test_openrouter_uses_code_commit_analysis_system_prompt_and_unwraps_fenced_j
     assert "资深软件工程代码评审与功能分析专家" in system_msg
     assert "固定字段输出规范" in system_msg
     assert CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT.strip() in system_msg
+
+
+def test_activity_summary_tolerates_extra_keys_and_diff_prefix_stripped_quotes():
+    class DiffQuotingProvider:
+        name = "stub"
+        model = "deepseek/deepseek-v3.2"
+        is_placeholder = False
+        last_usage = None
+
+        def generate(self, feature, payload, *, timeout):
+            return {
+                "headline": "新增项目总览导出函数",
+                "implementation": "在项目总览模块中新增了 ProjectOverview 组件导出。",
+                "impact": "",
+                "verification": [],
+                "risks": [],
+                "evidence": [
+                    {"source": "files", "quote": "export function ProjectOverview() {}"},
+                ],
+                "confidence": 0.9,
+                "insufficient_context": [],
+                "extra_model_note": "ignored harmless field",
+            }
+
+    value = payload().model_copy(
+        update={
+            "files": [
+                ai.ActivityFileChange(
+                    path="src/project/overview.tsx",
+                    status="added",
+                    additions=42,
+                    patch="+export function ProjectOverview() {}\n",
+                )
+            ]
+        }
+    )
+    result = ai.summarize_activity(value, provider=DiffQuotingProvider())
+    assert result.headline == "新增项目总览导出函数"
+    assert result.impact is None
+    assert result.evidence[0].source == "files"

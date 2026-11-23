@@ -241,3 +241,60 @@ def test_github_webhook_verifies_signature_and_syncs_linked_project(github_db, m
         assert data["commits"] == 2
     finally:
         app.dependency_overrides.pop(get_session, None)
+
+
+def test_github_activity_stats_aggregates_commits_and_code_churn(github_db):
+    from app.modules.a import github_activity
+
+    leader, project = _seed_project(github_db)
+
+    class StatsFakeGithub(MultiBranchFakeGithub):
+        def commit_detail(self, owner, repo, sha, installation_id):
+            mapping = {
+                "aaaa1111": {
+                    "stats": {"additions": 120, "deletions": 30, "total": 150},
+                    "changed_files": 3,
+                    "files": [
+                        {
+                            "filename": "a.py",
+                            "status": "modified",
+                            "additions": 120,
+                            "deletions": 30,
+                        }
+                    ],
+                },
+                "bbbb2222": {
+                    "stats": {"additions": 45, "deletions": 10, "total": 55},
+                    "changed_files": 1,
+                    "files": [
+                        {"filename": "b.py", "status": "added", "additions": 45, "deletions": 10}
+                    ],
+                },
+            }
+            return mapping[sha]
+
+    c1 = _commit("aaaa1111", "feat: chart api", "2026-11-22T10:00:00Z")
+    c2 = {
+        "sha": "bbbb2222",
+        "html_url": "https://github.com/acme/demo/commit/bbbb2222",
+        "commit": {
+            "message": "fix: ui polish",
+            "author": {"name": "Bob", "email": "bob@example.com", "date": "2026-11-23T09:00:00Z"},
+        },
+        "author": {"id": 2002, "login": "bob"},
+    }
+    client = StatsFakeGithub({"main": [c1, c2]})
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    github_sync.sync_project_repos(github_db, leader, project.id, client)
+
+    stats = github_activity.get_activity_stats(github_db, leader, project.id, days=14)
+    assert stats["total_commits"] == 2
+    assert stats["total_additions"] == 165
+    assert stats["total_deletions"] == 40
+    assert stats["commits_with_stats"] == 2
+    assert len(stats["contributors"]) == 2
+    assert stats["contributors"][0]["author_name"] == "Alice"
+    assert stats["contributors"][0]["additions"] == 120
+    assert stats["contributors"][1]["author_name"] == "Bob"
+    assert stats["contributors"][1]["deletions"] == 10
+    assert len(stats["daily"]) == 14

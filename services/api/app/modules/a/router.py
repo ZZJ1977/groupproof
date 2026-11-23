@@ -698,6 +698,53 @@ class ActivitySummaryBatchRequest(BaseModel):
     source_ids: list[UUID] = Field(min_length=1, max_length=20)
 
 
+class GithubContributorStatDTO(BaseModel):
+    author_key: str
+    author_user_id: UUID | None = None
+    author_name: str
+    author_login: str | None = None
+    commits: int
+    additions: int
+    deletions: int
+    files_changed: int
+    commits_with_stats: int
+    last_commit_at: datetime
+
+
+class GithubDailyStatDTO(BaseModel):
+    date: str
+    commits: int
+    additions: int
+    deletions: int
+
+
+class GithubActivityStatsDTO(BaseModel):
+    total_commits: int
+    total_pull_requests: int
+    total_ci_runs: int
+    total_additions: int
+    total_deletions: int
+    commits_with_stats: int
+    contributors: list[GithubContributorStatDTO] = Field(default_factory=list)
+    daily: list[GithubDailyStatDTO] = Field(default_factory=list)
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/github/stats",
+    response_model=SuccessResponse[GithubActivityStatsDTO],
+    dependencies=[Depends(_private)],
+)
+def get_github_activity_stats(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    days: int = Query(default=14, ge=7, le=90),
+):
+    stats = github_activity.get_activity_stats(session, user, project_id, days=days)
+    return success(GithubActivityStatsDTO(**stats), request)
+
+
 @router.get(
     "/api/v1/a/projects/{project_id}/github/activity",
     response_model=SuccessResponse[GithubActivityPageDTO],

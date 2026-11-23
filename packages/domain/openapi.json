@@ -7578,6 +7578,158 @@
         "title": "GithubActivityPageDTO",
         "type": "object"
       },
+      "GithubActivityStatsDTO": {
+        "properties": {
+          "commits_with_stats": {
+            "title": "Commits With Stats",
+            "type": "integer"
+          },
+          "contributors": {
+            "items": {
+              "$ref": "#/components/schemas/GithubContributorStatDTO"
+            },
+            "title": "Contributors",
+            "type": "array"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/GithubDailyStatDTO"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "total_additions": {
+            "title": "Total Additions",
+            "type": "integer"
+          },
+          "total_ci_runs": {
+            "title": "Total Ci Runs",
+            "type": "integer"
+          },
+          "total_commits": {
+            "title": "Total Commits",
+            "type": "integer"
+          },
+          "total_deletions": {
+            "title": "Total Deletions",
+            "type": "integer"
+          },
+          "total_pull_requests": {
+            "title": "Total Pull Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_commits",
+          "total_pull_requests",
+          "total_ci_runs",
+          "total_additions",
+          "total_deletions",
+          "commits_with_stats"
+        ],
+        "title": "GithubActivityStatsDTO",
+        "type": "object"
+      },
+      "GithubContributorStatDTO": {
+        "properties": {
+          "additions": {
+            "title": "Additions",
+            "type": "integer"
+          },
+          "author_key": {
+            "title": "Author Key",
+            "type": "string"
+          },
+          "author_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Login"
+          },
+          "author_name": {
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author User Id"
+          },
+          "commits": {
+            "title": "Commits",
+            "type": "integer"
+          },
+          "commits_with_stats": {
+            "title": "Commits With Stats",
+            "type": "integer"
+          },
+          "deletions": {
+            "title": "Deletions",
+            "type": "integer"
+          },
+          "files_changed": {
+            "title": "Files Changed",
+            "type": "integer"
+          },
+          "last_commit_at": {
+            "format": "date-time",
+            "title": "Last Commit At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "author_key",
+          "author_name",
+          "commits",
+          "additions",
+          "deletions",
+          "files_changed",
+          "commits_with_stats",
+          "last_commit_at"
+        ],
+        "title": "GithubContributorStatDTO",
+        "type": "object"
+      },
+      "GithubDailyStatDTO": {
+        "properties": {
+          "additions": {
+            "title": "Additions",
+            "type": "integer"
+          },
+          "commits": {
+            "title": "Commits",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "deletions": {
+            "title": "Deletions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "commits",
+          "additions",
+          "deletions"
+        ],
+        "title": "GithubDailyStatDTO",
+        "type": "object"
+      },
       "GithubIdentityStatus": {
         "properties": {
           "available": {
@@ -11699,6 +11851,22 @@
           "meta"
         ],
         "title": "SuccessResponse[GithubActivityPageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_GithubActivityStatsDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GithubActivityStatsDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[GithubActivityStatsDTO]",
         "type": "object"
       },
       "SuccessResponse_GithubLoginDTO_": {
@@ -15962,6 +16130,78 @@
           }
         },
         "summary": "Bind Github Repo",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/github/stats": {
+      "get": {
+        "operationId": "get_github_activity_stats_api_v1_a_projects__project_id__github_stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "maximum": 90,
+              "minimum": 7,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_GithubActivityStatsDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Github Activity Stats",
         "tags": [
           "a"
         ]
