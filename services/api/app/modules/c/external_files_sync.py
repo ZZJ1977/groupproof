@@ -248,7 +248,7 @@ def _create_fallback_receipt(
         session.add(
             BProjectMaterial(
                 project_id=project_id,
-                kind="text",
+                kind="file",
                 title=filename[:200],
                 receipt_id=receipt.id,
                 text_content=inline_text,
