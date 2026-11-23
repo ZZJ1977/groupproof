@@ -7580,6 +7580,11 @@
       },
       "GithubActivityStatsDTO": {
         "properties": {
+          "all_time_commits": {
+            "default": 0,
+            "title": "All Time Commits",
+            "type": "integer"
+          },
           "commits_with_stats": {
             "title": "Commits With Stats",
             "type": "integer"
@@ -7597,6 +7602,62 @@
             },
             "title": "Daily",
             "type": "array"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "earliest_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Date"
+          },
+          "latest_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Date"
+          },
+          "range": {
+            "default": "all",
+            "enum": [
+              "all",
+              "30d",
+              "14d",
+              "7d",
+              "custom"
+            ],
+            "title": "Range",
+            "type": "string"
           },
           "total_additions": {
             "title": "Total Additions",
@@ -16151,14 +16212,77 @@
           },
           {
             "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "30d",
+                    "14d",
+                    "7d",
+                    "custom"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
             "name": "days",
             "required": false,
             "schema": {
-              "default": 14,
-              "maximum": 90,
-              "minimum": 7,
-              "title": "Days",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
             }
           },
           {

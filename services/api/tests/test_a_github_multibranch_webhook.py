@@ -324,3 +324,93 @@ def test_auto_summaries_detect_and_analyze_new_commits(github_db, monkeypatch):
     )
     assert done == 1
     assert activity_summary.recent_unanalyzed_commit_ids(github_db, project.id) == []
+
+
+def test_github_activity_stats_excludes_claude_bots_merges_member_aliases_and_filters_ranges(
+    github_db,
+):
+    from datetime import UTC, date, datetime
+
+    from app.auth.models import VerifiedGithubIdentity
+    from app.modules.a import github_activity
+
+    leader, project = _seed_project(github_db)
+    leader.name = "Alice"
+    github_db.add(
+        VerifiedGithubIdentity(
+            user_id=leader.id, github_user_id=1001, login="alice", verified_at=datetime.now(UTC)
+        )
+    )
+    github_db.flush()
+    # 同一成员用本地 Git 名称（无 GitHub author.id）提交 + Claude 机器人提交 + 较早日期提交
+    c_old = _commit("old00001", "feat: early commit", "2026-10-15T10:00:00Z")
+    c_alias = {
+        "sha": "alias002",
+        "html_url": "https://github.com/acme/demo/commit/alias002",
+        "commit": {
+            "message": "fix: local name commit",
+            "author": {"name": "Alice", "email": "alice@local", "date": "2026-11-22T10:00:00Z"},
+        },
+        "author": None,
+    }
+    c_claude = {
+        "sha": "bot00003",
+        "html_url": "https://github.com/acme/demo/commit/bot00003",
+        "commit": {
+            "message": "chore: ai commit",
+            "author": {
+                "name": "Claude",
+                "email": "noreply@anthropic.com",
+                "date": "2026-11-23T08:00:00Z",
+            },
+        },
+        "author": {"id": 99999, "login": "claude[bot]"},
+    }
+    c_dep = {
+        "sha": "bot00004",
+        "html_url": "https://github.com/acme/demo/commit/bot00004",
+        "commit": {
+            "message": "chore(deps): bump",
+            "author": {
+                "name": "dependabot[bot]",
+                "email": "dependabot[bot]@users.noreply.github.com",
+                "date": "2026-11-23T09:00:00Z",
+            },
+        },
+        "author": {"id": 88888, "login": "dependabot[bot]"},
+    }
+    client = MultiBranchFakeGithub({"main": [c_old, c_alias, c_claude, c_dep]})
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    github_sync.sync_project_repos(github_db, leader, project.id, client)
+
+    # 1. range=all: 过滤 Claude 与 dependabot，且 Alice 的两条提交（验证账号 + 本地名称）合并为 1 人
+    all_stats = github_activity.get_activity_stats(github_db, leader, project.id, range_key="all")
+    assert all_stats["range"] == "all"
+    assert all_stats["total_commits"] == 2
+    assert all_stats["all_time_commits"] == 2
+    assert len(all_stats["contributors"]) == 1
+    assert all_stats["contributors"][0]["author_name"] == "Alice"
+    assert all_stats["contributors"][0]["commits"] == 2
+    assert all_stats["earliest_date"] == "2026-10-15"
+    assert all_stats["latest_date"] == "2026-11-22"
+
+    # 2. range=7d: 只保留近 7 天的提交（不含 10-15）
+    week_stats = github_activity.get_activity_stats(github_db, leader, project.id, range_key="7d")
+    assert week_stats["range"] == "7d"
+    assert week_stats["total_commits"] == 1
+    assert week_stats["all_time_commits"] == 2
+    assert len(week_stats["daily"]) == 7
+
+    # 3. custom date range: 仅查 2026-10-01 ~ 2026-10-31
+    custom_stats = github_activity.get_activity_stats(
+        github_db,
+        leader,
+        project.id,
+        range_key="custom",
+        date_from=date(2026, 10, 1),
+        date_to=date(2026, 10, 31),
+    )
+    assert custom_stats["range"] == "custom"
+    assert custom_stats["total_commits"] == 1
+    assert custom_stats["date_from"] == "2026-10-01"
+    assert custom_stats["date_to"] == "2026-10-31"

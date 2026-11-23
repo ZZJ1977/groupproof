@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Sparkles } from "lucide-react";
@@ -16,7 +16,7 @@ import {
   StatusBadge,
 } from "@/components/common";
 import { projectRequest } from "@/features/github-binding/integration-request";
-import { GithubStatsChart, type GithubActivityStats } from "./GithubStatsChart";
+import { GithubStatsChart, type GithubActivityStats, type GithubStatsRange } from "./GithubStatsChart";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import {
@@ -171,14 +171,24 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     enabled: selectedEnabled && sourceType === "github" && Boolean(selectedId),
     ...queryPolicy,
   });
+  const [statsRange, setStatsRange] = useState<GithubStatsRange>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [appliedCustom, setAppliedCustom] = useState<{ from: string; to: string }>({ from: "", to: "" });
+  const statsUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("range", statsRange);
+    if (statsRange === "custom") {
+      if (appliedCustom.from) params.set("date_from", appliedCustom.from);
+      if (appliedCustom.to) params.set("date_to", appliedCustom.to);
+    }
+    return `/api/v1/a/projects/${encodeURIComponent(projectId)}/github/stats?${params.toString()}`;
+  }, [appliedCustom.from, appliedCustom.to, projectId, statsRange]);
   const githubStatsQuery = useQuery({
-    queryKey: ["a-github-activity-stats", userId, projectId],
-    queryFn: ({ signal }) =>
-      projectRequest<GithubActivityStats>(
-        `/api/v1/a/projects/${encodeURIComponent(projectId)}/github/stats?days=14`,
-        { signal },
-      ),
+    queryKey: ["a-github-activity-stats", userId, projectId, statsRange, appliedCustom.from, appliedCustom.to],
+    queryFn: ({ signal }) => projectRequest<GithubActivityStats>(statsUrl, { signal }),
     enabled: enabled && sourceType === "github" && Boolean(access?.actor.is_member),
+    placeholderData: (previousData) => previousData,
     retry: false,
     staleTime: 15_000,
   });
@@ -506,6 +516,25 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           <GithubStatsChart
             stats={githubStatsQuery.data}
             loading={githubStatsQuery.isPending}
+            fetching={githubStatsQuery.isFetching}
+            range={statsRange}
+            customFrom={customFrom}
+            customTo={customTo}
+            onRangeChange={(next) => {
+              setStatsRange(next);
+              if (next === "custom") {
+                const defaultFrom = customFrom || githubStatsQuery.data?.earliest_date || "";
+                const defaultTo = customTo || githubStatsQuery.data?.latest_date || "";
+                if (!customFrom && defaultFrom) setCustomFrom(defaultFrom);
+                if (!customTo && defaultTo) setCustomTo(defaultTo);
+                setAppliedCustom({ from: defaultFrom, to: defaultTo });
+              }
+            }}
+            onCustomChange={({ from, to }) => {
+              setCustomFrom(from);
+              setCustomTo(to);
+            }}
+            onApplyCustom={() => setAppliedCustom({ from: customFrom, to: customTo })}
             selectedAuthorId={filters.author_id ?? undefined}
             onSelectAuthor={(authorUserId) => {
               updateQuery({ author: authorUserId, kind: authorUserId ? "commit" : filters.kind ?? null, page: null, record: null });
