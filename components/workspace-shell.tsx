@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, Layers3, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -13,6 +13,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { useQuery } from "@tanstack/react-query";
 import { apiMode } from "@/lib/api/config";
 import { createCClient } from "@/lib/api/c-client";
+import { createGovernanceClient } from "@/lib/api/c-governance-client";
 import { inboxApi } from "@/lib/api/c-inbox-client";
 import { globalSearchApi, type SearchItemKind } from "@/lib/api/search-client";
 import { mockService } from "@/lib/api/mock-service";
@@ -22,11 +23,13 @@ import { projectNavGroups, type ProjectNavGroup } from "@/lib/ux/student-workspa
 import { tr } from "@/lib/i18n/tr";
 import type { Role } from "@/types/domain";
 import { cn } from "@/lib/utils";
-import { AdminEnvironmentSwitcher } from "@/components/admin-environment-switcher";
+import { AdminEnvironmentSwitcher, AdminProductionBanner } from "@/components/admin-environment-switcher";
 
-type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
+type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean; badge?: number };
 type ProjectNavSectionGroup = Omit<ProjectNavGroup, "items"> & { items: NavItem[] };
 type AdminNavGroup = { label: string; items: NavItem[] };
+
+const governanceShellClient = createGovernanceClient();
 
 const iconByKey: Record<string, typeof Home> = {
   folder: Folder, fileClock: FileClock, fileText: FileText, clipboardList: ClipboardList,
@@ -40,7 +43,7 @@ function NavLink({ item, label, pathname, search }: { item: NavItem; label: stri
   const [hrefPath, hrefSearch] = item.href.split("?");
   const isPlanningAlias = hrefPath.endsWith("/tasks") && pathname === `${hrefPath.slice(0, -"/tasks".length)}/planning`;
   const active = isPlanningAlias || (hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search));
-  return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={17} strokeWidth={1.9} /><span>{label}</span></Link>;
+  return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={17} strokeWidth={1.9} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{label}</span>{item.badge !== undefined && item.badge > 0 && <span className="gp-nav-badge">{item.badge > 99 ? "99+" : item.badge}</span>}</Link>;
 }
 
 export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: "student" | "teacher" | "admin" }) {
@@ -55,8 +58,15 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const inboxBlocked = useQuery({ queryKey: ["c-inbox-blocked", userId], queryFn: () => false,
     enabled: false, initialData: false });
   const unread = useQuery({ queryKey: ["c-inbox-unread", userId],
-    queryFn: () => inboxApi.notifications({ page: 1, page_size: 1 }), enabled: realInbox,
+    queryFn: () => inboxApi.notifications({ page: 1, page_size: 1 }), enabled: realInbox && kind !== "admin",
     staleTime: 0, gcTime: 0, retry: false });
+  const adminQueues = useQuery({
+    queryKey: ["admin-nav-badges", userId],
+    queryFn: () => governanceShellClient.workbenchOverview(),
+    enabled: kind === "admin" && apiMode("governance") === "real",
+    staleTime: 30_000,
+    retry: false,
+  });
   const unreadCount = realInbox ? (!inboxBlocked.data && unread.isSuccess && !unread.isFetching ? unread.data.unread_total : null)
     : data.notifications.filter((item) => item.userId === data.currentUserId && !item.read).length;
   const { session } = useApp();
@@ -120,9 +130,9 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       items: [
         { label: t("adminItems.overview"), href: "/admin", icon: Home },
         { label: t("adminItems.users"), href: "/admin/users", icon: Users },
-        { label: t("adminItems.teacherVerifications"), href: "/admin/teacher-verifications", icon: ShieldCheck },
+        { label: t("adminItems.teacherVerifications"), href: "/admin/teacher-verifications", icon: UserCheck, badge: adminQueues.data?.queues.pending_teacher_applications },
         { label: t("adminItems.courses"), href: "/admin/courses", icon: BookOpen },
-        { label: t("adminItems.accessRequests"), href: "/admin/access-requests", icon: ShieldCheck },
+        { label: t("adminItems.accessRequests"), href: "/admin/access-requests", icon: ShieldCheck, badge: adminQueues.data?.queues.pending_access_requests },
       ],
     },
     {
@@ -130,9 +140,10 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       items: [
         { label: t("adminItems.logs"), href: "/admin/logs", icon: FileClock },
         { label: t("adminItems.aiUsage"), href: "/admin/ai-usage", icon: Activity },
+        { label: t("adminItems.integrations"), href: "/admin/integrations", icon: Layers3 },
       ],
     },
-  ] : [], [kind, t]);
+  ] : [], [adminQueues.data?.queues.pending_access_requests, adminQueues.data?.queues.pending_teacher_applications, kind, t]);
 
   const nav: NavItem[] = useMemo(() => {
     const map = (items: { label: string; href: string; iconKey: string }[], namespace: string): NavItem[] =>
@@ -358,7 +369,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
                   router.push(chosen.href);
                 }
               }}
-              placeholder={ts("searchPlaceholder")}
+              placeholder={kind === "admin" ? ts("adminSearchPlaceholder") : ts("searchPlaceholder")}
               aria-label={ts("searchLabel")}
             />
             {search && (
@@ -419,9 +430,9 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
         <div className="gp-topbar-right">
           {kind === "admin" && <AdminEnvironmentSwitcher />}
           <LanguageSwitcher compact />
-          <span className="gp-topbar-link hidden lg:inline">{ts("helpCenter")}</span>
-          <Link href="/notifications" className="gp-icon-button relative" aria-label={ts("notifications")} title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}><Bell size={18} />{unreadCount !== null && unreadCount > 0 && <span data-testid="unread-notification-dot" className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]" />}</Link>
-          <DropdownMenu><DropdownMenuTrigger className="flex items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]"><Avatar name={displayName} color={user?.avatarColor} size={28} /><span className="hidden lg:inline">{displayName}</span><ChevronDown size={13} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => router.push("/account")}><UserRound size={14} />{ts("accountCenter")}</DropdownMenuItem><DropdownMenuItem onSelect={() => router.push("/activity")}>{ts("myActivity")}</DropdownMenuItem><DropdownMenuItem onSelect={() => void logout()}><LogOut size={14} />{ts("logout")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+          {kind !== "admin" && <span className="gp-topbar-link hidden lg:inline">{ts("helpCenter")}</span>}
+          {kind !== "admin" && <Link href="/notifications" className="gp-icon-button relative" aria-label={ts("notifications")} title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}><Bell size={18} />{unreadCount !== null && unreadCount > 0 && <span data-testid="unread-notification-dot" className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]" />}</Link>}
+          <DropdownMenu><DropdownMenuTrigger className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-[8px] px-1.5 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]"><Avatar name={displayName} color={user?.avatarColor} size={28} /><span className="hidden max-w-[160px] truncate whitespace-nowrap lg:inline">{displayName}</span><ChevronDown size={13} className="shrink-0" /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => router.push("/account")}><UserRound size={14} />{ts("accountCenter")}</DropdownMenuItem>{kind !== "admin" && <DropdownMenuItem onSelect={() => router.push("/activity")}>{ts("myActivity")}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => void logout()}><LogOut size={14} />{ts("logout")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
           {demoMode && (
             <select className="hidden max-w-[86px] rounded-[5px] border border-[#e0e6ef] bg-white px-1.5 py-1.5 text-[11px] text-[#53637d] lg:inline" aria-label={ts("switchDemoRole")} title={ts("switchDemoRole")} value={role} onChange={(event) => setRole(event.target.value as Role)}>
               {(["student", "leader", "teacher", "ta", "admin"] as Role[]).map((value) => <option key={value} value={value}>{ts(`roles.${value}`)}</option>)}
@@ -429,6 +440,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
           )}
         </div>
       </header>
+      {kind === "admin" && <AdminProductionBanner />}
       <main className="gp-content">{children}</main>
     </div>
   </div>;

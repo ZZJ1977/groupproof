@@ -12,6 +12,8 @@ assert.equal(cases.length, 56, "计划中应列出全部 56 个设计页");
 // route explicitly so the real-data dashboard cannot silently lose coverage.
 const adminHome = resolveRoute("/admin");
 assert.equal(adminHome?.screen, 62, "/admin 应映射到 Admin 工作台页面 62");
+const adminIntegrations = resolveRoute("/admin/integrations");
+assert.equal(adminIntegrations?.screen, 63, "/admin/integrations 应映射到集成运维页面 63");
 
 for (const item of cases) {
   const url = new URL(item.path, "http://localhost:3000");

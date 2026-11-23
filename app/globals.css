@@ -463,12 +463,16 @@ button { cursor: pointer; }
 .gp-shell-admin .gp-sidebar.admin .gp-nav-section { color: #94a3b8; letter-spacing: .02em; text-transform: none; }
 .gp-shell-admin .gp-sidebar.admin .gp-sidebar-footer { color: #94a3b8; }
 .gp-shell-admin .gp-main { background: var(--gp-admin-canvas); }
-.gp-shell-admin .gp-topbar { background: rgba(255, 255, 255, .96); border-color: var(--gp-admin-border); }
+.gp-shell-admin .gp-topbar { background: rgba(255, 255, 255, .96); border-color: var(--gp-admin-border); padding: 0 24px; }
+.gp-shell-admin .gp-topbar-right { gap: 10px; flex-shrink: 0; }
 .gp-shell-admin .gp-content { background: var(--gp-admin-canvas); }
-.gp-shell-admin .gp-admin-environment { display: inline-flex; align-items: center; gap: 8px; }
+.gp-shell-admin .gp-admin-environment { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .gp-shell-admin .gp-admin-environment-current { color: var(--gp-admin-muted); font-size: 11px; white-space: nowrap; }
-.gp-shell-admin .gp-admin-environment-retry { border: 0; border-radius: 999px; padding: 4px 8px; background: #eff6ff; color: var(--gp-admin-action-hover); font-size: 11px; font-weight: 700; }
+.gp-shell-admin .gp-admin-environment-retry { border: 0; border-radius: 999px; padding: 4px 8px; background: #eff6ff; color: var(--gp-admin-action-hover); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .gp-shell-admin .gp-admin-environment-retry:hover { background: #dbeafe; }
+.gp-admin-prod-banner { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 20px; border-bottom: 1px solid #fcd34d; background: #fffbeb; color: #92400e; font-size: 12px; font-weight: 600; }
+.gp-nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #fef3c7; color: #b45309; font-size: 11px; font-weight: 700; line-height: 1; }
+.gp-sidebar.admin .gp-nav-link.active .gp-nav-badge { background: #ffffff; color: var(--gp-admin-action-hover); }
 .gp-shell-admin .gp-nav-group + .gp-nav-group { margin-top: 8px; }
 .gp-shell-admin :where(a, button, input, select, textarea):focus-visible {
   outline: 3px solid rgba(37, 99, 235, .35);

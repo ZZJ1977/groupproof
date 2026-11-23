@@ -522,7 +522,8 @@
       "courses": "課程管理",
       "logs": "系統日誌",
       "aiUsage": "AI 使用情況",
-      "accessRequests": "異常 / 存取審批"
+      "accessRequests": "異常 / 存取審批",
+      "integrations": "過程證明與整合"
     },
     "adminGroups": {
       "platform": "平台管理",
@@ -538,9 +539,16 @@
       "currentDevelop": "目前：develop / Staging",
       "currentMain": "目前：main / Production",
       "switchFailed": "切換失敗，請重試",
-      "retry": "重試"
+      "retry": "重試",
+      "confirmTitle": "切換管理資料環境",
+      "confirmBody": "切換至 {target} 後將登出目前登入工作階段並跳轉至登入頁，請確認未儲存的操作已處理。",
+      "confirmProdWarning": "目標為正式環境（main / Production），所有寫入將直接影響真實師生資料。",
+      "confirmAction": "確認切換",
+      "cancelAction": "取消",
+      "prodBanner": "正式環境模式（main / Production）· 所有管理操作將直接影響真實師生與課程資料，請謹慎核對。"
     },
     "searchPlaceholder": "搜尋課程、專案或任務...",
+    "adminSearchPlaceholder": "搜尋使用者、學號或課程...",
     "searchNoResult": "無符合結果",
     "searching": "正在搜尋…",
     "searchError": "搜尋暫不可用，請稍後重試",
