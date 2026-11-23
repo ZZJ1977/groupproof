@@ -458,6 +458,13 @@ def get_signed_link(
     file_access(session, user, project_id)
     row = file_in_project(session, project_id, file_id)
     version = version_in_file(session, row, version_id)
+    from app.modules.c.external_files_sync import (
+        INTERNAL_FILE_PROVIDERS,
+        sign_internal_file_link,
+    )
+
+    if version.storage_provider in INTERNAL_FILE_PROVIDERS:
+        return sign_internal_file_link(project_id, file_id, version_id, purpose)
     link = signed_link(
         storage,
         project_id=project_id,
