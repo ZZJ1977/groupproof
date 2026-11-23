@@ -304,6 +304,159 @@ def generate_summary(
     return _apply_row(data, cached)
 
 
+def generate_summary_isolated(
+    session_factory,
+    actor_id: UUID,
+    project_id: UUID,
+    source_id: UUID,
+    *,
+    provider: ai.AIProvider | None = None,
+) -> dict[str, Any]:
+    """在外部 GitHub/OpenRouter HTTP 调用期间绝不占用数据库连接池连接。"""
+    # 第 1 阶段（短事务）：校验权限、检查已有 ready 缓存、读取是否需要补拉 GitHub 文件差异
+    with session_factory() as session:
+        actor = session.get(User, actor_id)
+        if actor is None:
+            raise ApiError(401, "AUTH_REQUIRED", "用户会话无效。")
+        row = _source(session, actor, project_id, source_id)
+        if row.kind != "commit" or row.deleted:
+            payload = build_input(row)
+            data = _base(row.id, payload, status="unsupported")
+            data["insufficient_context"] = ["首期只对仍可读取的 GitHub commit 生成摘要"]
+            return data
+        need_hydrate = not (
+            isinstance(row.detail, dict) and row.detail.get("files_fetched") is True
+        )
+        hydrate_info: tuple[str, str, str, int] | None = None
+        if need_hydrate:
+            link = session.get(GithubRepoLink, row.link_id)
+            if link is not None:
+                hydrate_info = (link.owner, link.repo, row.external_id, link.installation_id)
+        else:
+            payload = build_input(row)
+            data = _base(row.id, payload, status="not_generated")
+            cached = session.scalar(
+                select(ActivitySummary).where(
+                    ActivitySummary.source_type == "github",
+                    ActivitySummary.source_id == row.id,
+                    ActivitySummary.source_revision == payload.source_revision,
+                    ActivitySummary.prompt_version == PROMPT_VERSION,
+                    ActivitySummary.input_hash == data["input_hash"],
+                )
+            )
+            if cached is not None and cached.status == "ready":
+                return _apply_row(data, cached)
+
+    # 第 2 阶段（无数据库连接）：按需补拉 GitHub 提交文件差异
+    fetched_detail: tuple[list[dict[str, Any]], bool, dict[str, Any]] | None = None
+    if hydrate_info is not None:
+        settings = github.github_settings()
+        if settings is not None:
+            owner, repo, ext_id, installation_id = hydrate_info
+            client = github.GithubClient(settings)
+            try:
+                commit_detail = client.commit_detail(owner, repo, ext_id, installation_id)
+                if isinstance(commit_detail, dict):
+                    fetched_detail = github_activity._commit_detail(commit_detail)
+            except Exception:  # noqa: BLE001 - 按需补拉失败时退回现有提交信息
+                fetched_detail = None
+            finally:
+                client.close()
+
+    # 第 3 阶段（短事务）：落库补拉结果并标记 pending，随后立即归还数据库连接
+    with session_factory() as session:
+        row = session.scalar(
+            select(GithubActivity).where(
+                GithubActivity.id == source_id, GithubActivity.project_id == project_id
+            )
+        )
+        if row is None:
+            raise ApiError(404, "ACTIVITY_NOT_FOUND", "记录不存在。")
+        if fetched_detail is not None:
+            files, files_truncated, stats = fetched_detail
+            merged = dict(row.detail) if isinstance(row.detail, dict) else {"sha": row.external_id}
+            merged.update(
+                {"files_fetched": True, "files": files, "files_truncated": files_truncated}
+            )
+            merged.update(stats)
+            row.detail = merged
+            session.flush()
+        payload = build_input(row)
+        data = _base(row.id, payload, status="not_generated")
+        digest = data["input_hash"]
+        cached = session.scalar(
+            select(ActivitySummary).where(
+                ActivitySummary.source_type == "github",
+                ActivitySummary.source_id == row.id,
+                ActivitySummary.source_revision == payload.source_revision,
+                ActivitySummary.prompt_version == PROMPT_VERSION,
+                ActivitySummary.input_hash == digest,
+            )
+        )
+        if cached is not None and cached.status == "ready":
+            session.commit()
+            return _apply_row(data, cached)
+        if cached is None:
+            cached = ActivitySummary(
+                id=uuid4(),
+                project_id=project_id,
+                source_type="github",
+                source_id=row.id,
+                source_revision=payload.source_revision,
+                prompt_version=PROMPT_VERSION,
+                input_hash=digest,
+            )
+            session.add(cached)
+        cached.status = "pending"
+        cached.error_code = None
+        summary_id = cached.id
+        session.commit()
+
+    # 第 4 阶段（无数据库连接）：调用 OpenRouter 生成结构化实现分析（含一次瞬时失败重试）
+    result = None
+    error_code: str | None = None
+    try:
+        result = ai.summarize_activity(
+            payload,
+            provider=provider,
+            usage=AIUsageContext(user_id=actor_id, project_id=project_id),
+        )
+    except ApiError as error:
+        if error.code == "AI_UNAVAILABLE" and provider is None:
+            time.sleep(1.5)
+            try:
+                result = ai.summarize_activity(
+                    payload,
+                    provider=provider,
+                    usage=AIUsageContext(user_id=actor_id, project_id=project_id),
+                )
+            except ApiError as retry_error:
+                error_code = retry_error.code
+        else:
+            error_code = error.code
+
+    # 第 5 阶段（短事务）：写入最终 ready / failed 状态并提交
+    with session_factory() as session:
+        cached = session.get(ActivitySummary, summary_id)
+        if cached is None:
+            return data
+        if result is None:
+            cached.status = "failed"
+            cached.error_code = error_code or "AI_UNAVAILABLE"
+            cached.result_json = None
+        else:
+            cached.status = "ready"
+            cached.result_json = result.model_dump(mode="json")
+            cached.provider = result.provider
+            cached.model = getattr(provider, "model", None) if provider is not None else None
+            cached.is_placeholder = result.is_placeholder
+            cached.needs_human_review = result.needs_human_review
+            cached.generated_at = datetime.now(UTC)
+            cached.error_code = None
+        session.commit()
+        return _apply_row(data, cached)
+
+
 def recent_unanalyzed_commit_ids(
     session: Session, project_id: UUID, *, limit: int = MAX_AUTO_SUMMARY_PER_SYNC
 ) -> list[UUID]:
@@ -418,26 +571,24 @@ def run_auto_summaries(
         session_factory = SessionLocal
 
     def _process_one(source_id: UUID) -> bool:
-        session = session_factory()
         try:
-            actor = session.get(User, actor_id)
-            if actor is None:
-                return False
-            result = generate_summary(session, actor, project_id, source_id, provider=provider)
-            session.commit()
+            result = generate_summary_isolated(
+                session_factory,
+                actor_id,
+                project_id,
+                source_id,
+                provider=provider,
+            )
             return result.get("status") == "ready"
         except Exception as exc:  # noqa: BLE001 - 后台任务兜底，避免未捕获异常中断池
-            session.rollback()
             logger.warning("auto summary failed for commit %s: %s", source_id, exc)
             return False
-        finally:
-            session.close()
 
     targets = list(dict.fromkeys(commit_ids))[:MAX_AUTO_SUMMARY_PER_SYNC]
     if len(targets) == 1:
         generated = 1 if _process_one(targets[0]) else 0
     else:
-        with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
+        with ThreadPoolExecutor(max_workers=min(2, len(targets))) as pool:
             results = list(pool.map(_process_one, targets))
         generated = sum(1 for ok in results if ok)
 

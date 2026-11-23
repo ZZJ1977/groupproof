@@ -931,6 +931,17 @@ def generate_github_activity_summary(
     session: Database,
     user: CurrentUser,
 ):
+    from app.db.session import SessionLocal, engine
+
+    bind = session.get_bind()
+    if bind is engine and bind.dialect.name == "postgresql":
+        actor_id = user.id
+        session.commit()
+        session.close()
+        result = activity_summary.generate_summary_isolated(
+            SessionLocal, actor_id, project_id, activity_id
+        )
+        return success(ActivitySummaryDTO(**result), request)
     result = activity_summary.generate_summary(session, user, project_id, activity_id)
     session.commit()
     return success(ActivitySummaryDTO(**result), request)
@@ -948,6 +959,20 @@ def generate_github_activity_summaries(
     session: Database,
     user: CurrentUser,
 ):
+    from app.db.session import SessionLocal, engine
+
+    bind = session.get_bind()
+    if bind is engine and bind.dialect.name == "postgresql":
+        actor_id = user.id
+        session.commit()
+        session.close()
+        result = [
+            activity_summary.generate_summary_isolated(
+                SessionLocal, actor_id, project_id, source_id
+            )
+            for source_id in payload.source_ids
+        ]
+        return success([ActivitySummaryDTO(**item) for item in result], request)
     result = [
         activity_summary.generate_summary(session, user, project_id, source_id)
         for source_id in payload.source_ids

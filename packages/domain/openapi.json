@@ -2489,6 +2489,74 @@
         "title": "BatchAction",
         "type": "object"
       },
+      "BatchAdoptEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchAdoptEvidenceItem"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "reason"
+        ],
+        "title": "BatchAdoptEvidence",
+        "type": "object"
+      },
+      "BatchAdoptEvidenceDTO": {
+        "properties": {
+          "adopted": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceDTO"
+            },
+            "title": "Adopted",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "adopted",
+          "count"
+        ],
+        "title": "BatchAdoptEvidenceDTO",
+        "type": "object"
+      },
+      "BatchAdoptEvidenceItem": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "expected_version"
+        ],
+        "title": "BatchAdoptEvidenceItem",
+        "type": "object"
+      },
       "BatchMaterialRequest": {
         "additionalProperties": false,
         "properties": {
@@ -11958,6 +12026,22 @@
           "meta"
         ],
         "title": "SuccessResponse[AuthAuditPageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_BatchAdoptEvidenceDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BatchAdoptEvidenceDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[BatchAdoptEvidenceDTO]",
         "type": "object"
       },
       "SuccessResponse_CProjectContextDTO_": {
@@ -33201,6 +33285,138 @@
           }
         },
         "summary": "Create",
+        "tags": [
+          "c",
+          "c-evidence"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/evidence/batch-adopt": {
+      "post": {
+        "operationId": "batch_adopt_api_v1_projects__project_id__evidence_batch_adopt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAdoptEvidence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_BatchAdoptEvidenceDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Batch Adopt",
         "tags": [
           "c",
           "c-evidence"

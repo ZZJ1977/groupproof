@@ -14,6 +14,8 @@ from app.api.responses import ErrorResponse, SuccessResponse, success
 from app.db.models import User
 from app.db.session import get_session
 from app.modules.c.evidence_schemas import (
+    BatchAdoptEvidence,
+    BatchAdoptEvidenceDTO,
     CheckEvidenceSource,
     CreateEvidence,
     DecideEvidence,
@@ -23,6 +25,7 @@ from app.modules.c.evidence_schemas import (
     EvidenceSourceType,
 )
 from app.modules.c.evidence_service import (
+    batch_adopt_evidence,
     check_source,
     create_evidence,
     decide_evidence,
@@ -173,6 +176,27 @@ def create(
         commit_command(
             session,
             lambda: create_evidence(session, user, project_id, command, idempotency_key, sources),
+        ),
+        request,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/evidence/batch-adopt",
+    response_model=SuccessResponse[BatchAdoptEvidenceDTO],
+)
+def batch_adopt(
+    project_id: UUID,
+    command: BatchAdoptEvidence,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    idempotency_key: IdempotencyKey,
+):
+    return success(
+        commit_command(
+            session,
+            lambda: batch_adopt_evidence(session, user, project_id, command, idempotency_key),
         ),
         request,
     )

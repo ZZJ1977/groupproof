@@ -3000,6 +3000,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/evidence/batch-adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Adopt */
+        post: operations["batch_adopt_api_v1_projects__project_id__evidence_batch_adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/evidence/effective": {
         parameters: {
             query?: never;
@@ -6307,6 +6324,30 @@ export interface components {
             ids: string[];
             /** Reason */
             reason?: string | null;
+        };
+        /** BatchAdoptEvidence */
+        BatchAdoptEvidence: {
+            /** Items */
+            items: components["schemas"]["BatchAdoptEvidenceItem"][];
+            /** Reason */
+            reason: string;
+        };
+        /** BatchAdoptEvidenceDTO */
+        BatchAdoptEvidenceDTO: {
+            /** Adopted */
+            adopted: components["schemas"]["EvidenceDTO"][];
+            /** Count */
+            count: number;
+        };
+        /** BatchAdoptEvidenceItem */
+        BatchAdoptEvidenceItem: {
+            /**
+             * Evidence Id
+             * Format: uuid
+             */
+            evidence_id: string;
+            /** Expected Version */
+            expected_version: number;
         };
         /** BatchMaterialRequest */
         BatchMaterialRequest: {
@@ -9992,6 +10033,11 @@ export interface components {
         /** SuccessResponse[AuthAuditPageDTO] */
         SuccessResponse_AuthAuditPageDTO_: {
             data: components["schemas"]["AuthAuditPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[BatchAdoptEvidenceDTO] */
+        SuccessResponse_BatchAdoptEvidenceDTO_: {
+            data: components["schemas"]["BatchAdoptEvidenceDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[CourseDetailDTO] */
@@ -21869,6 +21915,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_EvidenceDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    batch_adopt_api_v1_projects__project_id__evidence_batch_adopt_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchAdoptEvidence"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_BatchAdoptEvidenceDTO_"];
                 };
             };
             /** @description Verified A authentication is required. */
