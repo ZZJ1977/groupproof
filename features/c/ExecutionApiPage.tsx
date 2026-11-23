@@ -69,6 +69,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   });
   const note = useQuery({ ...taskNoteQuery(userId, projectId, taskId), enabled: taskExists });
   const evidence = useQuery({ queryKey: ["c-task-evidence", userId, projectId, taskId, pageNumber(query.get("evidence_page"))], queryFn: () => projectApi.evidence(projectId, { task_id: taskId, page: pageNumber(query.get("evidence_page")), page_size: 10 }), enabled: taskExists && (submission || tab === "evidence"), ...queryPolicy });
+  const criteriaEvidence = useQuery({ queryKey: ["c-task-criteria-evidence", userId, projectId, taskId], queryFn: () => projectApi.evidence(projectId, { task_id: taskId, page: 1, page_size: 50 }), enabled: showRechecks, ...queryPolicy });
   const history = useQuery({ queryKey: ["c-progress-history", userId, projectId, taskId, pageNumber(query.get("history_page")), progressFocus], queryFn: () => projectApi.progressHistory(projectId, taskId, pageNumber(query.get("history_page")), 10, progressFocus ?? undefined), enabled: taskExists && tab === "history" && !submission, ...queryPolicy });
   const [blocked, setBlocked] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
@@ -104,6 +105,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   function deny(next: unknown) { setBlocked(next); setProgress(null); setDraft(null); setPrepareVersion(null); }
   async function refresh() {
     const results = await Promise.all([context.refetch(), execution.refetch(), ...(taskExists ? [note.refetch()] : []), ...(taskExists && (submission || tab === "evidence") ? [evidence.refetch()] : []), ...(showPlanVersions ? [history.refetch(), planVersions.refetch()] : []), ...(showRechecks ? [rechecks.refetch()] : []), ...(showGithub ? [github.refetch()] : []), ...(showVerification ? [verification.refetch()] : [])]);
+    if (showRechecks) void criteriaEvidence.refetch();
     const denied = results.find((result) => accessFailure(result.error));
     if (denied) deny(denied.error); else if (results[0].isSuccess) setBlocked(null);
   }
@@ -175,7 +177,20 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
         {!submission && <div className="my-4 flex flex-wrap gap-2">{Object.entries(tabs).map(([value, label]) => <button className={apiButton} key={value} aria-pressed={tab === value} onClick={() => updateQuery({ tab: value })}>{label}</button>)}</div>}
         {progress && state.can_update_progress && <Panel title="更新任务进度"><label>任务进度<input className={`${apiInput} block`} type="number" min={0} max={100} step={1} value={progress.value} disabled={busy} onChange={(event) => setProgress({ ...progress, value: Number(event.target.value) })} /></label><label htmlFor="progress-reason">进度变更原因</label><textarea id="progress-reason" className={`${apiInput} block w-full`} maxLength={2000} disabled={busy} value={progress.reason} onChange={(event) => setProgress({ ...progress, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void perform("progress")}>保存进度</button><button className={apiButton} disabled={busy} onClick={() => setProgress(null)}>取消</button></div></Panel>}
         {!submission && tab === "overview" && <Panel title="执行概览"><h3 className="font-semibold">任务描述</h3><p className="my-2 whitespace-pre-wrap">{task.description || "未填写任务描述。"}</p><p>项目进度：{state.project_progress === null ? "暂无可计算进度" : `${state.project_progress}%`}</p><p className="my-2">负责人：{state.responsible_ids.map((id) => access.members.find((member) => member.id === id)?.title ?? "项目负责人").join("、") || "未指派"}</p><h3 className="mt-3 font-semibold">前置任务</h3>{state.dependencies.map((dependency) => <p key={dependency.task_id}>{access.tasks.find((item) => item.id === dependency.task_id)?.title ?? "前置任务"} · {dependency.satisfied ? "已满足" : "尚未满足"}</p>)}{!state.dependencies.length && <p>没有前置任务。</p>}<Link className="gp-link mt-3 inline-block" href={`/projects/${projectId}/tasks/${taskId}?tab=verification`}>查看逐项验收结果与人工决定</Link></Panel>}
-        {!submission && tab === "criteria" && <TaskCriteriaPanel criteria={task.criteria} requirements={access.requirements} rechecks={rechecks} />}
+        {!submission && tab === "criteria" && <TaskCriteriaPanel
+          projectId={projectId}
+          taskId={taskId}
+          taskStatus={state.status}
+          actorId={access.actor.id}
+          canLeadOrTeach={Boolean(access.actor.is_leader || access.actor.is_teacher)}
+          isResponsible={state.responsible_ids.includes(access.actor.id)}
+          canCaptureEvidence={Boolean(task.can_capture_evidence && access.permissions.can_capture_evidence)}
+          criteria={task.criteria}
+          requirements={access.requirements}
+          rechecks={rechecks}
+          evidences={criteriaEvidence.isSuccess && !criteriaEvidence.isFetching ? criteriaEvidence.data.items : []}
+          onChanged={refresh}
+        />}
         {showPlanVersions && <TaskPlanHistory query={planVersions} />}
         {showGithub && <TaskGithubActivities projectId={projectId} taskId={taskId} query={github} changePage={(page) => updateQuery({ github_page: String(page) })} />}
         {showVerification && <TaskVerificationPanel projectId={projectId} taskId={taskId} query={verification} members={access.members} />}

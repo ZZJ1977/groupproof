@@ -99,9 +99,8 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
         <Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>
       </>} />
     <nav aria-label={tr("任务视图")} className="gp-segmented mt-4">
-      <Link href={`/projects/${projectId}/tasks?view=tree`} className="gp-segmented-item">{tr("任务树")}</Link>
+      <Link href={`/projects/${projectId}/tasks?view=list`} className="gp-segmented-item">{tr("任务列表")}</Link>
       <Link href={`/projects/${projectId}/tasks?view=board`} className="gp-segmented-item">{tr("看板")}</Link>
-      <Link href={`/projects/${projectId}/tasks?view=list`} className="gp-segmented-item">{tr("列表")}</Link>
       <Link href={`/projects/${projectId}/tasks?view=plan`} aria-current="page" data-active="true" className="gp-segmented-item">{tr("分工与规划")}</Link>
     </nav>
     <div className="mt-4 space-y-3">

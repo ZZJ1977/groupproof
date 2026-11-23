@@ -10,16 +10,26 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import TaskAssignee, User
+from app.modules.c.execution_schemas import PrepareSubmissionRequest
 from app.modules.c.permissions import get_project_access
-from app.modules.c.task_execution import SqlExecutionRepository, TaskExecutionService
-from app.modules.d.integrity import AcceptanceTransitionProvider, require_task
+from app.modules.c.task_execution import (
+    SqlExecutionRepository,
+    TaskExecutionService,
+    TaskSubmissionService,
+)
+from app.modules.d.integrity import (
+    AcceptanceTransitionProvider,
+    enter_verification,
+    require_task,
+    run_check,
+)
 from app.modules.d.models import (
     AcceptanceDecision,
     CriterionResult,
     FormalOutcome,
     VerificationRun,
 )
-from app.modules.d.verification import verification_data
+from app.modules.d.verification import run_verification, verification_data
 
 
 def responsible_ids(session: Session, task_id: UUID) -> list[UUID]:
@@ -317,3 +327,86 @@ def decide(
         else:
             session.commit()
     return {"status": "recorded", "history": history(session, project_id, task_id, user)}
+
+
+def complete_by_criteria(
+    session: Session,
+    project_id: UUID,
+    task_id: UUID,
+    user: User,
+    reason: str = "",
+    responsibility_share: Decimal | None = None,
+) -> dict:
+    """全部交付标准已采纳正式证据后，按官方状态机与审计链一键完成验收与任务确认。"""
+    access = get_project_access(session, user, project_id)
+    if not access.member:
+        raise ApiError(403, "PROJECT_MEMBER_REQUIRED", "Only an active project member can decide.")
+    task = require_task(session, project_id, task_id)
+    assignees = responsible_ids(session, task_id)
+    if user.id not in assignees:
+        raise ApiError(403, "TASK_RESPONSIBLE_REQUIRED", "只有该任务的负责人可以确认完成任务。")
+    if task.status == "completed":
+        return {
+            "status": "completed",
+            "task_status": "completed",
+            "progress_percent": int(task.progress_percent),
+            "history": history(session, project_id, task_id, user),
+        }
+
+    check = run_check(session, project_id, task_id, user)
+    if check["status"] != "passed":
+        missing = max(0, int(check["total_criteria"]) - int(check["covered_criteria"]))
+        raise ApiError(
+            409,
+            "CRITERIA_NOT_CONFIRMED",
+            f"仍有 {missing} 条交付标准未关联已采纳的正式证据，请先确认全部标准后再完成任务。",
+        )
+
+    task = require_task(session, project_id, task_id)
+    if task.status == "not_started":
+        TaskExecutionService(SqlExecutionRepository(session)).start(
+            task_id, user, task.lock_version
+        )
+        task = require_task(session, project_id, task_id)
+
+    if task.status == "in_progress":
+        TaskSubmissionService(session).prepare(
+            task_id,
+            user,
+            PrepareSubmissionRequest(expected_version=task.lock_version),
+            key=f"complete-criteria-{task.id}-v{task.lock_version}",
+        )
+        task = require_task(session, project_id, task_id)
+
+    if task.status == "pending_submission":
+        enter_verification(session, project_id, task_id, user)
+        task = require_task(session, project_id, task_id)
+
+    if task.status != "pending_verification":
+        raise ApiError(409, "INVALID_TASK_STATE", "当前任务状态无法执行验收完成。")
+
+    latest_run = session.scalar(
+        select(VerificationRun)
+        .where(VerificationRun.project_id == project_id, VerificationRun.task_id == task_id)
+        .order_by(VerificationRun.created_at.desc(), VerificationRun.id.desc())
+    )
+    if latest_run is None or latest_run.status != "completed" or stale_reason(session, latest_run):
+        run_verification(session, project_id, task_id, user)
+
+    share_val = responsibility_share
+    if share_val is None:
+        if len(assignees) == 1:
+            share_val = Decimal("100")
+        else:
+            share_val = (Decimal("100") / Decimal(len(assignees))).quantize(Decimal("0.01"))
+
+    confirm_reason = reason.strip() or "全部交付标准已由真实代码证据确认达标，确认完成任务。"
+    res = decide(session, project_id, task_id, user, "confirmed", confirm_reason, share_val)
+    task = require_task(session, project_id, task_id)
+    return {
+        "status": "completed" if task.status == "completed" else res["status"],
+        "task_status": task.status,
+        "progress_percent": int(task.progress_percent),
+        "integrity_check": check,
+        "history": res.get("history") or history(session, project_id, task_id, user),
+    }

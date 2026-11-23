@@ -51,6 +51,10 @@ class TaskRowDTO(BaseModel):
     updated_at: datetime | None
     matched_commits: int = 0
     latest_commit_at: datetime | None = None
+    criteria_total: int = 0
+    criteria_evidenced: int = 0
+    criteria_confirmed: int = 0
+    evidence_count: int = 0
     links: TaskLinksDTO
     transitions: list[TransitionDTO]
     blocked_reason: str | None

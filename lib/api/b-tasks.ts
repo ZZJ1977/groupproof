@@ -11,8 +11,13 @@ export type BTaskRow = {
   links: { detail: string; submit: string; evidence: string; verification: string };
   transitions: BTransition[]; blocked_reason: string | null; matched: boolean;
   matched_commits?: number; latest_commit_at?: string | null;
+  criteria_total?: number; criteria_evidenced?: number; criteria_confirmed?: number; evidence_count?: number;
 };
-export type BCodeProgressSync = { commits_scanned: number; commits_matched: number; tasks_updated: number; milestones_updated: number };
+export type BCodeProgressSync = {
+  commits_scanned: number; commits_matched: number; tasks_updated: number; milestones_updated: number;
+  evidences_created?: number; criteria_covered?: number;
+};
+export type BCompleteByCriteriaResult = { status: string; task_status: string; progress_percent: number };
 export type BTasksPage = {
   view: BTaskView; items: BTaskRow[]; total: number; page: number; page_size: number; lock_version: number;
   plan_status: "none" | "draft" | "frozen"; integrity_issues: BPlanIssue[]; columns: { status: string; label: string; count: number }[];
@@ -23,4 +28,6 @@ export type BTaskFilters = { view: BTaskView; q?: string; status?: string; assig
 export const bTasksApi = {
   list: (projectId: string, filters: BTaskFilters) => bRequest<BTasksPage>({ path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks`, query: filters }),
   syncCodeProgress: (projectId: string) => bRequest<BCodeProgressSync>({ method: "POST", path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/sync-code-progress` }),
+  completeByCriteria: (projectId: string, taskId: string, reason?: string) =>
+    bRequest<BCompleteByCriteriaResult>({ method: "POST", path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/complete-by-criteria`, body: { reason: reason ?? "" } }),
 };

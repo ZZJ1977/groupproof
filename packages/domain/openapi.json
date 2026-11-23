@@ -3886,6 +3886,31 @@
         "title": "CommentInput",
         "type": "object"
       },
+      "CompleteByCriteriaRequest": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "responsibility_share": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsibility Share"
+          }
+        },
+        "title": "CompleteByCriteriaRequest",
+        "type": "object"
+      },
       "CompleteMilestone": {
         "additionalProperties": false,
         "properties": {
@@ -44114,6 +44139,95 @@
         "tags": [
           "b",
           "b-planning"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}/complete-by-criteria": {
+      "post": {
+        "operationId": "complete_task_by_criteria_api_v1_projects__project_id__tasks__task_id__complete_by_criteria_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CompleteByCriteriaRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Task By Criteria Api V1 Projects  Project Id  Tasks  Task Id  Complete By Criteria Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Task By Criteria",
+        "tags": [
+          "d-acceptance"
         ]
       }
     },

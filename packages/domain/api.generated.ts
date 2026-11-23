@@ -4059,6 +4059,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/tasks/{task_id}/complete-by-criteria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Task By Criteria */
+        post: operations["complete_task_by_criteria_api_v1_projects__project_id__tasks__task_id__complete_by_criteria_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/tasks/{task_id}/enter-verification": {
         parameters: {
             query?: never;
@@ -6810,6 +6827,16 @@ export interface components {
         CommentInput: {
             /** Body */
             body: string;
+        };
+        /** CompleteByCriteriaRequest */
+        CompleteByCriteriaRequest: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Responsibility Share */
+            responsibility_share?: number | null;
         };
         /** CompleteMilestone */
         CompleteMilestone: {
@@ -27549,6 +27576,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    complete_task_by_criteria_api_v1_projects__project_id__tasks__task_id__complete_by_criteria_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CompleteByCriteriaRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronRight, GitCommitHorizontal, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, RefreshCw, Search } from "lucide-react";
 import { EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { bTasksApi, type BTaskRow, type BTaskView, type BTransition } from "@/lib/api/b-tasks";
@@ -37,14 +37,13 @@ const filterSchema = {
   page: { kind: "int", default: 1, min: 1 },
   collapsed: { kind: "list" },
 } as const;
-const viewLabel: Record<BTaskView, string> = { tree: "任务树", board: "看板", list: "列表" };
 const titles: Record<BTaskView, [string, string]> = {
-  tree: ["任务树", "按父子层级查看任务、负责人、权重和进度；数据有问题时会明确标出。"],
+  tree: ["任务列表", "按交付标准与真实代码证据追踪进度；支持父子层级展开、筛选及一键进入验收与证据核对。"],
   board: ["任务看板", "按状态分列。拖动卡片会先确认，再交给任务执行接口处理。"],
-  list: ["任务列表", "组合筛选、排序和分页；行内按钮直接去开始、提交或查看证据。"],
+  list: ["任务列表", "按交付标准与真实代码证据追踪进度；支持父子层级展开、筛选及一键进入验收与证据核对。"],
 };
 
-/** Pages 11–13 (B6-01 ~ B6-03): one query, three views; status changes go to C. */
+/** Unified tasks workspace: merged tree/list table + kanban board + link to planning. */
 export function TasksApiPage({ projectId, view }: { projectId: string; view: BTaskView }) {
   const tr = useUiText();
   const errorText = useBErrorMessage();
@@ -68,11 +67,11 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     onSuccess: (res) => {
       setNotice({
         tone: "success",
-        text: res.commits_matched > 0
-          ? tr("已扫描 {0} 条成员提交，匹配 {1} 条到任务，更新 {2} 项任务与 {3} 个里程碑（代码进度封顶 90%）。", { 0: res.commits_scanned, 1: res.commits_matched, 2: res.tasks_updated, 3: res.milestones_updated })
-          : tr("已扫描 {0} 条成员提交，当前任务进度已与代码记录保持一致。", { 0: res.commits_scanned }),
+        text: (res.evidences_created ?? 0) > 0 || res.commits_matched > 0
+          ? tr("已扫描 {0} 条成员提交，关联 {1} 条提交并生成 {2} 条代码候选证据，覆盖 {3} 条交付标准（需人工确认后正式完成）。", { 0: res.commits_scanned, 1: res.commits_matched, 2: res.evidences_created ?? 0, 3: res.criteria_covered ?? 0 })
+          : tr("已扫描 {0} 条成员提交，当前交付标准与代码证据已保持最新。", { 0: res.commits_scanned }),
       });
-      for (const name of ["b-tasks", "b-milestones", "b-plan"]) void client.invalidateQueries({ queryKey: [name, userId, projectId] });
+      for (const name of ["b-tasks", "b-milestones", "b-plan", "c-evidence", "c-task-evidence"]) void client.invalidateQueries({ queryKey: [name, userId, projectId] });
     },
     onError: (error) => setNotice({ tone: "error", text: errorText(error) }),
   });
@@ -92,7 +91,6 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     try {
       await c.start(row.id, transition.expected_version);
       setNotice({ tone: "success", text: tr("{0} 已改为“{1}”。", { 0: row.code ?? row.title, 1: tr(statusLabel[transition.to]) }) });
-      // Every view shares the prefix, so tree, board and list all refetch.
       await client.invalidateQueries({ queryKey: ["b-tasks", userId, projectId] });
     } catch (error) {
       const reason = error instanceof CApiError ? cErrors[error.code] ? tr(cErrors[error.code]) : tr("任务执行接口拒绝了这次操作（{0}）。", { 0: error.code }) : tr("网络异常，请重试。");
@@ -108,23 +106,31 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const rootItems = items.filter((r) => !r.parent_task_id);
   const weightSum = rootItems.reduce((s, r) => s + Math.max(1, r.weight), 0);
   const avgProgress = weightSum > 0 ? Math.round(rootItems.reduce((s, r) => s + r.progress_percent * Math.max(1, r.weight), 0) / weightSum) : 0;
-  const commitLinked = items.filter((r) => (r.matched_commits ?? 0) > 0).length;
+  const totalCriteria = items.reduce((s, r) => s + (r.criteria_total ?? 0), 0);
+  const evidencedCriteria = items.reduce((s, r) => s + (r.criteria_evidenced ?? 0), 0);
+  const confirmedCriteria = items.reduce((s, r) => s + (r.criteria_confirmed ?? 0), 0);
   const inProgressTasks = (page.data?.columns ?? []).filter((c) => ["in_progress", "pending_submission", "pending_verification"].includes(c.status)).reduce((s, c) => s + c.count, 0);
   const completedTasks = (page.data?.columns ?? []).find((c) => c.status === "completed")?.count ?? 0;
+
   return <div>
-    <PageHeader title={tr(title)} description={tr(description)} actions={<button type="button" className={secondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}><RefreshCw size={14} className={syncCode.isPending ? "animate-spin" : ""} />{syncCode.isPending ? tr("同步中…") : tr("同步代码进度")}</button>} />
+    <PageHeader
+      title={tr(title)}
+      description={tr(description)}
+      actions={<button type="button" className={secondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}><RefreshCw size={14} className={syncCode.isPending ? "animate-spin" : ""} />{syncCode.isPending ? tr("正在关联代码证据…") : tr("同步代码证据")}</button>}
+    />
     {page.data && page.data.total > 0 && <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
       <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("任务总数")}</span><span className="text-base font-bold text-slate-900">{page.data.total}<span className="ml-1 text-[11px] font-normal text-slate-400">({tr("完成 {0}", { 0: completedTasks })})</span></span></div>
-      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("活跃推进")}</span><span className="text-base font-bold text-sky-700">{inProgressTasks}</span></div>
+      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("进行中")}</span><span className="text-base font-bold text-sky-700">{inProgressTasks}</span></div>
+      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("交付标准")}</span><span className="text-base font-bold text-slate-900">{evidencedCriteria}/{totalCriteria}<span className="ml-1 text-[11px] font-normal text-emerald-700">({tr("确认 {0}", { 0: confirmedCriteria })})</span></span></div>
       <div className="gp-surface-card flex items-center justify-between gap-3 py-2.5"><span className="text-xs text-slate-500">{tr("加权进度")}</span><div className="flex flex-1 items-center justify-end gap-2"><div className="h-1.5 max-w-20 flex-1 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${avgProgress}%` }} /></div><span className="text-base font-bold text-slate-900">{avgProgress}%</span></div></div>
-      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("代码联动")}</span><span className="text-base font-bold text-slate-900">{commitLinked}<span className="ml-1 text-[11px] font-normal text-slate-400">{tr("项")}</span></span></div>
     </div>}
     <nav aria-label={tr("任务视图")} className="gp-segmented mt-3">
-      {(["tree", "board", "list"] as const).map((v) => (
-        <Link key={v} href={viewHref(v)} aria-current={v === view ? "page" : undefined} data-active={v === view ? "true" : undefined} className="gp-segmented-item">
-          {tr(viewLabel[v])}
-        </Link>
-      ))}
+      <Link href={viewHref("list")} aria-current={view !== "board" ? "page" : undefined} data-active={view !== "board" ? "true" : undefined} className="gp-segmented-item">
+        {tr("任务列表")}
+      </Link>
+      <Link href={viewHref("board")} aria-current={view === "board" ? "page" : undefined} data-active={view === "board" ? "true" : undefined} className="gp-segmented-item">
+        {tr("看板")}
+      </Link>
       <Link href={`/projects/${projectId}/tasks?view=plan`} className="gp-segmented-item">
         {tr("分工与规划")}
       </Link>
@@ -151,9 +157,18 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
       {page.isPending ? <div role="status" className="gp-empty">{tr("正在加载任务…")}</div>
         : page.isError ? <div role="alert"><Feedback tone="error">{errorText(page.error)}</Feedback></div>
         : page.data.plan_status !== "frozen" && page.data.items.length === 0 ? <Panel><EmptyState title={tr("还没有任务")} description={tr("先在分工与规划里拆分任务。")} action={<Link className={button} href={`/projects/${projectId}/tasks?view=plan`}>{tr("去分工与规划")}</Link>} /></Panel>
-        : view === "tree" ? <TreeView rows={page.data.items} issues={page.data.integrity_issues} collapsed={filters.collapsed} onCollapsed={(next) => setFilters({ collapsed: next })} />
         : view === "board" ? <BoardView page={page.data} onMove={(row, transition) => setPending({ row, transition })} />
-        : <ListView page={page.data} current={filters.page} onPage={(next) => setFilters({ page: next })} />}
+        : <UnifiedTaskTable
+            mode={view === "tree" ? "tree" : "list"}
+            rows={page.data.items}
+            total={page.data.total}
+            pageSize={page.data.page_size}
+            current={filters.page}
+            issues={page.data.integrity_issues}
+            collapsed={filters.collapsed}
+            onCollapsed={(next) => setFilters({ collapsed: next })}
+            onPage={(next) => setFilters({ page: next })}
+          />}
     </div>
   </div>;
 }
@@ -163,43 +178,119 @@ function Assignees({ row }: { row: BTaskRow }) {
   return <>{row.assignees.map((a) => a.name ?? tr("组员")).join("、") || <span className="text-amber-700">{tr("未分配")}</span>}</>;
 }
 
-function TreeView({ rows, issues, collapsed, onCollapsed }: { rows: BTaskRow[]; issues: BTasksPageIssue[]; collapsed: string[]; onCollapsed: (next: string[]) => void }) {
+function CriteriaPill({ row }: { row: BTaskRow }) {
+  const tr = useUiText();
+  const total = row.criteria_total ?? 0;
+  const evidenced = row.criteria_evidenced ?? 0;
+  const confirmed = row.criteria_confirmed ?? 0;
+  if (total === 0) return <Link href={`${row.links.detail}?tab=criteria`} className="text-xs text-slate-400 hover:underline">{tr("未设标准")}</Link>;
+  const allConfirmed = confirmed >= total;
+  const tone = allConfirmed
+    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+    : evidenced > 0
+      ? "bg-sky-50 text-sky-700 hover:bg-sky-100"
+      : "bg-slate-100 text-slate-600 hover:bg-slate-200";
+  const labelText = allConfirmed
+    ? tr("{0}/{1} 已确认", { 0: confirmed, 1: total })
+    : evidenced > 0
+      ? tr("{0}/{1} 有证据", { 0: evidenced, 1: total })
+      : tr("0/{0} 待提交", { 0: total });
+  return <Link href={`${row.links.detail}?tab=criteria`} title={tr("点击查看并确认各条交付标准及代码证据")} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${tone}`}>
+    {allConfirmed && <CheckCircle2 size={11} />}
+    {labelText}
+  </Link>;
+}
+
+type BTasksPageIssue = { code: string; message: string; task_id: string | null; task_ids: string[] };
+
+function UnifiedTaskTable({
+  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage,
+}: {
+  mode: "tree" | "list";
+  rows: BTaskRow[];
+  total: number;
+  pageSize: number;
+  current: number;
+  issues: BTasksPageIssue[];
+  collapsed: string[];
+  onCollapsed: (next: string[]) => void;
+  onPage: (page: number) => void;
+}) {
   const tr = useUiText();
   const ids = new Set(rows.map((r) => r.id));
   const children = new Map<string, BTaskRow[]>();
   for (const r of rows) if (r.parent_task_id && ids.has(r.parent_task_id)) children.set(r.parent_task_id, [...(children.get(r.parent_task_id) ?? []), r]);
+  const hasAnyHierarchy = children.size > 0;
   const flagged = new Set(issues.flatMap((i) => [i.task_id, ...i.task_ids]).filter(Boolean) as string[]);
-  const seen = new Set<string>();
-  const out: { row: BTaskRow; depth: number; hasChildren: boolean }[] = [];
-  const visit = (r: BTaskRow, depth: number, visible: boolean) => {
-    if (seen.has(r.id)) return;
-    seen.add(r.id);
-    const kids = children.get(r.id) ?? [];
-    if (visible) out.push({ row: r, depth, hasChildren: kids.length > 0 });
-    for (const k of kids) visit(k, depth + 1, visible && !collapsed.includes(r.id));
-  };
-  for (const r of rows) if (!r.parent_task_id || !ids.has(r.parent_task_id)) visit(r, 0, true);
-  for (const r of rows) visit(r, 0, true); // tasks on a parent cycle have no root; show them at the top
+
+  const ordered: { row: BTaskRow; depth: number; hasChildren: boolean }[] = [];
+  if (mode === "tree") {
+    const seen = new Set<string>();
+    const visit = (r: BTaskRow, depth: number, visible: boolean) => {
+      if (seen.has(r.id)) return;
+      seen.add(r.id);
+      const kids = children.get(r.id) ?? [];
+      if (visible) ordered.push({ row: r, depth, hasChildren: kids.length > 0 });
+      for (const k of kids) visit(k, depth + 1, visible && !collapsed.includes(r.id));
+    };
+    for (const r of rows) if (!r.parent_task_id || !ids.has(r.parent_task_id)) visit(r, 0, true);
+    for (const r of rows) visit(r, 0, true);
+  } else {
+    for (const r of rows) ordered.push({ row: r, depth: 0, hasChildren: false });
+  }
+
+  const pages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+  const testId = mode === "tree" ? "tree-row" : "list-row";
+
   return <div className="space-y-3">
     {issues.length > 0 && <div data-testid="tree-issues"><Feedback tone="warning"><div className="flex items-center gap-1 font-semibold"><AlertTriangle size={14} />{tr("任务数据有 {0} 处问题（只读诊断，未自动修改）", { 0: issues.length })}</div><ul className="mt-1 list-disc pl-5">{issues.map((i, n) => <li key={`${i.code}-${n}`}>{i.message}</li>)}</ul></Feedback></div>}
-    <Panel noPadding><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
-      <thead className="border-b border-slate-100 text-xs text-slate-500"><tr><th className="px-4 py-2">{tr("任务")}</th><th className="px-4 py-2">{tr("负责人")}</th><th className="px-4 py-2">{tr("权重")}</th><th className="px-4 py-2">{tr("状态")}</th><th className="px-4 py-2">{tr("进度")}</th></tr></thead>
-      <tbody className="divide-y divide-slate-100">{out.map(({ row, depth, hasChildren }) => <tr key={row.id} data-testid="tree-row" className={row.matched ? "" : "text-slate-400"}>
-        <td className="px-4 py-2" style={{ paddingLeft: 12 + depth * 22 }}>
-          {hasChildren ? <button type="button" aria-label={collapsed.includes(row.id) ? tr("展开 {0}", { 0: row.code ?? row.title }) : tr("收起 {0}", { 0: row.code ?? row.title })} className="mr-1 align-middle text-slate-500" onClick={() => onCollapsed(collapsed.includes(row.id) ? collapsed.filter((x) => x !== row.id) : [...collapsed, row.id])}>{collapsed.includes(row.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="mr-1 inline-block w-[14px]" />}
-          <span className="mr-2 font-mono text-xs text-slate-500">{row.code ?? "—"}</span><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link>
-          {(row.matched_commits ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{tr("{0} 次提交", { 0: row.matched_commits ?? 0 })}</span>}
-          {flagged.has(row.id) && <span className="ml-2 rounded bg-amber-50 px-1.5 text-xs text-amber-700">{tr("数据有问题")}</span>}
-        </td>
-        <td className="px-4 py-2"><Assignees row={row} /></td><td className="px-4 py-2">{row.weight}</td>
-        <td className="px-4 py-2"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
-        <td className="px-4 py-2"><div className="flex items-center gap-2"><div className="h-1.5 w-14 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div><span className="text-xs font-medium">{row.progress_percent}%</span></div></td>
-      </tr>)}</tbody>
-    </table></div>{out.length === 0 && <div className="p-4"><EmptyState title={tr("没有符合条件的任务")} /></div>}</Panel>
+    {ordered.length === 0 ? <Panel><EmptyState title={tr("没有符合条件的任务")} /></Panel>
+      : <Panel noPadding>
+        <div className="overflow-x-auto"><table className="w-full min-w-[920px] text-left text-sm">
+          <thead className="border-b border-slate-100 text-xs text-slate-500">
+            <tr>
+              <th className="px-4 py-2">{tr("编号")}</th>
+              <th className="px-4 py-2">{tr("任务")}</th>
+              <th className="px-3 py-2">{tr("模块")}</th>
+              <th className="px-3 py-2">{tr("负责人")}</th>
+              <th className="px-3 py-2">{tr("交付标准")}</th>
+              <th className="px-3 py-2">{tr("权重")}</th>
+              <th className="px-3 py-2">{tr("状态")}</th>
+              <th className="px-3 py-2">{tr("进度")}</th>
+              <th className="px-4 py-2">{tr("操作")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">{ordered.map(({ row, depth, hasChildren }) => <tr key={row.id} data-testid={testId} className={row.matched ? "hover:bg-slate-50/70" : "text-slate-400"}>
+            <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-slate-500">{row.code ?? "—"}</td>
+            <td className="px-4 py-2.5" style={hasAnyHierarchy ? { paddingLeft: 12 + depth * 22 } : undefined}>
+              {hasAnyHierarchy && (hasChildren
+                ? <button type="button" aria-label={collapsed.includes(row.id) ? tr("展开 {0}", { 0: row.code ?? row.title }) : tr("收起 {0}", { 0: row.code ?? row.title })} className="mr-1 align-middle text-slate-500" onClick={() => onCollapsed(collapsed.includes(row.id) ? collapsed.filter((x) => x !== row.id) : [...collapsed, row.id])}>{collapsed.includes(row.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>
+                : <span className="mr-1 inline-block w-[14px]" />)}
+              <Link className="font-medium text-slate-900 hover:underline" href={row.links.detail}>{row.title}</Link>
+              {(row.evidence_count ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{tr("{0} 证据", { 0: row.evidence_count ?? 0 })}</span>}
+              {flagged.has(row.id) && <span className="ml-2 rounded bg-amber-50 px-1.5 text-xs text-amber-700">{tr("数据有问题")}</span>}
+            </td>
+            <td className="max-w-[160px] truncate px-3 py-2.5 text-xs text-slate-600" title={row.module.name}>{row.module.name}</td>
+            <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-600"><Assignees row={row} /></td>
+            <td className="px-3 py-2.5"><CriteriaPill row={row} /></td>
+            <td className="px-3 py-2.5 text-xs text-slate-600">{row.weight}<span className="ml-1 text-[11px] text-slate-400">· {tr(priorityLabel[row.priority]) ?? row.priority}</span></td>
+            <td className="whitespace-nowrap px-3 py-2.5"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
+            <td className="whitespace-nowrap px-3 py-2.5"><div className="flex items-center gap-2"><div className="h-1.5 w-14 rounded-full bg-slate-100"><div className={`h-1.5 rounded-full ${row.status === "completed" ? "bg-emerald-600" : "bg-[var(--gp-action)]"}`} style={{ width: `${row.progress_percent}%` }} /></div><span className="text-xs font-medium tabular-nums">{row.progress_percent}%</span></div></td>
+            <td className="space-x-2 whitespace-nowrap px-4 py-2.5 text-xs">
+              {row.status === "not_started" && <Link className="text-blue-700 underline" href={row.links.detail}>{tr("开始任务")}</Link>}
+              {["in_progress", "pending_submission"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.submit}>{tr("提交验收")}</Link>}
+              {["pending_verification", "completed"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.verification}>{tr("查看验收")}</Link>}
+              <Link className="text-blue-700 underline" href={row.links.evidence}>{tr("查看证据")}</Link>
+            </td>
+          </tr>)}</tbody>
+        </table></div>
+        {mode === "list" && <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
+          <span>{tr("共 {0} 个 · 第 {1} / {2} 页", { 0: total, 1: current, 2: pages })}</span>
+          <span className="flex gap-2"><button type="button" className={secondary} disabled={current <= 1} onClick={() => onPage(current - 1)}>{tr("上一页")}</button><button type="button" className={secondary} disabled={current >= pages} onClick={() => onPage(current + 1)}>{tr("下一页")}</button></span>
+        </div>}
+      </Panel>}
   </div>;
 }
-
-type BTasksPageIssue = { code: string; message: string; task_id: string | null; task_ids: string[] };
 
 function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { status: string; label: string; count: number }[] }; onMove: (row: BTaskRow, transition: BTransition) => void }) {
   const tr = useUiText();
@@ -213,41 +304,12 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
     <div className="space-y-2.5">{page.items.filter((r) => r.status === col.status).map((row) => <article key={row.id} data-testid="board-card" draggable={row.transitions.length > 0} data-movable={row.transitions.length > 0 ? "true" : "false"}
       title={row.blocked_reason ?? tr("拖到下一列")} onDragStart={() => setDragged(row)} onDragEnd={() => setDragged(undefined)}
       className={`rounded-xl border border-slate-200/80 bg-white p-3 text-sm shadow-2xs transition-shadow hover:shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}>
-      <div className="font-mono text-xs text-slate-500">{row.code}</div>
+      <div className="flex items-center justify-between gap-2"><span className="font-mono text-xs text-slate-500">{row.code}</span>{(row.criteria_total ?? 0) > 0 && <span className="text-[11px] text-slate-400">{row.criteria_confirmed ?? 0}/{row.criteria_total}</span>}</div>
       <Link className="font-medium text-slate-900 hover:underline" draggable={false} href={row.links.detail}>{row.title}</Link>
-      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"><span><Assignees row={row} /> · {row.progress_percent}%</span>{(row.matched_commits ?? 0) > 0 && <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{row.matched_commits}</span>}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"><span><Assignees row={row} /> · {row.progress_percent}%</span>{(row.evidence_count ?? 0) > 0 && <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{row.evidence_count}</span>}</div>
       <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div>
       {row.blocked_reason && <div className="mt-1 text-xs text-slate-400">{row.blocked_reason}</div>}
       {row.transitions.map((t) => <button key={t.to} type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => onMove(row, t)}>{tr("移到“{0}”", { 0: tr(statusLabel[t.to]) })}</button>)}
     </article>)}</div>
   </section>)}</div>;
-}
-
-function ListView({ page, current, onPage }: { page: { items: BTaskRow[]; total: number; page_size: number }; current: number; onPage: (page: number) => void }) {
-  const tr = useUiText();
-  const pages = Math.max(1, Math.ceil(page.total / page.page_size));
-  if (page.items.length === 0) return <Panel><EmptyState title={tr("没有符合条件的任务")} /></Panel>;
-  return <Panel noPadding>
-    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm">
-      <thead className="border-b border-slate-100 text-xs text-slate-500"><tr><th className="px-4 py-2">{tr("编号")}</th><th className="px-4 py-2">{tr("任务")}</th><th className="px-4 py-2">{tr("模块")}</th><th className="px-4 py-2">{tr("负责人")}</th><th className="px-4 py-2">{tr("优先级")}</th><th className="px-4 py-2">{tr("权重")}</th><th className="px-4 py-2">{tr("状态")}</th><th className="px-4 py-2">{tr("进度")}</th><th className="px-4 py-2">{tr("操作")}</th></tr></thead>
-      <tbody className="divide-y divide-slate-100">{page.items.map((row) => <tr key={row.id} data-testid="list-row">
-        <td className="px-4 py-2 font-mono text-xs">{row.code ?? "—"}</td>
-        <td className="px-4 py-2"><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link>{(row.matched_commits ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{tr("{0} 次提交", { 0: row.matched_commits ?? 0 })}</span>}</td>
-        <td className="px-4 py-2 text-slate-600">{row.module.name}</td><td className="px-4 py-2 text-slate-600"><Assignees row={row} /></td>
-        <td className="px-4 py-2">{tr(priorityLabel[row.priority]) ?? row.priority}</td><td className="px-4 py-2">{row.weight}</td>
-        <td className="px-4 py-2"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
-        <td className="px-4 py-2"><div className="flex items-center gap-2"><div className="h-1.5 w-14 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div><span className="text-xs font-medium">{row.progress_percent}%</span></div></td>
-        <td className="space-x-2 whitespace-nowrap px-4 py-2 text-xs">
-          {row.status === "not_started" && <Link className="text-blue-700 underline" href={row.links.detail}>{tr("开始任务")}</Link>}
-          {["in_progress", "pending_submission"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.submit}>{tr("提交验收")}</Link>}
-          {["pending_verification", "completed"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.verification}>{tr("查看验收")}</Link>}
-          <Link className="text-blue-700 underline" href={row.links.evidence}>{tr("查看证据")}</Link>
-        </td>
-      </tr>)}</tbody>
-    </table></div>
-    <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
-      <span>{tr("共 {0} 个 · 第 {1} / {2} 页", { 0: page.total, 1: current, 2: pages })}</span>
-      <span className="flex gap-2"><button type="button" className={secondary} disabled={current <= 1} onClick={() => onPage(current - 1)}>{tr("上一页")}</button><button type="button" className={secondary} disabled={current >= pages} onClick={() => onPage(current + 1)}>{tr("下一页")}</button></span>
-    </div>
-  </Panel>;
 }
