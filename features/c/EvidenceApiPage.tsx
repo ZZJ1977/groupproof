@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { EmptyState, PageHeader, Panel } from "@/components/common";
+import { CheckCircle2, ExternalLink, FileCode2 } from "lucide-react";
+import { EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { CApiError } from "@/lib/api/c-client";
@@ -89,6 +90,7 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   const [command, setCommand] = useState<{ id: string; action: "adopt" | "withdraw" | "checkSource"; expected: number; reason: string; sourceId?: string } | null>(null);
   const [creating, setCreating] = useState(query.get("capture") === "1");
   const [busy, setBusy] = useState(false);
+  const [quickAdoptBusy, setQuickAdoptBusy] = useState<string | null>(null);
   const busyRef = useRef(false);
   const key = useCommandKey();
   const denial = blocked || [context.error, list.error, detail.error].find(accessFailure);
@@ -103,8 +105,71 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
     if (referencedDecision) decisionRef.current?.focus();
   }, [referencedDecision]);
   const authors = access?.evidence_authors ?? [];
-  const canDecide = (entry: Evidence) => Boolean(access?.permissions.can_capture_evidence && (access.actor.id === entry.author_id || access.actor.is_leader || access.actor.is_teacher));
+  const canDecide = (entry: { author_id: string }) => Boolean(access?.permissions.can_capture_evidence && (access.actor.id === entry.author_id || access.actor.is_leader || access.actor.is_teacher));
   const taskTitle = (id: string) => access?.tasks.find((task) => task.id === id)?.title ?? "关联任务";
+  const criterionTextById = new Map<string, string>(
+    (access?.tasks ?? []).flatMap((task) => task.criteria.map((criterion) => [criterion.id, criterion.text] as const)),
+  );
+  const selectedTask = filters.task_id ? access?.tasks.find((task) => task.id === filters.task_id) : undefined;
+  const activeTaskEvidences = selectedTask && rows
+    ? rows.items.filter((ev) => ev.task_id === selectedTask.id && !ev.source_changed && ["candidate", "pending_confirmation", "formal"].includes(ev.status))
+    : [];
+  const taskEvidenceByCriterion = new Map<string, typeof activeTaskEvidences>();
+  for (const ev of activeTaskEvidences) {
+    for (const cid of ev.criterion_ids) {
+      taskEvidenceByCriterion.set(cid, [...(taskEvidenceByCriterion.get(cid) ?? []), ev]);
+    }
+  }
+  const adoptableTaskEvidences = activeTaskEvidences.filter(
+    (ev) => ["candidate", "pending_confirmation"].includes(ev.status) && canDecide(ev),
+  );
+  async function quickAdoptOne(entry: (typeof activeTaskEvidences)[number]) {
+    if (quickAdoptBusy || busyRef.current || !canDecide(entry)) return;
+    setQuickAdoptBusy(entry.id);
+    setError(null);
+    setNotice("");
+    try {
+      await projectApi.adopt(
+        projectId,
+        entry.id,
+        { expected_version: entry.lock_version, reason: "核对证据内容符合对应交付标准，确认采纳为正式证据。" },
+        `quick-adopt-${entry.id}-v${entry.lock_version}-${Date.now()}`,
+      );
+      await refresh();
+      setNotice(`已采纳「${entry.title}」为正式证据，对应验收标准已计入有效覆盖。`);
+    } catch (next) {
+      setError(next);
+      if (accessFailure(next)) deny(next);
+    } finally {
+      setQuickAdoptBusy(null);
+    }
+  }
+  async function quickAdoptAllForTask() {
+    if (quickAdoptBusy || busyRef.current || adoptableTaskEvidences.length === 0) return;
+    setQuickAdoptBusy("all");
+    setError(null);
+    setNotice("");
+    let adopted = 0;
+    try {
+      for (const entry of adoptableTaskEvidences) {
+        await projectApi.adopt(
+          projectId,
+          entry.id,
+          { expected_version: entry.lock_version, reason: "核对本任务候选证据符合对应交付标准，批量确认采纳为正式证据。" },
+          `quick-adopt-all-${entry.id}-v${entry.lock_version}-${Date.now()}`,
+        );
+        adopted += 1;
+      }
+      await refresh();
+      setNotice(`已采纳 ${adopted} 条正式证据；可点击「前往提交验收」完成最终验收确认。`);
+    } catch (next) {
+      setError(next);
+      if (accessFailure(next)) deny(next);
+      if (adopted > 0) await refresh();
+    } finally {
+      setQuickAdoptBusy(null);
+    }
+  }
   function deny(next: unknown) { setBlocked(next); setCommand(null); setCreating(false); }
   async function refresh() {
     const results = await Promise.all([context.refetch(), list.refetch(), ...(selectedId ? [detail.refetch()] : [])]);
@@ -178,7 +243,103 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
         </form>
         {access.permissions.can_capture_evidence && <button className={`${apiButton} mb-4`} onClick={() => setCreating(!creating)}>{creating ? "关闭新增表单" : "添加候选证据"}</button>}
         {list.isFetching && <p role="status">正在读取证据…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
-        {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p><p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id, decision: null }); setCommand(null); setError(null); }}>查看证据历史</button></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null, decision: null }); setCommand(null); }} /></Panel>}
+        {selectedTask && selectedTask.criteria.length > 0 && rows && (
+          <Panel
+            title={`任务交付标准与证据覆盖 · ${selectedTask.title}`}
+            action={<div className="flex flex-wrap items-center gap-3 text-xs">
+              <Link className="gp-link" href={`/projects/${projectId}/tasks?view=plan&task=${selectedTask.id}`}>查看/修改标准</Link>
+              <Link className="gp-link font-medium" href={`/projects/${projectId}/tasks/${selectedTask.id}/submit`}>前往提交验收 →</Link>
+            </div>}
+          >
+            {(() => {
+              const confirmedCount = selectedTask.criteria.filter((c) => (taskEvidenceByCriterion.get(c.id) ?? []).some((ev) => ev.effective)).length;
+              const evidencedCount = selectedTask.criteria.filter((c) => (taskEvidenceByCriterion.get(c.id) ?? []).length > 0).length;
+              return <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/75 px-3.5 py-2.5 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 text-slate-600">
+                    <span>共 <strong className="text-slate-900">{selectedTask.criteria.length}</strong> 条交付标准</span>
+                    <span>·</span>
+                    <span>已有候选/代码证据 <strong className="text-sky-700">{evidencedCount}</strong> 条</span>
+                    <span>·</span>
+                    <span>已采纳正式证据 <strong className="text-emerald-700">{confirmedCount}</strong> 条</span>
+                  </div>
+                  {adoptableTaskEvidences.length > 0 && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white shadow-2xs transition hover:bg-sky-700 disabled:opacity-50"
+                      disabled={busy || quickAdoptBusy !== null}
+                      onClick={() => void quickAdoptAllForTask()}
+                    >
+                      <CheckCircle2 size={13} />
+                      {quickAdoptBusy === "all" ? "正在批量采纳…" : `一键采纳全部候选证据 (${adoptableTaskEvidences.length})`}
+                    </button>
+                  )}
+                </div>
+                {confirmedCount === selectedTask.criteria.length ? (
+                  <Feedback tone="success">
+                    全部 {selectedTask.criteria.length}/{selectedTask.criteria.length} 条交付标准均已有正式证据覆盖，可点击右上角「前往提交验收」完成任务验收。
+                  </Feedback>
+                ) : evidencedCount > confirmedCount ? (
+                  <Feedback tone="info">
+                    下方「候选证据」尚不计入有效验收，核对后点击「确认采纳此证据」或「一键采纳全部候选证据」转为正式证据，即可提交完成。
+                  </Feedback>
+                ) : null}
+                <ul className="space-y-2.5">
+                  {selectedTask.criteria.map((criterion, index) => {
+                    const linked = taskEvidenceByCriterion.get(criterion.id) ?? [];
+                    const isConfirmed = linked.some((ev) => ev.effective);
+                    return <li key={criterion.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">标准 {index + 1}</span>
+                          <p className="text-sm font-medium text-slate-900">{criterion.text}</p>
+                        </div>
+                        {isConfirmed ? <StatusBadge tone="green" label="已采纳正式证据" />
+                          : linked.length > 0 ? <StatusBadge tone="blue" label="已有候选证据 · 待采纳" />
+                          : <StatusBadge tone="gray" label="暂无证据" />}
+                      </div>
+                      {linked.length > 0 && (
+                        <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+                          {linked.map((ev) => {
+                            const url = safeHttps(ev.source_url, ev.source_type === "github");
+                            const adoptable = ["candidate", "pending_confirmation"].includes(ev.status) && canDecide(ev);
+                            return <div key={ev.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs">
+                              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                                <FileCode2 size={13} className="shrink-0 text-sky-600" />
+                                <button
+                                  type="button"
+                                  className="truncate font-medium text-slate-800 hover:underline"
+                                  onClick={() => { updateQuery({ evidence: ev.id, decision: null }); setCommand(null); setError(null); }}
+                                >
+                                  {ev.title}
+                                </button>
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ev.effective ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                                  {ev.effective ? "正式" : "候选"}
+                                </span>
+                                {url && <a className="inline-flex items-center gap-0.5 text-sky-700 hover:underline" href={url} target="_blank" rel="noopener noreferrer">来源 <ExternalLink size={11} /></a>}
+                              </div>
+                              {adoptable && (
+                                <button
+                                  type="button"
+                                  className="shrink-0 rounded-md border border-sky-200 bg-white px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+                                  disabled={busy || quickAdoptBusy !== null}
+                                  onClick={() => void quickAdoptOne(ev)}
+                                >
+                                  {quickAdoptBusy === ev.id ? "采纳中…" : "确认采纳此证据"}
+                                </button>
+                              )}
+                            </div>;
+                          })}
+                        </div>
+                      )}
+                    </li>;
+                  })}
+                </ul>
+              </div>;
+            })()}
+          </Panel>
+        )}
+        {rows && <Panel>{rows.items.map((entry) => <article className="mb-3 border-b border-slate-100 pb-3" key={entry.id}><strong>{entry.title}</strong><p>{states[entry.status]} · {sources[entry.source_type]} · {taskTitle(entry.task_id)}{entry.source_changed ? " · 来源已变化" : ""}</p>{entry.criterion_ids.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1.5">{entry.criterion_ids.map((cid) => <span key={cid} className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700">对应标准：{criterionTextById.get(cid) ?? "已关联标准"}</span>)}</div>}<p className="my-2 text-sm">{entry.effective ? "当前可用于有效证据查询" : "当前不计入有效证据"}</p><div className="flex flex-wrap items-center gap-2"><button className={apiButton} onClick={() => { updateQuery({ evidence: entry.id, decision: null }); setCommand(null); setError(null); }}>查看证据历史</button>{["candidate", "pending_confirmation"].includes(entry.status) && !entry.source_changed && canDecide(entry) && <button type="button" className={apiButton} disabled={busy || quickAdoptBusy !== null} onClick={() => void quickAdoptOne(entry)}>{quickAdoptBusy === entry.id ? "采纳中…" : "确认采纳此证据"}</button>}</div></article>)}{!rows.items.length && <EmptyState title="没有符合条件的证据" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), evidence: null, decision: null }); setCommand(null); }} /></Panel>}
         {selectedId && <Panel title="证据详情与不可变快照" action={<button className={apiButton} onClick={() => { updateQuery({ evidence: null, decision: null }); setCommand(null); }}>关闭详情</button>}>
           {detail.isFetching && <p role="status">正在读取证据历史…</p>}{detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} />}
           {received && !item && <p role="alert">无法核对这条证据的项目或记录编号。</p>}

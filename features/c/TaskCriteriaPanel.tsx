@@ -22,7 +22,7 @@ type Props = {
   canCaptureEvidence: boolean;
   criteria: { id: string; text: string }[];
   requirements: { id: string; title: string }[];
-  rechecks: UseQueryResult<CriterionRecheck[]>;
+  rechecks?: UseQueryResult<CriterionRecheck[]>;
   evidences: EvidenceItem[];
   onChanged: () => Promise<void>;
 };
@@ -41,7 +41,7 @@ export function TaskCriteriaPanel({
   evidences,
   onChanged,
 }: Props) {
-  const current = rechecks.isSuccess && !rechecks.isFetching ? rechecks.data : [];
+  const current = rechecks?.isSuccess && !rechecks.isFetching ? rechecks.data : [];
   const byCriterion = new Map(current.map((row) => [row.criterion_id, row]));
   const titles = new Map(requirements.map((requirement) => [requirement.id, requirement.title]));
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -61,6 +61,36 @@ export function TaskCriteriaPanel({
 
   const canAdopt = (ev: EvidenceItem) =>
     canCaptureEvidence && !ev.source_changed && ["candidate", "pending_confirmation"].includes(ev.status) && (ev.author_id === actorId || canLeadOrTeach);
+  const adoptableEvidences = activeEvidences.filter((ev) => canAdopt(ev));
+
+  async function adoptAllEvidences() {
+    if (busyId !== null || adoptableEvidences.length === 0) return;
+    setBusyId("adopt-all");
+    setNotice(null);
+    let adopted = 0;
+    try {
+      for (const ev of adoptableEvidences) {
+        const idempotencyKey = `adopt-crit-all-${ev.id}-v${ev.lock_version}-${Date.now()}`;
+        await projectApi.adopt(
+          projectId,
+          ev.id,
+          { expected_version: ev.lock_version, reason: "核对代码改动符合对应交付标准，批量确认采纳为正式证据。" },
+          idempotencyKey,
+        );
+        adopted += 1;
+      }
+      await onChanged();
+      setNotice({
+        tone: "success",
+        text: `已批量采纳 ${adopted} 条正式证据；若全部交付标准均已确认达标，可直接点击「全部标准达标 · 提交并完成任务」。`,
+      });
+    } catch (err) {
+      if (adopted > 0) await onChanged();
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "批量采纳证据失败，请刷新后重试。" });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function adoptEvidence(ev: EvidenceItem) {
     setBusyId(ev.id);
@@ -110,18 +140,31 @@ export function TaskCriteriaPanel({
         <div className="flex flex-wrap items-center gap-2 text-slate-600">
           <span>共 <strong className="text-slate-900">{criteria.length}</strong> 条交付标准</span>
           <span>·</span>
-          <span>已有代码证据 <strong className="text-sky-700">{evidencedCount}</strong> 条</span>
+          <span>已有代码/候选证据 <strong className="text-sky-700">{evidencedCount}</strong> 条</span>
           <span>·</span>
-          <span>已人工确认 <strong className="text-emerald-700">{confirmedCount}</strong> 条</span>
+          <span>已人工确认正式 <strong className="text-emerald-700">{confirmedCount}</strong> 条</span>
         </div>
-        <Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>在证据中心查看全部证据 →</Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {adoptableEvidences.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white shadow-2xs transition hover:bg-sky-700 disabled:opacity-50"
+              disabled={busyId !== null}
+              onClick={() => void adoptAllEvidences()}
+            >
+              <CheckCircle2 size={13} />
+              {busyId === "adopt-all" ? "正在批量采纳…" : `一键采纳全部候选证据 (${adoptableEvidences.length})`}
+            </button>
+          )}
+          <Link className="gp-link" href={`/projects/${projectId}/evidence?task=${taskId}`}>在证据中心查看全部证据 →</Link>
+        </div>
       </div>
     )}
 
     {allConfirmed && taskStatus !== "completed" && isResponsible && (
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
         <div className="text-sm text-emerald-900">
-          <p className="font-semibold">全部 {criteria.length}/{criteria.length} 条交付标准已由正式代码证据确认达标</p>
+          <p className="font-semibold">全部 {criteria.length}/{criteria.length} 条交付标准已由正式证据确认达标</p>
           <p className="mt-0.5 text-xs text-emerald-700">点击右侧按钮将自动完成完整性核验与验收记录，并将本任务标记为「已完成（100%）」。</p>
         </div>
         <button
@@ -131,8 +174,24 @@ export function TaskCriteriaPanel({
           onClick={() => void completeTask()}
         >
           <CheckCircle2 size={15} />
-          {busyId === "complete-task" ? "正在完成验收…" : "全部标准达标 · 确认完成任务"}
+          {busyId === "complete-task" ? "正在提交完成…" : "全部标准达标 · 提交并完成任务"}
         </button>
+      </div>
+    )}
+
+    {allConfirmed && taskStatus !== "completed" && !isResponsible && (
+      <div className="mb-4">
+        <Feedback tone="info">全部 {criteria.length}/{criteria.length} 条交付标准已采纳正式证据，请由本任务负责人点击确认完成任务。</Feedback>
+      </div>
+    )}
+
+    {!allConfirmed && taskStatus !== "completed" && criteria.length > 0 && (
+      <div className="mb-4">
+        <Feedback tone={evidencedCount === criteria.length ? "info" : "warning"}>
+          {evidencedCount === criteria.length
+            ? `全部 ${criteria.length} 条交付标准均已有匹配的候选代码证据，但尚未确认为正式证据。核对后点击「确认采纳此证据」或「一键采纳全部候选证据」，即可提交完成任务。`
+            : `当前已确认 ${confirmedCount}/${criteria.length} 条交付标准（仍有 ${criteria.length - evidencedCount} 条缺少证据）。请先采纳已有候选证据并在下方补充缺失标准的证据。`}
+        </Feedback>
       </div>
     )}
 
@@ -190,8 +249,8 @@ export function TaskCriteriaPanel({
         </div>}
       </li>;
     })}</ul>
-    {rechecks.isFetching && <p role="status">正在读取复核记录…</p>}
-    {rechecks.isError && <div role="alert"><p>暂时无法读取验收标准的复核状态。</p>
+    {rechecks?.isFetching && <p role="status">正在读取复核记录…</p>}
+    {rechecks?.isError && <div role="alert"><p>暂时无法读取验收标准的复核状态。</p>
       <button className={apiButton} onClick={() => void rechecks.refetch()}>重试复核记录</button>
     </div>}
   </Panel>;
