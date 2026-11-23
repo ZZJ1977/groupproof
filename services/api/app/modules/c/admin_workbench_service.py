@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.api.errors import ApiError
@@ -91,7 +91,10 @@ def _costs_map(rows) -> dict[str, str]:
 def _utc_day_expr(session: Session, col):
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
-        return func.to_char(func.timezone("UTC", col), "YYYY-MM-DD")
+        return func.to_char(
+            func.timezone(literal_column("'UTC'"), col),
+            literal_column("'YYYY-MM-DD'"),
+        )
     return func.strftime("%Y-%m-%d", col)
 
 
@@ -327,14 +330,15 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
         .group_by(AiUsageEvent.currency)
     ).all()
     p95_map = _latency_percentiles(session, ai_where, (0.95,))
+    err_code_expr = func.coalesce(AiUsageEvent.error_code, literal_column("'UNKNOWN_ERROR'"))
     err_rows = session.execute(
         select(
-            func.coalesce(AiUsageEvent.error_code, "UNKNOWN_ERROR").label("code"),
+            err_code_expr.label("code"),
             func.count().label("cnt"),
             func.max(AiUsageEvent.occurred_at).label("last_seen"),
         )
         .where(*ai_where, AiUsageEvent.success.is_(False))
-        .group_by(func.coalesce(AiUsageEvent.error_code, "UNKNOWN_ERROR"))
+        .group_by(err_code_expr)
         .order_by(func.count().desc())
         .limit(5)
     ).all()
@@ -868,14 +872,15 @@ def ai_diagnostics(
     ).one()
     pct = _latency_percentiles(session, conditions, (0.5, 0.95))
 
+    err_code_expr = func.coalesce(AiUsageEvent.error_code, literal_column("'UNKNOWN_ERROR'"))
     error_rows = session.execute(
         select(
-            func.coalesce(AiUsageEvent.error_code, "UNKNOWN_ERROR").label("code"),
+            err_code_expr.label("code"),
             func.count().label("cnt"),
             func.max(AiUsageEvent.occurred_at).label("last_seen"),
         )
         .where(*conditions, AiUsageEvent.success.is_(False))
-        .group_by(func.coalesce(AiUsageEvent.error_code, "UNKNOWN_ERROR"))
+        .group_by(err_code_expr)
         .order_by(func.count().desc())
         .limit(12)
     ).all()
