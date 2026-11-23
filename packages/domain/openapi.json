@@ -3064,6 +3064,11 @@
       },
       "CompleteByCriteriaRequest": {
         "properties": {
+          "auto_adopt_candidates": {
+            "default": false,
+            "title": "Auto Adopt Candidates",
+            "type": "boolean"
+          },
           "reason": {
             "default": "",
             "maxLength": 2000,

@@ -28,6 +28,10 @@ export type BTaskFilters = { view: BTaskView; q?: string; status?: string; assig
 export const bTasksApi = {
   list: (projectId: string, filters: BTaskFilters) => bRequest<BTasksPage>({ path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks`, query: filters }),
   syncCodeProgress: (projectId: string) => bRequest<BCodeProgressSync>({ method: "POST", path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/sync-code-progress` }),
-  completeByCriteria: (projectId: string, taskId: string, reason?: string) =>
-    bRequest<BCompleteByCriteriaResult>({ method: "POST", path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/complete-by-criteria`, body: { reason: reason ?? "" } }),
+  completeByCriteria: (projectId: string, taskId: string, reason?: string, autoAdoptCandidates = false) =>
+    bRequest<BCompleteByCriteriaResult>({
+      method: "POST",
+      path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/complete-by-criteria`,
+      body: { reason: reason ?? "", auto_adopt_candidates: autoAdoptCandidates },
+    }),
 };

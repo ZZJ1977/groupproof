@@ -56,12 +56,19 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
   const [pending, setPending] = useState<{ row: BTaskRow; transition: BTransition }>();
   const [busy, setBusy] = useState(false);
+  const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
+  const [confirmingAll, setConfirmingAll] = useState(false);
   const query = {
     view, q: filters.q || undefined, status: filters.status || undefined, assignee: filters.assignee || undefined,
     module: filters.module || undefined, milestone: filters.milestone || undefined,
     sort: view === "list" ? filters.sort : undefined, page: view === "list" ? filters.page : undefined, page_size: view === "list" ? PAGE_SIZE : undefined,
   };
   const page = useQuery({ queryKey: ["b-tasks", userId, projectId, query], queryFn: () => bTasksApi.list(projectId, query), ...queryPolicy });
+  const invalidateAll = () => {
+    for (const name of ["b-tasks", "b-milestones", "b-plan", "c-evidence", "c-task-evidence"]) {
+      void client.invalidateQueries({ queryKey: [name, userId, projectId] });
+    }
+  };
   const syncCode = useMutation({
     mutationFn: () => bTasksApi.syncCodeProgress(projectId),
     onSuccess: (res) => {
@@ -71,10 +78,68 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
           ? tr("已扫描 {0} 条成员提交，关联 {1} 条提交并生成 {2} 条代码候选证据，覆盖 {3} 条交付标准（需人工确认后正式完成）。", { 0: res.commits_scanned, 1: res.commits_matched, 2: res.evidences_created ?? 0, 3: res.criteria_covered ?? 0 })
           : tr("已扫描 {0} 条成员提交，当前交付标准与代码证据已保持最新。", { 0: res.commits_scanned }),
       });
-      for (const name of ["b-tasks", "b-milestones", "b-plan", "c-evidence", "c-task-evidence"]) void client.invalidateQueries({ queryKey: [name, userId, projectId] });
+      invalidateAll();
     },
     onError: (error) => setNotice({ tone: "error", text: errorText(error) }),
   });
+
+  const confirmAiTask = async (row: BTaskRow) => {
+    if (confirmingTaskId !== null || confirmingAll) return;
+    setConfirmingTaskId(row.id);
+    setNotice(undefined);
+    try {
+      const res = await bTasksApi.completeByCriteria(
+        projectId,
+        row.id,
+        "核对 AI 自动验收结果无误，一键确认并完成任务。",
+        true,
+      );
+      invalidateAll();
+      setNotice({
+        tone: "success",
+        text: res.task_status === "completed"
+          ? tr("已确认 {0} 的 AI 验收结果，任务已完成（100%）。", { 0: row.code ?? row.title })
+          : tr("已记录 {0} 的验收确认，等待其余负责人确认后完成。", { 0: row.code ?? row.title }),
+      });
+    } catch (error) {
+      setNotice({ tone: "error", text: errorText(error) });
+    } finally {
+      setConfirmingTaskId(null);
+    }
+  };
+
+  const confirmAllAiPassed = async (targets: BTaskRow[]) => {
+    if (confirmingTaskId !== null || confirmingAll || targets.length === 0) return;
+    setConfirmingAll(true);
+    setNotice(undefined);
+    let done = 0;
+    try {
+      for (const row of targets) {
+        await bTasksApi.completeByCriteria(
+          projectId,
+          row.id,
+          "批量核对 AI 自动验收结果无误，一键确认并完成任务。",
+          true,
+        );
+        done += 1;
+      }
+      invalidateAll();
+      setNotice({
+        tone: "success",
+        text: tr("已一键确认 {0} 个 AI 验收通过的任务，进度已更新为已完成（100%）。", { 0: done }),
+      });
+    } catch (error) {
+      if (done > 0) invalidateAll();
+      setNotice({
+        tone: "error",
+        text: done > 0
+          ? tr("已确认 {0} 个任务，其余失败：{1}", { 0: done, 1: errorText(error) })
+          : errorText(error),
+      });
+    } finally {
+      setConfirmingAll(false);
+    }
+  };
   const search = useSearchParams();
   const viewHref = (next: BTaskView) => {
     const params = new URLSearchParams(search.toString());
@@ -111,12 +176,33 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const candidateCriteria = items.reduce((s, r) => s + Math.max(0, (r.criteria_evidenced ?? 0) - (r.criteria_confirmed ?? 0)), 0);
   const inProgressTasks = (page.data?.columns ?? []).filter((c) => ["in_progress", "pending_submission", "pending_verification"].includes(c.status)).reduce((s, c) => s + c.count, 0);
   const completedTasks = (page.data?.columns ?? []).find((c) => c.status === "completed")?.count ?? 0;
+  const myAiPassedTasks = items.filter((r) =>
+    r.status !== "completed"
+    && (r.criteria_total ?? 0) > 0
+    && (r.criteria_evidenced ?? 0) >= (r.criteria_total ?? 0)
+    && r.assignees.some((a) => a.id === userId),
+  );
 
   return <div>
     <PageHeader
       title={tr(title)}
       description={tr(description)}
-      actions={<button type="button" className={secondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}><RefreshCw size={14} className={syncCode.isPending ? "animate-spin" : ""} />{syncCode.isPending ? tr("正在关联代码证据…") : tr("同步代码证据")}</button>}
+      actions={<div className="flex flex-wrap items-center gap-2">
+        {myAiPassedTasks.length > 0 && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-2xs transition hover:bg-emerald-700 disabled:opacity-50"
+            disabled={confirmingAll || confirmingTaskId !== null}
+            onClick={() => void confirmAllAiPassed(myAiPassedTasks)}
+          >
+            <CheckCircle2 size={14} />
+            {confirmingAll
+              ? tr("正在批量确认…")
+              : tr("一键确认 AI 已通过任务 ({0})", { 0: myAiPassedTasks.length })}
+          </button>
+        )}
+        <button type="button" className={secondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}><RefreshCw size={14} className={syncCode.isPending ? "animate-spin" : ""} />{syncCode.isPending ? tr("正在关联代码证据…") : tr("同步代码证据")}</button>
+      </div>}
     />
     {page.data && page.data.total > 0 && <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
       <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("任务总数")}</span><span className="text-base font-bold text-slate-900">{page.data.total}<span className="ml-1 text-[11px] font-normal text-slate-400">({tr("完成 {0}", { 0: completedTasks })})</span></span></div>
@@ -168,6 +254,10 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
             collapsed={filters.collapsed}
             onCollapsed={(next) => setFilters({ collapsed: next })}
             onPage={(next) => setFilters({ page: next })}
+            userId={userId}
+            confirmingTaskId={confirmingTaskId}
+            confirmingAll={confirmingAll}
+            onConfirmAiTask={(row) => void confirmAiTask(row)}
           />}
     </div>
   </div>;
@@ -186,25 +276,32 @@ function CriteriaPill({ row }: { row: BTaskRow }) {
   const candidate = Math.max(0, evidenced - confirmed);
   if (total === 0) return <Link href={`${row.links.detail}?tab=criteria`} className="text-xs text-slate-400 hover:underline">{tr("未设标准")}</Link>;
   const allConfirmed = confirmed >= total;
+  const allAiPassed = !allConfirmed && evidenced >= total && candidate > 0;
   const tone = allConfirmed
     ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-    : candidate > 0
-      ? "bg-sky-50 text-sky-700 hover:bg-sky-100"
-      : "bg-slate-100 text-slate-600 hover:bg-slate-200";
+    : allAiPassed
+      ? "bg-teal-50 text-teal-700 hover:bg-teal-100"
+      : candidate > 0
+        ? "bg-sky-50 text-sky-700 hover:bg-sky-100"
+        : "bg-slate-100 text-slate-600 hover:bg-slate-200";
   const labelText = allConfirmed
     ? tr("{0}/{1} 已确认", { 0: confirmed, 1: total })
-    : candidate > 0
-      ? tr("{0}/{1} 候选证据", { 0: candidate, 1: total })
-      : tr("{0}/{1} 待提交", { 0: confirmed, 1: total });
+    : allAiPassed
+      ? tr("AI 通过 · {0}/{1} 候选证据", { 0: candidate, 1: total })
+      : candidate > 0
+        ? tr("AI 部分通过 · {0}/{1} 候选证据", { 0: candidate, 1: total })
+        : tr("{0}/{1} 待提交", { 0: confirmed, 1: total });
   const detailText = allConfirmed
     ? tr("全部交付标准已有正式证据，仍需完成验收。")
-    : candidate > 0 && confirmed > 0
-      ? tr("{0}/{1} 条候选证据待确认，{2}/{1} 条已确认。", { 0: candidate, 1: total, 2: confirmed })
-      : candidate > 0
-        ? tr("候选代码证据不计入正式证据，点击逐条确认。")
-        : tr("尚无与交付标准关联的有效证据。点击查看。");
-  return <Link href={`${row.links.detail}?tab=criteria`} title={detailText} aria-label={detailText} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${tone}`}>
-    {allConfirmed && <CheckCircle2 size={11} />}
+    : allAiPassed
+      ? tr("AI 已核验全部 {0}/{1} 条标准达标（候选证据待人工一键确认）。", { 0: evidenced, 1: total })
+      : candidate > 0 && confirmed > 0
+        ? tr("{0}/{1} 条候选证据待确认，{2}/{1} 条已确认。", { 0: candidate, 1: total, 2: confirmed })
+        : candidate > 0
+          ? tr("AI 已核验部分标准达标，候选代码证据需人工确认并补充其余标准。")
+          : tr("尚无与交付标准关联的有效证据。点击查看。");
+  return <Link href={allConfirmed ? `${row.links.detail}?tab=criteria` : row.links.submit} title={detailText} aria-label={detailText} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${tone}`}>
+    {(allConfirmed || allAiPassed) && <CheckCircle2 size={11} />}
     {labelText}
   </Link>;
 }
@@ -215,7 +312,8 @@ function progressMeta(row: BTaskRow): { label: string; detail: string; tone: str
   const confirmed = row.criteria_confirmed ?? 0;
   const candidate = Math.max(0, evidenced - confirmed);
   if (row.status === "completed") return { label: "已完成", detail: "正式验收已完成", tone: "text-emerald-700" };
-  if (candidate > 0) return { label: "候选证据", detail: `${candidate}/${total} 条待人工确认`, tone: "text-sky-700" };
+  if (total > 0 && evidenced >= total && candidate > 0) return { label: "AI 验收通过（候选证据）", detail: `${evidenced}/${total} 已达标 · 待人工确认`, tone: "text-emerald-700" };
+  if (candidate > 0) return { label: "AI 部分通过（候选证据）", detail: `已通过 ${evidenced}/${total} · 缺 ${Math.max(0, total - evidenced)} 条`, tone: "text-sky-700" };
   if (confirmed > 0) return { label: "正式证据", detail: `${confirmed}/${total} 条已确认，等待验收`, tone: "text-amber-700" };
   if (row.progress_percent > 0) return { label: "手动进度", detail: "尚未关联交付证据", tone: "text-slate-600" };
   return { label: "未开始", detail: "尚无实现进度", tone: "text-slate-400" };
@@ -238,7 +336,7 @@ function ProgressCell({ row }: { row: BTaskRow }) {
 type BTasksPageIssue = { code: string; message: string; task_id: string | null; task_ids: string[] };
 
 function UnifiedTaskTable({
-  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage,
+  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage, userId, confirmingTaskId, confirmingAll, onConfirmAiTask,
 }: {
   mode: "tree" | "list";
   rows: BTaskRow[];
@@ -249,6 +347,10 @@ function UnifiedTaskTable({
   collapsed: string[];
   onCollapsed: (next: string[]) => void;
   onPage: (page: number) => void;
+  userId: string;
+  confirmingTaskId: string | null;
+  confirmingAll: boolean;
+  onConfirmAiTask: (row: BTaskRow) => void;
 }) {
   const tr = useUiText();
   const ids = new Set(rows.map((r) => r.id));
@@ -311,6 +413,19 @@ function UnifiedTaskTable({
             <td className="whitespace-nowrap px-3 py-2.5"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
             <td className="whitespace-nowrap px-3 py-2.5"><ProgressCell row={row} /></td>
             <td className="space-x-2 whitespace-nowrap px-4 py-2.5 text-xs">
+              {row.status !== "completed"
+                && (row.criteria_total ?? 0) > 0
+                && (row.criteria_evidenced ?? 0) >= (row.criteria_total ?? 0)
+                && row.assignees.some((a) => a.id === userId) && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    disabled={confirmingTaskId !== null || confirmingAll}
+                    onClick={() => onConfirmAiTask(row)}
+                  >
+                    {confirmingTaskId === row.id ? tr("确认中…") : tr("一键确认完成")}
+                  </button>
+              )}
               {row.status === "not_started" && <Link className="text-blue-700 underline" href={row.links.detail}>{tr("开始任务")}</Link>}
               {["in_progress", "pending_submission"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.submit}>{tr("提交验收")}</Link>}
               {["pending_verification", "completed"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.verification}>{tr("查看验收")}</Link>}
