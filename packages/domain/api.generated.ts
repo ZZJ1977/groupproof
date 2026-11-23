@@ -8206,12 +8206,31 @@ export interface components {
         };
         /** GithubActivityStatsDTO */
         GithubActivityStatsDTO: {
+            /**
+             * All Time Commits
+             * @default 0
+             */
+            all_time_commits: number;
             /** Commits With Stats */
             commits_with_stats: number;
             /** Contributors */
             contributors?: components["schemas"]["GithubContributorStatDTO"][];
             /** Daily */
             daily?: components["schemas"]["GithubDailyStatDTO"][];
+            /** Date From */
+            date_from?: string | null;
+            /** Date To */
+            date_to?: string | null;
+            /** Earliest Date */
+            earliest_date?: string | null;
+            /** Latest Date */
+            latest_date?: string | null;
+            /**
+             * Range
+             * @default all
+             * @enum {string}
+             */
+            range: "all" | "30d" | "14d" | "7d" | "custom";
             /** Total Additions */
             total_additions: number;
             /** Total Ci Runs */
@@ -11527,7 +11546,10 @@ export interface operations {
     get_github_activity_stats_api_v1_a_projects__project_id__github_stats_get: {
         parameters: {
             query?: {
-                days?: number;
+                date_from?: string | null;
+                date_to?: string | null;
+                days?: number | null;
+                range?: ("all" | "30d" | "14d" | "7d" | "custom") | null;
             };
             header?: {
                 "X-Demo-User-Id"?: string | null;

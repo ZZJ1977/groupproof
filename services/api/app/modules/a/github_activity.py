@@ -16,7 +16,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -24,7 +24,7 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.auth.models import VerifiedGithubIdentity
+from app.auth.models import PasswordCredential, SchoolEmailBinding, VerifiedGithubIdentity
 from app.db.models import ProjectMember, User
 from app.modules.a import permissions
 from app.modules.a.models import GithubActivity, GithubRepoLink, GithubUserLink
@@ -41,7 +41,7 @@ KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
 MAX_BRANCHES_PER_SYNC = 10
 MAX_NON_DEFAULT_BRANCH_COMMITS = 30
-MAX_COMMIT_DETAIL_PER_SYNC = 30
+MAX_COMMIT_DETAIL_PER_SYNC = 80
 MAX_COMMIT_FILES = 80
 MAX_PATCH_CHARS = 6000
 MAX_TOTAL_PATCH_CHARS = 120_000
@@ -398,7 +398,7 @@ def sync_activity(
                 if len(detail_shas) >= MAX_COMMIT_DETAIL_PER_SYNC:
                     break
         if detail_shas:
-            with ThreadPoolExecutor(max_workers=min(8, len(detail_shas))) as pool:
+            with ThreadPoolExecutor(max_workers=min(10, len(detail_shas))) as pool:
                 detail_futures = {
                     sha: pool.submit(detail_reader, owner, repo, sha, inst) for sha in detail_shas
                 }
@@ -785,17 +785,183 @@ def _extract_commit_diff_stats(detail: Any) -> tuple[int, int, int, bool]:
     return max(0, additions or 0), max(0, deletions or 0), max(0, changed_files or 0), has_stats
 
 
+_EXCLUDED_BOT_TOKENS = frozenset(
+    {
+        "claude",
+        "claude[bot]",
+        "anthropic",
+        "dependabot",
+        "dependabot[bot]",
+        "github-actions",
+        "github-actions[bot]",
+        "renovate",
+        "renovate[bot]",
+        "copilot",
+        "copilot[bot]",
+        "codecov",
+        "codecov[bot]",
+        "snyk-bot",
+        "greenkeeper[bot]",
+        "mergify[bot]",
+        "openai",
+        "codex",
+        "cursor",
+        "cursoragent",
+    }
+)
+_EXCLUDED_BOT_EMAIL_DOMAINS = (
+    "@anthropic.com",
+    "@bots.github.com",
+    "@openai.com",
+)
+_STATS_RANGE_DAYS = {"7d": 7, "14d": 14, "30d": 30}
+
+
+def _is_excluded_bot_author(login: str | None, name: str | None, email: str | None) -> bool:
+    """过滤 Claude/AI 助手及自动化 Bot，不计入团队成员贡献统计。"""
+    for raw in (login, name):
+        text = (raw or "").strip().lower()
+        if not text:
+            continue
+        if text.endswith("[bot]") or text in _EXCLUDED_BOT_TOKENS:
+            return True
+        if text.startswith("claude ") or text.startswith("claude-"):
+            return True
+    email_norm = (email or "").strip().lower()
+    if email_norm:
+        if any(email_norm.endswith(domain) for domain in _EXCLUDED_BOT_EMAIL_DOMAINS):
+            return True
+        if "[bot]@" in email_norm:
+            return True
+    return False
+
+
+def _occurred_utc(value: datetime) -> datetime:
+    return (value if value.tzinfo is not None else value.replace(tzinfo=UTC)).astimezone(UTC)
+
+
 def get_activity_stats(
-    session: Session, actor: User, project_id: UUID, *, days: int = 14
+    session: Session,
+    actor: User,
+    project_id: UUID,
+    *,
+    range_key: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    days: int | None = None,
 ) -> dict[str, Any]:
-    """按成员和日期聚合本项目已同步的 GitHub 提交次数与代码增减统计（只读）。"""
+    """按成员和可选时间范围聚合本项目已同步的 GitHub 提交次数与代码增减统计（只读，自动排除机器人/Claude）。"""
     permissions.require_project_member(session, actor, project_id, write=False)
-    days = max(7, min(days, 90))
+
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise ApiError(422, "INVALID_DATE_RANGE", "开始日期不能晚于结束日期。")
+
     rows = session.execute(
         select(GithubActivity, _verified_author_id())
         .where(GithubActivity.project_id == project_id, GithubActivity.deleted.is_(False))
         .order_by(GithubActivity.occurred_at.desc())
     ).all()
+
+    # 加载项目成员及其绑定信息，保证同一成员的不同 Git 别名合并为同一贡献者
+    member_rows = session.execute(
+        select(
+            User.id,
+            User.name,
+            User.email,
+            User.github_username,
+            VerifiedGithubIdentity.login,
+            SchoolEmailBinding.school_email_normalized,
+            PasswordCredential.login_email_normalized,
+        )
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .outerjoin(VerifiedGithubIdentity, VerifiedGithubIdentity.user_id == User.id)
+        .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
+        .outerjoin(PasswordCredential, PasswordCredential.user_id == User.id)
+        .where(ProjectMember.project_id == project_id, ProjectMember.left_at.is_(None))
+    ).all()
+
+    user_names: dict[UUID, str] = {}
+    user_logins: dict[UUID, str] = {}
+    login_to_uid: dict[str, UUID] = {}
+    email_to_uid: dict[str, UUID] = {}
+    name_to_uid: dict[str, UUID] = {}
+    ambiguous_names: set[str] = set()
+
+    for uid, name, email, gh_username, verified_login, school_email, login_email in member_rows:
+        if name:
+            user_names[uid] = name
+            n_key = name.strip().lower()
+            if n_key in name_to_uid and name_to_uid[n_key] != uid:
+                ambiguous_names.add(n_key)
+            else:
+                name_to_uid[n_key] = uid
+        canonical_login = (verified_login or gh_username or "").strip()
+        if canonical_login:
+            user_logins[uid] = canonical_login
+        for cand_login in (verified_login, gh_username):
+            l_key = (cand_login or "").strip().lower()
+            if l_key:
+                login_to_uid[l_key] = uid
+        for cand_email in (email, school_email, login_email):
+            e_key = (cand_email or "").strip().lower()
+            if e_key:
+                email_to_uid[e_key] = uid
+    for dup in ambiguous_names:
+        name_to_uid.pop(dup, None)
+
+    # 先收集全部非机器人提交，确定项目最早/最晚提交日期
+    non_bot_rows: list[tuple[GithubActivity, UUID | None, datetime]] = []
+    commit_dates: list[date] = []
+    for row, verified_uid in rows:
+        if _is_excluded_bot_author(row.author_login, row.author_name, row.author_email):
+            continue
+        occurred_utc = _occurred_utc(row.occurred_at)
+        non_bot_rows.append((row, verified_uid, occurred_utc))
+        if row.kind == "commit":
+            commit_dates.append(occurred_utc.date())
+
+    all_time_commits = len(commit_dates)
+    earliest_commit_day = min(commit_dates) if commit_dates else None
+    latest_commit_day = max(commit_dates) if commit_dates else None
+    today_utc = datetime.now(UTC).date()
+
+    # 解析生效时间范围
+    if date_from is not None or date_to is not None or range_key == "custom":
+        resolved_range = "custom"
+        start_day = date_from or earliest_commit_day or today_utc
+        end_day = date_to or latest_commit_day or today_utc
+        if start_day > end_day:
+            raise ApiError(422, "INVALID_DATE_RANGE", "开始日期不能晚于结束日期。")
+    elif range_key is None and days is not None:
+        window = max(1, min(days, 365))
+        resolved_range = f"{window}d" if window in (7, 14, 30) else "custom"
+        anchor = latest_commit_day or today_utc
+        if latest_commit_day is not None and 0 <= (today_utc - latest_commit_day).days < window:
+            anchor = today_utc
+        end_day = anchor
+        start_day = end_day - timedelta(days=window - 1)
+    elif range_key in _STATS_RANGE_DAYS:
+        resolved_range = range_key
+        window = _STATS_RANGE_DAYS[range_key]
+        anchor = latest_commit_day or today_utc
+        if latest_commit_day is not None and 0 <= (today_utc - latest_commit_day).days < window:
+            anchor = today_utc
+        end_day = anchor
+        start_day = end_day - timedelta(days=window - 1)
+    else:
+        resolved_range = "all"
+        start_day = earliest_commit_day
+        end_day = latest_commit_day
+
+    extra_uids = {
+        uid
+        for row, uid, _ in non_bot_rows
+        if row.kind == "commit" and uid is not None and uid not in user_names
+    }
+    if extra_uids:
+        for uid, name in session.execute(select(User.id, User.name).where(User.id.in_(extra_uids))):
+            if name:
+                user_names[uid] = name
 
     total_commits = 0
     total_pull_requests = 0
@@ -804,19 +970,16 @@ def get_activity_stats(
     total_deletions = 0
     commits_with_stats = 0
 
-    user_ids = {uid for row, uid in rows if row.kind == "commit" and uid is not None}
-    user_names: dict[UUID, str] = {}
-    if user_ids:
-        for uid, name in session.execute(select(User.id, User.name).where(User.id.in_(user_ids))):
-            if name:
-                user_names[uid] = name
-
     by_contributor: dict[str, dict[str, Any]] = {}
     daily_counts: dict[str, dict[str, int]] = {}
-    latest_commit_day = datetime.now(UTC).date()
-    saw_commit = False
 
-    for row, verified_uid in rows:
+    for row, verified_uid, occurred_utc in non_bot_rows:
+        day_obj = occurred_utc.date()
+        if start_day is not None and day_obj < start_day:
+            continue
+        if end_day is not None and day_obj > end_day:
+            continue
+
         if row.kind == "pull_request":
             total_pull_requests += 1
             continue
@@ -833,18 +996,7 @@ def get_activity_stats(
         if has_stats:
             commits_with_stats += 1
 
-        occurred = (
-            row.occurred_at
-            if row.occurred_at.tzinfo is not None
-            else row.occurred_at.replace(tzinfo=UTC)
-        )
-        occurred_utc = occurred.astimezone(UTC)
-        commit_day = occurred_utc.date()
-        if not saw_commit:
-            latest_commit_day = max(latest_commit_day, commit_day)
-            saw_commit = True
-
-        day_key = commit_day.isoformat()
+        day_key = day_obj.isoformat()
         bucket = daily_counts.setdefault(day_key, {"commits": 0, "additions": 0, "deletions": 0})
         bucket["commits"] += 1
         bucket["additions"] += adds
@@ -852,23 +1004,36 @@ def get_activity_stats(
 
         login = (row.author_login or "").strip() or None
         raw_name = (row.author_name or "").strip() or login or "未知作者"
-        if verified_uid is not None:
-            key = f"user:{verified_uid}"
-            display = user_names.get(verified_uid) or raw_name
+        email_norm = (row.author_email or "").strip().lower()
+
+        resolved_uid = verified_uid
+        if resolved_uid is None and login:
+            resolved_uid = login_to_uid.get(login.lower())
+        if resolved_uid is None and email_norm:
+            resolved_uid = email_to_uid.get(email_norm)
+        if resolved_uid is None and raw_name:
+            resolved_uid = name_to_uid.get(raw_name.lower())
+
+        if resolved_uid is not None:
+            key = f"user:{resolved_uid}"
+            display = user_names.get(resolved_uid) or raw_name
+            canonical_login = user_logins.get(resolved_uid) or login
         elif login:
             key = f"login:{login.lower()}"
             display = raw_name
+            canonical_login = login
         else:
             key = f"name:{raw_name.lower()}"
             display = raw_name
+            canonical_login = None
 
         entry = by_contributor.get(key)
         if entry is None:
             entry = {
                 "author_key": key,
-                "author_user_id": verified_uid,
+                "author_user_id": resolved_uid,
                 "author_name": display,
-                "author_login": login,
+                "author_login": canonical_login,
                 "commits": 0,
                 "additions": 0,
                 "deletions": 0,
@@ -883,8 +1048,8 @@ def get_activity_stats(
         entry["files_changed"] += files_cnt
         if has_stats:
             entry["commits_with_stats"] += 1
-        if login and not entry["author_login"]:
-            entry["author_login"] = login
+        if canonical_login and not entry["author_login"]:
+            entry["author_login"] = canonical_login
         if occurred_utc > entry["last_commit_at"]:
             entry["last_commit_at"] = occurred_utc
 
@@ -894,21 +1059,43 @@ def get_activity_stats(
         reverse=True,
     )
 
-    start_day = latest_commit_day - timedelta(days=days - 1)
-    daily = []
-    for offset in range(days):
-        day = (start_day + timedelta(days=offset)).isoformat()
-        stats = daily_counts.get(day, {"commits": 0, "additions": 0, "deletions": 0})
-        daily.append(
-            {
-                "date": day,
-                "commits": stats["commits"],
-                "additions": stats["additions"],
-                "deletions": stats["deletions"],
-            }
-        )
+    daily: list[dict[str, Any]] = []
+    if start_day is not None and end_day is not None:
+        span = (end_day - start_day).days + 1
+        # 超长跨度（> 180 天）仅输出有数据或抽样跨度防止响应过大；常规课程项目 <= 180 天完整按天输出
+        if span <= 180:
+            for offset in range(span):
+                day_str = (start_day + timedelta(days=offset)).isoformat()
+                day_stats = daily_counts.get(
+                    day_str, {"commits": 0, "additions": 0, "deletions": 0}
+                )
+                daily.append(
+                    {
+                        "date": day_str,
+                        "commits": day_stats["commits"],
+                        "additions": day_stats["additions"],
+                        "deletions": day_stats["deletions"],
+                    }
+                )
+        else:
+            for day_str in sorted(daily_counts.keys()):
+                day_stats = daily_counts[day_str]
+                daily.append(
+                    {
+                        "date": day_str,
+                        "commits": day_stats["commits"],
+                        "additions": day_stats["additions"],
+                        "deletions": day_stats["deletions"],
+                    }
+                )
 
     return {
+        "range": resolved_range,
+        "date_from": start_day.isoformat() if start_day else None,
+        "date_to": end_day.isoformat() if end_day else None,
+        "earliest_date": earliest_commit_day.isoformat() if earliest_commit_day else None,
+        "latest_date": latest_commit_day.isoformat() if latest_commit_day else None,
+        "all_time_commits": all_time_commits,
         "total_commits": total_commits,
         "total_pull_requests": total_pull_requests,
         "total_ci_runs": total_ci_runs,

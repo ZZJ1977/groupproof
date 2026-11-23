@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
@@ -753,6 +753,12 @@ class GithubDailyStatDTO(BaseModel):
 
 
 class GithubActivityStatsDTO(BaseModel):
+    range: Literal["all", "30d", "14d", "7d", "custom"] = "all"
+    date_from: str | None = None
+    date_to: str | None = None
+    earliest_date: str | None = None
+    latest_date: str | None = None
+    all_time_commits: int = 0
     total_commits: int
     total_pull_requests: int
     total_ci_runs: int
@@ -773,9 +779,22 @@ def get_github_activity_stats(
     request: Request,
     session: Database,
     user: CurrentUser,
-    days: int = Query(default=14, ge=7, le=90),
+    range_key: Literal["all", "30d", "14d", "7d", "custom"] | None = Query(
+        default=None, alias="range"
+    ),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    days: int | None = Query(default=None, ge=1, le=365),
 ):
-    stats = github_activity.get_activity_stats(session, user, project_id, days=days)
+    stats = github_activity.get_activity_stats(
+        session,
+        user,
+        project_id,
+        range_key=range_key,
+        date_from=date_from,
+        date_to=date_to,
+        days=days,
+    )
     return success(GithubActivityStatsDTO(**stats), request)
 
 
