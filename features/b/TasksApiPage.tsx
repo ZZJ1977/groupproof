@@ -107,8 +107,8 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const weightSum = rootItems.reduce((s, r) => s + Math.max(1, r.weight), 0);
   const avgProgress = weightSum > 0 ? Math.round(rootItems.reduce((s, r) => s + r.progress_percent * Math.max(1, r.weight), 0) / weightSum) : 0;
   const totalCriteria = items.reduce((s, r) => s + (r.criteria_total ?? 0), 0);
-  const evidencedCriteria = items.reduce((s, r) => s + (r.criteria_evidenced ?? 0), 0);
   const confirmedCriteria = items.reduce((s, r) => s + (r.criteria_confirmed ?? 0), 0);
+  const candidateCriteria = items.reduce((s, r) => s + Math.max(0, (r.criteria_evidenced ?? 0) - (r.criteria_confirmed ?? 0)), 0);
   const inProgressTasks = (page.data?.columns ?? []).filter((c) => ["in_progress", "pending_submission", "pending_verification"].includes(c.status)).reduce((s, c) => s + c.count, 0);
   const completedTasks = (page.data?.columns ?? []).find((c) => c.status === "completed")?.count ?? 0;
 
@@ -121,7 +121,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     {page.data && page.data.total > 0 && <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
       <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("任务总数")}</span><span className="text-base font-bold text-slate-900">{page.data.total}<span className="ml-1 text-[11px] font-normal text-slate-400">({tr("完成 {0}", { 0: completedTasks })})</span></span></div>
       <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("进行中")}</span><span className="text-base font-bold text-sky-700">{inProgressTasks}</span></div>
-      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("交付标准")}</span><span className="text-base font-bold text-slate-900">{evidencedCriteria}/{totalCriteria}<span className="ml-1 text-[11px] font-normal text-emerald-700">({tr("确认 {0}", { 0: confirmedCriteria })})</span></span></div>
+      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("交付标准")}</span><span className="text-right text-base font-bold text-slate-900">{totalCriteria > 0 ? <><span className="block">{tr("候选 {0}/{1}", { 0: candidateCriteria, 1: totalCriteria })}</span><span className="block text-[11px] font-normal text-emerald-700">{tr("正式 {0}/{1}", { 0: confirmedCriteria, 1: totalCriteria })}</span></> : <span>—</span>}<span className="block text-[10px] font-normal text-slate-400">{totalCriteria > 0 ? tr("候选证据需人工确认") : tr("尚未设置")}</span></span></div>
       <div className="gp-surface-card flex items-center justify-between gap-3 py-2.5"><span className="text-xs text-slate-500">{tr("加权进度")}</span><div className="flex flex-1 items-center justify-end gap-2"><div className="h-1.5 max-w-20 flex-1 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${avgProgress}%` }} /></div><span className="text-base font-bold text-slate-900">{avgProgress}%</span></div></div>
     </div>}
     <nav aria-label={tr("任务视图")} className="gp-segmented mt-3">
@@ -183,22 +183,56 @@ function CriteriaPill({ row }: { row: BTaskRow }) {
   const total = row.criteria_total ?? 0;
   const evidenced = row.criteria_evidenced ?? 0;
   const confirmed = row.criteria_confirmed ?? 0;
+  const candidate = Math.max(0, evidenced - confirmed);
   if (total === 0) return <Link href={`${row.links.detail}?tab=criteria`} className="text-xs text-slate-400 hover:underline">{tr("未设标准")}</Link>;
   const allConfirmed = confirmed >= total;
   const tone = allConfirmed
     ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-    : evidenced > 0
+    : candidate > 0
       ? "bg-sky-50 text-sky-700 hover:bg-sky-100"
       : "bg-slate-100 text-slate-600 hover:bg-slate-200";
   const labelText = allConfirmed
     ? tr("{0}/{1} 已确认", { 0: confirmed, 1: total })
-    : evidenced > 0
-      ? tr("{0}/{1} 有证据", { 0: evidenced, 1: total })
-      : tr("0/{0} 待提交", { 0: total });
-  return <Link href={`${row.links.detail}?tab=criteria`} title={tr("点击查看并确认各条交付标准及代码证据")} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${tone}`}>
+    : candidate > 0
+      ? tr("{0}/{1} 候选证据", { 0: candidate, 1: total })
+      : tr("{0}/{1} 待提交", { 0: confirmed, 1: total });
+  const detailText = allConfirmed
+    ? tr("全部交付标准已有正式证据，仍需完成验收。")
+    : candidate > 0 && confirmed > 0
+      ? tr("{0}/{1} 条候选证据待确认，{2}/{1} 条已确认。", { 0: candidate, 1: total, 2: confirmed })
+      : candidate > 0
+        ? tr("候选代码证据不计入正式证据，点击逐条确认。")
+        : tr("尚无与交付标准关联的有效证据。点击查看。");
+  return <Link href={`${row.links.detail}?tab=criteria`} title={detailText} aria-label={detailText} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${tone}`}>
     {allConfirmed && <CheckCircle2 size={11} />}
     {labelText}
   </Link>;
+}
+
+function progressMeta(row: BTaskRow): { label: string; detail: string; tone: string } {
+  const total = row.criteria_total ?? 0;
+  const evidenced = row.criteria_evidenced ?? 0;
+  const confirmed = row.criteria_confirmed ?? 0;
+  const candidate = Math.max(0, evidenced - confirmed);
+  if (row.status === "completed") return { label: "已完成", detail: "正式验收已完成", tone: "text-emerald-700" };
+  if (candidate > 0) return { label: "候选证据", detail: `${candidate}/${total} 条待人工确认`, tone: "text-sky-700" };
+  if (confirmed > 0) return { label: "正式证据", detail: `${confirmed}/${total} 条已确认，等待验收`, tone: "text-amber-700" };
+  if (row.progress_percent > 0) return { label: "手动进度", detail: "尚未关联交付证据", tone: "text-slate-600" };
+  return { label: "未开始", detail: "尚无实现进度", tone: "text-slate-400" };
+}
+
+function ProgressCell({ row }: { row: BTaskRow }) {
+  const tr = useUiText();
+  const meta = progressMeta(row);
+  const progress = Math.max(0, Math.min(100, row.progress_percent));
+  return <div className="min-w-[112px]" data-testid="task-progress" title={tr("{0}：{1}", { 0: meta.label, 1: meta.detail })}>
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-14 rounded-full bg-slate-100" role="progressbar" aria-label={tr("任务进度 {0}%", { 0: progress })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div className={`h-1.5 rounded-full ${row.status === "completed" ? "bg-emerald-600" : "bg-[var(--gp-action)]"}`} style={{ width: `${progress}%` }} /></div>
+      <span className="text-xs font-medium tabular-nums">{progress}%</span>
+    </div>
+    <span className={`mt-1 block text-[10px] font-medium ${meta.tone}`}>{tr(meta.label)}</span>
+    <span className="block text-[10px] text-slate-400">{tr(meta.detail)}</span>
+  </div>;
 }
 
 type BTasksPageIssue = { code: string; message: string; task_id: string | null; task_ids: string[] };
@@ -256,7 +290,7 @@ function UnifiedTaskTable({
               <th className="px-3 py-2">{tr("交付标准")}</th>
               <th className="px-3 py-2">{tr("权重")}</th>
               <th className="px-3 py-2">{tr("状态")}</th>
-              <th className="px-3 py-2">{tr("进度")}</th>
+              <th className="px-3 py-2"><span className="block">{tr("进度")}</span><span className="font-normal text-[10px] text-slate-400">{tr("实现 / 验收")}</span></th>
               <th className="px-4 py-2">{tr("操作")}</th>
             </tr>
           </thead>
@@ -275,7 +309,7 @@ function UnifiedTaskTable({
             <td className="px-3 py-2.5"><CriteriaPill row={row} /></td>
             <td className="px-3 py-2.5 text-xs text-slate-600">{row.weight}<span className="ml-1 text-[11px] text-slate-400">· {tr(priorityLabel[row.priority]) ?? row.priority}</span></td>
             <td className="whitespace-nowrap px-3 py-2.5"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
-            <td className="whitespace-nowrap px-3 py-2.5"><div className="flex items-center gap-2"><div className="h-1.5 w-14 rounded-full bg-slate-100"><div className={`h-1.5 rounded-full ${row.status === "completed" ? "bg-emerald-600" : "bg-[var(--gp-action)]"}`} style={{ width: `${row.progress_percent}%` }} /></div><span className="text-xs font-medium tabular-nums">{row.progress_percent}%</span></div></td>
+            <td className="whitespace-nowrap px-3 py-2.5"><ProgressCell row={row} /></td>
             <td className="space-x-2 whitespace-nowrap px-4 py-2.5 text-xs">
               {row.status === "not_started" && <Link className="text-blue-700 underline" href={row.links.detail}>{tr("开始任务")}</Link>}
               {["in_progress", "pending_submission"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.submit}>{tr("提交验收")}</Link>}
@@ -306,7 +340,7 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
       className={`rounded-xl border border-slate-200/80 bg-white p-3 text-sm shadow-2xs transition-shadow hover:shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}>
       <div className="flex items-center justify-between gap-2"><span className="font-mono text-xs text-slate-500">{row.code}</span>{(row.criteria_total ?? 0) > 0 && <span className="text-[11px] text-slate-400">{row.criteria_confirmed ?? 0}/{row.criteria_total}</span>}</div>
       <Link className="font-medium text-slate-900 hover:underline" draggable={false} href={row.links.detail}>{row.title}</Link>
-      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"><span><Assignees row={row} /> · {row.progress_percent}%</span>{(row.evidence_count ?? 0) > 0 && <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{row.evidence_count}</span>}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"><span><Assignees row={row} /> · {row.progress_percent}% · {tr(progressMeta(row).label)}</span>{(row.evidence_count ?? 0) > 0 && <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{row.evidence_count}</span>}</div>
       <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div>
       {row.blocked_reason && <div className="mt-1 text-xs text-slate-400">{row.blocked_reason}</div>}
       {row.transitions.map((t) => <button key={t.to} type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => onMove(row, t)}>{tr("移到“{0}”", { 0: tr(statusLabel[t.to]) })}</button>)}

@@ -121,3 +121,26 @@ test("B6-03 组合筛选 + 排序 + 分页随请求发送；行内按钮去 C、
   await expect(page.getByTestId("list-row").filter({ hasText: "实现登录页" })).toContainText("进行中");
   await expect(page.getByTestId("list-row").filter({ hasText: "实现登录页" }).getByRole("link", { name: "提交验收" })).toBeVisible();
 });
+
+test("B6-04 任务进度区分候选证据、正式确认和已完成", async ({ page }) => {
+  await serve(page, () => [
+    row("candidate", "T-001", "候选代码任务", {
+      status: "pending_submission", progress_percent: 90, criteria_total: 3, criteria_evidenced: 3, criteria_confirmed: 0, evidence_count: 5,
+    }),
+    row("completed", "T-002", "已完成任务", {
+      status: "completed", progress_percent: 100, criteria_total: 3, criteria_evidenced: 3, criteria_confirmed: 3,
+    }),
+  ]);
+  await page.goto(`/projects/${project}/tasks?view=list`);
+
+  const candidate = page.getByTestId("list-row").filter({ hasText: "候选代码任务" });
+  await expect(candidate).toContainText("3/3 候选证据");
+  await expect(candidate.getByTestId("task-progress")).toContainText("90%");
+  await expect(candidate.getByTestId("task-progress")).toContainText("候选证据");
+  await expect(candidate.getByTestId("task-progress")).toContainText("3/3 条待人工确认");
+  await expect(candidate.getByTestId("task-progress")).toHaveAttribute("title", /候选证据/);
+
+  const completed = page.getByTestId("list-row").filter({ hasText: "已完成任务" });
+  await expect(completed).toContainText("3/3 已确认");
+  await expect(completed.getByTestId("task-progress")).toContainText("已完成");
+});
