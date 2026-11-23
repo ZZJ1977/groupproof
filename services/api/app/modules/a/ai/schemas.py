@@ -247,3 +247,70 @@ class ActivitySummaryResult(AIResultMeta):
     evidence: list[ActivityEvidence] = Field(default_factory=list, max_length=8)
     confidence: float = Field(ge=0, le=1)
     insufficient_context: list[str] = Field(default_factory=list, max_length=8)
+
+
+# ------------------------------------------------ A7-08 从项目资料一键生成需求、任务与里程碑
+
+
+class BlueprintMemberBrief(AIModel):
+    id: UUID
+    name: str = Field(min_length=1, max_length=120)
+    github_username: str | None = Field(default=None, max_length=60)
+
+
+class BlueprintMaterialDoc(AIModel):
+    material_id: UUID
+    title: str = Field(min_length=1, max_length=255)
+    text: str = Field(min_length=1, max_length=28000)
+
+
+class ProjectBlueprintInput(AIModel):
+    project_id: UUID
+    project_name: str = Field(min_length=1, max_length=200)
+    start_date: str | None = Field(default=None, max_length=32)
+    end_date: str | None = Field(default=None, max_length=32)
+    members: list[BlueprintMemberBrief] = Field(default_factory=list, max_length=20)
+    documents: list[BlueprintMaterialDoc] = Field(min_length=1, max_length=20)
+
+
+class BlueprintModule(AIModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    owner_id: UUID | None = None
+
+
+class BlueprintRequirement(AIModel):
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=3000)
+    module: str = Field(min_length=1, max_length=200)
+    priority: Literal["high", "medium", "low"] = "medium"
+    material_id: UUID | None = None
+    quote: str = Field(default="", max_length=300)
+
+
+class BlueprintMilestone(AIModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    deadline: str | None = Field(default=None, max_length=32)
+    deliverables: list[str] = Field(default_factory=list, max_length=8)
+
+
+class BlueprintTask(AIModel):
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=3000)
+    module: str = Field(min_length=1, max_length=200)
+    requirement_titles: list[str] = Field(default_factory=list, max_length=10)
+    milestone_titles: list[str] = Field(default_factory=list, max_length=10)
+    assignee_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    priority: Literal["high", "medium", "low"] = "medium"
+    weight: int = Field(default=5, ge=1, le=100)
+    acceptance_criteria: list[str] = Field(min_length=1, max_length=10)
+
+
+class ProjectBlueprintResult(AIResultMeta):
+    modules: list[BlueprintModule] = Field(min_length=1, max_length=20)
+    requirements: list[BlueprintRequirement] = Field(min_length=1, max_length=80)
+    milestones: list[BlueprintMilestone] = Field(default_factory=list, max_length=20)
+    tasks: list[BlueprintTask] = Field(min_length=1, max_length=80)
+    in_scope: str = Field(default="", max_length=2000)
+    out_of_scope: str = Field(default="", max_length=2000)

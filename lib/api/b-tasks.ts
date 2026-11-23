@@ -10,7 +10,9 @@ export type BTaskRow = {
   dependencies_done: boolean; content_version: number; lock_version: number; updated_at: string | null;
   links: { detail: string; submit: string; evidence: string; verification: string };
   transitions: BTransition[]; blocked_reason: string | null; matched: boolean;
+  matched_commits?: number; latest_commit_at?: string | null;
 };
+export type BCodeProgressSync = { commits_scanned: number; commits_matched: number; tasks_updated: number; milestones_updated: number };
 export type BTasksPage = {
   view: BTaskView; items: BTaskRow[]; total: number; page: number; page_size: number; lock_version: number;
   plan_status: "none" | "draft" | "frozen"; integrity_issues: BPlanIssue[]; columns: { status: string; label: string; count: number }[];
@@ -20,4 +22,5 @@ export type BTaskFilters = { view: BTaskView; q?: string; status?: string; assig
 
 export const bTasksApi = {
   list: (projectId: string, filters: BTaskFilters) => bRequest<BTasksPage>({ path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks`, query: filters }),
+  syncCodeProgress: (projectId: string) => bRequest<BCodeProgressSync>({ method: "POST", path: `/api/v1/projects/${encodeURIComponent(projectId)}/tasks/sync-code-progress` }),
 };

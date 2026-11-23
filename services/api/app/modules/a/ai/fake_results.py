@@ -130,3 +130,56 @@ def summarize_activity(payload: dict[str, Any]) -> dict:
         "confidence": 0.5 if body else 0.2,
         "insufficient_context": [] if body else ["提交正文没有说明影响范围或验证结果"],
     }
+
+
+def generate_project_blueprint(payload: dict[str, Any]) -> dict:
+    docs = payload.get("documents") or []
+    members = payload.get("members") or []
+    first_doc = docs[0] if docs else {}
+    first_member_id = members[0]["id"] if members else None
+    quote = _quote(str(first_doc.get("text") or "示例分工计划文档"))
+    mod_name = "核心功能模块"
+    req_title = f"【示例】{first_doc.get('title') or '项目资料'} 核心功能实现"
+    ms_title = "第 1 阶段：核心功能交付"
+    return {
+        "modules": [
+            {
+                "name": mod_name,
+                "description": "根据项目资料自动归纳的功能模块（示例结果，接入真实 AI 后替换）。",
+                "owner_id": first_member_id,
+            }
+        ],
+        "requirements": [
+            {
+                "title": req_title[:240],
+                "description": quote,
+                "module": mod_name,
+                "priority": "high",
+                "material_id": first_doc.get("material_id"),
+                "quote": quote,
+            }
+        ],
+        "milestones": [
+            {
+                "title": ms_title,
+                "description": "完成阶段需求实现、代码提交与验收准备。",
+                "deadline": payload.get("end_date") or "2026-12-03",
+                "deliverables": ["核心功能代码提交并关联任务", "完成阶段验收标准核验"],
+            }
+        ],
+        "tasks": [
+            {
+                "title": f"实现：{req_title}"[:240],
+                "description": quote,
+                "module": mod_name,
+                "requirement_titles": [req_title[:240]],
+                "milestone_titles": [ms_title],
+                "assignee_ids": [first_member_id] if first_member_id else [],
+                "priority": "high",
+                "weight": 100,
+                "acceptance_criteria": ["核心页面与后端接口联调通过并有真实代码提交记录"],
+            }
+        ],
+        "in_scope": "覆盖上传资料中的全部核心模块与交付需求。",
+        "out_of_scope": "未在资料中约定的扩展能力。",
+    }

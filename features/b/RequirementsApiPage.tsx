@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, GitCompare, History, Network, PenLine, Search } from "lucide-react";
+import { AlertTriangle, Bot, GitCompare, History, Network, PenLine, Search } from "lucide-react";
 import { EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { BApiError } from "@/lib/api/b-client";
 import { bManageApi, type BRequirementDetail } from "@/lib/api/b-manage";
 import { bRequirementsApi, type BPriority } from "@/lib/api/b-requirements";
-import { BaselineStep, ConflictsStep, RequirementsStep } from "@/features/b/RequirementsSteps";
+import { BaselineStep, ConflictsStep, RequirementsStep, RunStatus } from "@/features/b/RequirementsSteps";
 import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
@@ -44,55 +44,84 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
   const list = useQuery({ queryKey: ["b-req-list", userId, projectId, query], queryFn: () => bManageApi.list(projectId, query), ...queryPolicy });
   const board = useQuery({ queryKey: ["b-requirements", userId, projectId], queryFn: () => bRequirementsApi.board(projectId), ...queryPolicy });
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
+  const editableDraft = board.data?.editable !== false;
+  const showManageList = board.isError || !editableDraft || !list.isSuccess || list.data.total > 0;
+  const aiCount = board.data?.requirements.filter((r) => r.origin === "ai" && !r.excluded).length ?? 0;
+  const moduleCount = board.data?.modules.length ?? list.data?.modules.length ?? 0;
+  const reqTotal = list.data?.total ?? board.data?.requirements.length ?? 0;
   return <div>
-    <PageHeader title={tr("需求工作区")} description={tr("整理项目模块与需求，完成后确认并冻结基线。")} actions={<><Link href={`/projects/${projectId}/setup#project-materials`} className={secondary}>{tr("添加资料")}</Link><Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link></>} />
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <PageHeader title={tr("需求工作区")} description={tr("上传资料由 AI 生成需求基线与分工闭环，团队确认后冻结版本。")} actions={<><Link href={`/projects/${projectId}/setup#project-materials`} className={secondary}>{tr("添加资料")}</Link><Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link></>} />
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="gp-segmented" role="group" aria-label={tr("需求工作区视图")}>
         <button type="button" aria-pressed={workspaceSection === "work"} className="gp-segmented-item" onClick={() => setWorkspaceSection("work")}>{tr("整理需求")}</button>
         {!board.isPending && (board.data?.open_conflicts ?? 0) > 0 && <button type="button" aria-pressed={workspaceSection === "conflicts"} className="gp-segmented-item" onClick={() => setWorkspaceSection("conflicts")}>{tr("冲突处理")}<StatusBadge tone="amber" label={String(board.data?.open_conflicts ?? 0)} /></button>}
         <button type="button" aria-pressed={workspaceSection === "baseline"} className="gp-segmented-item" onClick={() => setWorkspaceSection("baseline")}>{tr("基线确认")}</button>
       </div>
-      <Link href={`/projects/${projectId}/tasks/plan`} className="gp-link text-sm">{tr("前往任务规划 →")}</Link>
+      <Link href={`/projects/${projectId}/tasks?view=plan`} className="gp-link text-sm">{tr("前往任务规划 →")}</Link>
     </div>
     {board.isError && <div role="alert" className="mt-4"><Feedback tone="error">{errorText(board.error)}</Feedback></div>}
     {workspaceSection === "conflicts" && (board.data?.open_conflicts ?? 0) === 0 ? <div className="mt-4"><Feedback tone="info">{tr("当前没有待处理冲突。")}</Feedback></div> : null}
     {workspaceSection === "conflicts" && (board.data?.open_conflicts ?? 0) > 0 && <div className="mt-4"><ConflictsStep projectId={projectId} /></div>}
     {workspaceSection === "baseline" && <div className="mt-4"><BaselineStep projectId={projectId} /></div>}
-    {workspaceSection === "work" && <><div className="mt-4"><RequirementsStep projectId={projectId} /></div><h2 className="mt-10 text-lg font-semibold tracking-tight text-slate-900">{tr("需求清单")}</h2><p className="mt-1 text-xs text-slate-500">{tr("筛选、编辑并追踪已保存需求的版本与证据链。")}</p><div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
-      <div className="space-y-4">
-        <div className="gp-surface-card">
-          <form className="grid grid-cols-2 gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); setFilters({ code: draft.code.trim() || null, q: draft.q.trim() || null, page: null }); }}>
-            <div><label className={label} htmlFor="req-f-code">{tr("编号")}</label><input id="req-f-code" className={input} placeholder="R-001" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} /></div>
-            <div><label className={label} htmlFor="req-f-q">{tr("名称或说明")}</label><input id="req-f-q" className={input} placeholder={tr("关键字检索")} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} /></div>
-            <div><label className={label} htmlFor="req-f-source">{tr("来源")}</label><select id="req-f-source" className={input} value={filters.source} onChange={(e) => setFilters({ source: e.target.value || null, page: null })}><option value="">{tr("全部")}</option><option value="ai">{tr("AI 分析")}</option><option value="manual">{tr("手工录入")}</option></select></div>
-            <div><label className={label} htmlFor="req-f-module">{tr("模块")}</label><select id="req-f-module" className={input} value={filters.module} onChange={(e) => setFilters({ module: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{list.data?.modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
-            <div><label className={label} htmlFor="req-f-status">{tr("状态")}</label><select id="req-f-status" className={input} value={filters.status} onChange={(e) => setFilters({ status: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{tr(v)}</option>)}</select></div>
-            <div className="col-span-2 flex items-end justify-end gap-2 md:col-span-1"><button type="submit" className={button}><Search size={14} />{tr("查询")}</button><button type="button" className={secondary} onClick={clearFilters}>{tr("清空")}</button></div>
-          </form>
+    {workspaceSection === "work" && <>
+      {(board.isSuccess || list.isSuccess) && <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("功能模块")}</p><p className="mt-1 text-xl font-bold text-slate-900">{moduleCount}</p></div>
+        <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("需求条目")}</p><p className="mt-1 text-xl font-bold text-slate-900">{reqTotal}</p></div>
+        <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("基线与来源")}</p><div className="mt-1.5 flex flex-wrap items-center gap-1.5"><StatusBadge tone={editableDraft ? "amber" : "green"} label={editableDraft ? tr("草稿编辑中") : tr("基线已冻结")} />{aiCount > 0 && <StatusBadge tone="blue" label={tr("AI 解析 {0} 条", { 0: aiCount })} />}</div></div>
+      </div>}
+      {board.data && !editableDraft ? (
+        <div className="gp-surface-card mb-4 flex flex-wrap items-center justify-between gap-3 py-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-700"><Bot size={14} className="text-sky-600" /><span>{tr("AI 资料解析与需求基线")}</span></div>
+            <RunStatus board={board.data} />
+          </div>
+          <Link href={`/projects/${projectId}/tasks?view=plan`} className={secondary}>{tr("查看任务与分工 →")}</Link>
         </div>
-        {list.isPending ? <div role="status" className="gp-empty">{tr("正在加载需求…")}</div>
-          : list.isError ? <div role="alert"><Feedback tone="error">{errorText(list.error)}</Feedback></div>
-          : list.data.items.length === 0 ? <Panel><EmptyState title={tr("没有符合条件的需求")} /></Panel>
-          : <Panel noPadding>
-            <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-100 text-xs text-slate-500"><tr><th className="px-4 py-2">{tr("编号")}</th><th className="px-4 py-2">{tr("需求")}</th><th className="px-4 py-2">{tr("模块")}</th><th className="px-4 py-2">{tr("来源")}</th><th className="px-4 py-2">{tr("状态")}</th><th className="px-4 py-2">{tr("版本")}</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{list.data.items.map((item) => <tr key={item.id} aria-selected={filters.req === item.id} className={`cursor-pointer hover:bg-slate-50 ${filters.req === item.id ? "bg-blue-50" : ""}`} onClick={() => setFilters({ req: item.id, tab: null })}>
-                <td className="px-4 py-2 font-mono text-xs">{item.code ?? "—"}</td>
-                <td className="px-4 py-2"><button type="button" className="text-left font-medium text-slate-900 hover:underline" onClick={(e) => { e.stopPropagation(); setFilters({ req: item.id, tab: null }); }}>{item.title}</button></td>
-                <td className="px-4 py-2 text-slate-600">{item.module.name}</td>
-                <td className="px-4 py-2 text-slate-600">{item.origin === "ai" ? "AI" : tr("手工")}</td>
-                <td className="px-4 py-2"><StatusBadge tone={item.status === "draft" ? "gray" : "blue"} label={tr(statusLabel[item.status]) ?? item.status} /></td>
-                <td className="px-4 py-2 text-slate-600">v{item.version_no}</td>
-              </tr>)}</tbody>
-            </table></div>
-            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
-              <span>{tr("共 {0} 条 · 第 {1} / {2} 页", { 0: list.data.total, 1: filters.page, 2: pages })}</span>
-              <span className="flex gap-2"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>{tr("上一页")}</button><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>{tr("下一页")}</button></span>
+      ) : (
+        <div className="mt-2"><RequirementsStep projectId={projectId} /></div>
+      )}
+      {showManageList && <>
+        <div className={`${editableDraft ? "mt-8" : "mt-2"} flex flex-wrap items-baseline justify-between gap-2`}>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">{tr("需求清单")}</h2>
+          <p className="text-xs text-slate-500">{tr("筛选、编辑并追踪需求的版本变更与证据链。")}</p>
+        </div>
+        <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-3">
+            <div className="gp-surface-card py-3">
+              <form className="grid grid-cols-2 gap-2.5 lg:grid-cols-[96px_minmax(0,1fr)_104px_150px_104px_auto]" onSubmit={(e) => { e.preventDefault(); setFilters({ code: draft.code.trim() || null, q: draft.q.trim() || null, page: null }); }}>
+                <div><label className={label} htmlFor="req-f-code">{tr("编号")}</label><input id="req-f-code" className={input} placeholder="R-001" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} /></div>
+                <div><label className={label} htmlFor="req-f-q">{tr("名称或说明")}</label><input id="req-f-q" className={input} placeholder={tr("关键字检索")} value={draft.q} onChange={(e) => setDraft({ ...draft, q: e.target.value })} /></div>
+                <div><label className={label} htmlFor="req-f-source">{tr("来源")}</label><select id="req-f-source" className={input} value={filters.source} onChange={(e) => setFilters({ source: e.target.value || null, page: null })}><option value="">{tr("全部")}</option><option value="ai">{tr("AI 分析")}</option><option value="manual">{tr("手工录入")}</option></select></div>
+                <div><label className={label} htmlFor="req-f-module">{tr("模块")}</label><select id="req-f-module" className={input} value={filters.module} onChange={(e) => setFilters({ module: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{list.data?.modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+                <div><label className={label} htmlFor="req-f-status">{tr("状态")}</label><select id="req-f-status" className={input} value={filters.status} onChange={(e) => setFilters({ status: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{tr(v)}</option>)}</select></div>
+                <div className="col-span-2 flex items-end justify-end gap-2 lg:col-span-1"><button type="submit" className={button}><Search size={14} />{tr("查询")}</button><button type="button" className={secondary} onClick={clearFilters}>{tr("清空")}</button></div>
+              </form>
             </div>
-          </Panel>}
-      </div>
-      <div>{filters.req ? <RequirementPanel key={filters.req} projectId={projectId} requirementId={filters.req} tab={filters.tab} onTab={(tab) => setFilters({ tab })} /> : <Panel><EmptyState title={tr("选择一条需求")} description={tr("查看详情、修改记录和它关联的任务与证据。")} /></Panel>}</div>
-    </div></>}
+            {list.isPending ? <div role="status" className="gp-empty">{tr("正在加载需求…")}</div>
+              : list.isError ? <div role="alert"><Feedback tone="error">{errorText(list.error)}</Feedback></div>
+              : list.data.items.length === 0 ? <Panel><EmptyState title={tr("没有符合条件的需求")} /></Panel>
+              : <Panel noPadding>
+                <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+                  <thead className="border-b border-slate-100 text-xs text-slate-500"><tr><th className="px-4 py-2">{tr("编号")}</th><th className="px-4 py-2">{tr("需求")}</th><th className="px-4 py-2">{tr("模块")}</th><th className="px-4 py-2">{tr("来源")}</th><th className="px-4 py-2">{tr("状态")}</th><th className="px-4 py-2">{tr("版本")}</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{list.data.items.map((item) => <tr key={item.id} aria-selected={filters.req === item.id} className={`cursor-pointer hover:bg-slate-50 ${filters.req === item.id ? "bg-blue-50" : ""}`} onClick={() => setFilters({ req: item.id, tab: null })}>
+                    <td className="px-4 py-2 font-mono text-xs">{item.code ?? "—"}</td>
+                    <td className="px-4 py-2"><button type="button" className="text-left font-medium text-slate-900 hover:underline" onClick={(e) => { e.stopPropagation(); setFilters({ req: item.id, tab: null }); }}>{item.title}</button></td>
+                    <td className="px-4 py-2 text-slate-600">{item.module.name}</td>
+                    <td className="px-4 py-2"><StatusBadge tone={item.origin === "ai" ? "blue" : "gray"} label={item.origin === "ai" ? tr("AI 解析") : tr("手工")} /></td>
+                    <td className="px-4 py-2"><StatusBadge tone={item.status === "draft" ? "gray" : "blue"} label={tr(statusLabel[item.status]) ?? item.status} /></td>
+                    <td className="px-4 py-2 text-slate-600">v{item.version_no}</td>
+                  </tr>)}</tbody>
+                </table></div>
+                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
+                  <span>{tr("共 {0} 条 · 第 {1} / {2} 页", { 0: list.data.total, 1: filters.page, 2: pages })}</span>
+                  <span className="flex gap-2"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>{tr("上一页")}</button><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>{tr("下一页")}</button></span>
+                </div>
+              </Panel>}
+          </div>
+          <div>{filters.req ? <RequirementPanel key={filters.req} projectId={projectId} requirementId={filters.req} tab={filters.tab} onTab={(tab) => setFilters({ tab })} /> : <Panel><EmptyState title={tr("选择一条需求")} description={tr("查看详情、修改记录和它关联的任务与证据。")} /></Panel>}</div>
+        </div>
+      </>}
+    </>}
   </div>;
 }
 
