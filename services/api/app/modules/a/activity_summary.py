@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -18,11 +20,15 @@ from sqlalchemy.orm import Session
 from app.api.errors import ApiError
 from app.db.models import User
 from app.modules.a import ai, github, github_activity, permissions
+from app.modules.a.ai.provider import AIUnavailable, get_provider
 from app.modules.a.ai.usage import AIUsageContext
 from app.modules.a.models import ActivitySummary, GithubActivity, GithubRepoLink
 
+logger = logging.getLogger("groupproof.a.activity_summary")
+
 PROMPT_VERSION = "activity-summary-v2"
 SUMMARY_STATUSES = ("not_generated", "pending", "ready", "failed", "unsupported")
+MAX_AUTO_SUMMARY_PER_SYNC = 15
 
 
 def _hydrate_commit_detail(session: Session, row: GithubActivity) -> None:
@@ -278,3 +284,80 @@ def generate_summary(
     cached.error_code = None
     session.flush()
     return _apply_row(data, cached)
+
+
+def recent_unanalyzed_commit_ids(
+    session: Session, project_id: UUID, *, limit: int = MAX_AUTO_SUMMARY_PER_SYNC
+) -> list[UUID]:
+    """返回本项目最新尚未生成当前版本 ready 摘要的 GitHub 提交 ID 列表。"""
+    rows = session.scalars(
+        select(GithubActivity)
+        .where(
+            GithubActivity.project_id == project_id,
+            GithubActivity.kind == "commit",
+            GithubActivity.deleted.is_(False),
+        )
+        .order_by(GithubActivity.occurred_at.desc())
+        .limit(max(1, min(limit * 3, 60)))
+    ).all()
+    if not rows:
+        return []
+    ready_ids = set(
+        session.scalars(
+            select(ActivitySummary.source_id).where(
+                ActivitySummary.project_id == project_id,
+                ActivitySummary.source_type == "github",
+                ActivitySummary.prompt_version == PROMPT_VERSION,
+                ActivitySummary.status == "ready",
+                ActivitySummary.source_id.in_([row.id for row in rows]),
+            )
+        ).all()
+    )
+    pending = [row.id for row in rows if row.id not in ready_ids]
+    return pending[:limit]
+
+
+def run_auto_summaries(
+    project_id: UUID,
+    actor_id: UUID,
+    commit_ids: list[UUID],
+    *,
+    session_factory=None,
+    provider: ai.AIProvider | None = None,
+) -> int:
+    """后台并发为新同步的提交自动生成结构化 AI 功能分析（单条独立事务，失败不阻断其他提交）。"""
+    if not commit_ids:
+        return 0
+    if provider is None:
+        try:
+            get_provider()
+        except AIUnavailable:
+            return 0
+
+    if session_factory is None:
+        from app.db.session import SessionLocal
+
+        session_factory = SessionLocal
+
+    def _process_one(source_id: UUID) -> bool:
+        session = session_factory()
+        try:
+            actor = session.get(User, actor_id)
+            if actor is None:
+                return False
+            result = generate_summary(session, actor, project_id, source_id, provider=provider)
+            session.commit()
+            return result.get("status") == "ready"
+        except Exception as exc:  # noqa: BLE001 - 后台任务兜底，避免未捕获异常中断池
+            session.rollback()
+            logger.warning("auto summary failed for commit %s: %s", source_id, exc)
+            return False
+        finally:
+            session.close()
+
+    targets = list(dict.fromkeys(commit_ids))[:MAX_AUTO_SUMMARY_PER_SYNC]
+    if len(targets) == 1:
+        return 1 if _process_one(targets[0]) else 0
+    with ThreadPoolExecutor(max_workers=min(3, len(targets))) as pool:
+        results = list(pool.map(_process_one, targets))
+    return sum(1 for ok in results if ok)

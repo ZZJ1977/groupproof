@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Sparkles } from "lucide-react";
@@ -146,6 +146,9 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const [syncing, setSyncing] = useState(false);
   const busyRef = useRef(false);
   const [summaryBusy, setSummaryBusy] = useState<string | null>(null);
+  const [autoAnalyzingIds, setAutoAnalyzingIds] = useState<string[]>([]);
+  const autoTriggeredRef = useRef<Set<string>>(new Set());
+  const autoRunningRef = useRef(false);
   const [operationError, setOperationError] = useState<unknown>(null);
   const [blocked, setBlocked] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
@@ -180,6 +183,74 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     staleTime: 15_000,
   });
   const summaryById = new Map<string, ActivitySummary>((summaries.data ?? []).map((item) => [item.source_id, item]));
+  const failedSummaryIds = sourceType === "github"
+    ? summaryIds.filter((id) => summaryById.get(id)?.status === "failed")
+    : [];
+  const hasPendingServerSummaries = sourceType === "github"
+    && (summaries.data ?? []).some((item) => item.status === "pending");
+
+  // 每条新提交自动触发 AI 代码功能分析（无需人工点击），逐条完成并实时刷新卡片
+  useEffect(() => {
+    if (
+      sourceType !== "github" ||
+      !access?.actor.is_member ||
+      !summaries.isSuccess ||
+      summaries.isFetching ||
+      syncing ||
+      summaryBusy ||
+      autoRunningRef.current
+    ) {
+      return;
+    }
+    const toAnalyze = summaryIds.filter((id) => {
+      if (autoTriggeredRef.current.has(id)) return false;
+      const item = summaryById.get(id);
+      return !item || item.status === "not_generated";
+    });
+    if (!toAnalyze.length) return;
+    for (const id of toAnalyze) autoTriggeredRef.current.add(id);
+    autoRunningRef.current = true;
+    let cancelled = false;
+    setAutoAnalyzingIds(toAnalyze);
+
+    void (async () => {
+      try {
+        for (const id of toAnalyze) {
+          if (cancelled) break;
+          try {
+            await projectApi.generateGithubActivitySummary(projectId, id);
+          } catch {
+            // 单条失败留给列表显示「重试摘要」，不阻塞其余提交自动分析
+          }
+          if (cancelled) break;
+          setAutoAnalyzingIds((prev) => prev.filter((item) => item !== id));
+          await summaries.refetch();
+          if (selectedId === id) {
+            await selectedSummaryQuery.refetch();
+          }
+        }
+      } finally {
+        autoRunningRef.current = false;
+        if (!cancelled) setAutoAnalyzingIds([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceType, projectId, access?.actor.is_member, summaries.isSuccess, summaries.isFetching, syncing, summaryBusy, summaryIds.join(",")]);
+
+  // 若服务端后台同步任务仍在分析某些提交，每 3 秒自动轮询直到结果就绪
+  useEffect(() => {
+    if (!hasPendingServerSummaries) return;
+    const timer = window.setInterval(() => {
+      void summaries.refetch();
+      if (selectedId) void selectedSummaryQuery.refetch();
+    }, 3000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPendingServerSummaries, selectedId]);
   const groups = [...new Set([
     ...(connected?.kind === "feishu" ? connected.items.map((group) => group.chat_id) : []),
     ...(rows?.items.flatMap((item) => item.group_id ? [item.group_id] : []) ?? []),
@@ -284,12 +355,13 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   }
 
   async function generatePageSummaries() {
-    if (summaryBusy || !summaryIds.length || sourceType !== "github") return;
+    const targetIds = failedSummaryIds.length > 0 ? failedSummaryIds : summaryIds;
+    if (summaryBusy || !targetIds.length || sourceType !== "github") return;
     setSummaryBusy("batch");
     setOperationError(null);
     setNotice("");
     try {
-      const results = await projectApi.generateGithubActivitySummaries(projectId, summaryIds);
+      const results = await projectApi.generateGithubActivitySummaries(projectId, targetIds);
       await Promise.all([summaries.refetch(), ...(selectedId ? [selectedSummaryQuery.refetch()] : [])]);
       const failed = results.filter((result) => result.status === "failed").length;
       setNotice(failed ? `${failed} 条摘要生成失败，其余结果仍可查看。` : "本页摘要已生成，内容仍需人工确认。");
@@ -399,7 +471,21 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             {sourceType === "github" ? "连接 GitHub 仓库" : "绑定飞书群"}
           </Link>
         )}
-        {sourceType === "github" && summaryIds.length > 0 && <button className={apiButton} disabled={Boolean(summaryBusy) || syncing || summaries.isFetching} onClick={() => void generatePageSummaries()}>{summaryBusy === "batch" ? "生成中…" : "生成本页摘要"}</button>}
+        {sourceType === "github" && autoAnalyzingIds.length > 0 && (
+          <span className="gp-pill text-sky-700" role="status">
+            <Sparkles size={12} className="animate-pulse" />
+            AI 自动分析中（剩余 {autoAnalyzingIds.length} 条）
+          </span>
+        )}
+        {sourceType === "github" && failedSummaryIds.length > 0 && (
+          <button
+            className={apiButton}
+            disabled={Boolean(summaryBusy) || syncing || summaries.isFetching}
+            onClick={() => void generatePageSummaries()}
+          >
+            {summaryBusy === "batch" ? "重试中…" : `重试失败摘要 (${failedSummaryIds.length})`}
+          </button>
+        )}
         <button className={apiButton} disabled={busy || syncing || Boolean(summaryBusy) || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新活动</button>
       </div>}
     />
@@ -488,13 +574,18 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             {rows.items.map((item) => {
               const isCommit = sourceType === "github" && item.kind === "commit";
               const summary = isCommit ? summaryById.get(item.source_id) : undefined;
+              const isAnalyzing = isCommit && (
+                summaryBusy === item.source_id ||
+                autoAnalyzingIds.includes(item.source_id) ||
+                summary?.status === "pending"
+              );
               const displayTitle = isCommit ? summary?.headline || item.title : item.title;
               const cleanedPreview = formatActivityPreview(item.summary);
               const distinctPreview = cleanedPreview && cleanedPreview !== item.title.trim() ? cleanedPreview : "";
               const displaySummary = isCommit
-                ? summary?.implementation || distinctPreview || "尚未生成 AI 摘要。点击“生成摘要”查看实现说明，或点“查看记录”浏览原始提交。"
+                ? summary?.implementation || distinctPreview
                 : cleanedPreview;
-              return <ListRow key={item.source_id} leading={<Avatar name={item.author_name || "来"} />} title={displayTitle} meta={<>{item.author_name || "来源未提供作者名称"} · {kindLabels[item.kind] ?? item.kind}{item.github_state && ` · ${item.github_state}`} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</>} actions={<div className="flex flex-wrap items-center gap-2"><StatusBadge status={item.status} label={statuses[item.status]} />{isCommit && summary && <StatusBadge label={summaryStatusLabels[summary.status]} tone={summaryTone(summary.status)} />}{isCommit && (!summary || summary.status === "not_generated" || summary.status === "failed") && <button className={apiButton} type="button" disabled={Boolean(summaryBusy)} onClick={() => void generateSummary(item.source_id)}><Sparkles size={13} />{summaryBusy === item.source_id ? "分析中…" : summary?.status === "failed" ? "重试摘要" : "生成摘要"}</button>}<button className={apiButton} type="button" onClick={() => selectRecord(item.source_id)}>查看记录</button></div>}>
+              return <ListRow key={item.source_id} leading={<Avatar name={item.author_name || "来"} />} title={displayTitle} meta={<>{item.author_name || "来源未提供作者名称"} · {kindLabels[item.kind] ?? item.kind}{item.github_state && ` · ${item.github_state}`} · {formatDate(item.occurred_at)} · {taskName(item.task_id)}</>} actions={<div className="flex flex-wrap items-center gap-2"><StatusBadge status={item.status} label={statuses[item.status]} />{isCommit && (isAnalyzing ? <StatusBadge label="AI 分析中…" tone="blue" /> : summary && <StatusBadge label={summaryStatusLabels[summary.status]} tone={summaryTone(summary.status)} />)}{isCommit && !isAnalyzing && summary?.status === "failed" && <button className={apiButton} type="button" disabled={Boolean(summaryBusy)} onClick={() => void generateSummary(item.source_id)}><Sparkles size={13} />重试摘要</button>}<button className={apiButton} type="button" onClick={() => selectRecord(item.source_id)}>查看记录</button></div>}>
                 {isCommit && summary?.status === "ready" ? (
                   <div className="mt-2.5 max-w-3xl rounded-xl border border-sky-100/90 bg-sky-50/45 px-3.5 py-2.5 text-sm">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -511,6 +602,11 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                         {summary.risks?.slice(0, 2).map((r) => <span key={r} className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800">风险：{r}</span>)}
                       </div>
                     )}
+                  </div>
+                ) : isAnalyzing ? (
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-50/70 px-3 py-1.5 text-xs text-sky-700">
+                    <Sparkles size={12} className="animate-pulse" />
+                    AI 正在自动分析本次提交实现的功能…
                   </div>
                 ) : (
                   displaySummary && <p className="mt-1.5 line-clamp-2 max-w-3xl text-sm leading-6 text-slate-600">{displaySummary}</p>
