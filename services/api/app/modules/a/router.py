@@ -501,7 +501,11 @@ def sync_github(
         pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, project_id)
         if pending_ids:
             background_tasks.add_task(
-                activity_summary.run_auto_summaries, project_id, user.id, pending_ids
+                activity_summary.run_auto_summaries,
+                project_id,
+                user.id,
+                pending_ids,
+                refresh_code_progress=True,
             )
     return success(GithubSyncDTO(**totals), request)
 
@@ -583,6 +587,7 @@ async def github_webhook(request: Request, session: Database, background_tasks: 
                     link.project_id,
                     link.linked_by_id,
                     pending_ids,
+                    refresh_code_progress=True,
                 )
     return success(GithubWebhookResultDTO(event=event, handled=True, **totals), request)
 

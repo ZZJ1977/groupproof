@@ -307,17 +307,66 @@ def generate_summary(
 def recent_unanalyzed_commit_ids(
     session: Session, project_id: UUID, *, limit: int = MAX_AUTO_SUMMARY_PER_SYNC
 ) -> list[UUID]:
-    """返回本项目最新尚未生成当前版本 ready 摘要（且近期未刚失败）的 GitHub 提交 ID 列表。"""
-    rows = session.scalars(
-        select(GithubActivity)
+    """返回尚未生成当前版本 ready 摘要的提交 ID（优先已关联证据的提交，再补最新提交）。"""
+    from app.modules.c.models import Evidence, EvidenceSourceSnapshot
+
+    source_id_expr = EvidenceSourceSnapshot.content_json["source_id"].as_string()
+    linked_raw = session.scalars(
+        select(source_id_expr)
+        .join(Evidence, Evidence.id == EvidenceSourceSnapshot.evidence_id)
         .where(
-            GithubActivity.project_id == project_id,
-            GithubActivity.kind == "commit",
-            GithubActivity.deleted.is_(False),
+            Evidence.project_id == project_id,
+            Evidence.source_type == "github",
+            EvidenceSourceSnapshot.version_no == 1,
         )
-        .order_by(GithubActivity.occurred_at.desc())
-        .limit(max(1, min(limit * 3, 60)))
     ).all()
+    linked_uuids: list[UUID] = []
+    seen_linked: set[UUID] = set()
+    for raw in linked_raw:
+        if not isinstance(raw, str):
+            continue
+        try:
+            uid = UUID(raw)
+        except ValueError:
+            continue
+        if uid not in seen_linked:
+            seen_linked.add(uid)
+            linked_uuids.append(uid)
+
+    linked_rows: list[GithubActivity] = []
+    if linked_uuids:
+        linked_rows = list(
+            session.scalars(
+                select(GithubActivity)
+                .where(
+                    GithubActivity.project_id == project_id,
+                    GithubActivity.id.in_(linked_uuids),
+                    GithubActivity.kind == "commit",
+                    GithubActivity.deleted.is_(False),
+                )
+                .order_by(GithubActivity.occurred_at.desc())
+            ).all()
+        )
+
+    recent_rows = list(
+        session.scalars(
+            select(GithubActivity)
+            .where(
+                GithubActivity.project_id == project_id,
+                GithubActivity.kind == "commit",
+                GithubActivity.deleted.is_(False),
+            )
+            .order_by(GithubActivity.occurred_at.desc())
+            .limit(max(1, min(limit * 3, 60)))
+        ).all()
+    )
+
+    rows: list[GithubActivity] = []
+    seen_row_ids: set[UUID] = set()
+    for row in [*linked_rows, *recent_rows]:
+        if row.id not in seen_row_ids:
+            seen_row_ids.add(row.id)
+            rows.append(row)
     if not rows:
         return []
     existing = session.scalars(
@@ -352,6 +401,7 @@ def run_auto_summaries(
     *,
     session_factory=None,
     provider: ai.AIProvider | None = None,
+    refresh_code_progress: bool = False,
 ) -> int:
     """后台并发为新同步的提交自动生成结构化 AI 功能分析（单条独立事务，失败不阻断其他提交）。"""
     if not commit_ids:
@@ -385,7 +435,30 @@ def run_auto_summaries(
 
     targets = list(dict.fromkeys(commit_ids))[:MAX_AUTO_SUMMARY_PER_SYNC]
     if len(targets) == 1:
-        return 1 if _process_one(targets[0]) else 0
-    with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
-        results = list(pool.map(_process_one, targets))
-    return sum(1 for ok in results if ok)
+        generated = 1 if _process_one(targets[0]) else 0
+    else:
+        with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
+            results = list(pool.map(_process_one, targets))
+        generated = sum(1 for ok in results if ok)
+
+    if refresh_code_progress and generated > 0:
+        session = session_factory()
+        try:
+            from app.modules.b import code_progress_service
+
+            actor = session.get(User, actor_id)
+            code_progress_service.sync_task_code_progress(
+                session,
+                project_id,
+                actor=actor,
+                require_member_auth=False,
+                recalculate=False,
+            )
+            session.commit()
+        except Exception as exc:  # noqa: BLE001 - 刷新候选证据描述失败不阻断摘要结果
+            session.rollback()
+            logger.warning("refresh code progress after auto summaries failed: %s", exc)
+        finally:
+            session.close()
+
+    return generated

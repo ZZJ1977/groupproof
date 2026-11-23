@@ -10,8 +10,41 @@ from sqlalchemy.orm import Session
 from app.db.models import Project, User
 from app.modules.a.github_activity import DatabaseGithubActivityPort
 from app.modules.c.activity_ports import ActivitySourceQuery, GithubActivityPort
-from app.modules.c.evidence_service import append_source_change
+from app.modules.c.evidence_service import append_source_change, content_hash
 from app.modules.c.models import Evidence, EvidenceSourceSnapshot
+
+
+def _normalize_legacy_auto_snapshot(session: Session, evidence: Evidence, item) -> None:
+    """升级旧版自动代码证据写入的裸 SHA snapshot，避免与 commit:<sha> 冲突。"""
+    prefix = f"{item.kind}:"
+    if not item.source.identity.startswith(prefix):
+        return
+    bare_id = item.source.identity[len(prefix) :]
+    latest = session.scalar(
+        select(EvidenceSourceSnapshot)
+        .where(EvidenceSourceSnapshot.evidence_id == evidence.id)
+        .order_by(EvidenceSourceSnapshot.version_no.desc())
+        .limit(1)
+    )
+    if (
+        latest is None
+        or latest.version_no != 1
+        or latest.source_identity != bare_id
+        or not isinstance(latest.content_json, dict)
+        or latest.content_json.get("source_id") != str(item.id)
+    ):
+        return
+    latest.source_identity = item.source.identity
+    latest.source_revision = item.source.revision
+    latest.content_hash = content_hash(
+        {"availability": item.source.availability, "source": item.source.content}
+    )
+    latest.content_json = {
+        "source_id": str(item.id),
+        "availability": item.source.availability,
+        "source": item.source.content,
+    }
+    session.flush()
 
 
 def reconcile_github_evidence(session: Session, actor: User, project_id: UUID) -> None:
@@ -54,6 +87,7 @@ def reconcile_github_evidence(session: Session, actor: User, project_id: UUID) -
         )
         for item in records.items:
             for evidence in by_source[item.id]:
+                _normalize_legacy_auto_snapshot(session, evidence, item)
                 append_source_change(
                     session, evidence, actor.id, item.source, "GitHub 同步确认来源发生变化。"
                 )

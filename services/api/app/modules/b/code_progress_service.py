@@ -975,17 +975,9 @@ def _create_candidate_evidences(
 
             ev_id = uuid4()
             source_url = _safe_github_url(act.url)
-            source_payload = {
-                "kind": "commit",
-                "sha": sha,
-                "title": act.title,
-                "summary": ai_impl or act.summary or act.title,
-                "body": ev_desc,
-                "url": source_url,
-                "author_login": act.author_login,
-                "author_name": act.author_name,
-                "files": file_paths[:20],
-            }
+            from app.modules.a.github_activity import _record as build_github_activity_record
+
+            canonical_source = build_github_activity_record(act, author_id).source
 
             session.add(
                 Evidence(
@@ -1010,15 +1002,18 @@ def _create_candidate_evidences(
                 EvidenceSourceSnapshot(
                     evidence_id=ev_id,
                     version_no=1,
-                    source_identity=sha,
-                    source_revision=sha,
+                    source_identity=canonical_source.identity,
+                    source_revision=canonical_source.revision,
                     content_hash=content_hash(
-                        {"availability": "available", "source": source_payload}
+                        {
+                            "availability": canonical_source.availability,
+                            "source": canonical_source.content,
+                        }
                     ),
                     content_json={
                         "source_id": str(act.id),
-                        "availability": "available",
-                        "source": source_payload,
+                        "availability": canonical_source.availability,
+                        "source": canonical_source.content,
                     },
                     captured_by=author_id,
                 )

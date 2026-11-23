@@ -135,7 +135,11 @@ def run_once(*, session_factory=None, client=None) -> dict[str, int]:
 
     for project_id, actor_id, commit_ids in pending_jobs:
         summaries_generated += activity_summary.run_auto_summaries(
-            project_id, actor_id, commit_ids, session_factory=factory
+            project_id,
+            actor_id,
+            commit_ids,
+            session_factory=factory,
+            refresh_code_progress=True,
         )
 
     return {
