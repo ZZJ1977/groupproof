@@ -13,7 +13,7 @@ const pages = {
 const governanceStyles = source("features/governance/governance.module.css");
 
 const checks = [
-  ["dashboard keeps real KPI queries", /admin-dashboard-users/.test(pages.dashboard) && /admin-dashboard-courses/.test(pages.dashboard)],
+  ["dashboard keeps real KPI queries", /admin-workbench-overview/.test(pages.dashboard) && /workbenchOverview/.test(pages.dashboard)],
   ["dashboard has a visual workbench wrapper", /styles\.page/.test(pages.dashboard) && /styles\.metrics/.test(pages.dashboard)],
   ["identity page uses the shared visual scope", /styles\.identityPage/.test(pages.identity) && /styles\.identityTablePanel/.test(pages.identity)],
   ["identity keeps critical admin actions", ["新增账号", "刷新列表", "查看", "处理原因", "取消"].every((label) => pages.identity.includes(label))],

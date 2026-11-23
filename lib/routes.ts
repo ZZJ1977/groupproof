@@ -29,6 +29,7 @@ const staticRoutes: Record<string, number> = {
   "/admin/logs": 54,
   "/admin/ai-usage": 55,
   "/admin/access-requests": 56,
+  "/admin/integrations": 63,
 };
 
 export const teacherScreens = [41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 57, 58, 59, 60, 61] as const;

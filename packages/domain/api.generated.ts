@@ -749,6 +749,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workbench/access-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Access Grants */
+        get: operations["get_access_grants_api_v1_admin_workbench_access_grants_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/ai-diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Diagnostics */
+        get: operations["get_ai_diagnostics_api_v1_admin_workbench_ai_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/courses/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Course Metrics */
+        post: operations["post_course_metrics_api_v1_admin_workbench_courses_metrics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Integrations */
+        get: operations["get_integrations_api_v1_admin_workbench_integrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Overview */
+        get: operations["get_overview_api_v1_admin_workbench_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/resolve-labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Resolve Labels */
+        post: operations["post_resolve_labels_api_v1_admin_workbench_resolve_labels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/users/{user_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User Profile */
+        get: operations["get_user_profile_api_v1_admin_workbench_users__user_id__profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/users/{user_id}/sessions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Revoke User Sessions */
+        post: operations["post_revoke_user_sessions_api_v1_admin_workbench_users__user_id__sessions_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/capabilities": {
         parameters: {
             query?: never;
@@ -1107,6 +1243,23 @@ export interface paths {
         put?: never;
         /** Enable */
         post: operations["enable_api_v1_c_admin_users__user_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/c-admin/users/bulk-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk Import Accounts */
+        post: operations["bulk_import_accounts_api_v1_c_admin_users_bulk_import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5822,6 +5975,154 @@ export interface components {
             /** Identifier */
             identifier: string;
         };
+        /** AdminAccessGrantItemDTO */
+        AdminAccessGrantItemDTO: {
+            /** Applicant Email */
+            applicant_email?: string | null;
+            /**
+             * Applicant Id
+             * Format: uuid
+             */
+            applicant_id: string;
+            /** Applicant Name */
+            applicant_name: string;
+            /** Course Code */
+            course_code?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Resource Id
+             * Format: uuid
+             */
+            resource_id: string;
+            /**
+             * Resource Type
+             * @enum {string}
+             */
+            resource_type: "project" | "task" | "evidence";
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            /** Revoke Reason */
+            revoke_reason?: string | null;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Revoked By Name */
+            revoked_by_name?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "expired" | "revoked";
+        };
+        /** AdminAccessGrantPageDTO */
+        AdminAccessGrantPageDTO: {
+            /** Items */
+            items: components["schemas"]["AdminAccessGrantItemDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** AdminAiDiagnosticsDTO */
+        AdminAiDiagnosticsDTO: {
+            /** Avg Latency Ms */
+            avg_latency_ms?: number | null;
+            /**
+             * Days
+             * @enum {integer}
+             */
+            days: 7 | 30 | 90;
+            /** Error Breakdown */
+            error_breakdown: components["schemas"]["AiErrorCountDTO"][];
+            /** Failed */
+            failed: number;
+            /** P50 Latency Ms */
+            p50_latency_ms?: number | null;
+            /** P95 Latency Ms */
+            p95_latency_ms?: number | null;
+            /** Recent Failures */
+            recent_failures: components["schemas"]["AiFailureItemDTO"][];
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** Succeeded */
+            succeeded: number;
+            summary_jobs: components["schemas"]["AiSummaryJobsDTO"];
+            /** Top Projects */
+            top_projects: components["schemas"]["AiTopProjectDTO"][];
+            /** Top Users */
+            top_users: components["schemas"]["AiTopUserDTO"][];
+            /** Total Requests */
+            total_requests: number;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+        };
+        /** AdminIntegrationsStatusDTO */
+        AdminIntegrationsStatusDTO: {
+            email_delivery: components["schemas"]["EmailDeliveryStatusDTO"];
+            feishu: components["schemas"]["FeishuIntegrationStatusDTO"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            github: components["schemas"]["GithubIntegrationStatusDTO"];
+            rate_limits: components["schemas"]["RateLimitsStatusDTO"];
+            storage_and_evidence: components["schemas"]["StorageAndEvidenceStatusDTO"];
+        };
+        /** AdminOverviewDTO */
+        AdminOverviewDTO: {
+            /** Activity 7D */
+            activity_7d: components["schemas"]["OverviewActivityDayDTO"][];
+            ai_7d: components["schemas"]["OverviewAiDTO"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            proof_pipeline: components["schemas"]["OverviewProofPipelineDTO"];
+            queues: components["schemas"]["OverviewQueuesDTO"];
+            /** Recent Users */
+            recent_users: components["schemas"]["OverviewRecentUserDTO"][];
+            /** System Health */
+            system_health: components["schemas"]["SystemHealthItemDTO"][];
+            teaching: components["schemas"]["OverviewTeachingDTO"];
+            users: components["schemas"]["OverviewUsersDTO"];
+        };
         /** AdminUserDetailDTO */
         AdminUserDetailDTO: {
             /** College */
@@ -5912,6 +6213,43 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AdminUserProfile360DTO */
+        AdminUserProfile360DTO: {
+            ai_30d: components["schemas"]["UserAiSummaryDTO"];
+            /** College */
+            college: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Disabled At */
+            disabled_at?: string | null;
+            /** Disabled Reason */
+            disabled_reason?: string | null;
+            /** Global Role */
+            global_role: string;
+            /** Last Login At */
+            last_login_at?: string | null;
+            /** Name */
+            name: string;
+            /** Recent Auth Events */
+            recent_auth_events: components["schemas"]["UserAuthEventSummaryDTO"][];
+            sessions: components["schemas"]["UserSessionsOverviewDTO"];
+            /** Status */
+            status: string;
+            /** Student Id */
+            student_id?: string | null;
+            teaching_summary: components["schemas"]["UserTeachingSummaryDTO"];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username?: string | null;
+            verification: components["schemas"]["UserVerificationMatrixDTO"];
+        };
         /** AdoptSuggestion */
         AdoptSuggestion: {
             /**
@@ -5927,6 +6265,93 @@ export interface components {
              * @enum {integer}
              */
             from_step: 2 | 3 | 4;
+        };
+        /** AiErrorCountDTO */
+        AiErrorCountDTO: {
+            /** Count */
+            count: number;
+            /** Error Code */
+            error_code: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+        };
+        /** AiFailureItemDTO */
+        AiFailureItemDTO: {
+            /** Error Code */
+            error_code?: string | null;
+            /** Feature */
+            feature: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Model */
+            model?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /** User Name */
+            user_name: string;
+        };
+        /** AiSummaryJobsDTO */
+        AiSummaryJobsDTO: {
+            /** Failed */
+            failed: number;
+            /** Needs Human Review */
+            needs_human_review: number;
+            /** Pending */
+            pending: number;
+            /** Total */
+            total: number;
+        };
+        /** AiTopProjectDTO */
+        AiTopProjectDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Course Code */
+            course_code?: string | null;
+            /** Failed */
+            failed: number;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name: string;
+            /** Requests */
+            requests: number;
+            /** Total Tokens */
+            total_tokens: number;
+        };
+        /** AiTopUserDTO */
+        AiTopUserDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Failed */
+            failed: number;
+            /** Requests */
+            requests: number;
+            /** Role */
+            role?: string | null;
+            /** Total Tokens */
+            total_tokens: number;
+            /** User Id */
+            user_id?: string | null;
+            /** User Name */
+            user_name: string;
         };
         /** AiUsageDTO */
         AiUsageDTO: {
@@ -6232,6 +6657,48 @@ export interface components {
         BindGithubRepoRequest: {
             /** Repo Url */
             repo_url: string;
+        };
+        /** BulkImportAccountsRequest */
+        BulkImportAccountsRequest: {
+            /**
+             * Dryrun
+             * @default true
+             */
+            dryRun: boolean;
+            /** Rows */
+            rows: components["schemas"]["BulkImportRowInput"][];
+        };
+        /** BulkImportRowInput */
+        BulkImportRowInput: {
+            /** College */
+            college?: string | null;
+            /**
+             * Identity
+             * @default student
+             */
+            identity: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Schoolemail
+             * @default
+             */
+            schoolEmail: string;
+            /** Studentid */
+            studentId?: string | null;
+            /**
+             * Submitforreview
+             * @default false
+             */
+            submitForReview: boolean;
+            /**
+             * Username
+             * @default
+             */
+            username: string;
         };
         /** CContextActorDTO */
         CContextActorDTO: {
@@ -6726,6 +7193,33 @@ export interface components {
             uploaded_by: string;
             /** Version No */
             version_no: number;
+        };
+        /** CourseMetricItemDTO */
+        CourseMetricItemDTO: {
+            /** Group Count */
+            group_count: number;
+            /** Has Active Invite */
+            has_active_invite: boolean;
+            /** Member Count */
+            member_count: number;
+            /** Owner Email */
+            owner_email?: string | null;
+            /** Owner Name */
+            owner_name: string;
+            /** Project Count */
+            project_count: number;
+        };
+        /** CourseMetricsRequest */
+        CourseMetricsRequest: {
+            /** Course Ids */
+            course_ids: string[];
+        };
+        /** CourseMetricsResponseDTO */
+        CourseMetricsResponseDTO: {
+            /** Items */
+            items: {
+                [key: string]: components["schemas"]["CourseMetricItemDTO"];
+            };
         };
         /** CoursePageDTO */
         CoursePageDTO: {
@@ -7604,6 +8098,46 @@ export interface components {
             /** Section */
             section: string;
         };
+        /** EmailDeliveryFailureDTO */
+        EmailDeliveryFailureDTO: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "challenge" | "notification";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Purpose */
+            purpose: string;
+            /** Recipient Domain */
+            recipient_domain: string;
+            /** Status */
+            status: string;
+        };
+        /** EmailDeliveryStatusDTO */
+        EmailDeliveryStatusDTO: {
+            /** Challenges 7D */
+            challenges_7d: number;
+            /** Challenges Accepted 7D */
+            challenges_accepted_7d: number;
+            /** Challenges Captured 7D */
+            challenges_captured_7d: number;
+            /** Challenges Failed 7D */
+            challenges_failed_7d: number;
+            /** Notifications Email Failed 7D */
+            notifications_email_failed_7d: number;
+            /** Notifications Email Pending */
+            notifications_email_pending: number;
+            /** Notifications Email Sent 7D */
+            notifications_email_sent_7d: number;
+            /** Recent Failures */
+            recent_failures: components["schemas"]["EmailDeliveryFailureDTO"][];
+        };
         /** EmailRegistrationCompleteIn */
         EmailRegistrationCompleteIn: {
             /** College */
@@ -7936,6 +8470,47 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+        };
+        /** FeishuIntegrationStatusDTO */
+        FeishuIntegrationStatusDTO: {
+            /** Attachments Total */
+            attachments_total: number;
+            /** Deleted Messages 7D */
+            deleted_messages_7d: number;
+            /** Links */
+            links: components["schemas"]["FeishuLinkHealthDTO"][];
+            /** Messages 7D */
+            messages_7d: number;
+            /** Total Links */
+            total_links: number;
+        };
+        /** FeishuLinkHealthDTO */
+        FeishuLinkHealthDTO: {
+            /** Chat Id Masked */
+            chat_id_masked: string;
+            /** Course Code */
+            course_code?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Message At */
+            last_message_at?: string | null;
+            /**
+             * Linked At
+             * Format: date-time
+             */
+            linked_at: string;
+            /** Message Count */
+            message_count: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
         };
         /** FeishuMessageDetailDTO */
         FeishuMessageDetailDTO: {
@@ -8321,6 +8896,53 @@ export interface components {
             login: string | null;
             /** Verifiedat */
             verifiedAt: string | null;
+        };
+        /** GithubIntegrationStatusDTO */
+        GithubIntegrationStatusDTO: {
+            /** Activities 7D */
+            activities_7d: number;
+            /** Links */
+            links: components["schemas"]["GithubLinkHealthDTO"][];
+            /** Never Synced */
+            never_synced: number;
+            /** Stale Over 48H */
+            stale_over_48h: number;
+            /** Synced 24H */
+            synced_24h: number;
+            /** Total Links */
+            total_links: number;
+            /** Verified Identities */
+            verified_identities: number;
+        };
+        /** GithubLinkHealthDTO */
+        GithubLinkHealthDTO: {
+            /** Activity Count */
+            activity_count: number;
+            /** Course Code */
+            course_code?: string | null;
+            /** Default Branch */
+            default_branch: string;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "healthy" | "stale" | "never_synced";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Repo Full Name */
+            repo_full_name: string;
         };
         /** GithubLinkStart */
         GithubLinkStart: {
@@ -8860,6 +9482,51 @@ export interface components {
             /** Unread Before */
             unread_before: number;
         };
+        /** OverviewActivityDayDTO */
+        OverviewActivityDayDTO: {
+            /** Ai Failed */
+            ai_failed: number;
+            /** Ai Requests */
+            ai_requests: number;
+            /** Audit Events */
+            audit_events: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Feishu Messages */
+            feishu_messages: number;
+            /** Github Activities */
+            github_activities: number;
+            /** New Users */
+            new_users: number;
+        };
+        /** OverviewAiDTO */
+        OverviewAiDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** P95 Latency Ms */
+            p95_latency_ms?: number | null;
+            /** Requests */
+            requests: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Success Rate */
+            success_rate?: number | null;
+            /** Top Errors */
+            top_errors: components["schemas"]["AiErrorCountDTO"][];
+            /** Unpriced Requests */
+            unpriced_requests: number;
+        };
         /** OverviewDTO */
         OverviewDTO: {
             /** Can Edit */
@@ -8898,6 +9565,117 @@ export interface components {
             /** Setup Step */
             setup_step: number;
             stats: components["schemas"]["ProjectStatsDTO"];
+        };
+        /** OverviewProofPipelineDTO */
+        OverviewProofPipelineDTO: {
+            /** Email Challenges 7D */
+            email_challenges_7d: number;
+            /** Email Challenges Failed 7D */
+            email_challenges_failed_7d: number;
+            /** Feishu Chat Links */
+            feishu_chat_links: number;
+            /** Feishu Messages 7D */
+            feishu_messages_7d: number;
+            /** Github Repo Links */
+            github_repo_links: number;
+            /** Github Stale Links */
+            github_stale_links: number;
+            /** Github Synced 24H */
+            github_synced_24h: number;
+            /** Notification Emails Failed 7D */
+            notification_emails_failed_7d: number;
+            /** Upload Completed Count */
+            upload_completed_count: number;
+            /** Upload Rejected Count */
+            upload_rejected_count: number;
+            /** Upload Total Bytes */
+            upload_total_bytes: number;
+        };
+        /** OverviewQueuesDTO */
+        OverviewQueuesDTO: {
+            /** Active Access Grants */
+            active_access_grants: number;
+            /** Pending Access Requests */
+            pending_access_requests: number;
+            /** Pending Teacher Applications */
+            pending_teacher_applications: number;
+            /** Undelivered Outbox */
+            undelivered_outbox: number;
+        };
+        /** OverviewRecentUserDTO */
+        OverviewRecentUserDTO: {
+            /** College */
+            college: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Login At */
+            last_login_at?: string | null;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** School Email */
+            school_email?: string | null;
+            /** School Email Verified */
+            school_email_verified: boolean;
+            /** Status */
+            status: string;
+        };
+        /** OverviewTeachingDTO */
+        OverviewTeachingDTO: {
+            /** Courses Active */
+            courses_active: number;
+            /** Courses Draft */
+            courses_draft: number;
+            /** Courses Ended */
+            courses_ended: number;
+            /** Courses Total */
+            courses_total: number;
+            /** Formal Evidences Total */
+            formal_evidences_total: number;
+            /** Groups Total */
+            groups_total: number;
+            /** Projects Active */
+            projects_active: number;
+            /** Projects Total */
+            projects_total: number;
+            /** Tasks Total */
+            tasks_total: number;
+        };
+        /** OverviewUsersDTO */
+        OverviewUsersDTO: {
+            /** Active */
+            active: number;
+            /** Active Last 7D */
+            active_last_7d: number;
+            /** By Role */
+            by_role: {
+                [key: string]: number;
+            };
+            /** Disabled */
+            disabled: number;
+            /** Github Verified */
+            github_verified: number;
+            /** Google Linked */
+            google_linked: number;
+            /** New Last 7D */
+            new_last_7d: number;
+            /** Pending */
+            pending: number;
+            /** Total */
+            total: number;
+            /** Unverified School Email */
+            unverified_school_email: number;
+            /** Verified School Email */
+            verified_school_email: number;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -9133,6 +9911,25 @@ export interface components {
             change_summary: string;
             rules?: components["schemas"]["CourseRulesDTO"] | null;
         };
+        /** RateLimitBucketDTO */
+        RateLimitBucketDTO: {
+            /** Bucket Prefix */
+            bucket_prefix: string;
+            /**
+             * Latest Window
+             * Format: date-time
+             */
+            latest_window: string;
+            /** Total Hits */
+            total_hits: number;
+        };
+        /** RateLimitsStatusDTO */
+        RateLimitsStatusDTO: {
+            /** Active Buckets 24H */
+            active_buckets_24h: number;
+            /** Top Buckets */
+            top_buckets: components["schemas"]["RateLimitBucketDTO"][];
+        };
         /** RefreshInput */
         RefreshInput: {
             /**
@@ -9249,6 +10046,78 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** ResolvedCourseDTO */
+        ResolvedCourseDTO: {
+            /** Code */
+            code: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Semester */
+            semester: string;
+            /** Status */
+            status: string;
+        };
+        /** ResolvedProjectDTO */
+        ResolvedProjectDTO: {
+            /** Course Code */
+            course_code?: string | null;
+            /** Course Id */
+            course_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lifecycle */
+            lifecycle: string;
+            /** Name */
+            name: string;
+        };
+        /** ResolvedUserDTO */
+        ResolvedUserDTO: {
+            /** College */
+            college?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** Student Id */
+            student_id?: string | null;
+        };
+        /** ResolveLabelsDTO */
+        ResolveLabelsDTO: {
+            /** Courses */
+            courses: {
+                [key: string]: components["schemas"]["ResolvedCourseDTO"];
+            };
+            /** Projects */
+            projects: {
+                [key: string]: components["schemas"]["ResolvedProjectDTO"];
+            };
+            /** Users */
+            users: {
+                [key: string]: components["schemas"]["ResolvedUserDTO"];
+            };
+        };
+        /** ResolveLabelsRequest */
+        ResolveLabelsRequest: {
+            /** Course Ids */
+            course_ids?: string[];
+            /** Project Ids */
+            project_ids?: string[];
+            /** User Ids */
+            user_ids?: string[];
+        };
         /** RespondInvitation */
         RespondInvitation: {
             /** Accept */
@@ -9284,6 +10153,23 @@ export interface components {
         };
         /** RevokeGrantRequest */
         RevokeGrantRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** RevokeUserSessionsDTO */
+        RevokeUserSessionsDTO: {
+            /** Auth Version */
+            auth_version: number;
+            /** Revoked Count */
+            revoked_count: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** RevokeUserSessionsRequest */
+        RevokeUserSessionsRequest: {
             /** Reason */
             reason: string;
         };
@@ -9596,6 +10482,29 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** StorageAndEvidenceStatusDTO */
+        StorageAndEvidenceStatusDTO: {
+            /** Activity Summaries Failed */
+            activity_summaries_failed: number;
+            /** Evidence Formal */
+            evidence_formal: number;
+            /** Evidence Pending Confirmation */
+            evidence_pending_confirmation: number;
+            /** Evidence Total */
+            evidence_total: number;
+            /** Evidence Withdrawn Or Void */
+            evidence_withdrawn_or_void: number;
+            /** Outbox Pending */
+            outbox_pending: number;
+            /** Total Bytes */
+            total_bytes: number;
+            /** Upload Completed */
+            upload_completed: number;
+            /** Upload Pending */
+            upload_pending: number;
+            /** Upload Rejected */
+            upload_rejected: number;
+        };
         /** SubmitAppealRequest */
         SubmitAppealRequest: {
             /**
@@ -9658,6 +10567,26 @@ export interface components {
             data: components["schemas"]["ActivitySummaryDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[AdminAccessGrantPageDTO] */
+        SuccessResponse_AdminAccessGrantPageDTO_: {
+            data: components["schemas"]["AdminAccessGrantPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AdminAiDiagnosticsDTO] */
+        SuccessResponse_AdminAiDiagnosticsDTO_: {
+            data: components["schemas"]["AdminAiDiagnosticsDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AdminIntegrationsStatusDTO] */
+        SuccessResponse_AdminIntegrationsStatusDTO_: {
+            data: components["schemas"]["AdminIntegrationsStatusDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AdminOverviewDTO] */
+        SuccessResponse_AdminOverviewDTO_: {
+            data: components["schemas"]["AdminOverviewDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[AdminUserDetailDTO] */
         SuccessResponse_AdminUserDetailDTO_: {
             data: components["schemas"]["AdminUserDetailDTO"];
@@ -9666,6 +10595,11 @@ export interface components {
         /** SuccessResponse[AdminUserPageDTO] */
         SuccessResponse_AdminUserPageDTO_: {
             data: components["schemas"]["AdminUserPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AdminUserProfile360DTO] */
+        SuccessResponse_AdminUserProfile360DTO_: {
+            data: components["schemas"]["AdminUserProfile360DTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[AiUsagePageDTO] */
@@ -9711,6 +10645,11 @@ export interface components {
         /** SuccessResponse[CourseFilePageDTO] */
         SuccessResponse_CourseFilePageDTO_: {
             data: components["schemas"]["CourseFilePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[CourseMetricsResponseDTO] */
+        SuccessResponse_CourseMetricsResponseDTO_: {
+            data: components["schemas"]["CourseMetricsResponseDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[CoursePageDTO] */
@@ -9941,6 +10880,16 @@ export interface components {
             data: components["schemas"]["ProjectTemplateDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[ResolveLabelsDTO] */
+        SuccessResponse_ResolveLabelsDTO_: {
+            data: components["schemas"]["ResolveLabelsDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[RevokeUserSessionsDTO] */
+        SuccessResponse_RevokeUserSessionsDTO_: {
+            data: components["schemas"]["RevokeUserSessionsDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[SetupDTO] */
         SuccessResponse_SetupDTO_: {
             data: components["schemas"]["SetupDTO"];
@@ -10002,6 +10951,20 @@ export interface components {
             evidence?: string[];
             /** Supplement Text */
             supplement_text: string;
+        };
+        /** SystemHealthItemDTO */
+        SystemHealthItemDTO: {
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "warning" | "degraded";
         };
         /** TaskDependencyView */
         TaskDependencyView: {
@@ -10608,6 +11571,106 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /** UserAiSummaryDTO */
+        UserAiSummaryDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Failed */
+            failed: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Requests */
+            requests: number;
+        };
+        /** UserAuthEventSummaryDTO */
+        UserAuthEventSummaryDTO: {
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Result */
+            result: string;
+        };
+        /** UserSessionsOverviewDTO */
+        UserSessionsOverviewDTO: {
+            /** Active Count */
+            active_count: number;
+            /** Recent */
+            recent: components["schemas"]["UserSessionSummaryDTO"][];
+        };
+        /** UserSessionSummaryDTO */
+        UserSessionSummaryDTO: {
+            /** Auth Method */
+            auth_method?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Revoke Reason */
+            revoke_reason?: string | null;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Scope */
+            scope: string;
+        };
+        /** UserTeachingSummaryDTO */
+        UserTeachingSummaryDTO: {
+            /** Active Access Grants */
+            active_access_grants: number;
+            /** Enrolled Courses */
+            enrolled_courses: number;
+            /** Member Projects */
+            member_projects: number;
+            /** Owned Courses */
+            owned_courses: number;
+            /** Staff Courses */
+            staff_courses: number;
+        };
+        /** UserVerificationMatrixDTO */
+        UserVerificationMatrixDTO: {
+            /** Github Login */
+            github_login?: string | null;
+            /** Github Verified */
+            github_verified: boolean;
+            /** Google Email */
+            google_email?: string | null;
+            /** Google Linked */
+            google_linked: boolean;
+            /** Has Password */
+            has_password: boolean;
+            /** Login Email Verified */
+            login_email_verified: boolean;
+            /** Pending School Email */
+            pending_school_email?: string | null;
+            /** School Email */
+            school_email?: string | null;
+            /** School Email Verified */
+            school_email_verified: boolean;
+            /** School Email Verified At */
+            school_email_verified_at?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -13070,6 +14133,639 @@ export interface operations {
             };
         };
     };
+    get_access_grants_api_v1_admin_workbench_access_grants_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: "active" | "expired" | "revoked" | "all";
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminAccessGrantPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_ai_diagnostics_api_v1_admin_workbench_ai_diagnostics_get: {
+        parameters: {
+            query?: {
+                days?: 7 | 30 | 90;
+                feature?: string | null;
+                model?: string | null;
+                user_id?: string | null;
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminAiDiagnosticsDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_course_metrics_api_v1_admin_workbench_courses_metrics_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseMetricsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_CourseMetricsResponseDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_integrations_api_v1_admin_workbench_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminIntegrationsStatusDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_api_v1_admin_workbench_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminOverviewDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_resolve_labels_api_v1_admin_workbench_resolve_labels_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveLabelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ResolveLabelsDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_user_profile_api_v1_admin_workbench_users__user_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminUserProfile360DTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_revoke_user_sessions_api_v1_admin_workbench_users__user_id__sessions_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeUserSessionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_RevokeUserSessionsDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     capabilities_api_v1_auth_capabilities_get: {
         parameters: {
             query?: never;
@@ -13552,6 +15248,8 @@ export interface operations {
         parameters: {
             query?: {
                 page?: number;
+                pageSize?: number;
+                q?: string;
                 status?: "pending" | "approved" | "rejected" | "all";
             };
             header?: never;
@@ -13619,7 +15317,9 @@ export interface operations {
         parameters: {
             query?: {
                 college?: string;
+                emailVerified?: string;
                 page?: number;
+                pageSize?: number;
                 q?: string;
                 role?: string;
                 status?: string;
@@ -13730,6 +15430,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DisableDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_import_accounts_api_v1_c_admin_users_bulk_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkImportAccountsRequest"];
             };
         };
         responses: {
