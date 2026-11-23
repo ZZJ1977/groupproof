@@ -375,11 +375,10 @@ async function main() {
       if (bodyText.includes("<!-- 自动模板注释不应污染列表 -->")) {
         throw new Error("HTML 注释模板泄露到了活动列表摘要中");
       }
-      // 点击生成 AI 摘要
-      await page.getByRole("button", { name: "生成摘要" }).first().click();
-      await page.getByText(/摘要已生成|AI 已生成/).first().waitFor({ timeout: 10_000 });
+      // 验证无需人工点击，每条提交已自动完成 AI 功能分析
+      await page.getByText("AI 已生成 · 待人工确认").first().waitFor({ timeout: 15_000 });
       await shot(page, "05-github-activity-synced");
-      return "直连同步按钮、develop+main 多分支提交、PR 清洗预览与 AI 摘要全通过";
+      return "直连同步按钮、develop+main 多分支提交、PR 清洗预览与零点击自动 AI 分析全通过";
     });
 
     // TC-09: 任务执行详情——更新进度 100%（不自动完成）+ 保存实现说明 + 提交并采纳正式证据

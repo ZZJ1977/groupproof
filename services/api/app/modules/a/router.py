@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -444,7 +444,13 @@ def list_github_repos(project_id: UUID, request: Request, session: Database, use
     response_model=SuccessResponse[GithubSyncDTO],
     dependencies=[Depends(_private)],
 )
-def sync_github(project_id: UUID, request: Request, session: Database, user: CurrentUser):
+def sync_github(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+):
     client = github.get_github_client()
     try:
         totals = github_sync.sync_project_repos(session, user, project_id, client)
@@ -455,6 +461,13 @@ def sync_github(project_id: UUID, request: Request, session: Database, user: Cur
         if client is not None:
             client.close()
     session.commit()
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, project_id)
+        if pending_ids:
+            background_tasks.add_task(
+                activity_summary.run_auto_summaries, project_id, user.id, pending_ids
+            )
     return success(GithubSyncDTO(**totals), request)
 
 
@@ -474,7 +487,7 @@ class GithubWebhookResultDTO(BaseModel):
     response_model=SuccessResponse[GithubWebhookResultDTO],
     dependencies=[Depends(_private)],
 )
-async def github_webhook(request: Request, session: Database):
+async def github_webhook(request: Request, session: Database, background_tasks: BackgroundTasks):
     """GitHub App Webhook：校验 X-Hub-Signature-256 后自动刷新已绑定仓库的活动记录。"""
     secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "").strip()
     if not secret:
@@ -508,6 +521,27 @@ async def github_webhook(request: Request, session: Database):
         if client is not None:
             client.close()
     session.commit()
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        from sqlalchemy import func, select
+
+        from app.modules.a.models import GithubRepoLink
+
+        links = session.scalars(
+            select(GithubRepoLink).where(
+                func.lower(GithubRepoLink.owner) == owner.lower(),
+                func.lower(GithubRepoLink.repo) == repo.lower(),
+            )
+        ).all()
+        for link in links:
+            pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, link.project_id)
+            if pending_ids:
+                background_tasks.add_task(
+                    activity_summary.run_auto_summaries,
+                    link.project_id,
+                    link.linked_by_id,
+                    pending_ids,
+                )
     return success(GithubWebhookResultDTO(event=event, handled=True, **totals), request)
 
 

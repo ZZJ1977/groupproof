@@ -298,3 +298,29 @@ def test_github_activity_stats_aggregates_commits_and_code_churn(github_db):
     assert stats["contributors"][1]["author_name"] == "Bob"
     assert stats["contributors"][1]["deletions"] == 10
     assert len(stats["daily"]) == 14
+
+
+def test_auto_summaries_detect_and_analyze_new_commits(github_db, monkeypatch):
+    from sqlalchemy.orm import sessionmaker
+
+    from app.modules.a import activity_summary
+
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    monkeypatch.setenv("APP_ENV", "test")
+    leader, project = _seed_project(github_db)
+    client = MultiBranchFakeGithub(
+        {"main": [_commit("eeee5555", "feat: auto analyze commit", "2026-11-23T08:00:00Z")]}
+    )
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    github_sync.sync_project_repos(github_db, leader, project.id, client)
+    github_db.commit()
+
+    pending = activity_summary.recent_unanalyzed_commit_ids(github_db, project.id)
+    assert len(pending) == 1
+
+    factory = sessionmaker(bind=github_db.get_bind(), autoflush=False, autocommit=False)
+    done = activity_summary.run_auto_summaries(
+        project.id, leader.id, pending, session_factory=factory
+    )
+    assert done == 1
+    assert activity_summary.recent_unanalyzed_commit_ids(github_db, project.id) == []
