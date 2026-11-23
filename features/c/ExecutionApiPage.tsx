@@ -220,7 +220,26 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
           evidences={evidence.isSuccess && !evidence.isFetching ? evidence.data.items : []}
           onChanged={refresh}
         />}
-        {(submission || tab === "evidence") && <Panel title="任务已有证据">{evidence.isFetching && <p role="status">正在读取证据…</p>}{evidence.isError && <ApiFailure error={evidence.error} retry={() => void evidence.refetch()} />}{evidence.isSuccess && !evidence.isFetching && <>{evidence.data.items.map((item) => <p className="my-2" key={item.id}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${item.id}`}>{item.title}</Link> · {evidenceLabel(item.status, item.effective)}</p>)}{!evidence.data.items.length && <p>暂无证据。</p>}<ApiPager page={evidence.data.page} pageSize={evidence.data.page_size} total={evidence.data.total} change={(page) => updateQuery({ evidence_page: String(page) })} /></>}</Panel>}
+        {(() => {
+          if (!submission && tab !== "evidence") return null;
+          const items = evidence.isSuccess && !evidence.isFetching ? evidence.data.items : [];
+          const criterionIdSet = new Set(task.criteria.map((c) => c.id));
+          const displayItems = submission && task.criteria.length > 0
+            ? items.filter((ev) => !(!ev.source_changed && ["candidate", "pending_confirmation", "formal"].includes(ev.status) && ev.criterion_ids.some((cid) => criterionIdSet.has(cid))))
+            : items;
+          if (submission && task.criteria.length > 0 && !evidence.isFetching && !evidence.isError && displayItems.length === 0) {
+            return null;
+          }
+          return <Panel title={submission && task.criteria.length > 0 ? "其他历史或未关联标准的证据" : "任务已有证据"}>
+            {evidence.isFetching && <p role="status">正在读取证据…</p>}
+            {evidence.isError && <ApiFailure error={evidence.error} retry={() => void evidence.refetch()} />}
+            {evidence.isSuccess && !evidence.isFetching && <>
+              {displayItems.map((item) => <p className="my-2" key={item.id}><Link className="gp-link" href={`/projects/${projectId}/evidence?evidence=${item.id}`}>{item.title}</Link> · {evidenceLabel(item.status, item.effective)}</p>)}
+              {!displayItems.length && <p>暂无证据。</p>}
+              <ApiPager page={evidence.data.page} pageSize={evidence.data.page_size} total={evidence.data.total} change={(page) => updateQuery({ evidence_page: String(page) })} />
+            </>}
+          </Panel>;
+        })()}
         {(submission || tab === "history") && <Panel title="任务说明版本">{note.isFetching && <p role="status">正在读取说明…</p>}{note.isError && <ApiFailure error={note.error} retry={() => void note.refetch()} />}{noteReady && <>{savedNote?.versions.map((version) => <details id={`note-${version.id}`} tabIndex={-1} open={noteFocus === version.id || undefined} className={`my-3 ${noteFocus === version.id ? "rounded border border-blue-400 p-3" : ""}`} key={version.id}><summary>v{version.version_no} · {version.title} · {formatDate(version.created_at)}</summary><p className="whitespace-pre-wrap">{version.body}</p></details>)}{!savedNote && <p>尚未保存任务说明。</p>}{noteFocus && !savedNote?.versions.some((version) => version.id === noteFocus) && <p role="status">所定位的说明版本不存在或已不可读取。</p>}{submission && canNote && !draft && <button className={apiButton} onClick={() => { const current = savedNote?.versions.find((version) => version.version_no === savedNote.current_version_no); setDraft({ title: current?.title ?? task.title, body: current?.body ?? "", expected: savedNote?.lock_version ?? 0 }); setError(null); }}>编辑任务说明</button>}</>}</Panel>}
         {submission && draft && canNote && <Panel title="编辑任务说明"><label>说明标题<input className={`${apiInput} block w-full`} maxLength={240} value={draft.title} disabled={busy} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label htmlFor="task-note-body">说明正文</label><textarea id="task-note-body" className={`${apiInput} block min-h-40 w-full`} maxLength={100000} value={draft.body} disabled={busy} onChange={(event) => setDraft({ ...draft, body: event.target.value })} /><p className="my-3 text-sm">每次保存生成新版本，旧版本与其证据快照保留。</p><button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("note")}>保存说明新版本</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => { setDraft(null); setPrepareVersion(null); }}>取消编辑</button></Panel>}
         {!submission && tab === "history" && <Panel title="任务进度与状态历史">{history.isFetching && <p role="status">正在读取执行历史…</p>}{history.isError && <ApiFailure error={history.error} retry={() => void history.refetch()} />}{history.isSuccess && !history.isFetching && <>{history.data.items.map((event) => <article id={`progress-${event.id}`} tabIndex={-1} key={event.id} className={`mb-3 border-l-2 pl-3 ${progressFocus === event.id ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}><p>{event.actor_name} · {formatDate(event.created_at)}</p><p>{event.from_status ? states[event.from_status] ?? event.from_status : "—"} → {event.to_status ? states[event.to_status] ?? event.to_status : "—"} · {event.progress_before ?? "—"}% → {event.progress_after ?? "—"}%</p><p>{event.reason ?? "未提供原因"}</p></article>)}{!history.data.items.length && <p>暂无执行历史。</p>}<ApiPager page={history.data.page} pageSize={history.data.page_size} total={history.data.total} change={(page) => updateQuery({ history_page: String(page), progress: null })} /></>}</Panel>}
