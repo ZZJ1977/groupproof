@@ -11,6 +11,7 @@ export type SharedAuditQuery = paths["/api/v1/admin/shared-audit-events"]["get"]
 export type UsageQuery = paths["/api/v1/admin/ai-usage"]["get"]["parameters"]["query"];
 export type WorkbenchAccessGrantQuery = paths["/api/v1/admin/workbench/access-grants"]["get"]["parameters"]["query"];
 export type WorkbenchAiDiagnosticsQuery = paths["/api/v1/admin/workbench/ai-diagnostics"]["get"]["parameters"]["query"];
+export type WorkbenchProjectsQuery = paths["/api/v1/admin/workbench/projects"]["get"]["parameters"]["query"];
 export type AdminOverviewDTO = Schema["AdminOverviewDTO"];
 export type AdminUserProfile360DTO = Schema["AdminUserProfile360DTO"];
 export type AdminAccessGrantPageDTO = Schema["AdminAccessGrantPageDTO"];
@@ -18,6 +19,9 @@ export type AdminAiDiagnosticsDTO = Schema["AdminAiDiagnosticsDTO"];
 export type AdminIntegrationsStatusDTO = Schema["AdminIntegrationsStatusDTO"];
 export type ResolveLabelsDTO = Schema["ResolveLabelsDTO"];
 export type CourseMetricsResponseDTO = Schema["CourseMetricsResponseDTO"];
+export type AdminProjectPageDTO = Schema["AdminProjectPageDTO"];
+export type AdminProjectListItemDTO = Schema["AdminProjectListItemDTO"];
+export type AdminProjectDetailDTO = Schema["AdminProjectDetailDTO"];
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -117,6 +121,23 @@ export function createGovernanceClient(client = createApiClient()) {
     async workbenchCourseMetrics(courseIds: string[]) {
       return unwrap(await client.POST("/api/v1/admin/workbench/courses/metrics", {
         body: { course_ids: courseIds },
+      }));
+    },
+    async workbenchProjects(query: WorkbenchProjectsQuery = {}) {
+      return unwrap(await client.GET("/api/v1/admin/workbench/projects", { params: { query } }));
+    },
+    async workbenchProjectDetail(projectId: string) {
+      return unwrap(await client.GET("/api/v1/admin/workbench/projects/{project_id}", {
+        params: { path: { project_id: projectId } },
+      }));
+    },
+    async workbenchUpdateProjectLifecycle(
+      projectId: string,
+      body: Schema["UpdateProjectLifecycleRequest"],
+    ) {
+      return unwrap(await client.POST("/api/v1/admin/workbench/projects/{project_id}/lifecycle", {
+        params: { path: { project_id: projectId } },
+        body,
       }));
     },
   };

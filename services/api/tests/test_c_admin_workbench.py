@@ -22,7 +22,7 @@ from app.auth.models import (
 from app.auth.models import (
     Session as AuthSession,
 )
-from app.db.models import ProjectGroup, User
+from app.db.models import Project, ProjectGroup, ProjectMember, User
 from app.modules.a.models import (
     AccessGrant,
     ActivitySummary,
@@ -1014,3 +1014,147 @@ def test_c_admin_filters_and_bulk_import_dry_run_and_commit(http, db, scope):
     assert commit_data["createdCount"] == 2
     assert commit_data["invalidCount"] == 1
     assert db.scalar(select(func.count()).select_from(User)) == users_before + 2
+
+
+def test_workbench_projects_standalone_detail_privacy_and_lifecycle(http, db, scope):
+    admin = scope.users["admin"]
+    author = scope.users["author"]
+    member = scope.users["member"]
+    bind(db, author)
+    now = datetime.now(UTC)
+
+    standalone = Project(
+        id=uuid4(),
+        course_id=None,
+        group_id=None,
+        name="独立创新实战项目",
+        description="SECRET_PROJECT_DESCRIPTION_BODY",
+        project_type="software",
+        language="zh-Hans",
+        visibility="members",
+        setup_status="frozen",
+        setup_step=3,
+        lifecycle="active",
+        created_at=now,
+        updated_at=now,
+        lock_version=0,
+    )
+    db.add(standalone)
+    db.flush()
+    db.add_all(
+        [
+            ProjectMember(
+                id=uuid4(),
+                project_id=standalone.id,
+                user_id=author.id,
+                role="leader",
+                joined_at=now,
+                created_at=now,
+            ),
+            ProjectMember(
+                id=uuid4(),
+                project_id=standalone.id,
+                user_id=member.id,
+                role="member",
+                joined_at=now,
+                created_at=now,
+            ),
+            GithubRepoLink(
+                id=uuid4(),
+                project_id=standalone.id,
+                owner="must-team",
+                repo="standalone-app",
+                installation_id=77,
+                default_branch="main",
+                linked_at=now,
+                last_synced_at=now - timedelta(minutes=15),
+            ),
+            FeishuChatLink(
+                id=uuid4(),
+                project_id=standalone.id,
+                chat_id="oc_standalone_secret_998877",
+                linked_at=now,
+            ),
+            AiUsageEvent(
+                id=uuid4(),
+                occurred_at=now - timedelta(hours=1),
+                user_id=author.id,
+                project_id=standalone.id,
+                feature="summarize_activity",
+                provider="openrouter",
+                model="deepseek/deepseek-v3",
+                success=True,
+                input_tokens=600,
+                output_tokens=150,
+                cost=Decimal("0.0050"),
+                currency="USD",
+            ),
+        ]
+    )
+    db.commit()
+    http.sign_in(admin)
+
+    # Filter standalone projects only
+    list_resp = http.client.get("/api/v1/admin/workbench/projects?origin=standalone&has_github=yes")
+    assert list_resp.status_code == 200, list_resp.text
+    assert "SECRET_PROJECT_DESCRIPTION_BODY" not in list_resp.text
+    assert "oc_standalone_secret_998877" not in list_resp.text
+    list_data = list_resp.json()["data"]
+    assert list_data["summary"]["standalone"] >= 1
+    assert list_data["summary"]["course_bound"] >= 1
+    assert list_data["total"] == 1
+    row = list_data["items"][0]
+    assert row["id"] == str(standalone.id)
+    assert row["origin"] == "standalone"
+    assert row["course_id"] is None
+    assert row["leader_name"] == author.name
+    assert row["member_count"] == 2
+    assert row["github_linked"] is True
+    assert row["github_repo"] == "must-team/standalone-app"
+    assert row["feishu_linked"] is True
+    assert row["ai_requests_30d"] == 1
+
+    # Detail 360
+    detail_resp = http.client.get(f"/api/v1/admin/workbench/projects/{standalone.id}")
+    assert detail_resp.status_code == 200, detail_resp.text
+    assert "SECRET_PROJECT_DESCRIPTION_BODY" not in detail_resp.text
+    assert "oc_standalone_secret_998877" not in detail_resp.text
+    detail = detail_resp.json()["data"]
+    assert detail["origin"] == "standalone"
+    assert len(detail["members"]) == 2
+    assert detail["members"][0]["role"] == "leader"
+    assert detail["feishu"]["linked"] is True
+    assert detail["feishu"]["chat_id_masked"].endswith("8877")
+    assert detail["ai_30d"]["cost_by_currency"]["USD"] == "0.005"
+
+    # Archive project with optimistic version check
+    arch_resp = http.client.post(
+        f"/api/v1/admin/workbench/projects/{standalone.id}/lifecycle",
+        json={"action": "archive", "expected_version": 0, "reason": "项目已结项归档"},
+    )
+    assert arch_resp.status_code == 200, arch_resp.text
+    archived = arch_resp.json()["data"]
+    assert archived["lifecycle"] == "archived"
+    assert archived["archived_at"] is not None
+    assert archived["lock_version"] == 1
+    assert any(
+        ev["action"] == "admin.project.lifecycle_updated" for ev in archived["recent_audit_events"]
+    )
+
+    # Restore project
+    rest_resp = http.client.post(
+        f"/api/v1/admin/workbench/projects/{standalone.id}/lifecycle",
+        json={"action": "restore", "expected_version": 1, "reason": "重新开放继续迭代"},
+    )
+    assert rest_resp.status_code == 200, rest_resp.text
+    assert rest_resp.json()["data"]["lifecycle"] == "active"
+    assert rest_resp.json()["data"]["lock_version"] == 2
+
+    # Stale expected_version returns 409
+    http.sign_in(admin)
+    stale_resp = http.client.post(
+        f"/api/v1/admin/workbench/projects/{standalone.id}/lifecycle",
+        json={"action": "archive", "expected_version": 0, "reason": "过期版本"},
+    )
+    assert stale_resp.status_code == 409
+    assert stale_resp.json()["error"]["code"] == "VERSION_CONFLICT"

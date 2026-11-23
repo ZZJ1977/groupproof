@@ -36,6 +36,7 @@ const DiscussionsApiPage = dynamic(() => import("@/features/c/DiscussionsApiPage
 const IdentityAdminApiPage = dynamic(() => import("@/features/c/IdentityAdminApiPages").then((module) => module.IdentityAdminApiPage));
 const AdminDashboardPage = dynamic(() => import("@/features/c/AdminDashboardPage").then((module) => module.AdminDashboardPage));
 const AdminIntegrationsPage = dynamic(() => import("@/features/c/AdminIntegrationsPage").then((module) => module.AdminIntegrationsPage));
+const AdminProjectsPage = dynamic(() => import("@/features/c/AdminProjectsPage").then((module) => module.AdminProjectsPage));
 const GovernanceApiPage = dynamic(() => import("@/features/c/GovernanceApiPages").then((module) => module.GovernanceApiPage));
 const NotificationsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.NotificationsApiPage));
 const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").then((module) => module.ActionItemsApiPage));
@@ -176,6 +177,7 @@ export function RouteDispatcher() {
   if (screen === 50 && courseId && !realContent && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
   if (screen === 62 && apiMode("cidentity") === "real" && apiMode("governance") === "real") realContent = <AdminDashboardPage />;
   if (screen === 63 && apiMode("governance") === "real") realContent = <AdminIntegrationsPage />;
+  if (screen === 64 && apiMode("governance") === "real") realContent = <AdminProjectsPage />;
   if ([51, 52].includes(screen) && apiMode("cidentity") === "real") realContent = <IdentityAdminApiPage teachers={screen === 52} />;
   if (screen >= 53 && screen <= 56 && apiMode("governance") === "real") {
     const section = ({ 53: "courses", 54: "logs", 55: "ai-usage", 56: "access-requests" } as const)[screen as 53 | 54 | 55 | 56];

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, Layers3, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, Layers3, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -132,6 +132,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
         { label: t("adminItems.users"), href: "/admin/users", icon: Users },
         { label: t("adminItems.teacherVerifications"), href: "/admin/teacher-verifications", icon: UserCheck, badge: adminQueues.data?.queues.pending_teacher_applications },
         { label: t("adminItems.courses"), href: "/admin/courses", icon: BookOpen },
+        { label: t("adminItems.projects"), href: "/admin/projects", icon: FolderKanban },
         { label: t("adminItems.accessRequests"), href: "/admin/access-requests", icon: ShieldCheck, badge: adminQueues.data?.queues.pending_access_requests },
       ],
     },

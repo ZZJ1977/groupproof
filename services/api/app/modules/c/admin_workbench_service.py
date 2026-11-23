@@ -38,6 +38,7 @@ from app.db.models import (
     Project,
     ProjectGroup,
     ProjectMember,
+    Requirement,
     Task,
     User,
 )
@@ -1510,3 +1511,476 @@ def course_metrics(session: Session, user: User, *, course_ids: list[UUID]) -> d
             "has_active_invite": course.id in active_invites,
         }
     return {"items": items}
+
+
+def list_projects(
+    session: Session,
+    user: User,
+    *,
+    page: int = 1,
+    page_size: int = 10,
+    q: str | None = None,
+    origin: str = "all",
+    lifecycle: str = "all",
+    visibility: str = "all",
+    has_github: str = "all",
+    has_feishu: str = "all",
+    now: datetime | None = None,
+) -> dict:
+    """List all GroupProof projects (both standalone and course-bound) using metadata only."""
+    require_auth_audit_admin(session, user)
+    now = utc(now or datetime.now(UTC))
+    since_30d = now - timedelta(days=30)
+
+    gh_project_ids = set(session.scalars(select(GithubRepoLink.project_id)).all())
+    fs_project_ids = set(session.scalars(select(FeishuChatLink.project_id)).all())
+
+    summary_row = session.execute(
+        select(
+            func.count(Project.id).label("total"),
+            func.sum(case((Project.course_id.is_(None), 1), else_=0)).label("standalone"),
+            func.sum(case((Project.course_id.is_not(None), 1), else_=0)).label("course_bound"),
+            func.sum(case((Project.lifecycle == "active", 1), else_=0)).label("active"),
+            func.sum(case((Project.lifecycle == "finalized", 1), else_=0)).label("finalized"),
+            func.sum(case((Project.lifecycle == "archived", 1), else_=0)).label("archived"),
+        )
+    ).one()
+
+    where = []
+    cleaned_q = (q or "").strip()
+    if cleaned_q:
+        pattern = f"%{cleaned_q}%"
+        where.append(
+            or_(
+                Project.name.ilike(pattern),
+                Project.project_type.ilike(pattern),
+                Course.code.ilike(pattern),
+                Course.name.ilike(pattern),
+            )
+        )
+    if origin == "standalone":
+        where.append(Project.course_id.is_(None))
+    elif origin == "course":
+        where.append(Project.course_id.is_not(None))
+    if lifecycle != "all":
+        where.append(Project.lifecycle == lifecycle)
+    if visibility != "all":
+        where.append(Project.visibility == visibility)
+    if has_github == "yes":
+        where.append(Project.id.in_(gh_project_ids) if gh_project_ids else Project.id.is_(None))
+    elif has_github == "no" and gh_project_ids:
+        where.append(Project.id.not_in(gh_project_ids))
+    if has_feishu == "yes":
+        where.append(Project.id.in_(fs_project_ids) if fs_project_ids else Project.id.is_(None))
+    elif has_feishu == "no" and fs_project_ids:
+        where.append(Project.id.not_in(fs_project_ids))
+
+    total = (
+        session.scalar(
+            select(func.count(Project.id))
+            .select_from(Project)
+            .outerjoin(Course, Course.id == Project.course_id)
+            .where(*where)
+        )
+        or 0
+    )
+    rows = session.execute(
+        select(Project, Course.code.label("course_code"), Course.name.label("course_name"))
+        .outerjoin(Course, Course.id == Project.course_id)
+        .where(*where)
+        .order_by(Project.updated_at.desc(), Project.created_at.desc(), Project.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+
+    pids = [proj.id for proj, _, _ in rows]
+    member_counts: dict[UUID, int] = {}
+    leaders: dict[UUID, tuple[UUID, str]] = {}
+    task_counts: dict[UUID, int] = {}
+    evidence_counts: dict[UUID, int] = {}
+    gh_map: dict[UUID, tuple[str, datetime | None]] = {}
+    ai_req_map: dict[UUID, int] = {}
+    ai_cost_map: dict[UUID, list] = defaultdict(list)
+
+    if pids:
+        for pid, cnt in session.execute(
+            select(ProjectMember.project_id, func.count())
+            .where(ProjectMember.project_id.in_(pids), ProjectMember.left_at.is_(None))
+            .group_by(ProjectMember.project_id)
+        ).all():
+            member_counts[pid] = int(cnt or 0)
+
+        for pid, uid, uname in session.execute(
+            select(ProjectMember.project_id, ProjectMember.user_id, User.name)
+            .join(User, User.id == ProjectMember.user_id)
+            .where(
+                ProjectMember.project_id.in_(pids),
+                ProjectMember.left_at.is_(None),
+                ProjectMember.role == "leader",
+            )
+            .order_by(ProjectMember.joined_at.asc())
+        ).all():
+            if pid not in leaders:
+                leaders[pid] = (uid, uname or str(uid))
+
+        for pid, cnt in session.execute(
+            select(Task.project_id, func.count())
+            .where(Task.project_id.in_(pids))
+            .group_by(Task.project_id)
+        ).all():
+            task_counts[pid] = int(cnt or 0)
+
+        for pid, cnt in session.execute(
+            select(Evidence.project_id, func.count())
+            .where(Evidence.project_id.in_(pids), Evidence.status == "formal")
+            .group_by(Evidence.project_id)
+        ).all():
+            evidence_counts[pid] = int(cnt or 0)
+
+        for link in session.scalars(
+            select(GithubRepoLink).where(GithubRepoLink.project_id.in_(pids))
+        ).all():
+            gh_map[link.project_id] = (
+                f"{link.owner}/{link.repo}",
+                utc(link.last_synced_at) if link.last_synced_at else None,
+            )
+
+        for pid, cnt in session.execute(
+            select(AiUsageEvent.project_id, func.count())
+            .where(AiUsageEvent.project_id.in_(pids), AiUsageEvent.occurred_at >= since_30d)
+            .group_by(AiUsageEvent.project_id)
+        ).all():
+            if pid is not None:
+                ai_req_map[pid] = int(cnt or 0)
+
+        for pid, cur, amt in session.execute(
+            select(AiUsageEvent.project_id, AiUsageEvent.currency, func.sum(AiUsageEvent.cost))
+            .where(
+                AiUsageEvent.project_id.in_(pids),
+                AiUsageEvent.occurred_at >= since_30d,
+                AiUsageEvent.cost.is_not(None),
+                AiUsageEvent.currency.is_not(None),
+            )
+            .group_by(AiUsageEvent.project_id, AiUsageEvent.currency)
+        ).all():
+            if pid is not None:
+                ai_cost_map[pid].append((cur, amt))
+
+    items = []
+    for proj, ccode, cname in rows:
+        leader_id, leader_name = leaders.get(proj.id, (None, None))
+        gh_repo, gh_synced = gh_map.get(proj.id, (None, None))
+        items.append(
+            {
+                "id": proj.id,
+                "name": proj.name,
+                "origin": "standalone" if proj.course_id is None else "course",
+                "course_id": proj.course_id,
+                "course_code": ccode,
+                "course_name": cname,
+                "project_type": proj.project_type,
+                "visibility": proj.visibility,
+                "setup_status": proj.setup_status,
+                "lifecycle": proj.lifecycle,
+                "lock_version": int(proj.lock_version or 0),
+                "leader_id": leader_id,
+                "leader_name": leader_name,
+                "member_count": member_counts.get(proj.id, 0),
+                "task_count": task_counts.get(proj.id, 0),
+                "evidence_formal_count": evidence_counts.get(proj.id, 0),
+                "github_linked": proj.id in gh_project_ids,
+                "github_repo": gh_repo,
+                "github_last_synced_at": gh_synced,
+                "feishu_linked": proj.id in fs_project_ids,
+                "ai_requests_30d": ai_req_map.get(proj.id, 0),
+                "ai_cost_30d_by_currency": _costs_map(ai_cost_map.get(proj.id, [])),
+                "created_at": utc(proj.created_at),
+                "updated_at": utc(proj.updated_at),
+                "archived_at": utc(proj.archived_at) if proj.archived_at else None,
+            }
+        )
+
+    return {
+        "summary": {
+            "total": int(summary_row.total or 0),
+            "standalone": int(summary_row.standalone or 0),
+            "course_bound": int(summary_row.course_bound or 0),
+            "active": int(summary_row.active or 0),
+            "finalized": int(summary_row.finalized or 0),
+            "archived": int(summary_row.archived or 0),
+            "github_linked": len(gh_project_ids),
+            "feishu_linked": len(fs_project_ids),
+        },
+        "items": items,
+        "total": int(total),
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+def project_detail(
+    session: Session, user: User, project_id: UUID, *, now: datetime | None = None
+) -> dict:
+    """Return privacy-safe Project 360 metadata (never reads descriptions/bodies)."""
+    require_auth_audit_admin(session, user)
+    now = utc(now or datetime.now(UTC))
+    since_30d = now - timedelta(days=30)
+
+    row = session.execute(
+        select(Project, Course.code.label("course_code"), Course.name.label("course_name"))
+        .outerjoin(Course, Course.id == Project.course_id)
+        .where(Project.id == project_id)
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if row is None:
+        raise ApiError(404, "PROJECT_NOT_FOUND", "Project does not exist.")
+    proj, ccode, cname = row
+
+    member_rows = session.execute(
+        select(ProjectMember, User, SchoolEmailBinding)
+        .join(User, User.id == ProjectMember.user_id)
+        .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
+        .where(ProjectMember.project_id == proj.id, ProjectMember.left_at.is_(None))
+        .order_by(
+            case((ProjectMember.role == "leader", 0), else_=1),
+            ProjectMember.joined_at.asc(),
+        )
+    ).all()
+    members = [
+        {
+            "user_id": u.id,
+            "name": u.name or "未命名账号",
+            "student_id": u.student_id,
+            "college": u.college or "",
+            "role": pm.role,
+            "school_email_verified": school_email_binding_verified(binding),
+            "joined_at": utc(pm.joined_at),
+        }
+        for pm, u, binding in member_rows
+    ]
+
+    task_row = session.execute(
+        select(
+            func.count(Task.id).label("total"),
+            func.sum(case((Task.status == "done", 1), else_=0)).label("done"),
+        ).where(Task.project_id == proj.id)
+    ).one()
+    req_total = (
+        session.scalar(
+            select(func.count()).select_from(Requirement).where(Requirement.project_id == proj.id)
+        )
+        or 0
+    )
+    ev_formal = (
+        session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(Evidence.project_id == proj.id, Evidence.status == "formal")
+        )
+        or 0
+    )
+    up_row = session.execute(
+        select(
+            func.count(UploadReceipt.id).label("cnt"),
+            func.coalesce(func.sum(UploadReceipt.size_bytes), 0).label("bytes"),
+        ).where(
+            UploadReceipt.scope == "project",
+            UploadReceipt.scope_id == proj.id,
+            UploadReceipt.status == "completed",
+        )
+    ).one()
+    active_grants = (
+        session.scalar(
+            select(func.count())
+            .select_from(AccessGrant)
+            .where(
+                AccessGrant.project_id == proj.id,
+                AccessGrant.revoked_at.is_(None),
+                AccessGrant.expires_at > now,
+            )
+        )
+        or 0
+    )
+
+    gh_link = session.scalar(
+        select(GithubRepoLink).where(GithubRepoLink.project_id == proj.id).limit(1)
+    )
+    gh_act_cnt = (
+        session.scalar(
+            select(func.count())
+            .select_from(GithubActivity)
+            .where(GithubActivity.project_id == proj.id, GithubActivity.deleted.is_(False))
+        )
+        or 0
+        if gh_link
+        else 0
+    )
+    fs_link = session.scalar(
+        select(FeishuChatLink).where(FeishuChatLink.project_id == proj.id).limit(1)
+    )
+    fs_msg_cnt, fs_last_msg = (0, None)
+    if fs_link:
+        fs_stat = session.execute(
+            select(func.count(), func.max(FeishuMessage.occurred_at)).where(
+                FeishuMessage.project_id == proj.id, FeishuMessage.chat_id == fs_link.chat_id
+            )
+        ).one()
+        fs_msg_cnt = int(fs_stat[0] or 0)
+        fs_last_msg = utc(fs_stat[1]) if fs_stat[1] else None
+
+    ai_row = session.execute(
+        select(
+            func.count(AiUsageEvent.id).label("requests"),
+            func.sum(case((AiUsageEvent.success.is_(False), 1), else_=0)).label("failed"),
+            func.coalesce(func.sum(AiUsageEvent.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(AiUsageEvent.output_tokens), 0).label("output_tokens"),
+        ).where(AiUsageEvent.project_id == proj.id, AiUsageEvent.occurred_at >= since_30d)
+    ).one()
+    ai_costs = session.execute(
+        select(AiUsageEvent.currency, func.sum(AiUsageEvent.cost))
+        .where(
+            AiUsageEvent.project_id == proj.id,
+            AiUsageEvent.occurred_at >= since_30d,
+            AiUsageEvent.cost.is_not(None),
+            AiUsageEvent.currency.is_not(None),
+        )
+        .group_by(AiUsageEvent.currency)
+    ).all()
+
+    audit_rows = session.execute(
+        select(AuditEvent, User.name.label("actor_name"))
+        .outerjoin(User, User.id == AuditEvent.actor_id)
+        .where(
+            or_(
+                AuditEvent.project_id == proj.id,
+                and_(AuditEvent.target_type == "project", AuditEvent.target_id == str(proj.id)),
+            )
+        )
+        .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id)
+        .limit(8)
+    ).all()
+
+    return {
+        "id": proj.id,
+        "name": proj.name,
+        "origin": "standalone" if proj.course_id is None else "course",
+        "course_id": proj.course_id,
+        "course_code": ccode,
+        "course_name": cname,
+        "project_type": proj.project_type,
+        "language": proj.language,
+        "visibility": proj.visibility,
+        "setup_status": proj.setup_status,
+        "setup_step": int(proj.setup_step or 0),
+        "lifecycle": proj.lifecycle,
+        "lock_version": int(proj.lock_version or 0),
+        "final_deadline": utc(proj.final_deadline) if proj.final_deadline else None,
+        "archived_at": utc(proj.archived_at) if proj.archived_at else None,
+        "created_at": utc(proj.created_at),
+        "updated_at": utc(proj.updated_at),
+        "members": members,
+        "counts": {
+            "tasks_total": int(task_row.total or 0),
+            "tasks_done": int(task_row.done or 0),
+            "requirements_total": int(req_total),
+            "formal_evidences_total": int(ev_formal),
+            "upload_completed_count": int(up_row.cnt or 0),
+            "upload_total_bytes": int(up_row.bytes or 0),
+            "active_access_grants": int(active_grants),
+        },
+        "github": {
+            "linked": gh_link is not None,
+            "repo_full_name": f"{gh_link.owner}/{gh_link.repo}" if gh_link else None,
+            "default_branch": gh_link.default_branch if gh_link else None,
+            "last_synced_at": utc(gh_link.last_synced_at)
+            if gh_link and gh_link.last_synced_at
+            else None,
+            "activity_count": int(gh_act_cnt),
+        },
+        "feishu": {
+            "linked": fs_link is not None,
+            "chat_id_masked": _mask_chat_id(fs_link.chat_id) if fs_link else None,
+            "linked_at": utc(fs_link.linked_at) if fs_link else None,
+            "message_count": fs_msg_cnt,
+            "last_message_at": fs_last_msg,
+        },
+        "ai_30d": {
+            "requests": int(ai_row.requests or 0),
+            "failed": int(ai_row.failed or 0),
+            "input_tokens": int(ai_row.input_tokens or 0),
+            "output_tokens": int(ai_row.output_tokens or 0),
+            "cost_by_currency": _costs_map(ai_costs),
+        },
+        "recent_audit_events": [
+            {
+                "id": ev.id,
+                "occurred_at": utc(ev.occurred_at),
+                "action": ev.action,
+                "actor_name": actor_name or (str(ev.actor_id) if ev.actor_id else "系统"),
+                "actor_role": ev.actor_role,
+                "result": ev.result,
+                "reason": ev.reason,
+            }
+            for ev, actor_name in audit_rows
+        ],
+    }
+
+
+def update_project_lifecycle(
+    session: Session,
+    actor_user: User,
+    project_id: UUID,
+    *,
+    action: str,
+    expected_version: int,
+    reason: str,
+    request=None,
+) -> dict:
+    actor = current_actor(session, actor_user, admin=True, write=True)
+    proj = session.scalar(
+        select(Project)
+        .where(Project.id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if proj is None:
+        raise ApiError(404, "PROJECT_NOT_FOUND", "Project does not exist.")
+    if int(proj.lock_version or 0) != expected_version:
+        raise ApiError(409, "VERSION_CONFLICT", "Project version has changed; refresh first.")
+
+    target_lifecycle = {
+        "archive": "archived",
+        "restore": "active",
+        "finalize": "finalized",
+    }[action]
+    if proj.lifecycle == target_lifecycle:
+        raise ApiError(409, "INVALID_TRANSITION", "Project is already in the requested state.")
+
+    now = utc(datetime.now(UTC))
+    before = {
+        "lifecycle": proj.lifecycle,
+        "archived_at": utc(proj.archived_at).isoformat() if proj.archived_at else None,
+        "lock_version": int(proj.lock_version or 0),
+    }
+    proj.lifecycle = target_lifecycle
+    proj.archived_at = now if target_lifecycle == "archived" else None
+    proj.lock_version = int(proj.lock_version or 0) + 1
+    proj.updated_at = now
+    record_audit(
+        session,
+        actor=actor,
+        action="admin.project.lifecycle_updated",
+        target=("project", proj.id),
+        project_id=proj.id,
+        course_id=proj.course_id,
+        reason=reason,
+        request=request,
+        before=before,
+        after={
+            "lifecycle": proj.lifecycle,
+            "archived_at": utc(proj.archived_at).isoformat() if proj.archived_at else None,
+            "lock_version": proj.lock_version,
+        },
+    )
+    session.flush()
+    return project_detail(session, actor, proj.id, now=now)

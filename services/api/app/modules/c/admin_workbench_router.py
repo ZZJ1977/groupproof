@@ -15,6 +15,9 @@ from app.modules.c.admin_workbench_schemas import (
     AdminAiDiagnosticsDTO,
     AdminIntegrationsStatusDTO,
     AdminOverviewDTO,
+    AdminProjectDetailDTO,
+    AdminProjectFilters,
+    AdminProjectPageDTO,
     AdminUserProfile360DTO,
     AiDiagnosticsFilters,
     CourseMetricsRequest,
@@ -23,6 +26,7 @@ from app.modules.c.admin_workbench_schemas import (
     ResolveLabelsRequest,
     RevokeUserSessionsDTO,
     RevokeUserSessionsRequest,
+    UpdateProjectLifecycleRequest,
 )
 from app.modules.c.evidence_router import (
     ERROR_RESPONSES,
@@ -138,5 +142,62 @@ def post_course_metrics(
 ):
     return success(
         workbench.course_metrics(session, user, course_ids=body.course_ids),
+        request,
+    )
+
+
+@router.get("/projects", response_model=SuccessResponse[AdminProjectPageDTO])
+def get_projects(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    filters: Annotated[AdminProjectFilters, Query()],
+):
+    return success(
+        workbench.list_projects(
+            session,
+            user,
+            page=filters.page,
+            page_size=filters.page_size,
+            q=filters.q,
+            origin=filters.origin,
+            lifecycle=filters.lifecycle,
+            visibility=filters.visibility,
+            has_github=filters.has_github,
+            has_feishu=filters.has_feishu,
+        ),
+        request,
+    )
+
+
+@router.get("/projects/{project_id}", response_model=SuccessResponse[AdminProjectDetailDTO])
+def get_project_detail(project_id: UUID, request: Request, session: Database, user: CurrentUser):
+    return success(workbench.project_detail(session, user, project_id), request)
+
+
+@router.post(
+    "/projects/{project_id}/lifecycle",
+    response_model=SuccessResponse[AdminProjectDetailDTO],
+)
+def post_project_lifecycle(
+    project_id: UUID,
+    body: UpdateProjectLifecycleRequest,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    return success(
+        commit_command(
+            session,
+            lambda: workbench.update_project_lifecycle(
+                session,
+                user,
+                project_id,
+                action=body.action,
+                expected_version=body.expected_version,
+                reason=body.reason,
+                request=request,
+            ),
+        ),
         request,
     )

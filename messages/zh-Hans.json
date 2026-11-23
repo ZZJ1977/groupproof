@@ -520,6 +520,7 @@
       "users": "用户管理",
       "teacherVerifications": "教师审核",
       "courses": "课程管理",
+      "projects": "项目管理",
       "logs": "系统日志",
       "aiUsage": "AI 使用情况",
       "accessRequests": "异常 / 访问审批",

@@ -352,6 +352,7 @@ const AUDIT_ACTION_LABELS: Record<string, { category: string; label: string }> =
   "access.grant.activated": { category: "临时授权", label: "激活临时只读访问权限" },
   "access.grant.revoked": { category: "临时授权", label: "撤销临时只读访问权限" },
   "admin.user.sessions_revoked": { category: "账号安全", label: "管理员强制撤销全部会话" },
+  "admin.project.lifecycle_updated": { category: "项目治理", label: "管理员变更项目生命周期" },
   "project.created": { category: "项目管理", label: "创建团队项目" },
   "project.setup.basic_saved": { category: "项目管理", label: "保存项目基础信息" },
   "project.leader.transferred": { category: "团队成员", label: "移交项目组长权限" },

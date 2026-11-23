@@ -468,3 +468,147 @@ class CourseMetricItemDTO(WorkbenchDTO):
 
 class CourseMetricsResponseDTO(WorkbenchDTO):
     items: dict[str, CourseMetricItemDTO]
+
+
+class AdminProjectFilters(WorkbenchDTO):
+    page: int = Field(default=1, ge=1, le=1_000_000)
+    page_size: int = Field(default=10, ge=1, le=100)
+    q: str | None = Field(default=None, max_length=200)
+    origin: Literal["all", "standalone", "course"] = "all"
+    lifecycle: Literal["all", "active", "finalized", "archived"] = "all"
+    visibility: Literal["all", "members", "course"] = "all"
+    has_github: Literal["all", "yes", "no"] = "all"
+    has_feishu: Literal["all", "yes", "no"] = "all"
+
+
+class AdminProjectsSummaryDTO(WorkbenchDTO):
+    total: int = Field(ge=0)
+    standalone: int = Field(ge=0)
+    course_bound: int = Field(ge=0)
+    active: int = Field(ge=0)
+    finalized: int = Field(ge=0)
+    archived: int = Field(ge=0)
+    github_linked: int = Field(ge=0)
+    feishu_linked: int = Field(ge=0)
+
+
+class AdminProjectListItemDTO(WorkbenchDTO):
+    id: UUID
+    name: str
+    origin: Literal["standalone", "course"]
+    course_id: UUID | None = None
+    course_code: str | None = None
+    course_name: str | None = None
+    project_type: str | None = None
+    visibility: Literal["members", "course"]
+    setup_status: str
+    lifecycle: Literal["active", "finalized", "archived"]
+    lock_version: int = Field(ge=0)
+    leader_id: UUID | None = None
+    leader_name: str | None = None
+    member_count: int = Field(ge=0)
+    task_count: int = Field(ge=0)
+    evidence_formal_count: int = Field(ge=0)
+    github_linked: bool
+    github_repo: str | None = None
+    github_last_synced_at: AwareDatetime | None = None
+    feishu_linked: bool
+    ai_requests_30d: int = Field(ge=0)
+    ai_cost_30d_by_currency: dict[str, str]
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    archived_at: AwareDatetime | None = None
+
+
+class AdminProjectPageDTO(WorkbenchDTO):
+    summary: AdminProjectsSummaryDTO
+    items: list[AdminProjectListItemDTO]
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+
+
+class AdminProjectMemberDTO(WorkbenchDTO):
+    user_id: UUID
+    name: str
+    student_id: str | None = None
+    college: str
+    role: Literal["leader", "member"]
+    school_email_verified: bool
+    joined_at: AwareDatetime
+
+
+class AdminProjectCountsDTO(WorkbenchDTO):
+    tasks_total: int = Field(ge=0)
+    tasks_done: int = Field(ge=0)
+    requirements_total: int = Field(ge=0)
+    formal_evidences_total: int = Field(ge=0)
+    upload_completed_count: int = Field(ge=0)
+    upload_total_bytes: int = Field(ge=0)
+    active_access_grants: int = Field(ge=0)
+
+
+class AdminProjectGithubSummaryDTO(WorkbenchDTO):
+    linked: bool
+    repo_full_name: str | None = None
+    default_branch: str | None = None
+    last_synced_at: AwareDatetime | None = None
+    activity_count: int = Field(ge=0)
+
+
+class AdminProjectFeishuSummaryDTO(WorkbenchDTO):
+    linked: bool
+    chat_id_masked: str | None = None
+    linked_at: AwareDatetime | None = None
+    message_count: int = Field(ge=0)
+    last_message_at: AwareDatetime | None = None
+
+
+class AdminProjectAuditItemDTO(WorkbenchDTO):
+    id: UUID
+    occurred_at: AwareDatetime
+    action: str
+    actor_name: str
+    actor_role: str | None = None
+    result: str
+    reason: str | None = None
+
+
+class AdminProjectDetailDTO(WorkbenchDTO):
+    id: UUID
+    name: str
+    origin: Literal["standalone", "course"]
+    course_id: UUID | None = None
+    course_code: str | None = None
+    course_name: str | None = None
+    project_type: str | None = None
+    language: str | None = None
+    visibility: Literal["members", "course"]
+    setup_status: str
+    setup_step: int = Field(ge=0)
+    lifecycle: Literal["active", "finalized", "archived"]
+    lock_version: int = Field(ge=0)
+    final_deadline: AwareDatetime | None = None
+    archived_at: AwareDatetime | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    members: list[AdminProjectMemberDTO]
+    counts: AdminProjectCountsDTO
+    github: AdminProjectGithubSummaryDTO
+    feishu: AdminProjectFeishuSummaryDTO
+    ai_30d: UserAiSummaryDTO
+    recent_audit_events: list[AdminProjectAuditItemDTO]
+
+
+class UpdateProjectLifecycleRequest(WorkbenchDTO):
+    action: Literal["archive", "restore", "finalize"]
+    expected_version: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def non_blank_reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Reason is required")
+        return cleaned

@@ -520,6 +520,7 @@
       "users": "Users",
       "teacherVerifications": "Teacher reviews",
       "courses": "Courses",
+      "projects": "Projects",
       "logs": "System logs",
       "aiUsage": "AI usage",
       "accessRequests": "Anomalies / access approvals",

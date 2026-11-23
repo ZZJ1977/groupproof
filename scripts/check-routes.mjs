@@ -14,6 +14,8 @@ const adminHome = resolveRoute("/admin");
 assert.equal(adminHome?.screen, 62, "/admin 应映射到 Admin 工作台页面 62");
 const adminIntegrations = resolveRoute("/admin/integrations");
 assert.equal(adminIntegrations?.screen, 63, "/admin/integrations 应映射到集成运维页面 63");
+const adminProjects = resolveRoute("/admin/projects");
+assert.equal(adminProjects?.screen, 64, "/admin/projects 应映射到项目管理页面 64");
 
 for (const item of cases) {
   const url = new URL(item.path, "http://localhost:3000");

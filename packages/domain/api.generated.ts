@@ -834,6 +834,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/workbench/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Projects */
+        get: operations["get_projects_api_v1_admin_workbench_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Detail */
+        get: operations["get_project_detail_api_v1_admin_workbench_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/workbench/projects/{project_id}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Project Lifecycle */
+        post: operations["post_project_lifecycle_api_v1_admin_workbench_projects__project_id__lifecycle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/workbench/resolve-labels": {
         parameters: {
             query?: never;
@@ -6125,6 +6176,265 @@ export interface components {
             teaching: components["schemas"]["OverviewTeachingDTO"];
             users: components["schemas"]["OverviewUsersDTO"];
         };
+        /** AdminProjectAuditItemDTO */
+        AdminProjectAuditItemDTO: {
+            /** Action */
+            action: string;
+            /** Actor Name */
+            actor_name: string;
+            /** Actor Role */
+            actor_role?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason?: string | null;
+            /** Result */
+            result: string;
+        };
+        /** AdminProjectCountsDTO */
+        AdminProjectCountsDTO: {
+            /** Active Access Grants */
+            active_access_grants: number;
+            /** Formal Evidences Total */
+            formal_evidences_total: number;
+            /** Requirements Total */
+            requirements_total: number;
+            /** Tasks Done */
+            tasks_done: number;
+            /** Tasks Total */
+            tasks_total: number;
+            /** Upload Completed Count */
+            upload_completed_count: number;
+            /** Upload Total Bytes */
+            upload_total_bytes: number;
+        };
+        /** AdminProjectDetailDTO */
+        AdminProjectDetailDTO: {
+            ai_30d: components["schemas"]["UserAiSummaryDTO"];
+            /** Archived At */
+            archived_at?: string | null;
+            counts: components["schemas"]["AdminProjectCountsDTO"];
+            /** Course Code */
+            course_code?: string | null;
+            /** Course Id */
+            course_id?: string | null;
+            /** Course Name */
+            course_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            feishu: components["schemas"]["AdminProjectFeishuSummaryDTO"];
+            /** Final Deadline */
+            final_deadline?: string | null;
+            github: components["schemas"]["AdminProjectGithubSummaryDTO"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Language */
+            language?: string | null;
+            /**
+             * Lifecycle
+             * @enum {string}
+             */
+            lifecycle: "active" | "finalized" | "archived";
+            /** Lock Version */
+            lock_version: number;
+            /** Members */
+            members: components["schemas"]["AdminProjectMemberDTO"][];
+            /** Name */
+            name: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "standalone" | "course";
+            /** Project Type */
+            project_type?: string | null;
+            /** Recent Audit Events */
+            recent_audit_events: components["schemas"]["AdminProjectAuditItemDTO"][];
+            /** Setup Status */
+            setup_status: string;
+            /** Setup Step */
+            setup_step: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "members" | "course";
+        };
+        /** AdminProjectFeishuSummaryDTO */
+        AdminProjectFeishuSummaryDTO: {
+            /** Chat Id Masked */
+            chat_id_masked?: string | null;
+            /** Last Message At */
+            last_message_at?: string | null;
+            /** Linked */
+            linked: boolean;
+            /** Linked At */
+            linked_at?: string | null;
+            /** Message Count */
+            message_count: number;
+        };
+        /** AdminProjectGithubSummaryDTO */
+        AdminProjectGithubSummaryDTO: {
+            /** Activity Count */
+            activity_count: number;
+            /** Default Branch */
+            default_branch?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Linked */
+            linked: boolean;
+            /** Repo Full Name */
+            repo_full_name?: string | null;
+        };
+        /** AdminProjectListItemDTO */
+        AdminProjectListItemDTO: {
+            /** Ai Cost 30D By Currency */
+            ai_cost_30d_by_currency: {
+                [key: string]: string;
+            };
+            /** Ai Requests 30D */
+            ai_requests_30d: number;
+            /** Archived At */
+            archived_at?: string | null;
+            /** Course Code */
+            course_code?: string | null;
+            /** Course Id */
+            course_id?: string | null;
+            /** Course Name */
+            course_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence Formal Count */
+            evidence_formal_count: number;
+            /** Feishu Linked */
+            feishu_linked: boolean;
+            /** Github Last Synced At */
+            github_last_synced_at?: string | null;
+            /** Github Linked */
+            github_linked: boolean;
+            /** Github Repo */
+            github_repo?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Leader Id */
+            leader_id?: string | null;
+            /** Leader Name */
+            leader_name?: string | null;
+            /**
+             * Lifecycle
+             * @enum {string}
+             */
+            lifecycle: "active" | "finalized" | "archived";
+            /** Lock Version */
+            lock_version: number;
+            /** Member Count */
+            member_count: number;
+            /** Name */
+            name: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "standalone" | "course";
+            /** Project Type */
+            project_type?: string | null;
+            /** Setup Status */
+            setup_status: string;
+            /** Task Count */
+            task_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "members" | "course";
+        };
+        /** AdminProjectMemberDTO */
+        AdminProjectMemberDTO: {
+            /** College */
+            college: string;
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "leader" | "member";
+            /** School Email Verified */
+            school_email_verified: boolean;
+            /** Student Id */
+            student_id?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AdminProjectPageDTO */
+        AdminProjectPageDTO: {
+            /** Items */
+            items: components["schemas"]["AdminProjectListItemDTO"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            summary: components["schemas"]["AdminProjectsSummaryDTO"];
+            /** Total */
+            total: number;
+        };
+        /** AdminProjectsSummaryDTO */
+        AdminProjectsSummaryDTO: {
+            /** Active */
+            active: number;
+            /** Archived */
+            archived: number;
+            /** Course Bound */
+            course_bound: number;
+            /** Feishu Linked */
+            feishu_linked: number;
+            /** Finalized */
+            finalized: number;
+            /** Github Linked */
+            github_linked: number;
+            /** Standalone */
+            standalone: number;
+            /** Total */
+            total: number;
+        };
         /** AdminUserDetailDTO */
         AdminUserDetailDTO: {
             /** College */
@@ -10611,6 +10921,16 @@ export interface components {
             data: components["schemas"]["AdminOverviewDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
+        /** SuccessResponse[AdminProjectDetailDTO] */
+        SuccessResponse_AdminProjectDetailDTO_: {
+            data: components["schemas"]["AdminProjectDetailDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[AdminProjectPageDTO] */
+        SuccessResponse_AdminProjectPageDTO_: {
+            data: components["schemas"]["AdminProjectPageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
         /** SuccessResponse[AdminUserDetailDTO] */
         SuccessResponse_AdminUserDetailDTO_: {
             data: components["schemas"]["AdminUserDetailDTO"];
@@ -11308,6 +11628,18 @@ export interface components {
             expected_version: number;
             /** Progress */
             progress: number;
+            /** Reason */
+            reason: string;
+        };
+        /** UpdateProjectLifecycleRequest */
+        UpdateProjectLifecycleRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "archive" | "restore" | "finalize";
+            /** Expected Version */
+            expected_version: number;
             /** Reason */
             reason: string;
         };
@@ -14492,6 +14824,251 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_AdminOverviewDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_projects_api_v1_admin_workbench_projects_get: {
+        parameters: {
+            query?: {
+                has_feishu?: "all" | "yes" | "no";
+                has_github?: "all" | "yes" | "no";
+                lifecycle?: "all" | "active" | "finalized" | "archived";
+                origin?: "all" | "standalone" | "course";
+                page?: number;
+                page_size?: number;
+                q?: string | null;
+                visibility?: "all" | "members" | "course";
+            };
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminProjectPageDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_project_detail_api_v1_admin_workbench_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminProjectDetailDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_project_lifecycle_api_v1_admin_workbench_projects__project_id__lifecycle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_AdminProjectDetailDTO_"];
                 };
             };
             /** @description Verified A authentication is required. */

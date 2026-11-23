@@ -1717,6 +1717,782 @@
         "title": "AdminOverviewDTO",
         "type": "object"
       },
+      "AdminProjectAuditItemDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_name": {
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "action",
+          "actor_name",
+          "result"
+        ],
+        "title": "AdminProjectAuditItemDTO",
+        "type": "object"
+      },
+      "AdminProjectCountsDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "active_access_grants": {
+            "minimum": 0.0,
+            "title": "Active Access Grants",
+            "type": "integer"
+          },
+          "formal_evidences_total": {
+            "minimum": 0.0,
+            "title": "Formal Evidences Total",
+            "type": "integer"
+          },
+          "requirements_total": {
+            "minimum": 0.0,
+            "title": "Requirements Total",
+            "type": "integer"
+          },
+          "tasks_done": {
+            "minimum": 0.0,
+            "title": "Tasks Done",
+            "type": "integer"
+          },
+          "tasks_total": {
+            "minimum": 0.0,
+            "title": "Tasks Total",
+            "type": "integer"
+          },
+          "upload_completed_count": {
+            "minimum": 0.0,
+            "title": "Upload Completed Count",
+            "type": "integer"
+          },
+          "upload_total_bytes": {
+            "minimum": 0.0,
+            "title": "Upload Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks_total",
+          "tasks_done",
+          "requirements_total",
+          "formal_evidences_total",
+          "upload_completed_count",
+          "upload_total_bytes",
+          "active_access_grants"
+        ],
+        "title": "AdminProjectCountsDTO",
+        "type": "object"
+      },
+      "AdminProjectDetailDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_30d": {
+            "$ref": "#/components/schemas/UserAiSummaryDTO"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AdminProjectCountsDTO"
+          },
+          "course_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Code"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feishu": {
+            "$ref": "#/components/schemas/AdminProjectFeishuSummaryDTO"
+          },
+          "final_deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Deadline"
+          },
+          "github": {
+            "$ref": "#/components/schemas/AdminProjectGithubSummaryDTO"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "lifecycle": {
+            "enum": [
+              "active",
+              "finalized",
+              "archived"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          },
+          "lock_version": {
+            "minimum": 0.0,
+            "title": "Lock Version",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProjectMemberDTO"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "standalone",
+              "course"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "project_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Type"
+          },
+          "recent_audit_events": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProjectAuditItemDTO"
+            },
+            "title": "Recent Audit Events",
+            "type": "array"
+          },
+          "setup_status": {
+            "title": "Setup Status",
+            "type": "string"
+          },
+          "setup_step": {
+            "minimum": 0.0,
+            "title": "Setup Step",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "members",
+              "course"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "origin",
+          "visibility",
+          "setup_status",
+          "setup_step",
+          "lifecycle",
+          "lock_version",
+          "created_at",
+          "updated_at",
+          "members",
+          "counts",
+          "github",
+          "feishu",
+          "ai_30d",
+          "recent_audit_events"
+        ],
+        "title": "AdminProjectDetailDTO",
+        "type": "object"
+      },
+      "AdminProjectFeishuSummaryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_id_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Id Masked"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          },
+          "linked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked At"
+          },
+          "message_count": {
+            "minimum": 0.0,
+            "title": "Message Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "linked",
+          "message_count"
+        ],
+        "title": "AdminProjectFeishuSummaryDTO",
+        "type": "object"
+      },
+      "AdminProjectGithubSummaryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "activity_count": {
+            "minimum": 0.0,
+            "title": "Activity Count",
+            "type": "integer"
+          },
+          "default_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Branch"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          },
+          "repo_full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Full Name"
+          }
+        },
+        "required": [
+          "linked",
+          "activity_count"
+        ],
+        "title": "AdminProjectGithubSummaryDTO",
+        "type": "object"
+      },
+      "AdminProjectListItemDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_cost_30d_by_currency": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Ai Cost 30D By Currency",
+            "type": "object"
+          },
+          "ai_requests_30d": {
+            "minimum": 0.0,
+            "title": "Ai Requests 30D",
+            "type": "integer"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "course_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Code"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_formal_count": {
+            "minimum": 0.0,
+            "title": "Evidence Formal Count",
+            "type": "integer"
+          },
+          "feishu_linked": {
+            "title": "Feishu Linked",
+            "type": "boolean"
+          },
+          "github_last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Last Synced At"
+          },
+          "github_linked": {
+            "title": "Github Linked",
+            "type": "boolean"
+          },
+          "github_repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Repo"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "leader_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leader Id"
+          },
+          "leader_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leader Name"
+          },
+          "lifecycle": {
+            "enum": [
+              "active",
+              "finalized",
+              "archived"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          },
+          "lock_version": {
+            "minimum": 0.0,
+            "title": "Lock Version",
+            "type": "integer"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "standalone",
+              "course"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "project_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Type"
+          },
+          "setup_status": {
+            "title": "Setup Status",
+            "type": "string"
+          },
+          "task_count": {
+            "minimum": 0.0,
+            "title": "Task Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "members",
+              "course"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "origin",
+          "visibility",
+          "setup_status",
+          "lifecycle",
+          "lock_version",
+          "member_count",
+          "task_count",
+          "evidence_formal_count",
+          "github_linked",
+          "feishu_linked",
+          "ai_requests_30d",
+          "ai_cost_30d_by_currency",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminProjectListItemDTO",
+        "type": "object"
+      },
+      "AdminProjectMemberDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "college": {
+            "title": "College",
+            "type": "string"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "title": "Joined At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "leader",
+              "member"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "school_email_verified": {
+            "title": "School Email Verified",
+            "type": "boolean"
+          },
+          "student_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Id"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "name",
+          "college",
+          "role",
+          "school_email_verified",
+          "joined_at"
+        ],
+        "title": "AdminProjectMemberDTO",
+        "type": "object"
+      },
+      "AdminProjectPageDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProjectListItemDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdminProjectsSummaryDTO"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary",
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AdminProjectPageDTO",
+        "type": "object"
+      },
+      "AdminProjectsSummaryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "minimum": 0.0,
+            "title": "Active",
+            "type": "integer"
+          },
+          "archived": {
+            "minimum": 0.0,
+            "title": "Archived",
+            "type": "integer"
+          },
+          "course_bound": {
+            "minimum": 0.0,
+            "title": "Course Bound",
+            "type": "integer"
+          },
+          "feishu_linked": {
+            "minimum": 0.0,
+            "title": "Feishu Linked",
+            "type": "integer"
+          },
+          "finalized": {
+            "minimum": 0.0,
+            "title": "Finalized",
+            "type": "integer"
+          },
+          "github_linked": {
+            "minimum": 0.0,
+            "title": "Github Linked",
+            "type": "integer"
+          },
+          "standalone": {
+            "minimum": 0.0,
+            "title": "Standalone",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "standalone",
+          "course_bound",
+          "active",
+          "finalized",
+          "archived",
+          "github_linked",
+          "feishu_linked"
+        ],
+        "title": "AdminProjectsSummaryDTO",
+        "type": "object"
+      },
       "AdminUserDTO": {
         "description": "申报字段可空：注册流程中的账号可能尚未完成资料（完整性由注册规则判断）。",
         "properties": {
@@ -13679,6 +14455,38 @@
         "title": "SuccessResponse[AdminOverviewDTO]",
         "type": "object"
       },
+      "SuccessResponse_AdminProjectDetailDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminProjectDetailDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AdminProjectDetailDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_AdminProjectPageDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminProjectPageDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[AdminProjectPageDTO]",
+        "type": "object"
+      },
       "SuccessResponse_AdminUserDetailDTO_": {
         "properties": {
           "data": {
@@ -15841,6 +16649,38 @@
           "reason"
         ],
         "title": "UpdateProgressRequest",
+        "type": "object"
+      },
+      "UpdateProjectLifecycleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "archive",
+              "restore",
+              "finalize"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "expected_version",
+          "reason"
+        ],
+        "title": "UpdateProjectLifecycleRequest",
         "type": "object"
       },
       "UpdateRequirement": {
@@ -22515,6 +23355,456 @@
           }
         },
         "summary": "Get Overview",
+        "tags": [
+          "c",
+          "c-admin-workbench"
+        ]
+      }
+    },
+    "/api/v1/admin/workbench/projects": {
+      "get": {
+        "operationId": "get_projects_api_v1_admin_workbench_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "standalone",
+                "course"
+              ],
+              "title": "Origin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lifecycle",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "active",
+                "finalized",
+                "archived"
+              ],
+              "title": "Lifecycle",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "members",
+                "course"
+              ],
+              "title": "Visibility",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_github",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "yes",
+                "no"
+              ],
+              "title": "Has Github",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_feishu",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "yes",
+                "no"
+              ],
+              "title": "Has Feishu",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AdminProjectPageDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Get Projects",
+        "tags": [
+          "c",
+          "c-admin-workbench"
+        ]
+      }
+    },
+    "/api/v1/admin/workbench/projects/{project_id}": {
+      "get": {
+        "operationId": "get_project_detail_api_v1_admin_workbench_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AdminProjectDetailDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Get Project Detail",
+        "tags": [
+          "c",
+          "c-admin-workbench"
+        ]
+      }
+    },
+    "/api/v1/admin/workbench/projects/{project_id}/lifecycle": {
+      "post": {
+        "operationId": "post_project_lifecycle_api_v1_admin_workbench_projects__project_id__lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectLifecycleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_AdminProjectDetailDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Post Project Lifecycle",
         "tags": [
           "c",
           "c-admin-workbench"
