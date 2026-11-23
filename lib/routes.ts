@@ -50,7 +50,7 @@ export function resolveRoute(pathname: string, view?: string | null): ResolvedRo
     if (section === "requirements") return { screen: 9, projectId };
     if (section === "planning") return { screen: 10, projectId };
     if (section === "tasks") {
-      if (parts.length === 3) return { screen: view === "board" ? 12 : view === "list" ? 13 : 11, projectId };
+      if (parts.length === 3) return { screen: view === "plan" ? 10 : view === "board" ? 12 : view === "list" ? 13 : 11, projectId };
       const taskId = parts[3];
       if (parts.length === 4) return { screen: 14, projectId, taskId };
       if (parts[4] === "submit") return { screen: 15, projectId, taskId };

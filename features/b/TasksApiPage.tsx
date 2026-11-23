@@ -92,13 +92,16 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
 
   const [title, description] = titles[view];
   return <div>
-    <PageHeader title={tr(title)} description={tr(description)} actions={<Link href={`/projects/${projectId}/planning`} className={secondary}>{tr("任务计划")}</Link>} />
+    <PageHeader title={tr(title)} description={tr(description)} />
     <nav aria-label={tr("任务视图")} className="gp-segmented mt-4">
       {(["tree", "board", "list"] as const).map((v) => (
         <Link key={v} href={viewHref(v)} aria-current={v === view ? "page" : undefined} data-active={v === view ? "true" : undefined} className="gp-segmented-item">
           {tr(viewLabel[v])}
         </Link>
       ))}
+      <Link href={`/projects/${projectId}/tasks?view=plan`} className="gp-segmented-item">
+        {tr("分工与规划")}
+      </Link>
     </nav>
     <Panel className="mt-3">
       <form className="grid grid-cols-2 gap-2 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); setFilters({ q: q.trim() || null, page: null }); }}>
@@ -121,7 +124,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     <div className="mt-3">
       {page.isPending ? <div role="status" className="gp-empty">{tr("正在加载任务…")}</div>
         : page.isError ? <div role="alert"><Feedback tone="error">{errorText(page.error)}</Feedback></div>
-        : page.data.plan_status !== "frozen" && page.data.items.length === 0 ? <Panel><EmptyState title={tr("还没有任务")} description={tr("先在任务计划里拆分任务。")} action={<Link className={button} href={`/projects/${projectId}/planning`}>{tr("去任务计划")}</Link>} /></Panel>
+        : page.data.plan_status !== "frozen" && page.data.items.length === 0 ? <Panel><EmptyState title={tr("还没有任务")} description={tr("先在分工与规划里拆分任务。")} action={<Link className={button} href={`/projects/${projectId}/tasks?view=plan`}>{tr("去分工与规划")}</Link>} /></Panel>
         : view === "tree" ? <TreeView rows={page.data.items} issues={page.data.integrity_issues} collapsed={filters.collapsed} onCollapsed={(next) => setFilters({ collapsed: next })} />
         : view === "board" ? <BoardView page={page.data} onMove={(row, transition) => setPending({ row, transition })} />
         : <ListView page={page.data} current={filters.page} onPage={(next) => setFilters({ page: next })} />}

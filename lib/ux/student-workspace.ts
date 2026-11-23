@@ -23,7 +23,6 @@ export function projectNavGroups(projectId: string): ProjectNavGroup[] {
       label: "planGroup",
       items: [
         { label: "requirements", href: `${base}/requirements`, iconKey: "fileText" },
-        { label: "planning", href: `${base}/planning`, iconKey: "clipboardList" },
         { label: "tasks", href: `${base}/tasks?view=tree`, iconKey: "listTree" },
         { label: "milestones", href: `${base}/milestones`, iconKey: "fileCheck" },
       ],
@@ -183,7 +182,7 @@ export function buildSetupCards(input: SetupCardInput): SetupCard[] {
       id: "plan",
       title: "任务计划",
       description: input.hasPlan ? "任务结构已经建立。" : "拆分任务、负责人、里程碑和验收标准。",
-      href: `${base}/planning`,
+      href: `${base}/tasks?view=plan`,
       actionLabel: input.hasPlan ? "查看计划" : "制定计划",
       status: input.hasPlan ? "complete" : "not_started",
       required: false,

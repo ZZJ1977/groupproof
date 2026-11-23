@@ -132,7 +132,7 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
       actions={<div className="flex items-center gap-2">
         {project.entry === "readonly" && <StatusBadge tone="gray" label={project.lifecycle === "archived" ? tr("已归档 · 只读") : tr("已定稿 · 只读")} />}
         <Link className={secondary} href={`/projects/${projectId}/settings`}>{tr("项目设置")}</Link>
-        {project.entry !== "readonly" && <Link className={button} href={`/projects/${projectId}/planning`}>{tr("开始规划")} <ArrowRight size={15} /></Link>}
+        {project.entry !== "readonly" && <Link className={button} href={`/projects/${projectId}/tasks?view=plan`}>{tr("开始规划")} <ArrowRight size={15} /></Link>}
       </div>} />
     <div className="mt-5 grid gap-3 md:grid-cols-4">
       <Stat label={tr("任务")} value={stats.task_count} sub={tr("已完成 {0}", { 0: stats.completed_count })} />
