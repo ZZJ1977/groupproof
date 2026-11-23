@@ -849,6 +849,35 @@ def _create_candidate_evidences(
     )
     existing_states = {row.source_id: row for row in existing_state_rows}
     existing_identities = {row.source_identity for row in existing_state_rows}
+    # 修复旧版自动代码证据误将 revision 摘要写入 ActivityRecordState.source_identity 的记录，
+    # 避免 GET /activities/github 触发 409 SOURCE_IDENTITY_CONFLICT。
+    candidate_state_ids = [
+        row.source_id
+        for row in existing_state_rows
+        if row.evidence_id is None and row.status == "candidate"
+    ]
+    if candidate_state_ids:
+        state_acts = {
+            act.id: act
+            for act in session.scalars(
+                select(GithubActivity).where(
+                    GithubActivity.project_id == project_id,
+                    GithubActivity.id.in_(candidate_state_ids),
+                )
+            )
+        }
+        for row in existing_state_rows:
+            if row.evidence_id is not None or row.status != "candidate":
+                continue
+            act = state_acts.get(row.source_id)
+            if act is None or not act.external_id:
+                continue
+            canonical_id = f"{act.kind}:{act.external_id}"
+            if row.source_identity != canonical_id and canonical_id not in existing_identities:
+                existing_identities.discard(row.source_identity)
+                row.source_identity = canonical_id
+                existing_identities.add(canonical_id)
+        session.flush()
 
     created = 0
     for task in tasks:
@@ -910,7 +939,7 @@ def _create_candidate_evidences(
         for aid in kept_acts:
             act = act_obj[aid]
             cids = sorted(selected_cids_by_act[aid], key=str)
-            sha = (act.revision or act.external_id or str(act.id))[:40]
+            sha = (act.external_id or act.revision or str(act.id))[:40]
             short_sha = sha[:7]
             detail = act.detail if isinstance(act.detail, dict) else {}
             raw_files = detail.get("files") if isinstance(detail.get("files"), list) else []
@@ -1032,7 +1061,7 @@ def _create_candidate_evidences(
 
             # 同步写入 ActivityRecordState，确保任务详情里的 GitHub 提交面板同步可见
             st = existing_states.get(act.id)
-            state_identity = f"commit:{sha}"
+            state_identity = canonical_source.identity
             if st is None and state_identity not in existing_identities:
                 st = ActivityRecordState(
                     id=uuid4(),

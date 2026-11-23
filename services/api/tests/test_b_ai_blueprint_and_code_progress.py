@@ -654,7 +654,7 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
             link_id=link.id,
             kind="commit",
             external_id="abc1234567890",
-            revision="abc1234567890",
+            revision="f" * 64,
             title="chore: setup github actions workflow",
             summary="setup ci",
             author_login="other_teammate",
@@ -674,7 +674,7 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
             project_id=project.id,
             source_type="github",
             source_id=act_id,
-            source_revision="abc1234567890",
+            source_revision="f" * 64,
             prompt_version="activity-summary-v2",
             input_hash="h" * 64,
             status="ready",
@@ -705,6 +705,7 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     assert res.evidences_created == 1
     ev = bp_db.scalar(select(Evidence).where(Evidence.task_id == task.id))
     assert ev is not None
+    assert ev.title.startswith("[abc1234] ")
     assert "接入 GitHub Actions 前后端自动检查流水线" in ev.title
     assert "实现内容：新增 CI 工作流" in ev.description
     assert "影响范围：所有合入 develop" in ev.description
@@ -715,10 +716,12 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     # 新建自动证据的 snapshot 应使用与 DatabaseGithubActivityPort 一致的 commit:<sha> 标识，
     # reconcile_github_evidence 不会触发 409 SOURCE_IDENTITY_CONFLICT，也不会误标 source_changed。
     from app.modules.a import activity_summary
+    from app.modules.c.activity_models import ActivityRecordState
     from app.modules.c.github_evidence import reconcile_github_evidence
     from app.modules.c.models import EvidenceSourceSnapshot
 
     sha = "abc1234567890"
+    legacy_rev = "f" * 40
     snap = bp_db.scalar(
         select(EvidenceSourceSnapshot).where(
             EvidenceSourceSnapshot.evidence_id == ev.id,
@@ -732,10 +735,21 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     bp_db.refresh(ev)
     assert ev.source_changed is False
 
-    # 模拟旧版自动证据写入的裸 SHA snapshot：reconcile_github_evidence 应自动平滑升级并保持不冲突
-    snap.source_identity = sha
-    snap.source_revision = sha
+    # 模拟旧版自动证据写入的裸 revision snapshot 与错误 ActivityRecordState.source_identity
+    snap.source_identity = legacy_rev
+    snap.source_revision = legacy_rev
     snap.content_hash = "0" * 64
+    snap.content_json = {
+        "source_id": str(act_id),
+        "availability": "available",
+        "source": {"kind": "commit", "sha": legacy_rev, "title": "legacy"},
+    }
+    act_state = bp_db.scalar(
+        select(ActivityRecordState).where(ActivityRecordState.source_id == act_id)
+    )
+    assert act_state is not None
+    assert act_state.source_identity == f"commit:{sha}"
+    act_state.source_identity = f"commit:{legacy_rev}"
     bp_db.flush()
 
     reconcile_github_evidence(bp_db, leader, project.id)
@@ -743,6 +757,12 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     bp_db.refresh(ev)
     assert snap.source_identity == f"commit:{sha}"
     assert ev.source_changed is False
+
+    code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+    bp_db.refresh(act_state)
+    assert act_state.source_identity == f"commit:{sha}"
 
     # 未生成 AI 摘要的已关联证据提交（即使时间更早）应优先被 recent_unanalyzed_commit_ids 选中
     old_act = GithubActivity(

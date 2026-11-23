@@ -15,11 +15,10 @@ from app.modules.c.models import Evidence, EvidenceSourceSnapshot
 
 
 def _normalize_legacy_auto_snapshot(session: Session, evidence: Evidence, item) -> None:
-    """升级旧版自动代码证据写入的裸 SHA snapshot，避免与 commit:<sha> 冲突。"""
+    """升级旧版自动代码证据写入的裸 SHA/revision snapshot，避免与 commit:<sha> 冲突。"""
     prefix = f"{item.kind}:"
     if not item.source.identity.startswith(prefix):
         return
-    bare_id = item.source.identity[len(prefix) :]
     latest = session.scalar(
         select(EvidenceSourceSnapshot)
         .where(EvidenceSourceSnapshot.evidence_id == evidence.id)
@@ -29,10 +28,14 @@ def _normalize_legacy_auto_snapshot(session: Session, evidence: Evidence, item) 
     if (
         latest is None
         or latest.version_no != 1
-        or latest.source_identity != bare_id
+        or ":" in latest.source_identity
+        or latest.source_identity != latest.source_revision
         or not isinstance(latest.content_json, dict)
         or latest.content_json.get("source_id") != str(item.id)
     ):
+        return
+    legacy_source = latest.content_json.get("source")
+    if not isinstance(legacy_source, dict) or "sha" not in legacy_source:
         return
     latest.source_identity = item.source.identity
     latest.source_revision = item.source.revision
