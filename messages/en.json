@@ -522,8 +522,7 @@
       "courses": "Courses",
       "logs": "System logs",
       "aiUsage": "AI usage",
-      "accessRequests": "Anomalies / access approvals",
-      "integrations": "Proof pipeline & integrations"
+      "accessRequests": "Anomalies / access approvals"
     },
     "adminGroups": {
       "platform": "Platform management",
@@ -539,16 +538,9 @@
       "currentDevelop": "Current: develop / Staging",
       "currentMain": "Current: main / Production",
       "switchFailed": "Switch failed; try again",
-      "retry": "Retry",
-      "confirmTitle": "Switch admin environment",
-      "confirmBody": "Switching to {target} will sign out your current session and redirect to the login page. Make sure any unsaved edits are finished.",
-      "confirmProdWarning": "The target is Production (main / Production). All writes directly affect live student and course records.",
-      "confirmAction": "Confirm switch",
-      "cancelAction": "Cancel",
-      "prodBanner": "Production mode (main / Production) · All administrative actions directly affect live student, teacher, and course records."
+      "retry": "Retry"
     },
     "searchPlaceholder": "Search courses, projects or tasks...",
-    "adminSearchPlaceholder": "Search users, student IDs or courses...",
     "searchNoResult": "No matches",
     "searching": "Searching…",
     "searchError": "Search is temporarily unavailable",

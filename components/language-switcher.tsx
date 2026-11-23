@@ -19,22 +19,22 @@ export function LanguageSwitcher({ compact = false, className }: { compact?: boo
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(
-          "inline-flex min-h-[36px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-2 text-[12px] text-[#53637d] outline-none hover:bg-[#f5f7fb] focus-visible:ring-2 focus-visible:ring-blue-200",
+          "inline-flex min-h-[44px] items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-[#53637d] outline-none hover:bg-[#f5f7fb] focus-visible:ring-2 focus-visible:ring-blue-200",
           className,
         )}
         aria-label={`${t("language.label")}: ${localeNames[activeLocale]}`}
       >
-        <Globe size={15} className="shrink-0" />
+        <Globe size={16} />
         {compact ? (
           // 紧凑模式只显示一次当前语言（此前两个 span 同时渲染导致语言名重复）
-          <span className="hidden whitespace-nowrap sm:inline">{localeNames[activeLocale]}</span>
+          <span className="hidden sm:inline">{localeNames[activeLocale]}</span>
         ) : (
           <>
-            <span className="whitespace-nowrap">{t("language.label")}</span>
-            <span className="hidden whitespace-nowrap sm:inline">{localeNames[activeLocale]}</span>
+            <span>{t("language.label")}</span>
+            <span className="hidden sm:inline">{localeNames[activeLocale]}</span>
           </>
         )}
-        <ChevronDown size={13} className="shrink-0" />
+        <ChevronDown size={13} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup

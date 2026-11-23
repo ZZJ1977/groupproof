@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import aliased
@@ -14,10 +14,9 @@ from app.modules.c.school_email import has_verified_school_email, school_email_b
 
 from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
-from ..errors import DEFAULT_MESSAGES, AppError
+from ..errors import AppError
 from ..guard import AuthContext, check_csrf, require_admin
 from ..models import SchoolEmailBinding, TeacherApplication, User
-from ..security import check_email_format, normalize_username
 from ..services import accounts
 
 router = APIRouter(prefix="/api/v1/c-admin", tags=["c-admin"], route_class=EnvelopeRoute)
@@ -55,10 +54,6 @@ def directory_row(user, binding, actor):
         "schoolEmail": binding.school_email if binding else None,
         "schoolEmailVerified": school_email_binding_verified(binding),
         "canDisable": user.id != actor.id and user.account_status != "disabled",
-        "createdAt": user.created_at.isoformat() if getattr(user, "created_at", None) else None,
-        "lastLoginAt": (
-            user.last_login_at.isoformat() if getattr(user, "last_login_at", None) else None
-        ),
     }
 
 
@@ -75,9 +70,7 @@ def users(
     role: str = Query(default="", pattern="^(|student|teacher|ta|admin)$"),
     status: str = Query(default="", pattern="^(|enabled|disabled)$"),
     college: str = Query(default="", max_length=120),
-    emailVerified: str = Query(default="", pattern="^(|true|false)$"),
     page: int = Query(default=1, ge=1, le=1_000_000),
-    pageSize: int = Query(default=10, ge=1, le=100),
     context: AuthContext = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
@@ -103,24 +96,16 @@ def users(
         )
     if college.strip():
         query = query.where(User.college == college.strip())
-    if emailVerified == "true":
-        query = query.where(SchoolEmailBinding.verified_at.is_not(None))
-    elif emailVerified == "false":
-        query = query.where(
-            or_(SchoolEmailBinding.user_id.is_(None), SchoolEmailBinding.verified_at.is_(None))
-        )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = db.execute(
-        query.order_by(User.created_at.desc(), User.id)
-        .offset((page - 1) * pageSize)
-        .limit(pageSize)
+        query.order_by(User.created_at.desc(), User.id).offset((page - 1) * 10).limit(10)
     )
     return response(
         {
             "items": [directory_row(u, b, context.user) for u, b in rows],
             "total": total,
             "page": page,
-            "pageSize": pageSize,
+            "pageSize": 10,
         }
     )
 
@@ -251,196 +236,11 @@ def create_account(
     )
 
 
-class BulkImportRowInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    identity: str = Field(default="student", max_length=32)
-    name: str = Field(default="", max_length=120)
-    username: str = Field(default="", max_length=80)
-    schoolEmail: str = Field(default="", max_length=255)
-    studentId: str | None = Field(default=None, max_length=80)
-    college: str | None = Field(default=None, max_length=160)
-    submitForReview: bool = Field(default=False, strict=True)
-
-
-class BulkImportAccountsRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    dryRun: bool = Field(default=True, strict=True)
-    rows: list[BulkImportRowInput] = Field(min_length=1, max_length=200)
-
-
-@router.post("/users/bulk-import")
-def bulk_import_accounts(
-    body: BulkImportAccountsRequest,
-    request: Request,
-    context: AuthContext = Depends(require_admin),
-    db: DbSession = Depends(get_db),
-):
-    check_admin_write(request, context, db)
-    results = []
-    valid_count = 0
-    invalid_count = 0
-    created_count = 0
-    seen_usernames: set[str] = set()
-    seen_emails: set[str] = set()
-
-    for index, raw_row in enumerate(body.rows):
-        row_payload = raw_row.model_dump()
-        row_payload["studentId"] = (row_payload.get("studentId") or "").strip() or None
-        row_payload["college"] = (row_payload.get("college") or "").strip() or None
-        try:
-            validated = CreateAccount.model_validate(row_payload)
-        except ValidationError as exc:
-            invalid_count += 1
-            field_errors = {
-                str(err["loc"][0]) if err.get("loc") else "row": "validation_error"
-                for err in exc.errors()
-            }
-            results.append(
-                {
-                    "index": index,
-                    "name": raw_row.name,
-                    "username": raw_row.username,
-                    "schoolEmail": raw_row.schoolEmail,
-                    "identity": raw_row.identity,
-                    "status": "error",
-                    "userId": None,
-                    "errorCode": "VALIDATION_ERROR",
-                    "fieldErrors": field_errors,
-                    "message": DEFAULT_MESSAGES["VALIDATION_ERROR"],
-                }
-            )
-            continue
-
-        norm_username = normalize_username(validated.username)
-        if norm_username in seen_usernames:
-            invalid_count += 1
-            results.append(
-                {
-                    "index": index,
-                    "name": validated.name,
-                    "username": validated.username,
-                    "schoolEmail": validated.schoolEmail,
-                    "identity": validated.identity,
-                    "status": "error",
-                    "userId": None,
-                    "errorCode": "USERNAME_CONFLICT",
-                    "fieldErrors": {"username": "username_taken"},
-                    "message": DEFAULT_MESSAGES["USERNAME_CONFLICT"],
-                }
-            )
-            continue
-
-        try:
-            norm_email = check_email_format(validated.schoolEmail)
-        except ValueError:
-            norm_email = validated.schoolEmail.strip().lower()
-        if norm_email in seen_emails:
-            invalid_count += 1
-            results.append(
-                {
-                    "index": index,
-                    "name": validated.name,
-                    "username": validated.username,
-                    "schoolEmail": validated.schoolEmail,
-                    "identity": validated.identity,
-                    "status": "error",
-                    "userId": None,
-                    "errorCode": "EMAIL_CONFLICT",
-                    "fieldErrors": {"schoolEmail": "email_taken"},
-                    "message": DEFAULT_MESSAGES["EMAIL_CONFLICT"],
-                }
-            )
-            continue
-
-        sp = db.begin_nested()
-        try:
-            created = accounts.admin_create_account(
-                db,
-                admin=context.user,
-                identity=validated.identity,
-                name=validated.name,
-                username=validated.username,
-                school_email=validated.schoolEmail,
-                student_id=validated.studentId,
-                college=validated.college,
-                submit_for_review=validated.submitForReview,
-            )
-            seen_usernames.add(norm_username)
-            seen_emails.add(norm_email)
-            valid_count += 1
-            if body.dryRun:
-                sp.rollback()
-                results.append(
-                    {
-                        "index": index,
-                        "name": validated.name,
-                        "username": validated.username,
-                        "schoolEmail": validated.schoolEmail,
-                        "identity": validated.identity,
-                        "status": "valid",
-                        "userId": None,
-                        "errorCode": None,
-                        "fieldErrors": None,
-                        "message": "OK",
-                    }
-                )
-            else:
-                sp.commit()
-                created_count += 1
-                results.append(
-                    {
-                        "index": index,
-                        "name": validated.name,
-                        "username": validated.username,
-                        "schoolEmail": validated.schoolEmail,
-                        "identity": validated.identity,
-                        "status": "created",
-                        "userId": str(created.id),
-                        "errorCode": None,
-                        "fieldErrors": None,
-                        "message": "Created",
-                    }
-                )
-        except AppError as exc:
-            sp.rollback()
-            invalid_count += 1
-            results.append(
-                {
-                    "index": index,
-                    "name": validated.name,
-                    "username": validated.username,
-                    "schoolEmail": validated.schoolEmail,
-                    "identity": validated.identity,
-                    "status": "error",
-                    "userId": None,
-                    "errorCode": exc.code,
-                    "fieldErrors": exc.field_errors or None,
-                    "message": DEFAULT_MESSAGES.get(exc.code, exc.code),
-                }
-            )
-
-    if not body.dryRun:
-        db.commit()
-
-    return response(
-        {
-            "dryRun": body.dryRun,
-            "total": len(body.rows),
-            "validCount": valid_count,
-            "invalidCount": invalid_count,
-            "createdCount": created_count,
-            "results": results,
-        }
-    )
-
-
 @router.get("/teacher-applications")
 def applications(
     request: Request,
     page: int = Query(default=1, ge=1, le=1_000_000),
-    pageSize: int = Query(default=10, ge=1, le=100),
     status: Literal["pending", "approved", "rejected", "all"] = "pending",
-    q: str = Query(default="", max_length=200),
     context: AuthContext = Depends(require_admin),
     db: DbSession = Depends(get_db),
 ):
@@ -453,15 +253,6 @@ def applications(
     )
     if status != "all":
         query = query.where(TeacherApplication.status == status)
-    if q.strip():
-        term = "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        query = query.where(
-            or_(
-                User.name.ilike(term, escape="\\"),
-                User.college.ilike(term, escape="\\"),
-                SchoolEmailBinding.school_email.ilike(term, escape="\\"),
-            )
-        )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     items = [
         {
@@ -485,12 +276,12 @@ def applications(
         }
         for row, user, binding, reviewer_name in db.execute(
             query.order_by(TeacherApplication.created_at, TeacherApplication.id)
-            .offset((page - 1) * pageSize)
-            .limit(pageSize)
+            .offset((page - 1) * 10)
+            .limit(10)
             .execution_options(populate_existing=True)
         )
     ]
-    return response({"items": items, "total": total, "page": page, "pageSize": pageSize})
+    return response({"items": items, "total": total, "page": page, "pageSize": 10})
 
 
 def snapshot_text(row: TeacherApplication, key: str) -> str | None:
