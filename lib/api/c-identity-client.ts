@@ -4,7 +4,6 @@ export interface IdentityAdminUser {
   id: string; name: string; studentId: string | null; college: string; roles: string[];
   status: "enabled" | "disabled"; version: number; schoolEmail: string | null;
   schoolEmailVerified: boolean; canDisable: boolean;
-  createdAt?: string | null; lastLoginAt?: string | null;
 }
 export interface IdentityTeacherApplication {
   id: string; userId: string; name: string; college: string; applicationVersion: number;
@@ -21,26 +20,6 @@ export interface NewIdentityAccount {
   schoolEmail: string;
   studentId?: string;
   college?: string;
-}
-export interface BulkImportRowResult {
-  index: number;
-  name: string;
-  username: string;
-  schoolEmail: string;
-  identity: string;
-  status: "valid" | "created" | "error";
-  userId: string | null;
-  errorCode: string | null;
-  fieldErrors: Record<string, string> | null;
-  message: string;
-}
-export interface BulkImportResponse {
-  dryRun: boolean;
-  total: number;
-  validCount: number;
-  invalidCount: number;
-  createdCount: number;
-  results: BulkImportRowResult[];
 }
 export interface IdentityAdminPage<T> { items: T[]; total: number; page: number; pageSize: number }
 
@@ -61,16 +40,9 @@ async function request<T>(path: string, body?: unknown, actorId?: string): Promi
 export const cIdentityClient = {
   users: (query: URLSearchParams) => request<IdentityAdminPage<IdentityAdminUser>>(`/users?${query}`),
   create: (body: NewIdentityAccount, actorId: string) => request<{ id: string; passwordSetup: "forgot_password" }>("/users", body, actorId),
-  bulkImport: (body: { dryRun: boolean; rows: NewIdentityAccount[] }, actorId: string) =>
-    request<BulkImportResponse>("/users/bulk-import", body, actorId),
   enable: (user: IdentityAdminUser, reason: string, actorId: string) => request(`/users/${encodeURIComponent(user.id)}/enable`, { expectedVersion: user.version, reason }, actorId),
   disable: (user: IdentityAdminUser, reason: string, actorId: string) => request<{ id: string; status: "disabled"; version: number; inboxNotified?: boolean }>(`/users/${encodeURIComponent(user.id)}/disable`, { expectedVersion: user.version, reason }, actorId),
-  applications: (page: number, status: TeacherApplicationStatus = "pending", extra?: { q?: string; pageSize?: number }) => {
-    const params = new URLSearchParams({ page: String(page), status });
-    if (extra?.q) params.set("q", extra.q);
-    if (extra?.pageSize) params.set("pageSize", String(extra.pageSize));
-    return request<IdentityAdminPage<IdentityTeacherApplication>>(`/teacher-applications?${params}`);
-  },
+  applications: (page: number, status: TeacherApplicationStatus = "pending") => request<IdentityAdminPage<IdentityTeacherApplication>>(`/teacher-applications?${new URLSearchParams({ page: String(page), status })}`),
   review: (row: IdentityTeacherApplication, decision: "approve" | "reject", reason: string, actorId: string) => request(`/teacher-applications/${encodeURIComponent(row.id)}/review`, {
     expectedVersion: row.applicationVersion, decision, reason,
   }, actorId),

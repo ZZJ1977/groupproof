@@ -522,8 +522,7 @@
       "courses": "课程管理",
       "logs": "系统日志",
       "aiUsage": "AI 使用情况",
-      "accessRequests": "异常 / 访问审批",
-      "integrations": "过程证明与集成"
+      "accessRequests": "异常 / 访问审批"
     },
     "adminGroups": {
       "platform": "平台管理",
@@ -539,16 +538,9 @@
       "currentDevelop": "当前：develop / Staging",
       "currentMain": "当前：main / Production",
       "switchFailed": "切换失败，请重试",
-      "retry": "重试",
-      "confirmTitle": "切换管理数据环境",
-      "confirmBody": "切换至 {target} 后将退出当前登录会话并跳转至登录页，请确认未保存的操作已处理。",
-      "confirmProdWarning": "目标为生产环境（main / Production），所有写入将直接影响真实师生数据。",
-      "confirmAction": "确认切换",
-      "cancelAction": "取消",
-      "prodBanner": "生产环境模式（main / Production）· 所有管理操作将直接影响真实师生与课程数据，请谨慎核对。"
+      "retry": "重试"
     },
     "searchPlaceholder": "搜索课程、项目或任务...",
-    "adminSearchPlaceholder": "搜索用户、学号或课程...",
     "searchNoResult": "无匹配结果",
     "searching": "正在搜索…",
     "searchError": "搜索暂不可用，请稍后重试",

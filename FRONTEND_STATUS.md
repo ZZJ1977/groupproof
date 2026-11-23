@@ -1,15 +1,6 @@
 # GroupProof V1 前端交付状态
 
-更新日期：2026-11-23
-
-## 2026-11-23 GroupProof 专属管理后台工作台升级
-
-- 后端新增 GroupProof 专属管理工作台接口（`services/api/app/modules/c/admin_workbench_{schemas,service,router}.py`），挂载于 `/api/v1/admin/workbench/*`：总览聚合（`/overview`）、用户 360 档案（`/users/{user_id}/profile`）、强制撤销用户全部会话（`/users/{user_id}/sessions/revoke`）、临时只读授权列表（`/access-grants`，联动 `/api/v1/a/access-grants/{grant_id}/revoke` 撤销）、SQL 聚合 AI 失败诊断与延迟分位（`/ai-diagnostics`）、过程证明与集成健康状态（`/integrations`，严守元数据/内容隔离，仅返回脱敏飞书群 ID、邮件失败域名与限流前缀）、实体标签解析（`/resolve-labels`）及课程规模聚合（`/courses/metrics`）。
-- 统一身份管理接口（`services/api/app/auth/routers/c_admin.py`）增强：`GET /api/v1/c-admin/users` 返回 `createdAt` / `lastLoginAt` 并支持 `emailVerified` / `pageSize`；`GET /api/v1/c-admin/teacher-applications` 支持关键词 `q` 与 `pageSize`；新增 `POST /api/v1/c-admin/users/bulk-import` 支持 `dryRun` 预检及逐行 savepoint 隔离导入。已同步重新生成 `packages/domain/openapi.json` 与 `packages/domain/api.generated.ts`。
-- 前端管理端壳层与全部 8 个管理页面升级：
-  - 顶栏修复环境切换器重复文本与中文折行，新增 Staging / Production 切换确认弹窗与 Production 顶部醒目警示横幅；侧边栏新增实时待办计数角标，并新增“过程证明与集成”页（`/admin/integrations`，运行页 `63`）。
-  - 升级 `/admin` 总览（角色与核验漏斗、待办队列、7 日平台活跃趋势、过程证明管线、AI 7 日监控、服务健康探针与最近账号）、`/admin/users`（核验状态筛选、分页条数、CSV 批量预检导入与用户 360 档案抽屉含一键强制下线）、`/admin/teacher-verifications`（状态统计与关键词检索、快照 vs 当前资料对比）、`/admin/courses`（负责教师姓名与学生/小组/项目规模统计、邀请码一键复制）、`/admin/access-requests`（申请审批与有效/已过期/已撤销临时授权台账双标签及即时撤销）、`/admin/logs`（UUID 自动解析为人类可读姓名/课程/项目并支持一键复制）、`/admin/ai-usage`（错误码分布、P50/P95 延迟、Top 消耗用户/项目、近期失败明细与 AI 摘要队列健康）及 `/admin/integrations`。
-- 已知边界：所有工作台接口均严格隔离私密业务正文（不读取项目描述、任务详情、证据内容、飞书消息正文或验证码）；前端对旧有 7 个页面的工作台增强查询均配置 `retry: false` 并在未接入环境中静默降级。
+更新日期：2026-11-22
 
 ## 2026-11-22 原工作区统一与全流程上线闭环完善
 

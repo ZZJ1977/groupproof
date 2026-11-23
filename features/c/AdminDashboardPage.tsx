@@ -1,409 +1,165 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Activity,
-  AlertTriangle,
-  ArrowRight,
-  BookOpen,
-  CheckCircle2,
-  FileCheck2,
-  GitBranch,
-  MessageSquare,
-  RefreshCw,
-  ShieldCheck,
-  UserCheck,
-  Users,
-} from "lucide-react";
+import { ArrowRight, BookOpen, RefreshCw, ShieldCheck, UserCheck, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/lib/workspace";
+import { cIdentityClient, type IdentityAdminPage, type IdentityAdminUser } from "@/lib/api/c-identity-client";
 import { createGovernanceClient } from "@/lib/api/c-governance-client";
-import { Badge, Box, Empty, Header, Metric } from "@/features/governance/primitives";
-import { formatBytes, formatDurationMs, formatRelativeTime } from "@/features/c/AdminPrimitives";
+import { Box, Empty, Header, Metric } from "@/features/governance/primitives";
 import styles from "@/features/governance/governance.module.css";
 
 const governance = createGovernanceClient();
-const roleLabels: Record<string, string> = { student: "学生", teacher: "教师", ta: "助教", admin: "管理员" };
-const roleTones: Record<string, "blue" | "purple" | "green" | "amber" | "gray"> = {
-  student: "blue",
-  teacher: "purple",
-  ta: "green",
-  admin: "amber",
-};
+const querySettings = { staleTime: 0, gcTime: 0, retry: false } as const;
 
-function Distribution({ items, total }: { items: { label: string; value: number; color: string }[]; total: number }) {
-  return (
-    <div className="space-y-4">
-      {items.map((item) => {
-        const width = total > 0 ? Math.max(item.value ? 5 : 0, Math.round((item.value / total) * 100)) : 0;
-        const pct = total > 0 ? `${Math.round((item.value / total) * 100)}%` : "0%";
-        return (
-          <div key={item.label}>
-            <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-2 text-slate-700">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                {item.label}
-              </span>
-              <span className="text-slate-600">
-                <strong className="text-slate-900">{item.value}</strong> · {pct}
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full transition-all" style={{ width: `${width}%`, backgroundColor: item.color }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+function valueOf<T extends { total: number }>(query: { data?: T; isFetching: boolean; isError: boolean }) {
+  if (query.isFetching) return "…";
+  if (query.isError || !query.data) return "—";
+  return query.data.total;
 }
 
-function healthTone(status: "healthy" | "warning" | "degraded"): "green" | "amber" | "red" {
-  return status === "healthy" ? "green" : status === "warning" ? "amber" : "red";
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return <div role="alert" className={styles.notice}><span>数据暂时无法读取。</span><button type="button" className={styles.button} onClick={onRetry}><RefreshCw size={14} />重试</button></div>;
 }
 
-function healthText(status: "healthy" | "warning" | "degraded"): string {
-  return status === "healthy" ? "正常" : status === "warning" ? "需关注" : "异常";
+function QuickLink({ href, title, description, icon: Icon }: { href: string; title: string; description: string; icon: typeof Users }) {
+  return <Link href={href} className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 transition hover:border-blue-300 hover:bg-blue-50">
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><Icon size={18} /></span>
+    <span className="min-w-0 flex-1"><strong className="block text-sm text-slate-900">{title}</strong><span className="mt-1 block text-xs text-slate-500">{description}</span></span>
+    <ArrowRight size={16} className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
+  </Link>;
+}
+
+function Distribution({ items, total }: { items: { label: string; value: number | string; color: string }[]; total: number | string }) {
+  const denominator = typeof total === "number" && total > 0 ? total : 0;
+  return <div className="space-y-4">
+    {items.map((item) => {
+      const value = typeof item.value === "number" ? item.value : 0;
+      const width = denominator ? Math.max(value ? 5 : 0, Math.round((value / denominator) * 100)) : 0;
+      return <div key={item.label}>
+        <div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="flex items-center gap-2 text-slate-700"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />{item.label}</span><strong className="text-slate-900">{item.value}</strong></div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{ width: `${width}%`, backgroundColor: item.color }} /></div>
+      </div>;
+    })}
+  </div>;
+}
+
+function ServiceStatus({ label, ready, loading }: { label: string; ready: boolean; loading: boolean }) {
+  return <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">{label}</span><span className={`inline-flex items-center gap-1.5 text-xs font-medium ${loading ? "text-slate-400" : ready ? "text-emerald-600" : "text-rose-600"}`}><span className={`h-2 w-2 rounded-full ${loading ? "bg-slate-300" : ready ? "bg-emerald-500" : "bg-rose-500"}`} />{loading ? "读取中" : ready ? "已连接" : "不可用"}</span></div>;
 }
 
 export function AdminDashboardPage() {
   const { userId } = useWorkspace();
-  const overview = useQuery({
-    queryKey: ["admin-workbench-overview", userId],
-    queryFn: () => governance.workbenchOverview(),
-    staleTime: 20_000,
-    retry: false,
+  const users = useQuery({
+    queryKey: ["admin-dashboard-users", userId],
+    queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1" })),
+    ...querySettings,
   });
+  const teachers = useQuery({
+    queryKey: ["admin-dashboard-teacher-applications", userId],
+    queryFn: () => cIdentityClient.applications(1, "pending"),
+    ...querySettings,
+  });
+  const courses = useQuery({
+    queryKey: ["admin-dashboard-courses", userId],
+    queryFn: () => governance.courses({ page: 1, page_size: 1 }),
+    ...querySettings,
+  });
+  const requests = useQuery({
+    queryKey: ["admin-dashboard-access-requests", userId],
+    queryFn: () => governance.accessRequests({ page: 1, page_size: 1, status: "pending" }),
+    ...querySettings,
+  });
+  const roleQueries = {
+    student: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "student"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "student" })), ...querySettings }),
+    teacher: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "teacher"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "teacher" })), ...querySettings }),
+    ta: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "ta"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "ta" })), ...querySettings }),
+    admin: useQuery<IdentityAdminPage<IdentityAdminUser>>({ queryKey: ["admin-dashboard-role", userId, "admin"], queryFn: () => cIdentityClient.users(new URLSearchParams({ page: "1", role: "admin" })), ...querySettings }),
+  };
+  const courseQueries = {
+    draft: useQuery({ queryKey: ["admin-dashboard-course-status", userId, "draft"], queryFn: () => governance.courses({ page: 1, page_size: 1, status: "draft" }), ...querySettings }),
+    active: useQuery({ queryKey: ["admin-dashboard-course-status", userId, "active"], queryFn: () => governance.courses({ page: 1, page_size: 1, status: "active" }), ...querySettings }),
+    ended: useQuery({ queryKey: ["admin-dashboard-course-status", userId, "ended"], queryFn: () => governance.courses({ page: 1, page_size: 1, status: "ended" }), ...querySettings }),
+  };
 
-  const data = overview.data;
-  const loading = overview.isFetching;
-  const users = data?.users;
-  const queues = data?.queues;
-  const teaching = data?.teaching;
-  const proof = data?.proof_pipeline;
-  const ai = data?.ai_7d;
-
-  const onlyAdmin = Boolean(users && users.total === 1 && teaching && teaching.courses_total === 0);
-  const verifiedRate = users && users.total > 0 ? `${Math.round((users.verified_school_email / users.total) * 100)}%` : "—";
-  const aiCostLabel = ai
-    ? Object.entries(ai.cost_by_currency).map(([c, v]) => `${c} ${v}`).join(" · ") || (ai.requests ? "未计价" : "暂无费用")
-    : "—";
-
+  const refresh = () => {
+    void Promise.all([
+      users.refetch(), teachers.refetch(), courses.refetch(), requests.refetch(),
+      ...Object.values(roleQueries).map((query) => query.refetch()),
+      ...Object.values(courseQueries).map((query) => query.refetch()),
+    ]);
+  };
+  const onlyAdmin = users.data?.total === 1 && courses.data?.total === 0;
+  const hasError = users.isError || teachers.isError || courses.isError || requests.isError;
+  const recentUsers = users.data?.items.slice(0, 5) ?? [];
+  const roleTotal = users.data?.total ?? "—";
   const roleItems = [
-    { label: "学生", value: users?.by_role.student ?? 0, color: "#2563eb" },
-    { label: "教师", value: users?.by_role.teacher ?? 0, color: "#7c3aed" },
-    { label: "助教", value: users?.by_role.ta ?? 0, color: "#0d9488" },
-    { label: "管理员", value: users?.by_role.admin ?? 0, color: "#ea580c" },
+    { label: "学生", value: roleQueries.student.data?.total ?? "—", color: "#2563eb" },
+    { label: "教师", value: roleQueries.teacher.data?.total ?? "—", color: "#7c3aed" },
+    { label: "助教", value: roleQueries.ta.data?.total ?? "—", color: "#0d9488" },
+    { label: "管理员", value: roleQueries.admin.data?.total ?? "—", color: "#ea580c" },
   ];
   const courseItems = [
-    { label: "草稿", value: teaching?.courses_draft ?? 0, color: "#f59e0b" },
-    { label: "已发布", value: teaching?.courses_active ?? 0, color: "#10b981" },
-    { label: "已结束", value: teaching?.courses_ended ?? 0, color: "#64748b" },
+    { label: "草稿", value: courseQueries.draft.data?.total ?? "—", color: "#f59e0b" },
+    { label: "已发布", value: courseQueries.active.data?.total ?? "—", color: "#10b981" },
+    { label: "已结束", value: courseQueries.ended.data?.total ?? "—", color: "#64748b" },
   ];
+  const roleLoading = Object.values(roleQueries).some((query) => query.isFetching);
+  const courseLoading = Object.values(courseQueries).some((query) => query.isFetching);
 
-  const activitySeries = data?.activity_7d ?? [];
-  const maxPulse = Math.max(
-    1,
-    ...activitySeries.map((day) => Math.max(day.audit_events, day.ai_requests, day.github_activities + day.feishu_messages)),
-  );
-
-  return (
-    <main className={styles.page}>
-      <Header
-        title="管理总览"
-        description="GroupProof 平台身份、课程治理、过程证明链与 OpenRouter AI 运行态势。"
-        action={
-          <button type="button" className={styles.button} disabled={loading} onClick={() => void overview.refetch()}>
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            {loading ? "刷新中…" : "刷新数据"}
-          </button>
-        }
-      />
-
-      {overview.isError && (
-        <div role="alert" className={styles.identityError}>
-          <p>工作台概览暂不可用，请检查服务或管理权限后重试。</p>
-          <button type="button" className={styles.button} onClick={() => void overview.refetch()}>
-            <RefreshCw size={14} />重试
-          </button>
-        </div>
-      )}
-
-      {onlyAdmin && (
-        <div role="status" className={styles.notice}>
-          <span>当前环境只有管理员账号，还没有学生、教师或课程数据。你可以批量导入师生名单或先开设课程。</span>
-          <Link className={styles.primaryButton} href="/admin/users">
-            新增或导入账号
-            <ArrowRight size={14} />
-          </Link>
-        </div>
-      )}
-
-      <div className={styles.metrics}>
-        <Link href="/admin/users" className={styles.kpiLink}>
-          <Metric
-            label="用户总数"
-            value={users ? users.total : loading ? "…" : "—"}
-            hint={users ? `近 7 日新增 +${users.new_last_7d} · 7 日活跃 ${users.active_last_7d}` : "来自统一身份服务"}
-            trend={`学校邮箱验证率 ${verifiedRate}`}
-            icon={Users}
-          />
-        </Link>
-        <Link href="/admin/teacher-verifications" className={styles.kpiLink}>
-          <Metric
-            label="待审核教师"
-            value={queues ? queues.pending_teacher_applications : loading ? "…" : "—"}
-            hint="教师身份申请队列"
-            trend={queues?.pending_teacher_applications ? "需要尽快审批" : "队列为空"}
-            icon={UserCheck}
-            tone={queues?.pending_teacher_applications ? "amber" : "blue"}
-          />
-        </Link>
-        <Link href="/admin/courses" className={styles.kpiLink}>
-          <Metric
-            label="课程总数"
-            value={teaching ? teaching.courses_total : loading ? "…" : "—"}
-            hint={teaching ? `${teaching.groups_total} 个小组 · ${teaching.projects_active} 个进行中项目` : "草稿、已发布和已结束"}
-            trend={teaching ? `任务 ${teaching.tasks_total} · 正式证据 ${teaching.formal_evidences_total}` : "生命周期汇总"}
-            icon={BookOpen}
-          />
-        </Link>
-        <Link href="/admin/access-requests" className={styles.kpiLink}>
-          <Metric
-            label="待审批访问"
-            value={queues ? queues.pending_access_requests : loading ? "…" : "—"}
-            hint="临时只读授权申请"
-            trend={queues ? `当前生效中授权 ${queues.active_access_grants} 份` : "暂无待办"}
-            icon={ShieldCheck}
-            tone={queues?.pending_access_requests ? "amber" : "blue"}
-          />
-        </Link>
-      </div>
-
-      <section aria-label="GroupProof 过程证明链健康指标" className={styles.proofStrip}>
-        <Link href="/admin/integrations" className={styles.proofStripCard}>
-          <div className={styles.proofStripHead}>
-            <span className="inline-flex items-center gap-1.5"><GitBranch size={15} className="text-blue-600" />GitHub 代码同步</span>
-            <Badge tone={proof && proof.github_stale_links > 0 ? "amber" : "green"}>
-              {proof ? (proof.github_stale_links > 0 ? `${proof.github_stale_links} 滞后` : "正常") : "—"}
-            </Badge>
-          </div>
-          <div className={styles.proofStripValue}>{proof ? `${proof.github_repo_links} 仓库` : "—"}</div>
-          <div className={styles.proofStripMeta}>
-            {proof ? `24h 活跃同步 ${proof.github_synced_24h} · 实名 GitHub ${users?.github_verified ?? 0} 人` : "读取中…"}
-          </div>
-        </Link>
-
-        <Link href="/admin/integrations" className={styles.proofStripCard}>
-          <div className={styles.proofStripHead}>
-            <span className="inline-flex items-center gap-1.5"><MessageSquare size={15} className="text-indigo-600" />飞书群聊追踪</span>
-            <Badge tone="blue">{proof ? `${proof.feishu_chat_links} 群` : "—"}</Badge>
-          </div>
-          <div className={styles.proofStripValue}>{proof ? `${proof.feishu_messages_7d} 条/7日` : "—"}</div>
-          <div className={styles.proofStripMeta}>
-            {proof ? `仅统计元数，管理员不可见群聊正文` : "读取中…"}
-          </div>
-        </Link>
-
-        <Link href="/admin/integrations" className={styles.proofStripCard}>
-          <div className={styles.proofStripHead}>
-            <span className="inline-flex items-center gap-1.5"><FileCheck2 size={15} className="text-emerald-600" />证据与对象存储</span>
-            <Badge tone="green">{teaching ? `${teaching.formal_evidences_total} 正式` : "—"}</Badge>
-          </div>
-          <div className={styles.proofStripValue}>{proof ? formatBytes(proof.upload_total_bytes) : "—"}</div>
-          <div className={styles.proofStripMeta}>
-            {proof ? `已完成上传 ${proof.upload_completed_count} 份 · 拒绝 ${proof.upload_rejected_count} 份` : "读取中…"}
-          </div>
-        </Link>
-
-        <Link href="/admin/ai-usage" className={styles.proofStripCard}>
-          <div className={styles.proofStripHead}>
-            <span className="inline-flex items-center gap-1.5"><Activity size={15} className="text-violet-600" />教学 AI（近 7 天）</span>
-            <Badge tone={ai && ai.requests >= 3 && (ai.success_rate ?? 100) < 80 ? "red" : "purple"}>
-              {ai?.success_rate !== null && ai?.success_rate !== undefined ? `成功率 ${ai.success_rate}%` : "暂无调用"}
-            </Badge>
-          </div>
-          <div className={styles.proofStripValue}>{ai ? `${ai.requests} 次调用` : "—"}</div>
-          <div className={styles.proofStripMeta}>
-            {ai ? `P95 ${formatDurationMs(ai.p95_latency_ms)} · ${aiCostLabel}` : "读取中…"}
-          </div>
-        </Link>
-      </section>
-
-      <div className={styles.twoColumns}>
-        <Box
-          title="近 7 天平台活动脉搏"
-          action={<Link className="gp-link inline-flex items-center gap-1 text-xs" href="/admin/logs">查看系统日志 <ArrowRight size={13} /></Link>}
-        >
-          <div className={styles.panelBody}>
-            {!activitySeries.length ? (
-              <Empty>暂无近期时间序列</Empty>
-            ) : (
-              <>
-                <div className={styles.pulseChart} role="img" aria-label="近 7 天审计事件、AI 调用和集成同步活动趋势">
-                  {activitySeries.map((day) => {
-                    const syncCount = day.github_activities + day.feishu_messages;
-                    const hAudit = day.audit_events ? Math.max(8, Math.round((day.audit_events / maxPulse) * 110)) : 3;
-                    const hAi = day.ai_requests ? Math.max(8, Math.round((day.ai_requests / maxPulse) * 110)) : 3;
-                    const hSync = syncCount ? Math.max(8, Math.round((syncCount / maxPulse) * 110)) : 3;
-                    return (
-                      <div
-                        className={styles.pulseDayCol}
-                        key={String(day.date)}
-                        title={`${day.date} · 审计 ${day.audit_events} · AI ${day.ai_requests}（失败 ${day.ai_failed}）· 同步 ${syncCount} · 新用户 ${day.new_users}`}
-                      >
-                        <div className={styles.pulseBars}>
-                          <div className={styles.pulseBar} style={{ height: `${hAudit}px`, background: "#2563eb" }} />
-                          <div className={styles.pulseBar} style={{ height: `${hAi}px`, background: day.ai_failed > 0 ? "#dc2626" : "#7c3aed" }} />
-                          <div className={styles.pulseBar} style={{ height: `${hSync}px`, background: "#059669" }} />
-                        </div>
-                        <span className="text-[11px] text-slate-500">{String(day.date).slice(5)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className={styles.pulseLegend}>
-                  <span className={styles.pulseLegendItem}><span className={styles.pulseDot} style={{ background: "#2563eb" }} />业务审计</span>
-                  <span className={styles.pulseLegendItem}><span className={styles.pulseDot} style={{ background: "#7c3aed" }} />AI 调用（红柱含失败）</span>
-                  <span className={styles.pulseLegendItem}><span className={styles.pulseDot} style={{ background: "#059669" }} />GitHub / 飞书同步</span>
-                </div>
-              </>
-            )}
-          </div>
-        </Box>
-
-        <Box title="治理待办与异常提醒">
-          <div className={`${styles.panelBody} space-y-3`}>
-            <Link href="/admin/teacher-verifications" className="group flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3.5 transition hover:border-blue-300 hover:bg-blue-50">
-              <span className="flex items-center gap-3 min-w-0">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><UserCheck size={17} /></span>
-                <span className="min-w-0">
-                  <strong className="block text-sm text-slate-900">教师身份审核</strong>
-                  <span className="block text-xs text-slate-500">{queues?.pending_teacher_applications ?? 0} 条待处理申请</span>
-                </span>
-              </span>
-              <Badge tone={queues?.pending_teacher_applications ? "amber" : "gray"}>{queues?.pending_teacher_applications ?? 0}</Badge>
-            </Link>
-
-            <Link href="/admin/access-requests" className="group flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3.5 transition hover:border-blue-300 hover:bg-blue-50">
-              <span className="flex items-center gap-3 min-w-0">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><ShieldCheck size={17} /></span>
-                <span className="min-w-0">
-                  <strong className="block text-sm text-slate-900">临时访问审批与授权</strong>
-                  <span className="block text-xs text-slate-500">{queues?.pending_access_requests ?? 0} 条待批 · {queues?.active_access_grants ?? 0} 份生效中</span>
-                </span>
-              </span>
-              <Badge tone={queues?.pending_access_requests ? "amber" : "gray"}>{queues?.pending_access_requests ?? 0}</Badge>
-            </Link>
-
-            {ai && ai.failed > 0 && (
-              <Link href="/admin/ai-usage" className="flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50/70 p-3.5 text-rose-900 transition hover:bg-rose-50">
-                <span className="flex items-center gap-3 min-w-0">
-                  <AlertTriangle size={18} className="shrink-0 text-rose-600" />
-                  <span className="min-w-0">
-                    <strong className="block text-sm">7 日 AI 调用失败 {ai.failed} 次</strong>
-                    <span className="block truncate text-xs text-rose-700">
-                      主要错误：{ai.top_errors.map((e) => `${e.error_code}(${e.count})`).join("、") || "详见故障诊断"}
-                    </span>
-                  </span>
-                </span>
-                <ArrowRight size={15} className="shrink-0 text-rose-600" />
-              </Link>
-            )}
-
-            {proof && (proof.email_challenges_failed_7d > 0 || proof.notification_emails_failed_7d > 0) && (
-              <Link href="/admin/integrations" className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3.5 text-amber-900 transition hover:bg-amber-50">
-                <span className="flex items-center gap-3 min-w-0">
-                  <AlertTriangle size={18} className="shrink-0 text-amber-600" />
-                  <span className="min-w-0">
-                    <strong className="block text-sm">学校邮箱 / 通知邮件存在投递失败</strong>
-                    <span className="block text-xs text-amber-700">
-                      验证码失败 {proof.email_challenges_failed_7d} · 通知失败 {proof.notification_emails_failed_7d}
-                    </span>
-                  </span>
-                </span>
-                <ArrowRight size={15} className="shrink-0 text-amber-600" />
-              </Link>
-            )}
-          </div>
-        </Box>
-      </div>
-
-      <div className={styles.twoColumns}>
-        <Box
-          title="最近账号"
-          action={<Link className="gp-link inline-flex items-center gap-1" href="/admin/users">查看用户目录 <ArrowRight size={14} /></Link>}
-        >
-          <div className={styles.panelBody}>
-            {!loading && !overview.isError && !(data?.recent_users.length) && <Empty>暂无使用端账号</Empty>}
-            {(data?.recent_users ?? []).map((item) => (
-              <Link
-                key={item.id}
-                href={`/admin/users?user=${encodeURIComponent(String(item.id))}`}
-                className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0 hover:bg-slate-50/70 px-1 rounded"
-              >
-                <span className="min-w-0">
-                  <strong className="block truncate text-sm text-slate-900">{item.name}</strong>
-                  <span className="mt-1 block truncate text-xs text-slate-500">
-                    {item.school_email ?? "暂无学校邮箱"}
-                    {item.college ? ` · ${item.college}` : ""}
-                  </span>
-                </span>
-                <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                  <Badge tone={roleTones[item.role] ?? "gray"}>{roleLabels[item.role] ?? item.role}</Badge>
-                  <Badge tone={item.status === "disabled" ? "red" : "green"}>{item.status === "disabled" ? "已停用" : "可用"}</Badge>
-                  {item.school_email_verified ? (
-                    <Badge tone="green">邮箱已验</Badge>
-                  ) : (
-                    <Badge tone="amber">待验证</Badge>
-                  )}
-                  <span className="hidden text-[11px] text-slate-400 sm:inline">{formatRelativeTime(item.created_at)}</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </Box>
-
-        <div className={styles.stack}>
-          <Box title="账号结构与验证覆盖">
-            <div className={styles.panelBody}>
-              <Distribution items={roleItems} total={users?.total ?? 0} />
-              {users && (
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3 text-xs text-slate-600">
-                  <span>学校邮箱已验：{users.verified_school_email}</span>
-                  <span>·</span>
-                  <span>Google 绑定：{users.google_linked}</span>
-                  <span>·</span>
-                  <span>GitHub 归属：{users.github_verified}</span>
-                </div>
-              )}
-            </div>
-          </Box>
-          <Box title="课程生命周期分布">
-            <div className={styles.panelBody}>
-              <Distribution items={courseItems} total={teaching?.courses_total ?? 0} />
-            </div>
-          </Box>
-        </div>
-      </div>
-
-      <Box title="系统探针与服务状态">
-        <div className={styles.healthGrid}>
-          {(data?.system_health ?? []).map((probe) => (
-            <div key={probe.key} className={styles.healthItem}>
-              <div className="min-w-0">
-                <strong className="block text-sm text-slate-900">{probe.label}</strong>
-                <span className="mt-1 block text-xs text-slate-500">{probe.detail}</span>
-              </div>
-              <Badge tone={healthTone(probe.status)}>
-                {probe.status === "healthy" ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
-                {healthText(probe.status)}
-              </Badge>
-            </div>
-          ))}
-          {!data && !overview.isError && <p className={styles.muted}>正在读取系统探针…</p>}
+  return <main className={styles.page}>
+    <Header title="管理总览" description="查看使用端账号和课程治理状态，快速处理待办事项。" action={<button type="button" className={styles.button} onClick={refresh}><RefreshCw size={15} />刷新数据</button>} />
+    {hasError && <ErrorState onRetry={refresh} />}
+    {onlyAdmin && <div role="status" className={styles.notice}><span>当前数据库只有管理员账号，使用端还没有学生、教师或课程数据。</span><Link className={styles.primaryButton} href="/admin/users">新增账号<ArrowRight size={14} /></Link></div>}
+    <div className={styles.metrics}>
+      <Metric label="用户总数" value={valueOf(users)} hint="来自统一身份服务" trend="当前环境" icon={Users} />
+      <Metric label="待审核教师" value={valueOf(teachers)} hint="需要管理员处理" trend={teachers.data?.total ? "有待办" : "队列为空"} icon={UserCheck} tone={teachers.data?.total ? "amber" : "blue"} />
+      <Metric label="课程总数" value={valueOf(courses)} hint="草稿、已发布和已结束" trend="生命周期汇总" icon={BookOpen} />
+      <Metric label="待审批访问" value={valueOf(requests)} hint="临时只读授权申请" trend={requests.data?.total ? "有待办" : "暂无待办"} icon={ShieldCheck} tone={requests.data?.total ? "amber" : "blue"} />
+    </div>
+    <div className={styles.twoColumns}>
+      <Box title="最近账号" action={<Link className="gp-link inline-flex items-center gap-1" href="/admin/users">查看用户目录 <ArrowRight size={14} /></Link>}>
+        <div className={styles.panelBody}>
+          {!users.isFetching && !users.isError && !recentUsers.length && <Empty>暂无使用端账号</Empty>}
+          {recentUsers.map((user) => <Link key={user.id} href={`/admin/users?user=${encodeURIComponent(user.id)}`} className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0">
+            <span className="min-w-0"><strong className="block truncate text-sm text-slate-900">{user.name ?? "未命名账号"}</strong><span className="mt-1 block truncate text-xs text-slate-500">{user.schoolEmail ?? "暂无学校邮箱"}</span></span>
+            <span className="shrink-0 text-xs text-slate-500">{user.roles.join("、")} · {user.status}</span>
+          </Link>)}
         </div>
       </Box>
-    </main>
-  );
+      <Box title="待处理事项">
+        <div className={styles.panelBody}>
+          <QuickLink href="/admin/teacher-verifications" title="教师审核" description={`${teachers.data?.total ?? "—"} 条待审核申请`} icon={UserCheck} />
+          <div className="h-3" />
+          <QuickLink href="/admin/access-requests" title="访问审批" description={`${requests.data?.total ?? "—"} 条待审批申请`} icon={ShieldCheck} />
+        </div>
+      </Box>
+    </div>
+    <div className={styles.equalColumns}>
+      <Box title="账号结构">
+        <div className={styles.panelBody}><Distribution items={roleItems} total={roleTotal} /></div>
+      </Box>
+      <Box title="课程状态">
+        <div className={styles.panelBody}><Distribution items={courseItems} total={courses.data?.total ?? "—"} /></div>
+      </Box>
+    </div>
+    <Box title="数据连接状态">
+      <div className="grid gap-3 p-[18px] sm:grid-cols-2 lg:grid-cols-4">
+        <ServiceStatus label="统一身份服务" ready={users.isSuccess && !roleLoading} loading={users.isFetching || roleLoading} />
+        <ServiceStatus label="教师审核服务" ready={teachers.isSuccess} loading={teachers.isFetching} />
+        <ServiceStatus label="课程治理服务" ready={courses.isSuccess && !courseLoading} loading={courses.isFetching || courseLoading} />
+        <ServiceStatus label="访问审批服务" ready={requests.isSuccess} loading={requests.isFetching} />
+      </div>
+    </Box>
+    <Box title="管理入口">
+      <div className="grid gap-3 p-[18px] sm:grid-cols-2 lg:grid-cols-3">
+        <QuickLink href="/admin/users" title="用户管理" description="创建、查询、停用和恢复账号" icon={Users} />
+        <QuickLink href="/admin/teacher-verifications" title="教师审核" description="处理教师身份申请和历史结果" icon={UserCheck} />
+        <QuickLink href="/admin/courses" title="课程管理" description="查看课程状态和生命周期" icon={BookOpen} />
+        <QuickLink href="/admin/logs" title="系统日志" description="查看认证与业务审计记录" icon={ShieldCheck} />
+        <QuickLink href="/admin/ai-usage" title="AI 使用情况" description="查看模型调用和计费完整性" icon={RefreshCw} />
+        <QuickLink href="/admin/access-requests" title="异常 / 访问审批" description="处理临时只读授权申请" icon={ShieldCheck} />
+      </div>
+    </Box>
+  </main>;
 }

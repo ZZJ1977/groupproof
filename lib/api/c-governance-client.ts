@@ -9,15 +9,6 @@ export type AuditQuery = paths["/api/v1/admin/audit-logs"]["get"]["parameters"][
 export type AuthAuditQuery = paths["/api/v1/admin/auth-audit-logs"]["get"]["parameters"]["query"];
 export type SharedAuditQuery = paths["/api/v1/admin/shared-audit-events"]["get"]["parameters"]["query"];
 export type UsageQuery = paths["/api/v1/admin/ai-usage"]["get"]["parameters"]["query"];
-export type WorkbenchAccessGrantQuery = paths["/api/v1/admin/workbench/access-grants"]["get"]["parameters"]["query"];
-export type WorkbenchAiDiagnosticsQuery = paths["/api/v1/admin/workbench/ai-diagnostics"]["get"]["parameters"]["query"];
-export type AdminOverviewDTO = Schema["AdminOverviewDTO"];
-export type AdminUserProfile360DTO = Schema["AdminUserProfile360DTO"];
-export type AdminAccessGrantPageDTO = Schema["AdminAccessGrantPageDTO"];
-export type AdminAiDiagnosticsDTO = Schema["AdminAiDiagnosticsDTO"];
-export type AdminIntegrationsStatusDTO = Schema["AdminIntegrationsStatusDTO"];
-export type ResolveLabelsDTO = Schema["ResolveLabelsDTO"];
-export type CourseMetricsResponseDTO = Schema["CourseMetricsResponseDTO"];
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -81,43 +72,6 @@ export function createGovernanceClient(client = createApiClient()) {
     },
     async usage(query: UsageQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/ai-usage", { params: { query } }));
-    },
-    async workbenchOverview() {
-      return unwrap(await client.GET("/api/v1/admin/workbench/overview"));
-    },
-    async workbenchUserProfile(userId: string) {
-      return unwrap(await client.GET("/api/v1/admin/workbench/users/{user_id}/profile", {
-        params: { path: { user_id: userId } },
-      }));
-    },
-    async workbenchRevokeUserSessions(userId: string, reason: string) {
-      return unwrap(await client.POST("/api/v1/admin/workbench/users/{user_id}/sessions/revoke", {
-        params: { path: { user_id: userId } },
-        body: { reason },
-      }));
-    },
-    async workbenchAccessGrants(query: WorkbenchAccessGrantQuery = {}) {
-      return unwrap(await client.GET("/api/v1/admin/workbench/access-grants", { params: { query } }));
-    },
-    async revokeAccessGrant(grantId: string, reason: string) {
-      return unwrap(await client.POST("/api/v1/a/access-grants/{grant_id}/revoke", {
-        params: { path: { grant_id: grantId } },
-        body: { reason },
-      }));
-    },
-    async workbenchAiDiagnostics(query: WorkbenchAiDiagnosticsQuery = {}) {
-      return unwrap(await client.GET("/api/v1/admin/workbench/ai-diagnostics", { params: { query } }));
-    },
-    async workbenchIntegrations() {
-      return unwrap(await client.GET("/api/v1/admin/workbench/integrations"));
-    },
-    async workbenchResolveLabels(body: Schema["ResolveLabelsRequest"]) {
-      return unwrap(await client.POST("/api/v1/admin/workbench/resolve-labels", { body }));
-    },
-    async workbenchCourseMetrics(courseIds: string[]) {
-      return unwrap(await client.POST("/api/v1/admin/workbench/courses/metrics", {
-        body: { course_ids: courseIds },
-      }));
     },
   };
 }
