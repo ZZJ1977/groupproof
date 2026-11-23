@@ -421,6 +421,92 @@ def test_code_progress_sync_matches_commits_and_caps_at_90_percent(bp_db):
     assert task.progress_percent == 100
 
 
+def test_complete_by_criteria_can_auto_adopt_candidates_in_one_step(bp_db):
+    from app.modules.d import acceptance
+
+    leader, _member, project = _seed_independent_project(bp_db)
+    mat = BProjectMaterial(
+        id=uuid4(),
+        project_id=project.id,
+        kind="text",
+        title="单步确认需求.txt",
+        text_content="搭建数据库迁移与核心接口底座并配置 CI。",
+        extract_status="ready",
+        created_by=leader.id,
+    )
+    bp_db.add(mat)
+    bp_db.flush()
+    ai_blueprint_service.generate_and_apply_blueprint(
+        bp_db, leader, project.id, get_verification_port()
+    )
+    project.setup_status = "frozen"
+    bp_db.flush()
+    plan_dto = planning_service.plan_view(bp_db, leader, project.id)
+    planning_service.confirm_mine(
+        bp_db, leader, project.id, ConfirmAssignment(task_versions=plan_dto.my_task_versions)
+    )
+    member_plan = planning_service.plan_view(bp_db, _member, project.id)
+    planning_service.confirm_mine(
+        bp_db, _member, project.id, ConfirmAssignment(task_versions=member_plan.my_task_versions)
+    )
+    plan_dto = planning_service.plan_view(bp_db, leader, project.id)
+    planning_service.freeze(
+        bp_db, leader, project.id, FreezePlan(expected_version=plan_dto.lock_version)
+    )
+    link = GithubRepoLink(
+        id=uuid4(),
+        project_id=project.id,
+        owner="acme",
+        repo="one-step",
+        installation_id=456,
+        default_branch="main",
+        linked_by_id=leader.id,
+    )
+    bp_db.add(link)
+    bp_db.flush()
+    tasks = list(bp_db.scalars(select(Task).where(Task.project_id == project.id)).all())
+    task = tasks[0]
+    bp_db.add(
+        GithubActivity(
+            id=uuid4(),
+            project_id=project.id,
+            link_id=link.id,
+            kind="commit",
+            external_id="1122334455667788990011223344556677889900",
+            revision="a" * 64,
+            title=f"feat: {task.title}",
+            summary=task.description or task.title,
+            author_login="dev",
+            author_name="Dev",
+            author_user_id=leader.id,
+            detail={"files": [{"path": "services/api/app/main.py"}, {"path": "tests/test_api.py"}]},
+            occurred_at=datetime(2026, 11, 20, 12, 0, tzinfo=UTC),
+            synced_at=datetime(2026, 11, 20, 12, 5, tzinfo=UTC),
+        )
+    )
+    bp_db.flush()
+    code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+    assignee_id = bp_db.scalar(
+        select(TaskAssignee.user_id).where(
+            TaskAssignee.task_id == task.id,
+            TaskAssignee.role == "responsible",
+            TaskAssignee.unassigned_at.is_(None),
+        )
+    )
+    responsible = leader if assignee_id == leader.id else _member
+    # 一步确认：自动采纳该任务的候选代码证据并直接完成验收
+    done = acceptance.complete_by_criteria(
+        bp_db, project.id, task.id, responsible, auto_adopt_candidates=True
+    )
+    assert done["status"] == "completed"
+    assert done["task_status"] == "completed"
+    assert done["progress_percent"] == 100
+    ev_rows = list(bp_db.scalars(select(Evidence).where(Evidence.task_id == task.id)).all())
+    assert ev_rows and all(ev.status == "formal" for ev in ev_rows)
+
+
 def test_code_matching_does_not_spill_by_assignee_alone(bp_db):
     leader, _member, project = _seed_independent_project(bp_db)
     mat = BProjectMaterial(

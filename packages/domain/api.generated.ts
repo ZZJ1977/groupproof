@@ -6487,6 +6487,11 @@ export interface components {
         /** CompleteByCriteriaRequest */
         CompleteByCriteriaRequest: {
             /**
+             * Auto Adopt Candidates
+             * @default false
+             */
+            auto_adopt_candidates: boolean;
+            /**
              * Reason
              * @default
              */

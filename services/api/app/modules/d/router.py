@@ -41,6 +41,7 @@ class AcceptanceDecisionRequest(BaseModel):
 class CompleteByCriteriaRequest(BaseModel):
     reason: str = Field(default="", max_length=2000)
     responsibility_share: float | None = Field(default=None, ge=0, le=100)
+    auto_adopt_candidates: bool = Field(default=False)
 
 
 @acceptance_router.get("/{project_id}/tasks/{task_id}/integrity-check")
@@ -149,6 +150,7 @@ def complete_task_by_criteria(
             responsibility_share=Decimal(str(body.responsibility_share))
             if body.responsibility_share is not None
             else None,
+            auto_adopt_candidates=body.auto_adopt_candidates,
         )
     }
 

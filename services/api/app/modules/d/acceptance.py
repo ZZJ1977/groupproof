@@ -336,8 +336,10 @@ def complete_by_criteria(
     user: User,
     reason: str = "",
     responsibility_share: Decimal | None = None,
+    *,
+    auto_adopt_candidates: bool = False,
 ) -> dict:
-    """全部交付标准已采纳正式证据后，按官方状态机与审计链一键完成验收与任务确认。"""
+    """全部交付标准达标后（可选一步自动采纳 AI 候选证据），按官方状态机完成验收与任务确认。"""
     access = get_project_access(session, user, project_id)
     if not access.member:
         raise ApiError(403, "PROJECT_MEMBER_REQUIRED", "Only an active project member can decide.")
@@ -352,6 +354,67 @@ def complete_by_criteria(
             "progress_percent": int(task.progress_percent),
             "history": history(session, project_id, task_id, user),
         }
+
+    if auto_adopt_candidates:
+        from app.db.models import AcceptanceCriterion
+        from app.modules.c.evidence_schemas import BatchAdoptEvidence, BatchAdoptEvidenceItem
+        from app.modules.c.evidence_service import batch_adopt_evidence
+        from app.modules.c.models import Evidence, EvidenceCriterion
+
+        task_criterion_ids = set(
+            session.scalars(
+                select(AcceptanceCriterion.id).where(AcceptanceCriterion.task_id == task_id)
+            ).all()
+        )
+        if task_criterion_ids:
+            candidate_rows = list(
+                session.scalars(
+                    select(Evidence).where(
+                        Evidence.project_id == project_id,
+                        Evidence.task_id == task_id,
+                        Evidence.source_changed.is_(False),
+                        Evidence.status.in_(("candidate", "pending_confirmation")),
+                    )
+                ).all()
+            )
+            eligible: list[Evidence] = []
+            if candidate_rows:
+                ev_crit_rows = session.execute(
+                    select(EvidenceCriterion.evidence_id, EvidenceCriterion.criterion_id).where(
+                        EvidenceCriterion.evidence_id.in_([row.id for row in candidate_rows])
+                    )
+                ).all()
+                crits_by_ev: dict[UUID, set[UUID]] = {}
+                for ev_id, cid in ev_crit_rows:
+                    crits_by_ev.setdefault(ev_id, set()).add(cid)
+                for row in candidate_rows:
+                    if not (row.author_id == user.id or access.leader or access.teacher):
+                        continue
+                    cids = crits_by_ev.get(row.id, set())
+                    if cids and cids.issubset(task_criterion_ids):
+                        eligible.append(row)
+            if eligible:
+                adopt_reason = (
+                    reason.strip() or "核对 AI 验收结果与代码实现说明无误，一键确认采纳并完成任务。"
+                )
+                ver_sig = sum(row.lock_version for row in eligible)
+                batch_adopt_evidence(
+                    session,
+                    user,
+                    project_id,
+                    BatchAdoptEvidence(
+                        items=[
+                            BatchAdoptEvidenceItem(
+                                evidence_id=row.id,
+                                expected_version=row.lock_version,
+                            )
+                            for row in eligible
+                        ],
+                        reason=adopt_reason,
+                    ),
+                    key=f"auto-adopt-complete-{task_id}-{len(eligible)}-{ver_sig}",
+                )
+                session.flush()
 
     check = run_check(session, project_id, task_id, user)
     if check["status"] != "passed":
