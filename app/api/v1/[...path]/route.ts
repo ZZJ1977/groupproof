@@ -24,6 +24,30 @@ const FORWARDED_REQUEST_HEADERS = [
   "x-real-ip",
 ];
 
+function allowedRequestOrigins(request: NextRequest, incoming: URL): Set<string> {
+  const origins = new Set<string>([incoming.origin]);
+  const forwardedProto =
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+    incoming.protocol.replace(/:$/, "");
+  const forwardedHost = (
+    request.headers.get("x-forwarded-host") || request.headers.get("host")
+  )
+    ?.split(",")[0]
+    ?.trim();
+  if (forwardedProto && forwardedHost) {
+    origins.add(`${forwardedProto}://${forwardedHost}`);
+  }
+  for (const configured of [process.env.NEXT_PUBLIC_ADMIN_URL, process.env.APP_ORIGIN]) {
+    if (!configured) continue;
+    try {
+      origins.add(new URL(configured).origin);
+    } catch {
+      // Ignore malformed optional env URL
+    }
+  }
+  return origins;
+}
+
 async function proxy(request: NextRequest, pathSegments: string[]) {
   const incoming = new URL(request.url);
   const environment = normalizeAdminEnvironment(request.cookies.get(ADMIN_ENVIRONMENT_COOKIE)?.value);
@@ -32,7 +56,7 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   const target = `${adminApiBase(environment)}/api/v1/${pathSegments.join("/")}${incoming.search}`;
 
   const requestOrigin = request.headers.get("origin");
-  if (externalAdminTarget && requestOrigin && requestOrigin !== incoming.origin) {
+  if (externalAdminTarget && requestOrigin && !allowedRequestOrigins(request, incoming).has(requestOrigin)) {
     return NextResponse.json(
       {
         error: { code: "ORIGIN_MISMATCH", message: "Cross-origin request denied.", details: null },
