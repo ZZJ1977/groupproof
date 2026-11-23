@@ -414,3 +414,25 @@ def test_github_activity_stats_excludes_claude_bots_merges_member_aliases_and_fi
     assert custom_stats["total_commits"] == 1
     assert custom_stats["date_from"] == "2026-10-01"
     assert custom_stats["date_to"] == "2026-10-31"
+
+
+def test_github_auto_sync_run_once_syncs_new_commit_and_generates_summary(github_db, monkeypatch):
+    from sqlalchemy.orm import sessionmaker
+
+    from app.modules.a import activity_summary, github_auto_sync
+
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    monkeypatch.setenv("APP_ENV", "test")
+    leader, project = _seed_project(github_db)
+    client = MultiBranchFakeGithub(
+        {"main": [_commit("auto9999", "feat: automatic push analysis", "2026-11-23T09:10:00Z")]}
+    )
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    github_db.commit()
+
+    factory = sessionmaker(bind=github_db.get_bind(), autoflush=False, autocommit=False)
+    result = github_auto_sync.run_once(session_factory=factory, client=client)
+    assert result["repos_checked"] == 1
+    assert result["repos_synced"] == 1
+    assert result["summaries_generated"] == 1
+    assert activity_summary.recent_unanalyzed_commit_ids(github_db, project.id) == []
