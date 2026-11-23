@@ -16,6 +16,10 @@ import {
   StatusBadge,
 } from "@/components/common";
 import { projectRequest } from "@/features/github-binding/integration-request";
+import {
+  FeishuCollaborationInsightsPanel,
+  type FeishuCollaborationInsights,
+} from "./FeishuCollaborationInsights";
 import { GithubStatsChart, type GithubActivityStats, type GithubStatsRange } from "./GithubStatsChart";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
@@ -144,6 +148,8 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const [command, setCommand] = useState<Command | null>(null);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [analyzingInsights, setAnalyzingInsights] = useState(false);
+  const [feishuTabOverride, setFeishuTabOverride] = useState<"insights" | "messages" | null>(null);
   const busyRef = useRef(false);
   const [summaryBusy, setSummaryBusy] = useState<string | null>(null);
   const [autoAnalyzingIds, setAutoAnalyzingIds] = useState<string[]>([]);
@@ -192,6 +198,33 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     retry: false,
     staleTime: 15_000,
   });
+  const feishuInsightsQuery = useQuery({
+    queryKey: ["a-feishu-collaboration-insights", userId, projectId],
+    queryFn: ({ signal }) =>
+      projectRequest<FeishuCollaborationInsights>(
+        `/api/v1/a/projects/${encodeURIComponent(projectId)}/feishu/insights`,
+        { signal },
+      ),
+    enabled: enabled && sourceType === "feishu" && Boolean(access?.actor.is_member),
+    retry: false,
+    staleTime: 15_000,
+  });
+  const hasRawUrlFilters = Boolean(
+    selectedId ||
+      filters.q ||
+      filters.status ||
+      filters.task_id ||
+      filters.author_id ||
+      filters.kind ||
+      filters.group_id ||
+      filters.since ||
+      filters.until ||
+      (filters.page ?? 1) > 1,
+  );
+  const showFeishuInsightsTabs = sourceType === "feishu" && Boolean(access?.actor.is_member) && feishuInsightsQuery.isSuccess;
+  const activeFeishuTab: "insights" | "messages" = !showFeishuInsightsTabs
+    ? "messages"
+    : feishuTabOverride ?? (hasRawUrlFilters ? "messages" : "insights");
   const summaryById = new Map<string, ActivitySummary>((summaries.data ?? []).map((item) => [item.source_id, item]));
   const failedSummaryIds = sourceType === "github"
     ? summaryIds.filter((id) => summaryById.get(id)?.status === "failed")
@@ -319,6 +352,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       list.refetch(),
       ...(context.data?.actor.is_member ? [bindings.refetch()] : []),
       ...(sourceType === "github" && context.data?.actor.is_member ? [githubStatsQuery.refetch()] : []),
+      ...(sourceType === "feishu" && context.data?.actor.is_member ? [feishuInsightsQuery.refetch()] : []),
       ...(selectedId ? [detail.refetch(), history.refetch()] : []),
       ...(summaryIds.length ? [summaries.refetch()] : []),
       ...(selectedId && sourceType === "github" ? [selectedSummaryQuery.refetch()] : []),
@@ -329,6 +363,29 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       setCommand(null);
     } else if (results[0].isSuccess) {
       setBlocked(null);
+    }
+  }
+
+  async function analyzeFeishuInsights() {
+    if (analyzingInsights || sourceType !== "feishu" || !access?.actor.is_member) return;
+    setAnalyzingInsights(true);
+    setOperationError(null);
+    setNotice("");
+    try {
+      const result = await projectRequest<FeishuCollaborationInsights>(
+        `/api/v1/a/projects/${encodeURIComponent(projectId)}/feishu/insights/analyze`,
+        {
+          method: "POST",
+          body: JSON.stringify({ force: true }),
+        },
+      );
+      await feishuInsightsQuery.refetch();
+      setFeishuTabOverride("insights");
+      setNotice(`AI 已完成群聊协作分析：共分析 ${result.analyzed_messages} 条有效消息，提炼 ${result.items.length} 条协作结论（需人工确认）。`);
+    } catch (error) {
+      fail(error);
+    } finally {
+      setAnalyzingInsights(false);
     }
   }
 
@@ -346,12 +403,13 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
         await refresh();
         setNotice(`已同步最新仓库数据（覆盖默认及活跃分支）：文件 ${result.files} 个、新增提交 ${result.commits ?? 0} 条、PR ${result.pulls ?? 0} 个、CI ${result.ci_runs ?? 0} 次。`);
       } else {
-        const result = await projectRequest<{ messages?: number; chats?: number }>(
+        const result = await projectRequest<{ created?: number; seen?: number; messages?: number; chats?: number }>(
           `/api/v1/a/projects/${projectId}/feishu/sync`,
           { method: "POST" },
         );
         await refresh();
-        setNotice(`已同步飞书协作记录${typeof result.messages === "number" ? `（新增 ${result.messages} 条消息）` : ""}。`);
+        const syncedCount = typeof result.created === "number" ? result.created : result.messages;
+        setNotice(`已同步飞书协作记录${typeof syncedCount === "number" ? `（新增 ${syncedCount} 条消息）` : ""}，AI 协作结论正在后台更新。`);
       }
     } catch (error) {
       fail(error);
@@ -566,6 +624,44 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             <p className="mb-4 text-sm text-slate-500">当前活动记录只读。</p>
           )
         )}
+        {showFeishuInsightsTabs && (
+          <div className="gp-segmented mb-5" role="tablist" aria-label="飞书协作视图切换">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeFeishuTab === "insights"}
+              data-active={activeFeishuTab === "insights" ? "true" : undefined}
+              className="gp-segmented-item"
+              onClick={() => setFeishuTabOverride("insights")}
+            >
+              AI 协作结论{feishuInsightsQuery.data?.items.length ? ` (${feishuInsightsQuery.data.items.length})` : ""}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeFeishuTab === "messages"}
+              data-active={activeFeishuTab === "messages" ? "true" : undefined}
+              className="gp-segmented-item"
+              onClick={() => setFeishuTabOverride("messages")}
+            >
+              原始聊天记录{rows ? ` (${rows.total})` : feishuInsightsQuery.data ? ` (${feishuInsightsQuery.data.total_messages})` : ""}
+            </button>
+          </div>
+        )}
+        {sourceType === "feishu" && activeFeishuTab === "insights" ? (
+          <FeishuCollaborationInsightsPanel
+            projectId={projectId}
+            data={feishuInsightsQuery.data}
+            loading={feishuInsightsQuery.isPending}
+            analyzing={analyzingInsights}
+            canAnalyze={Boolean(access.actor.is_member && access.project.lifecycle === "active")}
+            onAnalyze={() => void analyzeFeishuInsights()}
+            onOpenRawMessage={(messageId) => {
+              setFeishuTabOverride("messages");
+              selectRecord(messageId);
+            }}
+          />
+        ) : <>
         {sourceType === "github" && (
           <div className="gp-segmented mb-4" role="tablist" aria-label="GitHub 活动类型快捷筛选">
             {([
@@ -658,6 +754,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           {!rows.items.length && <EmptyState title="没有符合条件的来源记录" description={sourceType === "github" ? "点击右上角“同步 GitHub”后，默认分支与活跃分支的提交、PR 和 CI 会在这里出现。" : "点击右上角“同步飞书记录”后，消息会在这里出现。"} />}
           <ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => { updateQuery({ page: String(page), record: null }); setCommand(null); }} />
         </Section>}
+        </>}
         <DetailDrawer open={Boolean(selectedId)} onOpenChange={(open) => { if (!open) closeRecord(); }} title={record?.title ?? "记录详情"} description={record ? `${record.author_name || "来源未提供作者名称"} · ${kindLabels[record.kind] ?? record.kind} · ${formatDate(record.occurred_at)}` : "正在读取来源快照…"}>
           {detail.isFetching && <StateBlock tone="loading" title="正在读取来源" />}
           {detail.isError && <ApiFailure error={detail.error} retry={() => void detail.refetch()} label="重试来源" />}

@@ -30,6 +30,8 @@ from app.modules.a.ai.schemas import (
     ActivitySummaryResult,
     EvidenceMatchInput,
     EvidenceMatchResult,
+    FeishuCollaborationInput,
+    FeishuCollaborationResult,
     ImplementationAnalysisInput,
     ImplementationAnalysisResult,
     ProjectBlueprintInput,
@@ -113,6 +115,10 @@ def _run[ResultT: BaseModel](
             raw = _sanitize_summary_raw(raw)
         elif feature == "generate_project_blueprint" and isinstance(payload, ProjectBlueprintInput):
             raw = _sanitize_blueprint_raw(raw, payload)
+        elif feature == "analyze_feishu_collaboration" and isinstance(
+            payload, FeishuCollaborationInput
+        ):
+            raw = _sanitize_feishu_collaboration_raw(raw, payload)
         return result_model.model_validate(
             {**raw, "provider": provider.name, "is_placeholder": provider.is_placeholder}
         )
@@ -483,4 +489,96 @@ def generate_project_blueprint(
         ProjectBlueprintResult,
         provider,
         timeout=90.0,
+    )
+
+
+def _sanitize_feishu_collaboration_raw(
+    raw: dict[str, Any], payload: FeishuCollaborationInput
+) -> dict[str, Any]:
+    """严格校验模型输出的飞书协作结论：丢弃幻觉消息 ID 与无效任务编号，确保每条结论可追溯。"""
+    if not isinstance(raw, dict):
+        return raw
+    msg_order = {str(m.id): idx for idx, m in enumerate(payload.messages)}
+    msg_sender = {str(m.id): m.sender_label for m in payload.messages}
+    valid_task_codes = {t.code.upper(): t.code for t in payload.tasks}
+    valid_categories = {"division_confirm", "task_progress", "doc_review", "decision", "blocker"}
+    valid_statuses = {"completed", "in_progress", "needs_followup"}
+
+    items_out: list[dict[str, Any]] = []
+    for item in (raw.get("items") or [])[:24]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()[:120]
+        summary = str(item.get("summary") or "").strip()[:600]
+        if not title or not summary:
+            continue
+        raw_ids = item.get("message_ids") or []
+        valid_ids = [str(mid).strip() for mid in raw_ids if str(mid).strip() in msg_order]
+        # 去重并按真实聊天时间先后排列
+        unique_ids = sorted(dict.fromkeys(valid_ids), key=lambda mid: msg_order[mid])[:40]
+        if not unique_ids:
+            continue
+        cat = str(item.get("category") or "decision").strip().lower()
+        if cat not in valid_categories:
+            cat = "decision"
+        st = str(item.get("status") or "in_progress").strip().lower()
+        if st not in valid_statuses:
+            st = "in_progress"
+        basis = str(item.get("judgment_basis") or summary).strip()[:600]
+        codes: list[str] = []
+        for raw_code in item.get("task_codes") or []:
+            matched = valid_task_codes.get(str(raw_code).strip().upper())
+            if matched and matched not in codes:
+                codes.append(matched)
+        distinct_senders = len({msg_sender[mid] for mid in unique_ids if msg_sender.get(mid)})
+        try:
+            confirmed = int(item.get("confirmed_count") or 0)
+        except (TypeError, ValueError):
+            confirmed = distinct_senders
+        confirmed = max(0, min(50, confirmed or distinct_senders))
+        try:
+            conf = float(item.get("confidence", 0.8))
+        except (TypeError, ValueError):
+            conf = 0.8
+        conf = max(0.0, min(1.0, conf))
+        items_out.append(
+            {
+                "title": title,
+                "category": cat,
+                "status": st,
+                "summary": summary,
+                "judgment_basis": basis,
+                "task_codes": codes[:10],
+                "confirmed_count": confirmed,
+                "message_ids": unique_ids,
+                "confidence": conf,
+            }
+        )
+
+    overview = str(raw.get("overview") or "").strip()[:600]
+    if not overview:
+        if items_out:
+            overview = (
+                f"共分析 {len(payload.messages)} 条有效群聊消息，"
+                f"提炼出 {len(items_out)} 条团队协作结论。"
+            )
+        else:
+            overview = (
+                f"共分析 {len(payload.messages)} 条群聊消息，"
+                "暂未识别出明确的分工确认或任务进展结论。"
+            )
+    return {"overview": overview, "items": items_out}
+
+
+@metered("analyze_feishu_collaboration")
+def analyze_feishu_collaboration(
+    payload: FeishuCollaborationInput, *, provider: AIProvider | None = None
+) -> FeishuCollaborationResult:
+    """分析飞书群聊上下文，聚合提炼分工确认、任务推进、决策与待跟进事项。"""
+    return _run(
+        "analyze_feishu_collaboration",
+        payload,
+        FeishuCollaborationResult,
+        provider,
+        timeout=75.0,
     )
