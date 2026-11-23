@@ -49,6 +49,8 @@ class TaskRowDTO(BaseModel):
     content_version: int
     lock_version: int
     updated_at: datetime | None
+    matched_commits: int = 0
+    latest_commit_at: datetime | None = None
     links: TaskLinksDTO
     transitions: list[TransitionDTO]
     blocked_reason: str | None

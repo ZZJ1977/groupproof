@@ -13,6 +13,7 @@ from app.db.models import Project
 from app.db.session import SessionLocal, engine
 from app.modules.a import activity_summary, github, github_sync
 from app.modules.a.models import GithubRepoLink
+from app.modules.b import code_progress_service
 
 logger = logging.getLogger("groupproof.a.github_auto_sync")
 
@@ -103,6 +104,7 @@ def run_once(*, session_factory=None, client=None) -> dict[str, int]:
                             github_sync.sync_repo_links_by_webhook(
                                 session, link.owner, link.repo, client
                             )
+                            code_progress_service.sync_task_code_progress(session, link.project_id)
                             session.commit()
                             repos_synced += 1
                         except Exception as exc:  # noqa: BLE001

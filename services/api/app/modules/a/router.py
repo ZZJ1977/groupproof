@@ -461,6 +461,13 @@ def sync_github(
         if client is not None:
             client.close()
     session.commit()
+    try:
+        from app.modules.b import code_progress_service
+
+        code_progress_service.sync_task_code_progress(session, project_id, actor=user)
+        session.commit()
+    except Exception:  # noqa: BLE001 - 代码进度联动不阻断 GitHub 同步返回
+        session.rollback()
     bind = session.get_bind()
     if bind is not None and bind.dialect.name == "postgresql":
         pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, project_id)
@@ -534,6 +541,13 @@ async def github_webhook(request: Request, session: Database, background_tasks: 
             )
         ).all()
         for link in links:
+            try:
+                from app.modules.b import code_progress_service
+
+                code_progress_service.sync_task_code_progress(session, link.project_id)
+                session.commit()
+            except Exception:  # noqa: BLE001
+                session.rollback()
             pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, link.project_id)
             if pending_ids:
                 background_tasks.add_task(

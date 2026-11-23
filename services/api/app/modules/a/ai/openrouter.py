@@ -36,6 +36,7 @@ RESULT_MODELS = {
     "explain_risk": schemas.RiskExplanationResult,
     "analyze_implementation": schemas.ImplementationAnalysisResult,
     "summarize_activity": schemas.ActivitySummaryResult,
+    "generate_project_blueprint": schemas.ProjectBlueprintResult,
 }
 
 INSTRUCTIONS = {
@@ -53,6 +54,16 @@ INSTRUCTIONS = {
         "再结合 title、body 与 metadata，总结实际实现而不是播报 PR 元数据。headline 是简短标题；"
         "implementation 必须说明做了什么；impact、verification、risks 只有输入有依据时才填写；"
         "evidence 的 quote 必须逐字来自 title/body/metadata/files，无法判断的内容列入 insufficient_context。"
+    ),
+    "generate_project_blueprint": (
+        "仔细阅读上传的项目分工计划/需求文档（documents）以及团队成员列表（members），"
+        "一次性结构化输出整个项目的完整规划蓝图：\n"
+        "1) modules：提炼功能模块（若有明确负责人，必须填写 members 中真实存在的 owner_id）；\n"
+        "2) requirements：提炼核心需求条目，关联所属模块名（module）、优先级与原始资料摘录 quote；\n"
+        "3) milestones：按周或阶段提炼里程碑（含标题、说明、YYYY-MM-DD 截止日期与可核验交付物 deliverables）；\n"
+        "4) tasks：将需求与分工拆解为可执行的模块级任务（建议 8~32 个，避免上百个过碎卡片），"
+        "填写 assignee_ids（必须使用 members 中真实 id）、关联 requirement_titles 与 milestone_titles、"
+        "可检查的 acceptance_criteria（每条任务至少 1 条），并让所有任务的 weight 合计严格等于 100。"
     ),
 }
 

@@ -45,11 +45,23 @@ export type BBaseline = {
 };
 export type BRequirementInput = { module_id: string; title: string; description?: string; priority: BPriority };
 
+export type BBlueprintResult = {
+  analysis_run_id: string;
+  modules_added: number;
+  requirements_added: number;
+  milestones_added: number;
+  tasks_added: number;
+  suggestions_added: number;
+  is_placeholder: boolean;
+  needs_human_review: boolean;
+};
+
 const id = encodeURIComponent;
 const p = (projectId: string, suffix: string) => `/api/v1/projects/${id(projectId)}${suffix}`;
 export const bRequirementsApi = {
   board: (projectId: string) => bRequest<BRequirementsBoard>({ path: p(projectId, "/setup/requirements") }),
   analyse: (projectId: string) => bRequest<BAnalysisRun>({ method: "POST", path: p(projectId, "/analysis") }),
+  generateBlueprint: (projectId: string) => bRequest<BBlueprintResult>({ method: "POST", path: p(projectId, "/ai/generate-plan") }),
   run: (projectId: string, runId: string) => bRequest<BAnalysisRun>({ path: p(projectId, `/analysis/${id(runId)}`) }),
   createModule: (projectId: string, body: { name: string; owner_id?: string | null }) =>
     bRequest<BModule>({ method: "POST", path: p(projectId, "/modules"), body }),

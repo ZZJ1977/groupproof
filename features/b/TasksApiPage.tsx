@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, ChevronDown, ChevronRight, GitCommitHorizontal, RefreshCw, Search } from "lucide-react";
 import { EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { bTasksApi, type BTaskRow, type BTaskView, type BTransition } from "@/lib/api/b-tasks";
@@ -63,6 +63,19 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     sort: view === "list" ? filters.sort : undefined, page: view === "list" ? filters.page : undefined, page_size: view === "list" ? PAGE_SIZE : undefined,
   };
   const page = useQuery({ queryKey: ["b-tasks", userId, projectId, query], queryFn: () => bTasksApi.list(projectId, query), ...queryPolicy });
+  const syncCode = useMutation({
+    mutationFn: () => bTasksApi.syncCodeProgress(projectId),
+    onSuccess: (res) => {
+      setNotice({
+        tone: "success",
+        text: res.commits_matched > 0
+          ? tr("已扫描 {0} 条成员提交，匹配 {1} 条到任务，更新 {2} 项任务与 {3} 个里程碑（代码进度封顶 90%）。", { 0: res.commits_scanned, 1: res.commits_matched, 2: res.tasks_updated, 3: res.milestones_updated })
+          : tr("已扫描 {0} 条成员提交，当前任务进度已与代码记录保持一致。", { 0: res.commits_scanned }),
+      });
+      for (const name of ["b-tasks", "b-milestones", "b-plan"]) void client.invalidateQueries({ queryKey: [name, userId, projectId] });
+    },
+    onError: (error) => setNotice({ tone: "error", text: errorText(error) }),
+  });
   const search = useSearchParams();
   const viewHref = (next: BTaskView) => {
     const params = new URLSearchParams(search.toString());
@@ -91,8 +104,21 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   };
 
   const [title, description] = titles[view];
+  const items = page.data?.items ?? [];
+  const rootItems = items.filter((r) => !r.parent_task_id);
+  const weightSum = rootItems.reduce((s, r) => s + Math.max(1, r.weight), 0);
+  const avgProgress = weightSum > 0 ? Math.round(rootItems.reduce((s, r) => s + r.progress_percent * Math.max(1, r.weight), 0) / weightSum) : 0;
+  const commitLinked = items.filter((r) => (r.matched_commits ?? 0) > 0).length;
+  const inProgressTasks = (page.data?.columns ?? []).filter((c) => ["in_progress", "pending_submission", "pending_verification"].includes(c.status)).reduce((s, c) => s + c.count, 0);
+  const completedTasks = (page.data?.columns ?? []).find((c) => c.status === "completed")?.count ?? 0;
   return <div>
-    <PageHeader title={tr(title)} description={tr(description)} />
+    <PageHeader title={tr(title)} description={tr(description)} actions={<button type="button" className={secondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}><RefreshCw size={14} className={syncCode.isPending ? "animate-spin" : ""} />{syncCode.isPending ? tr("同步中…") : tr("同步代码进度")}</button>} />
+    {page.data && page.data.total > 0 && <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("任务总数")}</p><p className="mt-1 text-xl font-bold text-slate-900">{page.data.total}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("已完成 {0}", { 0: completedTasks })}</p></div>
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("活跃推进")}</p><p className="mt-1 text-xl font-bold text-sky-700">{inProgressTasks}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("进行中 / 待验收")}</p></div>
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("加权参考进度")}</p><div className="mt-1 flex items-center gap-2"><span className="text-xl font-bold text-slate-900">{avgProgress}%</span><div className="h-1.5 flex-1 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${avgProgress}%` }} /></div></div></div>
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("代码联动任务")}</p><p className="mt-1 text-xl font-bold text-slate-900">{commitLinked}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("代码最高计至 90%，待确认")}</p></div>
+    </div>}
     <nav aria-label={tr("任务视图")} className="gp-segmented mt-4">
       {(["tree", "board", "list"] as const).map((v) => (
         <Link key={v} href={viewHref(v)} aria-current={v === view ? "page" : undefined} data-active={v === view ? "true" : undefined} className="gp-segmented-item">
@@ -161,11 +187,13 @@ function TreeView({ rows, issues, collapsed, onCollapsed }: { rows: BTaskRow[]; 
       <tbody className="divide-y divide-slate-100">{out.map(({ row, depth, hasChildren }) => <tr key={row.id} data-testid="tree-row" className={row.matched ? "" : "text-slate-400"}>
         <td className="px-4 py-2" style={{ paddingLeft: 12 + depth * 22 }}>
           {hasChildren ? <button type="button" aria-label={collapsed.includes(row.id) ? tr("展开 {0}", { 0: row.code ?? row.title }) : tr("收起 {0}", { 0: row.code ?? row.title })} className="mr-1 align-middle text-slate-500" onClick={() => onCollapsed(collapsed.includes(row.id) ? collapsed.filter((x) => x !== row.id) : [...collapsed, row.id])}>{collapsed.includes(row.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="mr-1 inline-block w-[14px]" />}
-          <span className="mr-2 font-mono text-xs">{row.code ?? "—"}</span><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link>
+          <span className="mr-2 font-mono text-xs text-slate-500">{row.code ?? "—"}</span><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link>
+          {(row.matched_commits ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{tr("{0} 次提交", { 0: row.matched_commits ?? 0 })}</span>}
           {flagged.has(row.id) && <span className="ml-2 rounded bg-amber-50 px-1.5 text-xs text-amber-700">{tr("数据有问题")}</span>}
         </td>
         <td className="px-4 py-2"><Assignees row={row} /></td><td className="px-4 py-2">{row.weight}</td>
-        <td className="px-4 py-2">{tr(statusLabel[row.status]) ?? row.status}</td><td className="px-4 py-2">{row.progress_percent}%</td>
+        <td className="px-4 py-2"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
+        <td className="px-4 py-2"><div className="flex items-center gap-2"><div className="h-1.5 w-14 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div><span className="text-xs font-medium">{row.progress_percent}%</span></div></td>
       </tr>)}</tbody>
     </table></div>{out.length === 0 && <div className="p-4"><EmptyState title={tr("没有符合条件的任务")} /></div>}</Panel>
   </div>;
@@ -187,7 +215,8 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
       className={`rounded-xl border border-slate-200/80 bg-white p-3 text-sm shadow-2xs transition-shadow hover:shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}>
       <div className="font-mono text-xs text-slate-500">{row.code}</div>
       <Link className="font-medium text-slate-900 hover:underline" href={row.links.detail}>{row.title}</Link>
-      <div className="mt-1 text-xs text-slate-500"><Assignees row={row} /> · {row.progress_percent}%</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"><span><Assignees row={row} /> · {row.progress_percent}%</span>{(row.matched_commits ?? 0) > 0 && <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{row.matched_commits}</span>}</div>
+      <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div>
       {row.blocked_reason && <div className="mt-1 text-xs text-slate-400">{row.blocked_reason}</div>}
       {row.transitions.map((t) => <button key={t.to} type="button" className="mt-1 text-xs text-blue-700 underline" onClick={() => onMove(row, t)}>{tr("移到“{0}”", { 0: tr(statusLabel[t.to]) })}</button>)}
     </article>)}</div>
@@ -203,11 +232,11 @@ function ListView({ page, current, onPage }: { page: { items: BTaskRow[]; total:
       <thead className="border-b border-slate-100 text-xs text-slate-500"><tr><th className="px-4 py-2">{tr("编号")}</th><th className="px-4 py-2">{tr("任务")}</th><th className="px-4 py-2">{tr("模块")}</th><th className="px-4 py-2">{tr("负责人")}</th><th className="px-4 py-2">{tr("优先级")}</th><th className="px-4 py-2">{tr("权重")}</th><th className="px-4 py-2">{tr("状态")}</th><th className="px-4 py-2">{tr("进度")}</th><th className="px-4 py-2">{tr("操作")}</th></tr></thead>
       <tbody className="divide-y divide-slate-100">{page.items.map((row) => <tr key={row.id} data-testid="list-row">
         <td className="px-4 py-2 font-mono text-xs">{row.code ?? "—"}</td>
-        <td className="px-4 py-2"><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link></td>
+        <td className="px-4 py-2"><Link className="font-medium hover:underline" href={row.links.detail}>{row.title}</Link>{(row.matched_commits ?? 0) > 0 && <span className="ml-2 inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{tr("{0} 次提交", { 0: row.matched_commits ?? 0 })}</span>}</td>
         <td className="px-4 py-2 text-slate-600">{row.module.name}</td><td className="px-4 py-2 text-slate-600"><Assignees row={row} /></td>
         <td className="px-4 py-2">{tr(priorityLabel[row.priority]) ?? row.priority}</td><td className="px-4 py-2">{row.weight}</td>
         <td className="px-4 py-2"><StatusBadge tone={row.status === "completed" ? "green" : row.status === "not_started" ? "gray" : "blue"} label={tr(statusLabel[row.status]) ?? row.status} /></td>
-        <td className="px-4 py-2">{row.progress_percent}%</td>
+        <td className="px-4 py-2"><div className="flex items-center gap-2"><div className="h-1.5 w-14 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div><span className="text-xs font-medium">{row.progress_percent}%</span></div></td>
         <td className="space-x-2 whitespace-nowrap px-4 py-2 text-xs">
           {row.status === "not_started" && <Link className="text-blue-700 underline" href={row.links.detail}>{tr("开始任务")}</Link>}
           {["in_progress", "pending_submission"].includes(row.status) && <Link className="text-blue-700 underline" href={row.links.submit}>{tr("提交验收")}</Link>}

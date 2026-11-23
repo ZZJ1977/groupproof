@@ -22,7 +22,7 @@ const when = (value: string | null | undefined) => (value ? value.slice(0, 16).r
 function Progress({ value }: { value: number | null }) {
   const tr = useUiText();
   if (value === null) return <span className="text-xs text-slate-400">{tr("没有关联任务")}</span>;
-  return <div className="flex items-center gap-2"><div className="h-2 flex-1 rounded bg-slate-100" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} aria-label={tr("进度")}><div className="h-2 rounded bg-[var(--gp-action)]" style={{ width: `${value}%` }} /></div><span className="w-10 text-right text-xs font-semibold">{value}%</span></div>;
+  return <div className="flex items-center gap-2"><div className="h-2 flex-1 rounded-full bg-slate-100" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} aria-label={tr("进度")}><div className="h-2 rounded-full bg-[var(--gp-action)] transition-all" style={{ width: `${value}%` }} /></div><span className="w-10 text-right text-xs font-semibold tabular-nums text-slate-700">{value}%</span></div>;
 }
 
 const riskLevel: Record<string, { label: string; tone: "red" | "amber" | "gray" }> = { high: { label: "高风险", tone: "red" }, medium: { label: "中风险", tone: "amber" }, low: { label: "低风险", tone: "gray" } };
@@ -31,8 +31,8 @@ const riskStatus: Record<string, string> = { open: "未处理", mitigating: "处
 /** D owns risk; until D sends data the slot says so instead of guessing. */
 function Risk({ risk }: { risk: BMilestone["risk"] }) {
   const tr = useUiText();
-  if (!risk) return <p data-testid="milestone-risk" className="text-xs text-slate-500">{tr("风险：暂无数据（由验收模块提供）")}</p>;
-  if (!risk.level || risk.open_count === 0) return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-500">{tr("风险：")}<StatusBadge tone="green" label={tr("暂无风险")} /></p>;
+  if (!risk) return <p data-testid="milestone-risk" className="text-xs text-slate-400">{tr("风险：暂无数据（由验收模块提供）")}</p>;
+  if (!risk.level || risk.open_count === 0) return <p data-testid="milestone-risk" className="flex items-center gap-1.5 text-xs text-slate-500">{tr("风险：")}<span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">{tr("暂无风险")}</span></p>;
   const level = riskLevel[risk.level] ?? riskLevel.low;
   return <p data-testid="milestone-risk" className="flex items-center gap-2 text-xs text-slate-600">{tr("风险：")}<StatusBadge tone={level.tone} label={tr(level.label)} /><span>{tr("{0} 项未关闭", { 0: risk.open_count })}</span></p>;
 }
@@ -64,9 +64,20 @@ export function MilestonesApiPage({ projectId }: { projectId: string }) {
   const errorText = useBErrorMessage();
   const { userId } = useWorkspace();
   const list = useQuery({ queryKey: ["b-milestones", userId, projectId], queryFn: () => bMilestonesApi.list(projectId), ...queryPolicy });
+  const items = list.data?.items ?? [];
+  const withProgress = items.filter((m) => m.progress_percent !== null);
+  const avgProgress = withProgress.length > 0 ? Math.round(withProgress.reduce((s, m) => s + (m.progress_percent ?? 0), 0) / withProgress.length) : 0;
+  const doneCount = items.filter((m) => m.status === "completed").length;
+  const deliverablesDone = items.reduce((s, m) => s + m.deliverables_done, 0);
+  const deliverablesTotal = items.reduce((s, m) => s + m.deliverables_total, 0);
   return <div>
-    <PageHeader title={tr("里程碑")} description={tr("进度按关联任务的权重实时汇总，和任务页面的口径一致。")} />
-    <div className="mt-5">
+    <PageHeader title={tr("里程碑")} description={tr("进度按关联任务权重与代码推进实时汇总，与任务视图保持同一口径。")} />
+    {items.length > 0 && <div className="mt-4 grid grid-cols-3 gap-3">
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("阶段里程碑")}</p><p className="mt-1 text-xl font-bold text-slate-900">{items.length}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("已交付 {0} 个", { 0: doneCount })}</p></div>
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("整体平均进度")}</p><div className="mt-1 flex items-center gap-2"><span className="text-xl font-bold text-slate-900">{avgProgress}%</span><div className="h-1.5 flex-1 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${avgProgress}%` }} /></div></div></div>
+      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("交付物核验")}</p><p className="mt-1 text-xl font-bold text-slate-900">{deliverablesDone}/{deliverablesTotal}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("已勾选交付项")}</p></div>
+    </div>}
+    <div className="mt-4">
       {list.isPending ? <div role="status" className="gp-empty">{tr("正在加载…")}</div>
         : list.isError ? <Feedback tone="error">{errorText(list.error)}</Feedback>
         : list.data.items.length === 0 ? <Panel><EmptyState title={tr("还没有里程碑")} description={tr("里程碑在项目设置里创建后会显示在这里。")} /></Panel>
@@ -74,8 +85,7 @@ export function MilestonesApiPage({ projectId }: { projectId: string }) {
           <article data-testid="milestone-card" className="space-y-3">
             <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-900"><Link className="gp-link" href={m.href}>{m.title}</Link></h2><p className="mt-1 text-xs text-slate-500">{tr("截止 {0}", { 0: dateOnly(m.deadline, tr("未设置")) })}</p></div><Badge m={m} /></div>
             <Progress value={m.progress_percent} />
-            <p className="text-xs text-slate-600">{tr("任务 {0}/{1} 完成 · 交付物 {2}/{3} 已勾选", { 0: m.completed_task_count, 1: m.task_count, 2: m.deliverables_done, 3: m.deliverables_total })}</p>
-            <Risk risk={m.risk} />
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><span>{tr("任务 {0}/{1} 完成 · 交付物 {2}/{3} 已勾选", { 0: m.completed_task_count, 1: m.task_count, 2: m.deliverables_done, 3: m.deliverables_total })}</span><Risk risk={m.risk} /></div>
           </article>
         </Panel>)}</div>}
     </div>

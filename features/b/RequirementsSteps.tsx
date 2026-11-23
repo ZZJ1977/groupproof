@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CheckCircle2, Lock, PenLine, Snowflake } from "lucide-react";
+import { Bot, CheckCircle2, Lock, PenLine, Snowflake, Sparkles } from "lucide-react";
 import { EmptyState, Feedback, Panel, StatusBadge } from "@/components/common";
 import { BApiError } from "@/lib/api/b-client";
 import { bProjectsApi } from "@/lib/api/b-projects";
@@ -26,19 +26,22 @@ function useBoard(projectId: string) {
     refetchInterval: (state) => (state.state.data?.latest_run?.status === "processing" ? 2000 : false),
   });
   const refresh = () => {
-    for (const name of ["b-requirements", "b-req-list", "b-checklist", "b-baseline", "b-project-setup", "b-project-overview"]) void cache.invalidateQueries({ queryKey: [name, userId, projectId] });
+    for (const name of ["b-requirements", "b-req-list", "b-checklist", "b-baseline", "b-project-setup", "b-project-overview", "b-plan", "b-tasks", "b-milestones", "b-suggestions"]) void cache.invalidateQueries({ queryKey: [name, userId, projectId] });
   };
   return { query, refresh };
 }
 
-function RunStatus({ board }: { board: BRequirementsBoard }) {
+export function RunStatus({ board }: { board: BRequirementsBoard }) {
   const tr = useUiText();
   const run = board.latest_run;
   if (!run) return <p className="text-sm text-slate-500">{tr("还没有分析过。分析会读取已就绪的资料正文，生成需求草案供大家修改。")}</p>;
   if (run.status === "processing") return <div role="status"><Feedback tone="info">{tr("正在分析资料，处理中…")}</Feedback></div>;
   if (run.status === "unavailable") return <Feedback tone="warning">{tr("AI 暂不可用，请在下面手动录入模块和需求，流程可以照常走完。")}</Feedback>;
   if (run.status === "failed") return <Feedback tone="error">{run.error_message ?? tr("分析失败，请重试或手动录入需求。")}</Feedback>;
-  const s = run.summary ?? {};
+  const s = (run.summary ?? {}) as Record<string, number | undefined>;
+  if ((s.tasks_added ?? 0) > 0 || (s.milestones_added ?? 0) > 0) {
+    return <Feedback tone="success">{tr("AI 全流程分析完成：已解析项目资料，生成 {0} 个模块、{1} 条需求、{2} 个里程碑与 {3} 项任务草案。{4}", { 0: s.modules_added ?? 0, 1: s.requirements_added ?? 0, 2: s.milestones_added ?? 0, 3: s.tasks_added ?? 0, 4: run.is_placeholder ? tr("（当前是示例结果，接入真实 AI 后会替换）") : "" })}</Feedback>;
+  }
   return <Feedback tone="success">{tr("分析完成：新增 {0} 条需求、{1} 个冲突；保留人工新增或修改的 {2} 条。{3}", { 0: s.requirements_added ?? 0, 1: s.conflicts_added ?? 0, 2: s.requirements_kept ?? 0, 3: run.is_placeholder ? tr("（当前是示例结果，接入真实 AI 后会替换）") : "" })}</Feedback>;
 }
 
@@ -86,6 +89,14 @@ export function RequirementsStep({ projectId }: { projectId: string }) {
   const [moduleName, setModuleName] = useState("");
   const [draft, setDraft] = useState({ module_id: "", title: "", description: "", priority: "medium" as BPriority });
   const analyse = useMutation({ mutationFn: () => bRequirementsApi.analyse(projectId), onSuccess: () => { setNotice(undefined); refresh(); }, onError: (error) => setNotice({ tone: "error", text: errorText(error) }) });
+  const blueprint = useMutation({
+    mutationFn: () => bRequirementsApi.generateBlueprint(projectId),
+    onSuccess: (res) => {
+      setNotice({ tone: "success", text: tr("AI 已解析项目资料：生成 {0} 个模块、{1} 条需求、{2} 个里程碑与 {3} 项任务草案，请核对后在“基线确认”和“任务 → 分工与规划”冻结。", { 0: res.modules_added, 1: res.requirements_added, 2: res.milestones_added, 3: res.tasks_added }) });
+      refresh();
+    },
+    onError: (error) => setNotice({ tone: "error", text: errorText(error) }),
+  });
   const addModule = useMutation({ mutationFn: () => bRequirementsApi.createModule(projectId, { name: moduleName.trim() }), onSuccess: (row) => { setModuleName(""); setDraft((d) => ({ ...d, module_id: d.module_id || row.id })); refresh(); }, onError: (error) => setNotice({ tone: "error", text: errorText(error) }) });
   const addRequirement = useMutation({
     mutationFn: () => bRequirementsApi.createRequirement(projectId, { module_id: draft.module_id || query.data!.modules[0].id, title: draft.title.trim(), description: draft.description.trim() || undefined, priority: draft.priority }),
@@ -104,7 +115,10 @@ export function RequirementsStep({ projectId }: { projectId: string }) {
         <RunStatus board={board} />
         {board.latest_run && board.editable && <p className="text-xs text-slate-500">{tr("重新分析仅替换未修改的 AI 草案，人工条目原样保留。")}</p>}
       </div>
-      {board.editable && <button type="button" className={button} disabled={running || analyse.isPending} onClick={() => analyse.mutate()}><Bot size={15} />{board.latest_run ? tr("重新分析") : tr("开始分析")}</button>}
+      {board.editable && <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={button} disabled={running || analyse.isPending || blueprint.isPending} onClick={() => blueprint.mutate()}><Sparkles size={15} />{blueprint.isPending ? tr("AI 正在生成全流程规划…") : tr("AI 一键生成需求·任务·里程碑")}</button>
+        <button type="button" className={secondary} disabled={running || analyse.isPending || blueprint.isPending} onClick={() => analyse.mutate()}><Bot size={15} />{board.latest_run ? tr("重新分析") : tr("开始分析")}</button>
+      </div>}
     </div>
     {board.modules.length === 0 ? <div className="gp-surface-card"><EmptyState title={tr("还没有模块和需求")} description={board.editable ? tr("可以先分析资料，也可以直接手动添加。") : undefined} /></div>
       : <div className="space-y-4">{board.modules.map((module) => <div key={module.id} className="gp-surface-card">
