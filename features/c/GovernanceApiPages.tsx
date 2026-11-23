@@ -1026,6 +1026,9 @@ function UsageTable({ title, items, formatDimension }: { title: string; items: (
 function UsagePage() {
   const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
   const [denied, setDenied] = useState<CApiError | null>(null);
+  const [usageTab, setUsageTab] = useState<"overview" | "scenarios" | "failures" | "tables">("overview");
+  const [scenarioView, setScenarioView] = useState<"table" | "cards">("table");
+  const [onlyActiveScenarios, setOnlyActiveScenarios] = useState(false);
   const [trendMode, setTrendMode] = useState<"24h" | "daily">("daily");
   const [trendMetric, setTrendMetric] = useState<"requests" | "tokens" | "cost">("requests");
   const [activeBucketKey, setActiveBucketKey] = useState<string | null>(null);
@@ -1196,7 +1199,32 @@ function UsagePage() {
         </div>
       </Box>
 
-      <div className={styles.twoColumns}>
+      <div className={styles.segmentedTabs} role="tablist" aria-label="AI 用量分析视图">
+        {(
+          [
+            ["overview", "概览与趋势"],
+            ["scenarios", "场景与排行"],
+            ["failures", data.failed > 0 ? `失败与排障 (${data.failed})` : "失败与排障"],
+            ["tables", "明细报表"],
+          ] as const
+        ).map(([tabKey, label]) => (
+          <button
+            key={tabKey}
+            type="button"
+            role="tab"
+            aria-selected={usageTab === tabKey}
+            aria-pressed={usageTab === tabKey}
+            className={styles.segmentedTab}
+            onClick={() => setUsageTab(tabKey)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {usageTab === "overview" && (
+        <>
+          <div className={styles.twoColumns}>
         <Box
           title="调用趋势"
           action={
@@ -1339,160 +1367,219 @@ function UsagePage() {
         </Box>
       </div>
 
-      {diag && (
-        <div className={styles.equalColumns}>
+          <div className={styles.equalColumns}>
+            <Box title="模型调用分析" action={<Badge tone="purple">OpenRouter</Badge>}>
+              <div className={styles.panelBody}>
+                {!modelRows.length ? <Empty>当前范围没有模型调用记录</Empty> : <div className={styles.breakdownList}>{modelRows.map((item) => <div className={styles.breakdownRow} key={item.key}><div className={styles.breakdownHeader}><span className={styles.breakdownName}>{item.key}</span><strong>{number(item.requests)}</strong></div><div className={styles.breakdownTrack}><div className={styles.breakdownFill} style={{ width: `${(item.requests / maxModelRequests) * 100}%` }} /></div><div className={styles.breakdownMeta}><span>{rate(item.succeeded, item.requests)} 成功率</span><span>{number(item.input_tokens + item.output_tokens)} Token</span><span>{costs(item.cost_by_currency)}</span></div></div>)}</div>}
+              </div>
+            </Box>
+
+            {diag && (
+              <Box
+                title="GitHub 活动 AI 摘要队列"
+                action={<Badge tone={diag.summary_jobs.failed > 0 ? "amber" : "blue"}>activity-summary</Badge>}
+              >
+                <div className={styles.panelBody}>
+                  <div className={styles.bindingMatrix}>
+                    <div className={styles.bindingItem}><span>累计生成摘要</span><strong>{diag.summary_jobs.total}</strong></div>
+                    <div className={styles.bindingItem}><span>待人工确认</span><strong>{diag.summary_jobs.needs_human_review}</strong></div>
+                    <div className={styles.bindingItem}><span>排队处理中</span><strong>{diag.summary_jobs.pending}</strong></div>
+                    <div className={styles.bindingItem}><span>生成失败</span><strong className={diag.summary_jobs.failed > 0 ? "text-rose-700" : ""}>{diag.summary_jobs.failed}</strong></div>
+                  </div>
+                  <p className={styles.chartNote}>所有提交级 AI 摘要结果均标为待人工确认，不自动改写正式任务或证据状态。</p>
+                </div>
+              </Box>
+            )}
+          </div>
+        </>
+      )}
+
+      {usageTab === "scenarios" && (
+        <>
           <Box
-            title="失败错误码归因榜"
+            title="业务场景分布"
             action={
-              <Badge tone={diag.failed > 0 ? "red" : "green"}>
-                {diag.failed > 0 ? `${diag.failed} 次失败` : "零失败"}
-              </Badge>
+              <div className={styles.usageChartControls}>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={onlyActiveScenarios}
+                    onChange={(event) => setOnlyActiveScenarios(event.target.checked)}
+                  />
+                  仅看有调用
+                </label>
+                <div className={styles.usageTrendTabs} role="group" aria-label="场景视图切换">
+                  <button type="button" className={styles.usageTrendTab} aria-pressed={scenarioView === "table"} onClick={() => setScenarioView("table")}>表格</button>
+                  <button type="button" className={styles.usageTrendTab} aria-pressed={scenarioView === "cards"} onClick={() => setScenarioView("cards")}>卡片</button>
+                </div>
+                <Badge tone="blue">按方案映射</Badge>
+              </div>
             }
           >
-            <div className={styles.panelBody}>
-              {!diag.error_breakdown.length ? (
-                <Empty>当前范围无失败调用记录</Empty>
-              ) : (
-                <div className={styles.errorRankList}>
-                  {diag.error_breakdown.map((err) => (
-                    <div key={err.error_code} className={styles.errorRankRow}>
-                      <div className={styles.errorRankHead}>
-                        <span className="inline-flex items-center gap-1.5 font-mono text-rose-800">
-                          <AlertTriangle size={13} />
-                          {err.error_code}
-                        </span>
-                        <span className="text-slate-600">
-                          <strong className="text-slate-900">{err.count}</strong> 次 · 最近 {formatDateTime(err.last_seen_at ?? undefined)}
-                        </span>
-                      </div>
-                      <div className={styles.errorRankTrack}>
-                        <div className={styles.errorRankFill} style={{ width: `${Math.max(8, Math.round((err.count / maxErrCount) * 100))}%` }} />
-                      </div>
+            {(() => {
+              const visibleScenarios = onlyActiveScenarios
+                ? scenarioEntries.filter((scenario) => (featureRows.find((row) => row.key === scenario.feature)?.requests ?? 0) > 0)
+                : scenarioEntries;
+              const compactTok = (tok: number) =>
+                tok >= 1_000_000 ? `${(tok / 1_000_000).toFixed(2)}M` : tok >= 10_000 ? `${(tok / 1_000).toFixed(1)}k` : number(tok);
+              if (!visibleScenarios.length) {
+                return <div className={styles.panelBody}><Empty>当前筛选范围暂无产生调用的业务场景</Empty></div>;
+              }
+              return scenarioView === "cards" ? (
+                <div className={styles.scenarioGrid} aria-label="业务场景用量概览">{visibleScenarios.map((scenario, index) => {
+                  const item = featureRows.find((row) => row.key === scenario.feature);
+                  const hasData = Boolean(item && item.requests > 0);
+                  const totalTok = item ? item.input_tokens + item.output_tokens : 0;
+                  return <article className={styles.scenarioCard} data-has-data={hasData} key={`${scenario.key}-card`}>
+                    <div className={styles.scenarioCardTop}><span className={styles.scenarioIndex}>{String(index + 1).padStart(2, "0")}</span><Badge tone={hasData ? "green" : "gray"}>{hasData ? "有记录" : "暂无样本"}</Badge></div>
+                    <h3>{scenario.label}</h3><p>{scenario.description}</p>
+                    <div className={styles.scenarioStats}>
+                      <div><strong>{item ? number(item.requests) : "—"}</strong><span>请求</span></div>
+                      <div><strong>{item ? rate(item.succeeded, item.requests) : "—"}</strong><span>成功率</span></div>
+                      <div title={item ? number(totalTok) : undefined}><strong>{item ? compactTok(totalTok) : "—"}</strong><span>Token</span></div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </article>;
+                })}</div>
+              ) : (
+                <Table><thead><tr><th>业务场景</th><th>用途</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th></tr></thead><tbody>{visibleScenarios.map((scenario) => {
+                  const item = featureRows.find((row) => row.key === scenario.feature);
+                  return <tr key={scenario.key}><td><strong>{scenario.label}</strong><div className={styles.rowMeta}>{item ? `功能键：${scenario.feature}` : scenario.feature === "match_evidence" ? "群聊同步本身不调用模型" : "当前范围暂无调用"}</div></td><td>{scenario.description}</td><td>{item ? number(item.requests) : "—"}</td><td>{item ? rate(item.succeeded, item.requests) : "—"}</td><td>{item ? number(item.input_tokens + item.output_tokens) : "—"}</td><td>{item ? costs(item.cost_by_currency) : "—"}</td></tr>;
+                })}</tbody></Table>
+              );
+            })()}
+            <div className={styles.panelBody}><p className={styles.chartNote}>群聊记录同步属于来源接入，会记录同步结果但不会产生 OpenRouter 费用。只有群聊内容进入活动摘要或证据匹配等 AI 流程后，才会计入模型用量。</p></div>
+          </Box>
+
+          {diag && (
+            <div className={styles.equalColumns}>
+              <Box title="高消耗项目 Top 排行">
+                {diag.top_projects.length ? (
+                  <Table>
+                    <thead><tr><th>项目 / 课程</th><th>请求（失败）</th><th>总 Token</th><th>费用</th></tr></thead>
+                    <tbody>
+                      {diag.top_projects.map((p) => (
+                        <tr key={String(p.project_id ?? p.project_name)}>
+                          <td><EntityLabel name={p.project_name} id={p.project_id} subtitle={p.course_code} /></td>
+                          <td>{p.requests}（<span className={p.failed ? "text-rose-600" : ""}>{p.failed}</span>）</td>
+                          <td>{number(p.total_tokens)}</td>
+                          <td>{costs(p.cost_by_currency)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                ) : <Empty>当前范围暂无项目级归因样本</Empty>}
+              </Box>
+              <Box title="高消耗用户 Top 排行">
+                {diag.top_users.length ? (
+                  <Table>
+                    <thead><tr><th>用户</th><th>请求（失败）</th><th>总 Token</th><th>费用</th></tr></thead>
+                    <tbody>
+                      {diag.top_users.map((u) => (
+                        <tr key={String(u.user_id ?? u.user_name)}>
+                          <td><EntityLabel name={u.user_name} id={u.user_id} subtitle={u.role} /></td>
+                          <td>{u.requests}（<span className={u.failed ? "text-rose-600" : ""}>{u.failed}</span>）</td>
+                          <td>{number(u.total_tokens)}</td>
+                          <td>{costs(u.cost_by_currency)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                ) : <Empty>当前范围暂无用户级归因样本</Empty>}
+              </Box>
             </div>
-          </Box>
-
-          <Box
-            title="GitHub 活动 AI 摘要队列"
-            action={<Badge tone={diag.summary_jobs.failed > 0 ? "amber" : "blue"}>activity-summary</Badge>}
-          >
-            <div className={styles.panelBody}>
-              <div className={styles.bindingMatrix}>
-                <div className={styles.bindingItem}><span>累计生成摘要</span><strong>{diag.summary_jobs.total}</strong></div>
-                <div className={styles.bindingItem}><span>待人工确认</span><strong>{diag.summary_jobs.needs_human_review}</strong></div>
-                <div className={styles.bindingItem}><span>排队处理中</span><strong>{diag.summary_jobs.pending}</strong></div>
-                <div className={styles.bindingItem}><span>生成失败</span><strong className={diag.summary_jobs.failed > 0 ? "text-rose-700" : ""}>{diag.summary_jobs.failed}</strong></div>
-              </div>
-              <p className={styles.chartNote}>所有提交级 AI 摘要结果均标为待人工确认，不自动改写正式任务或证据状态。</p>
-            </div>
-          </Box>
-        </div>
+          )}
+        </>
       )}
 
-      <Box title="业务场景分布" action={<Badge tone="blue">按方案映射</Badge>}>
-        <div className={styles.scenarioGrid} aria-label="业务场景用量概览">{scenarioEntries.map((scenario, index) => {
-          const item = featureRows.find((row) => row.key === scenario.feature);
-          const hasData = Boolean(item && item.requests > 0);
-          return <article className={styles.scenarioCard} data-has-data={hasData} key={`${scenario.key}-card`}>
-            <div className={styles.scenarioCardTop}><span className={styles.scenarioIndex}>{String(index + 1).padStart(2, "0")}</span><Badge tone={hasData ? "green" : "gray"}>{hasData ? "有记录" : "暂无样本"}</Badge></div>
-            <h3>{scenario.label}</h3><p>{scenario.description}</p>
-            <div className={styles.scenarioStats}><div><strong>{item ? number(item.requests) : "—"}</strong><span>请求</span></div><div><strong>{item ? rate(item.succeeded, item.requests) : "—"}</strong><span>成功率</span></div><div><strong>{item ? number(item.input_tokens + item.output_tokens) : "—"}</strong><span>Token</span></div></div>
-          </article>;
-        })}</div>
-        <Table><thead><tr><th>业务场景</th><th>用途</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th></tr></thead><tbody>{scenarioEntries.map((scenario) => {
-          const item = featureRows.find((row) => row.key === scenario.feature);
-          return <tr key={scenario.key}><td><strong>{scenario.label}</strong><div className={styles.rowMeta}>{item ? `功能键：${scenario.feature}` : scenario.feature === "match_evidence" ? "群聊同步本身不调用模型" : "当前范围暂无调用"}</div></td><td>{scenario.description}</td><td>{item ? number(item.requests) : "—"}</td><td>{item ? rate(item.succeeded, item.requests) : "—"}</td><td>{item ? number(item.input_tokens + item.output_tokens) : "—"}</td><td>{item ? costs(item.cost_by_currency) : "—"}</td></tr>;
-        })}</tbody></Table>
-        <div className={styles.panelBody}><p className={styles.chartNote}>群聊记录同步属于来源接入，会记录同步结果但不会产生 OpenRouter 费用。只有群聊内容进入活动摘要或证据匹配等 AI 流程后，才会计入模型用量。</p></div>
-      </Box>
-
-      <Box title="模型调用分析" action={<Badge tone="purple">OpenRouter</Badge>}>
-        <div className={styles.panelBody}>
-          {!modelRows.length ? <Empty>当前范围没有模型调用记录</Empty> : <div className={styles.breakdownList}>{modelRows.map((item) => <div className={styles.breakdownRow} key={item.key}><div className={styles.breakdownHeader}><span className={styles.breakdownName}>{item.key}</span><strong>{number(item.requests)}</strong></div><div className={styles.breakdownTrack}><div className={styles.breakdownFill} style={{ width: `${(item.requests / maxModelRequests) * 100}%` }} /></div><div className={styles.breakdownMeta}><span>{rate(item.succeeded, item.requests)} 成功率</span><span>{number(item.input_tokens + item.output_tokens)} Token</span><span>{costs(item.cost_by_currency)}</span></div></div>)}</div>}
-        </div>
-      </Box>
-
-      {diag && (
-        <div className={styles.equalColumns}>
-          <Box title="高消耗项目 Top 排行">
-            {diag.top_projects.length ? (
-              <Table>
-                <thead><tr><th>项目 / 课程</th><th>请求（失败）</th><th>总 Token</th><th>费用</th></tr></thead>
-                <tbody>
-                  {diag.top_projects.map((p) => (
-                    <tr key={String(p.project_id ?? p.project_name)}>
-                      <td><EntityLabel name={p.project_name} id={p.project_id} subtitle={p.course_code} /></td>
-                      <td>{p.requests}（<span className={p.failed ? "text-rose-600" : ""}>{p.failed}</span>）</td>
-                      <td>{number(p.total_tokens)}</td>
-                      <td>{costs(p.cost_by_currency)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            ) : <Empty>当前范围暂无项目级归因样本</Empty>}
-          </Box>
-          <Box title="高消耗用户 Top 排行">
-            {diag.top_users.length ? (
-              <Table>
-                <thead><tr><th>用户</th><th>请求（失败）</th><th>总 Token</th><th>费用</th></tr></thead>
-                <tbody>
-                  {diag.top_users.map((u) => (
-                    <tr key={String(u.user_id ?? u.user_name)}>
-                      <td><EntityLabel name={u.user_name} id={u.user_id} subtitle={u.role} /></td>
-                      <td>{u.requests}（<span className={u.failed ? "text-rose-600" : ""}>{u.failed}</span>）</td>
-                      <td>{number(u.total_tokens)}</td>
-                      <td>{costs(u.cost_by_currency)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            ) : <Empty>当前范围暂无用户级归因样本</Empty>}
-          </Box>
-        </div>
-      )}
-
-      {diag && diag.recent_failures.length > 0 && (
-        <Box title="最近失败调用明细">
-          <Table>
-            <thead><tr><th>时间</th><th>功能</th><th>模型</th><th>错误码</th><th>延迟</th><th>用户</th><th>项目</th></tr></thead>
-            <tbody>
-              {diag.recent_failures.map((item) => (
-                <tr key={item.id}>
-                  <td>{formatDateTime(item.occurred_at)}</td>
-                  <td>
-                    <strong className="block text-slate-900">{aiFeatureLabels[item.feature] ?? item.feature}</strong>
-                    <code className="text-[11px] text-slate-500">{item.feature}</code>
-                  </td>
-                  <td><code>{item.model || "—"}</code></td>
-                  <td><Badge tone="red">{item.error_code || "UNKNOWN"}</Badge></td>
-                  <td>{formatDurationMs(item.latency_ms)}</td>
-                  <td>{item.user_name}</td>
-                  <td>{item.project_name || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        </Box>
-      )}
-
-      <UsageTable
-        title="按功能明细"
-        items={data.by_feature}
-        formatDimension={(key) =>
-          aiFeatureLabels[key] ? (
-            <span>
-              <strong className="block text-slate-900">{aiFeatureLabels[key]}</strong>
-              <code className="text-[11px] text-slate-500">{key}</code>
-            </span>
+      {usageTab === "failures" && (
+        <>
+          {!diag ? (
+            <Box title="失败与排障"><div className={styles.panelBody}><Empty>正在读取失败诊断或当前环境未启用诊断接口</Empty></div></Box>
           ) : (
-            <code>{key}</code>
-          )
-        }
-      />
-      <UsageTable title="按日期明细" items={data.daily} />
+            <>
+              <Box
+                title="失败错误码归因榜"
+                action={
+                  <Badge tone={diag.failed > 0 ? "red" : "green"}>
+                    {diag.failed > 0 ? `${diag.failed} 次失败` : "零失败"}
+                  </Badge>
+                }
+              >
+                <div className={styles.panelBody}>
+                  {!diag.error_breakdown.length ? (
+                    <Empty>当前范围无失败调用记录</Empty>
+                  ) : (
+                    <div className={styles.errorRankList}>
+                      {diag.error_breakdown.map((err) => (
+                        <div key={err.error_code} className={styles.errorRankRow}>
+                          <div className={styles.errorRankHead}>
+                            <span className="inline-flex items-center gap-1.5 font-mono text-rose-800">
+                              <AlertTriangle size={13} />
+                              {err.error_code}
+                            </span>
+                            <span className="text-slate-600">
+                              <strong className="text-slate-900">{err.count}</strong> 次 · 最近 {formatDateTime(err.last_seen_at ?? undefined)}
+                            </span>
+                          </div>
+                          <div className={styles.errorRankTrack}>
+                            <div className={styles.errorRankFill} style={{ width: `${Math.max(8, Math.round((err.count / maxErrCount) * 100))}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Box>
+
+              <Box title="最近失败调用明细">
+                {diag.recent_failures.length > 0 ? (
+                  <Table>
+                    <thead><tr><th>时间</th><th>功能</th><th>模型</th><th>错误码</th><th>延迟</th><th>用户</th><th>项目</th></tr></thead>
+                    <tbody>
+                      {diag.recent_failures.map((item) => (
+                        <tr key={item.id}>
+                          <td>{formatDateTime(item.occurred_at)}</td>
+                          <td>
+                            <strong className="block text-slate-900">{aiFeatureLabels[item.feature] ?? item.feature}</strong>
+                            <code className="text-[11px] text-slate-500">{item.feature}</code>
+                          </td>
+                          <td><code>{item.model || "—"}</code></td>
+                          <td><Badge tone="red">{item.error_code || "UNKNOWN"}</Badge></td>
+                          <td>{formatDurationMs(item.latency_ms)}</td>
+                          <td>{item.user_name}</td>
+                          <td>{item.project_name || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                ) : (
+                  <div className={styles.panelBody}><Empty>当前范围暂无失败调用明细</Empty></div>
+                )}
+              </Box>
+            </>
+          )}
+        </>
+      )}
+
+      {usageTab === "tables" && (
+        <div className={styles.equalColumns}>
+          <UsageTable
+            title="按功能明细"
+            items={data.by_feature}
+            formatDimension={(key) =>
+              aiFeatureLabels[key] ? (
+                <span>
+                  <strong className="block text-slate-900">{aiFeatureLabels[key]}</strong>
+                  <code className="text-[11px] text-slate-500">{key}</code>
+                </span>
+              ) : (
+                <code>{key}</code>
+              )
+            }
+          />
+          <UsageTable title="按日期明细" items={data.daily} />
+        </div>
+      )}
     </>}
   </>;
 }
