@@ -156,10 +156,19 @@ def summarize_activity(
             for item in payload.files
         ),
     }
+    squashed_sources = {key: _squash(val) for key, val in source_text.items()}
     for evidence in result.evidence:
         quote = _squash(evidence.quote)
-        if not quote or quote not in _squash(source_text[evidence.source]):
+        if not quote:
             raise ai_unavailable()
+        if quote in squashed_sources[evidence.source]:
+            continue
+        matched_source = next(
+            (key for key, text in squashed_sources.items() if quote in text), None
+        )
+        if matched_source is None:
+            raise ai_unavailable()
+        evidence.source = matched_source  # type: ignore[assignment]
     return result
 
 
