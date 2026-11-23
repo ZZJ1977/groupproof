@@ -312,7 +312,7 @@ function progressMeta(row: BTaskRow): { label: string; detail: string; tone: str
   const confirmed = row.criteria_confirmed ?? 0;
   const candidate = Math.max(0, evidenced - confirmed);
   if (row.status === "completed") return { label: "已完成", detail: "正式验收已完成", tone: "text-emerald-700" };
-  if (total > 0 && evidenced >= total && candidate > 0) return { label: "AI 验收通过（候选证据）", detail: `${evidenced}/${total} 已达标 · 待人工确认`, tone: "text-emerald-700" };
+  if (total > 0 && evidenced >= total && candidate > 0) return { label: "AI 验收通过（候选证据）", detail: `${candidate}/${total} 条待人工确认`, tone: "text-emerald-700" };
   if (candidate > 0) return { label: "AI 部分通过（候选证据）", detail: `已通过 ${evidenced}/${total} · 缺 ${Math.max(0, total - evidenced)} 条`, tone: "text-sky-700" };
   if (confirmed > 0) return { label: "正式证据", detail: `${confirmed}/${total} 条已确认，等待验收`, tone: "text-amber-700" };
   if (row.progress_percent > 0) return { label: "手动进度", detail: "尚未关联交付证据", tone: "text-slate-600" };
