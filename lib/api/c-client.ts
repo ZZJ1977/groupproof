@@ -204,6 +204,11 @@ export function createCClient(client = createApiClient()) {
         params: { path: { project_id: projectId, evidence_id: evidenceId }, header: { "Idempotency-Key": key } }, body: input,
       }));
     },
+    async batchAdopt(projectId: string, input: Schema["BatchAdoptEvidence"], key: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/evidence/batch-adopt", {
+        params: { path: { project_id: projectId }, header: { "Idempotency-Key": key } }, body: input,
+      }));
+    },
     async withdraw(projectId: string, evidenceId: string, input: Schema["DecideEvidence"], key: string) {
       return unwrap(await client.POST("/api/v1/projects/{project_id}/evidence/{evidence_id}/withdraw", {
         params: { path: { project_id: projectId, evidence_id: evidenceId }, header: { "Idempotency-Key": key } }, body: input,

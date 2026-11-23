@@ -67,25 +67,26 @@ export function TaskCriteriaPanel({
     if (busyId !== null || adoptableEvidences.length === 0) return;
     setBusyId("adopt-all");
     setNotice(null);
-    let adopted = 0;
     try {
-      for (const ev of adoptableEvidences) {
-        const idempotencyKey = `adopt-crit-all-${ev.id}-v${ev.lock_version}-${Date.now()}`;
-        await projectApi.adopt(
-          projectId,
-          ev.id,
-          { expected_version: ev.lock_version, reason: "核对代码改动符合对应交付标准，批量确认采纳为正式证据。" },
-          idempotencyKey,
-        );
-        adopted += 1;
-      }
+      const items = adoptableEvidences.map((ev) => ({
+        evidence_id: ev.id,
+        expected_version: ev.lock_version,
+      }));
+      const idempotencyKey = `adopt-crit-batch-${taskId}-${items.length}-${Date.now()}`;
+      const res = await projectApi.batchAdopt(
+        projectId,
+        {
+          items,
+          reason: "核对代码改动符合对应交付标准，批量确认采纳为正式证据。",
+        },
+        idempotencyKey,
+      );
       await onChanged();
       setNotice({
         tone: "success",
-        text: `已批量采纳 ${adopted} 条正式证据；若全部交付标准均已确认达标，可直接点击「全部标准达标 · 提交并完成任务」。`,
+        text: `已批量采纳 ${res.count} 条正式证据；若全部交付标准均已确认达标，可直接点击「全部标准达标 · 提交并完成任务」。`,
       });
     } catch (err) {
-      if (adopted > 0) await onChanged();
       setNotice({ tone: "error", text: err instanceof Error ? err.message : "批量采纳证据失败，请刷新后重试。" });
     } finally {
       setBusyId(null);

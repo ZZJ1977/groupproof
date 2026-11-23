@@ -780,3 +780,30 @@ def test_unverified_member_can_read_but_cannot_create_evidence(db, scope):
     with pytest.raises(ApiError) as error:
         candidate(db, scope)
     assert error.value.code == "EMAIL_NOT_VERIFIED"
+
+
+def test_batch_adopt_adopts_multiple_candidates_atomically_and_replays_idempotently(db, scope):
+    from app.modules.c.evidence_schemas import BatchAdoptEvidence, BatchAdoptEvidenceItem
+    from app.modules.c.evidence_service import batch_adopt_evidence
+
+    first = candidate(db, scope, title="First candidate")
+    second = candidate(db, scope, title="Second candidate")
+    payload = BatchAdoptEvidence(
+        items=[
+            BatchAdoptEvidenceItem(evidence_id=UUID(first["id"]), expected_version=0),
+            BatchAdoptEvidenceItem(evidence_id=UUID(second["id"]), expected_version=0),
+        ],
+        reason="Batch confirm both evidences",
+    )
+
+    with pytest.raises(ApiError) as denied:
+        batch_adopt_evidence(db, scope.users["member"], scope.project.id, payload, "batch-denied")
+    assert denied.value.code == "EVIDENCE_DECISION_DENIED"
+
+    result = batch_adopt_evidence(db, scope.users["author"], scope.project.id, payload, "batch-ok")
+    assert result["count"] == 2
+    assert all(item["status"] == "formal" and item["effective"] for item in result["adopted"])
+    assert all(item["lock_version"] == 1 for item in result["adopted"])
+
+    replay = batch_adopt_evidence(db, scope.users["author"], scope.project.id, payload, "batch-ok")
+    assert replay == result
