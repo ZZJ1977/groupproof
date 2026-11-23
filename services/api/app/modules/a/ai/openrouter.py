@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import httpx
@@ -18,8 +19,14 @@ from app.modules.a.ai import schemas
 from app.modules.a.ai.prompts import CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT
 from app.modules.a.ai.provider import AIUnavailable
 
+logger = logging.getLogger("groupproof.a.ai.openrouter")
+
 OPENROUTER_BASE = "https://openrouter.ai"
 DEFAULT_MODEL = "openrouter/auto"
+MODEL_ALIASES = {
+    "deepseek": "deepseek/deepseek-v3.2",
+    "deepseek-chat": "deepseek/deepseek-v3.2",
+}
 META_FIELDS = ("provider", "is_placeholder", "needs_human_review")
 
 RESULT_MODELS = {
@@ -87,7 +94,8 @@ class OpenRouterProvider:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
-        self._model = model
+        normalized = (model or "").strip() or DEFAULT_MODEL
+        self._model = MODEL_ALIASES.get(normalized.lower(), normalized)
         self._transport = transport
         self.last_usage: dict | None = None
 
@@ -131,6 +139,26 @@ class OpenRouterProvider:
             )
         if response.status_code in (401, 403):
             raise AIUnavailable("openrouter key rejected")  # 配置问题，不重试
+        if response.status_code == 400:
+            err_msg = ""
+            try:
+                err_msg = str(response.json().get("error", {}).get("message", ""))[:300]
+            except Exception:  # noqa: BLE001
+                err_msg = response.text[:300]
+            logger.warning("OpenRouter 400 for model=%s: %s", self._model, err_msg)
+            if "response_format" in err_msg.lower() and "response_format" in body:
+                fallback_body = {k: v for k, v in body.items() if k != "response_format"}
+                with httpx.Client(
+                    base_url=OPENROUTER_BASE, timeout=timeout, transport=self._transport
+                ) as client:
+                    response = client.post(
+                        "/api/v1/chat/completions",
+                        json=fallback_body,
+                        headers={
+                            "Authorization": f"Bearer {self._api_key}",
+                            "X-Title": "GroupProof",
+                        },
+                    )
         response.raise_for_status()
         self.last_usage = self._read_usage(response.json())
         content = response.json()["choices"][0]["message"]["content"]
