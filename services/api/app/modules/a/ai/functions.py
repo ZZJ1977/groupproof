@@ -226,24 +226,32 @@ def summarize_activity(
         "files": f"{files_raw}\n{files_stripped}",
     }
     squashed_sources = {key: _squash(val) for key, val in source_text.items()}
+    verified_evidence = []
     for evidence in result.evidence:
-        quote = _squash(evidence.quote)
-        if not quote:
-            logger.warning("summarize_activity rejected empty quote")
-            raise ai_unavailable()
-        if quote in squashed_sources[evidence.source]:
+        candidates = [_squash(evidence.quote), _squash(_strip_diff_prefixes(evidence.quote))]
+        candidates = [c for c in candidates if c]
+        if not candidates:
+            continue
+        if any(c in squashed_sources[evidence.source] for c in candidates):
+            verified_evidence.append(evidence)
             continue
         matched_source = next(
-            (key for key, text in squashed_sources.items() if quote in text), None
+            (key for key, text in squashed_sources.items() if any(c in text for c in candidates)),
+            None,
         )
-        if matched_source is None:
-            logger.warning(
-                "summarize_activity rejected unverified quote source=%s len=%d",
-                evidence.source,
-                len(evidence.quote),
-            )
-            raise ai_unavailable()
-        evidence.source = matched_source  # type: ignore[assignment]
+        if matched_source is not None:
+            evidence.source = matched_source  # type: ignore[assignment]
+            verified_evidence.append(evidence)
+            continue
+        logger.info(
+            "summarize_activity dropped unverified quote source=%s len=%d",
+            evidence.source,
+            len(evidence.quote),
+        )
+    if not verified_evidence:
+        logger.warning("summarize_activity rejected result with zero verified evidence quotes")
+        raise ai_unavailable()
+    result.evidence = verified_evidence
     return result
 
 
