@@ -1,17 +1,24 @@
-"""GitHub 提交与任务进度自动联动服务（只读匹配 + 受控更新进行中进度）。
+"""GitHub 代码提交 ↔ 交付标准 ↔ 真实候选证据联动服务。
 
-规则：
-- 自动排除 Claude / Dependabot / GitHub Actions 等 Bot 提交；
-- 严格尊重既有人工关联（c_activity_records）与显式编号（#T-001 / 模块代号）；
-- 命中真实提交的任务自动推进至 ``in_progress`` 并按提交量与测试覆盖估算进度；
-- 遵守红线：自动代码进度最高封顶 **90%**，绝不自动改成 100% 或自动提交验收/完成。
+核心原则：
+- **严格以代码改动与交付标准为依据**：只根据真实改动文件路径、提交说明与 AI 提交代码分析摘要
+  匹配任务的每条验收/交付标准（``AcceptanceCriterion``），绝不按“某人提交了多少次”兜底凑数；
+- **自动排除 Bot 与纯合并提交**：自动忽略 Claude / Dependabot / GitHub Actions 等 Bot 提交，
+  以及无显式任务编号的 ``Merge branch ...`` 纯合并提交；
+- **真实证据可点击可追溯**：为每条命中的交付标准挑选最具代表性的代码提交，幂等写入 C 模块真实
+  ``Evidence``（``status="candidate"``, ``source_type="github"``）、``EvidenceCriterion``、
+  ``EvidenceSourceSnapshot`` 与 ``EvidenceDecision``，并关联 ``ActivityRecordState``，
+  让“查看证据”直接可见对应代码提交并支持人工采纳；
+- **进度口径透明且守红线**：任务进度按“各交付标准的证据覆盖与人工确认情况”计算——仅代码候选证据
+  覆盖封顶 **90%**，绝不自动改成 100% 或自动完成任务，需人工确认全部标准后正式完成。
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
@@ -20,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import (
+    AcceptanceCriterion,
     FunctionalModule,
     Milestone,
     ProgressEvent,
@@ -31,172 +39,415 @@ from app.db.models import (
 )
 from app.modules.a import github_activity, permissions
 from app.modules.a.audit import record_audit
-from app.modules.a.models import GithubActivity
+from app.modules.a.models import ActivitySummary, GithubActivity
 from app.modules.b.common import lock_project_for_write, now
 from app.modules.b.models import BTaskMeta
 from app.modules.c.activity_models import ActivityRecordState
+from app.modules.c.integration_events import content_hash
+from app.modules.c.models import (
+    Evidence,
+    EvidenceCriterion,
+    EvidenceDecision,
+    EvidenceSourceSnapshot,
+)
 
 MAX_AUTO_CODE_PROGRESS = 90
+MAX_EVIDENCE_PER_CRITERION = 2
+MAX_AUTO_EVIDENCE_PER_TASK = 6
+
 _TASK_CODE_RE = re.compile(r"(?:#|\b)T-?0*(\d+)\b", re.IGNORECASE)
 _MODULE_CODE_RE = re.compile(r"\b([A-Za-z]\d+(?:-\d+)?)\b")
-_ASCII_TOKEN_RE = re.compile(r"[a-z0-9_]{3,}", re.IGNORECASE)
+_ASCII_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{2,}", re.IGNORECASE)
+_MERGE_COMMIT_RE = re.compile(r"^merge\s+(?:branch|pull request|remote-tracking)\b", re.IGNORECASE)
 
-# 跨项目通用的双语领域关键词组：用于将提交标题/变更文件路径与任务标题/模块对齐
+_STOP_ASCII = {
+    "api",
+    "app",
+    "src",
+    "tsx",
+    "jsx",
+    "json",
+    "http",
+    "https",
+    "true",
+    "false",
+    "null",
+    "none",
+    "data",
+    "meta",
+    "list",
+    "view",
+    "page",
+    "pages",
+    "item",
+    "items",
+    "user",
+    "users",
+    "task",
+    "tasks",
+    "project",
+    "projects",
+    "module",
+    "modules",
+    "service",
+    "services",
+    "router",
+    "schema",
+    "schemas",
+    "model",
+    "models",
+    "test",
+    "tests",
+    "spec",
+    "feat",
+    "fix",
+    "chore",
+    "docs",
+    "refactor",
+    "update",
+    "add",
+    "remove",
+    "merge",
+    "main",
+    "develop",
+    "branch",
+}
+
+# 跨项目通用的双语领域概念规则：(任务/标准关键词, 对应的文件路径或词边界触发词)
+# 带 `/` 或 `.` 的触发词按路径子串匹配；纯英文词严格按词边界匹配，避免 "ci" 误命中 "service"。
 _CONCEPT_RULES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (
-        ("仓库", "分支", "模板", "ci", "workflow", "actions", "eslint", "ruff", "lint"),
-        (".github/", "ci", "workflow", "eslint", "ruff", "prettier", "branch", "actions"),
+        (
+            "仓库协作",
+            "分支保护",
+            "模板",
+            "ci",
+            "actions",
+            "eslint",
+            "ruff",
+            "lint",
+            "docker compose",
+        ),
+        (
+            ".github/",
+            "workflows/",
+            "docker-compose",
+            ".env.example",
+            "codeowners",
+            "eslint",
+            "ruff",
+            "prettier",
+            "ci/cd",
+        ),
     ),
     (
         (
-            "底座",
-            "骨架",
-            "数据库",
-            "迁移",
+            "后端核心底座",
+            "数据库迁移",
             "alembic",
             "fastapi",
             "openapi",
             "celery",
             "redis",
-            "docker",
             "pgvector",
             "种子",
+            "乐观锁",
+            "幂等",
         ),
         (
-            "alembic",
+            "alembic/",
             "migrations/",
             "app/db/",
-            "seed",
-            "openapi",
-            "api.generated",
-            "docker",
-            "fastapi",
-            "worker",
-            "redis",
+            "export_openapi",
+            "openapi.json",
+            "api.generated.ts",
+            "generate-api-client",
+            "celery",
+            "pgvector",
+            "seed.py",
         ),
     ),
     (
-        ("登录", "注册", "认证", "oauth", "google", "邮箱验证", "密码", "rbac", "权限", "越权"),
         (
-            "app/auth/",
-            "auth",
+            "登录",
+            "注册",
+            "认证",
             "oauth",
             "google",
+            "学校邮箱",
+            "密码",
+            "rbac",
+            "权限",
+            "越权",
+            "入台",
+        ),
+        (
+            "app/auth/",
+            "google_oidc",
+            "oauth",
+            "school_email",
             "login",
             "register",
             "onboarding",
             "password",
-            "permission",
             "rbac",
+            "permissions.py",
         ),
     ),
     (
-        ("通知", "审计", "待办", "文件存储", "正文提取", "公共服务"),
-        ("inbox", "audit", "notification", "storage", "text_extraction", "upload"),
-    ),
-    (
-        ("github", "webhook", "多分支", "仓库绑定", "同步", "提交统计"),
-        ("github", "webhook", "github_activity", "github_sync", "githubstats", "github-binding"),
-    ),
-    (
-        ("飞书", "feishu", "群消息", "脱敏"),
-        ("feishu",),
-    ),
-    (
-        ("ai", "openrouter", "deepseek", "智能", "摘要", "蓝图", "模型", "用量"),
+        ("通知", "审计日志", "待办", "文件存储", "正文提取", "uploadreceipt", "公共服务"),
         (
-            "modules/a/ai",
+            "modules/a/audit",
+            "modules/a/inbox",
+            "modules/a/storage",
+            "text_extraction",
+            "notification_delivery",
+            "upload_receipt",
+            "a_notifications",
+            "a_audit",
+        ),
+    ),
+    (
+        ("github", "webhook", "多分支", "仓库绑定", "提交统计", "代码增减"),
+        (
+            "github_activity",
+            "github_sync",
+            "github_auto_sync",
+            "github_webhook",
+            "githubstatschart",
+            "modules/a/github",
+            "github_evidence",
+        ),
+    ),
+    (
+        ("飞书", "feishu", "白名单群", "群消息", "脱敏"),
+        ("feishu", "collaboration"),
+    ),
+    (
+        (
+            "openrouter",
+            "deepseek",
+            "ai 中间层",
+            "ai中间层",
+            "用量计费",
+            "智能能力",
+            "提示词",
+            "代码功能分析",
+        ),
+        (
+            "modules/a/ai/",
             "openrouter",
             "activity_summary",
             "deepseek",
-            "ai-usage",
+            "ai_usage",
             "ai_blueprint",
-            "prompt",
         ),
     ),
     (
-        ("上线", "部署", "railway", "sentry", "备份", "监控", "mock", "生产", "环境"),
-        ("railway", "dockerfile", "sentry", "healthz", "readyz", "entrypoint"),
+        ("railway", "sentry", "双环境", "正式上线", "部署", "监控", "健康检查"),
+        ("railway", "dockerfile", "sentry", "healthz", "readyz", "entrypoint", "deploy"),
     ),
     (
-        ("课程", "加入课程", "邀请码", "班级"),
-        ("course", "courses"),
+        ("我的课程", "邀请码", "加入课程", "入课审批"),
+        (
+            "courses_service",
+            "courses_router",
+            "coursesapipage",
+            "b-courses",
+            "course_join",
+            "invite_code",
+        ),
     ),
     (
-        ("小组", "成员变动", "组长", "邀请", "退出", "移出"),
-        ("group", "groups", "membership"),
+        ("课程小组", "建组", "换组长", "组长变更", "成员退出", "移出", "成员变动"),
+        (
+            "groups_service",
+            "groups_router",
+            "groupsapipage",
+            "membership_service",
+            "membershipapipage",
+            "b-groups",
+            "b-membership",
+        ),
     ),
     (
-        ("初始化", "向导", "项目资料", "冲突处理", "审核清单"),
-        ("setup", "draft", "material", "checklist", "conflict", "projectoverview"),
+        ("创建项目向导", "初始化中心", "项目资料", "冲突处理", "审核清单"),
+        (
+            "projects_service",
+            "projects_router",
+            "projectsapipages",
+            "setup_service",
+            "b-projects",
+            "project_materials",
+            "conflicts",
+        ),
     ),
     (
-        ("需求基线", "需求管理", "需求清单", "变更", "版本历史"),
-        ("requirement", "baseline"),
+        ("需求基线", "需求管理", "需求清单", "变更影响", "版本历史", "r-001"),
+        (
+            "requirements_service",
+            "requirements_router",
+            "requirement_history",
+            "requirementsapipage",
+            "requirementssteps",
+            "b-requirements",
+            "b-manage",
+        ),
     ),
     (
-        ("任务规划", "任务计划", "ai建议", "冻结", "解锁", "分工"),
-        ("planning", "plan_validation", "suggestion", "code_progress"),
+        ("任务规划", "任务计划", "ai 建议", "ai建议", "计划冻结", "解锁", "环形依赖", "权重总和"),
+        (
+            "planning_service",
+            "planning_router",
+            "plan_validation",
+            "planningapipage",
+            "b-planning",
+            "ai_blueprint_service",
+            "code_progress_service",
+        ),
     ),
     (
-        ("任务树", "看板", "列表", "三视图", "拖拽"),
-        ("tasksview", "tasksapi", "tasks_view", "board", "kanban", "tree"),
+        ("任务树", "看板", "列表", "三视图", "任务视图", "拖拽"),
+        (
+            "tasks_view_service",
+            "tasks_view_router",
+            "tasks_view_schemas",
+            "tasksapipage",
+            "b-tasks",
+            "student-workspace",
+        ),
     ),
     (
-        ("里程碑", "交付物", "延期", "阶段交付"),
-        ("milestone",),
+        ("里程碑", "交付物", "阶段确认", "日期调整", "延期"),
+        (
+            "milestones_service",
+            "milestones_router",
+            "milestonesapipage",
+            "b-milestones",
+        ),
     ),
     (
-        ("首页", "通知中心", "待处理", "个人动态", "日常入口"),
-        ("daily", "home", "action-items", "notifications", "inbox"),
+        ("日常入口", "首页", "通知中心", "待处理事项", "个人动态"),
+        (
+            "daily_service",
+            "daily_router",
+            "dailyapipages",
+            "inboxapipages",
+            "notificationspage",
+            "daily-entry",
+        ),
     ),
     (
-        ("任务执行", "状态机", "提交验收", "进度更新", "实现说明", "详情drawer"),
-        ("execution", "submit", "progress", "detaildrawer", "note"),
+        ("任务执行", "状态机", "提交验收", "提交准备", "任务说明", "进度历史"),
+        (
+            "task_execution",
+            "execution_router",
+            "executionapipage",
+            "taskcriteriapanel",
+            "note_service",
+            "note_router",
+        ),
     ),
     (
-        ("证据中心", "采纳", "撤回", "来源失效", "有效证据"),
-        ("evidence",),
+        ("证据中心", "候选证据", "正式证据", "采纳", "撤回", "来源失效", "有效证据"),
+        (
+            "evidence_service",
+            "evidence_router",
+            "evidence_sources",
+            "evidenceapipage",
+            "evidencecapturepanel",
+        ),
     ),
     (
-        ("文件资料", "版本管理", "课程文件", "下载"),
-        ("files", "course_files"),
+        ("协作活动", "github 与飞书", "开发活动"),
+        (
+            "activity_service",
+            "activity_router",
+            "activityapipages",
+            "activityrecordpanels",
+            "taskgithubactivities",
+        ),
     ),
     (
-        ("讨论区", "讨论", "回复", "@提及"),
-        ("discussion",),
+        ("文件资料", "文件版本", "课程文件", "官方版本"),
+        (
+            "files_service",
+            "files_router",
+            "course_files",
+            "projectfilesapipage",
+            "coursefilesapipage",
+            "fileversionhistory",
+        ),
     ),
     (
-        ("管理后台", "admin", "教师审核", "系统日志", "访问审批"),
-        ("admin", "access_grant", "teacher_verification"),
+        ("讨论区", "讨论串", "@提及", "重要结论转证据"),
+        (
+            "discussion_service",
+            "discussion_router",
+            "discussion_evidence",
+            "discussionsapipage",
+        ),
     ),
     (
-        ("验收", "完整性检查", "人工确认", "改判", "作废", "规则+ai"),
-        ("verification", "acceptance", "completeness"),
+        ("管理后台", "教师审核", "系统日志", "ai 用量", "访问审批", "治理"),
+        (
+            "admin_users",
+            "admin_workbench",
+            "governance_",
+            "auth_audit",
+            "admindashboard",
+            "governanceapipages",
+            "identityadminapipages",
+            "c_admin",
+        ),
     ),
     (
-        ("贡献", "100%", "申诉", "裁决", "存档"),
-        ("contribution", "appeal"),
+        ("完整性检查", "自动验收", "人工确认", "改判", "作废", "规则+ai"),
+        (
+            "modules/d/integrity",
+            "modules/d/verification",
+            "modules/d/acceptance",
+            "acceptanceapipage",
+            "taskverificationpanel",
+        ),
     ),
     (
-        ("风险", "每日巡检", "风险解释"),
-        ("risk", "daily_risks"),
+        ("贡献度", "100%", "申诉", "裁决", "贡献存档"),
+        (
+            "modules/d/contribution",
+            "contributionapipage",
+            "contributionweek7panel",
+            "teacherappealsapipage",
+        ),
     ),
     (
-        ("报告", "导出", "pdf", "docx", "快照"),
-        ("report", "reporting", "pdf", "docx", "export"),
+        ("风险管理", "每日自动巡检", "风险解释", "高风险"),
+        ("risk_checks", "risk_read", "riskapipage"),
     ),
     (
-        ("项目设置", "归档", "重开", "生命周期"),
-        ("settings", "lifecycle", "reopen", "archive"),
+        ("项目报告", "报告快照", "章节编辑", "pdf", "docx"),
+        ("modules/d/reporting", "report_tasks", "reportapipage", "teacherreportsapipage"),
     ),
     (
-        ("教师端", "规则模板", "打分", "结课", "助教"),
-        ("teacher", "grading", "rule_change"),
+        ("项目基本设置", "项目设置", "归档", "重开", "生命周期"),
+        ("project_lifecycle", "projectsettingsapipage", "coursereopenapipage"),
+    ),
+    (
+        ("教师端", "规则模板", "审阅打分", "结课归档", "助教"),
+        (
+            "teacher_course",
+            "teacher_overview",
+            "teacher_workspace",
+            "teacher_reports",
+            "teacherworkspaceapipage",
+            "teacheroverviewapipage",
+            "courserulesapipage",
+        ),
     ),
 )
 
 _TEST_FILE_HINT = ("test", "spec", "e2e", "pytest")
+_WORD_RE_CACHE: dict[str, re.Pattern[str]] = {}
 
 
 class CodeProgressSyncDTO(BaseModel):
@@ -204,6 +455,8 @@ class CodeProgressSyncDTO(BaseModel):
     commits_matched: int
     tasks_updated: int
     milestones_updated: int
+    evidences_created: int = 0
+    criteria_covered: int = 0
 
 
 @dataclass
@@ -212,6 +465,18 @@ class TaskMatchStat:
     test_commit_count: int = 0
     earliest_at: datetime | None = None
     latest_at: datetime | None = None
+    matched_activity_ids: set[UUID] = field(default_factory=set)
+    criterion_hits: dict[UUID, list[tuple[int, bool, GithubActivity]]] = field(default_factory=dict)
+
+
+@dataclass
+class TaskCriterionMetrics:
+    criteria_total: int = 0
+    criteria_evidenced: int = 0
+    criteria_confirmed: int = 0
+    evidence_count: int = 0
+    matched_commits: int = 0
+    latest_commit_at: datetime | None = None
 
 
 def _utc(dt: datetime) -> datetime:
@@ -227,30 +492,65 @@ def _cjk_bigrams(text: str) -> set[str]:
     return grams
 
 
-def _task_profile(task: Task, module_name: str) -> tuple[set[str], set[str], set[str]]:
-    """提取任务的显式编号、概念触发词组及中英文关键词。"""
-    text = f"{task.title}\n{task.description or ''}\n{module_name}".lower()
+def _word_match(marker: str, text: str) -> bool:
+    if "/" in marker or "." in marker or "_" in marker or "-" in marker:
+        return marker in text
+    pat = _WORD_RE_CACHE.get(marker)
+    if pat is None:
+        pat = re.compile(rf"(?<![a-z0-9]){re.escape(marker)}(?![a-z0-9])", re.IGNORECASE)
+        _WORD_RE_CACHE[marker] = pat
+    return pat.search(text) is not None
+
+
+def _safe_github_url(raw: str | None) -> str | None:
+    if not raw or not isinstance(raw, str):
+        return None
+    cleaned = raw.strip()
+    if not cleaned or "\\" in cleaned or any(ord(c) < 32 or ord(c) == 127 for c in cleaned):
+        return None
+    parts = urlsplit(cleaned)
+    if parts.scheme != "https" or parts.hostname != "github.com" or "@" in parts.netloc:
+        return None
+    return cleaned
+
+
+def _extract_profile(text: str) -> tuple[set[str], set[str], set[str]]:
+    lowered = text.lower()
     subcodes: set[str] = set()
-    for m in _MODULE_CODE_RE.finditer(task.title):
+    for m in _MODULE_CODE_RE.finditer(text):
         subcodes.add(m.group(1).lower())
-    # 也提取说明里类似 A5-01 ~ A5-07 的前缀如 a5
-    for m in re.finditer(r"\b([a-d]\d)-\d+\b", text):
+    for m in re.finditer(r"\b([a-d]\d)-\d+\b", lowered):
         subcodes.add(m.group(1).lower())
 
     concept_markers: set[str] = set()
     for task_hints, commit_hints in _CONCEPT_RULES:
-        if any(h in text for h in task_hints):
+        if any(h in lowered for h in task_hints):
             concept_markers.update(commit_hints)
 
-    ascii_tokens = {
-        tok
-        for tok in _ASCII_TOKEN_RE.findall(text)
-        if tok not in {"api", "app", "src", "tsx", "json", "http", "true", "false"}
-    }
-    return subcodes, concept_markers, ascii_tokens | _cjk_bigrams(text)
+    ascii_tokens = {tok for tok in _ASCII_TOKEN_RE.findall(lowered) if tok not in _STOP_ASCII}
+    return subcodes, concept_markers, ascii_tokens | _cjk_bigrams(lowered)
 
 
-def _commit_text_and_files(row: GithubActivity) -> tuple[str, list[str], bool]:
+def _load_ai_summaries(session: Session, project_id: UUID) -> dict[UUID, dict]:
+    rows = session.scalars(
+        select(ActivitySummary)
+        .where(
+            ActivitySummary.project_id == project_id,
+            ActivitySummary.source_type == "github",
+            ActivitySummary.status == "succeeded",
+        )
+        .order_by(ActivitySummary.generated_at.desc(), ActivitySummary.created_at.desc())
+    ).all()
+    out: dict[UUID, dict] = {}
+    for row in rows:
+        if row.source_id not in out and isinstance(row.result_json, dict):
+            out[row.source_id] = row.result_json
+    return out
+
+
+def _commit_text_and_files(
+    row: GithubActivity, ai_summary: dict | None
+) -> tuple[str, str, list[str], bool]:
     detail = row.detail if isinstance(row.detail, dict) else {}
     raw_files = detail.get("files") if isinstance(detail.get("files"), list) else []
     paths = [
@@ -258,42 +558,58 @@ def _commit_text_and_files(row: GithubActivity) -> tuple[str, list[str], bool]:
         for item in raw_files
         if isinstance(item, dict) and item.get("path")
     ]
-    branch = str(detail.get("branch") or "")
-    branches = " ".join(str(b) for b in (detail.get("branches") or []) if b)
-    combined = f"{row.title}\n{row.summary}\n{branch} {branches}\n" + "\n".join(paths)
+    ai_parts: list[str] = []
+    if isinstance(ai_summary, dict):
+        for key in ("summary_title", "implemented_features", "impact_scope"):
+            val = ai_summary.get(key)
+            if isinstance(val, str) and val.strip():
+                ai_parts.append(val.strip())
+    ai_text = "\n".join(ai_parts)
+    title_lower = (row.title or "").lower()
+    combined = f"{row.title}\n{row.summary}\n{ai_text}\n" + "\n".join(paths)
     has_test = any(any(hint in p for hint in _TEST_FILE_HINT) for p in paths) or any(
-        hint in (row.title or "").lower() for hint in ("test(", "e2e", "pytest")
+        hint in title_lower for hint in ("test(", "test:", "e2e", "pytest")
     )
-    return combined.lower(), paths, has_test
+    return combined.lower(), title_lower, paths, has_test
 
 
-def _member_aliases(session: Session, project_id: UUID) -> dict[str, UUID]:
-    rows = session.execute(
-        select(User.id, User.name, User.github_username)
-        .join(ProjectMember, ProjectMember.user_id == User.id)
-        .where(ProjectMember.project_id == project_id, ProjectMember.left_at.is_(None))
-    ).all()
-    mapping: dict[str, UUID] = {}
-    for uid, name, gh in rows:
-        if gh:
-            mapping[gh.strip().lower()] = uid
-        if name:
-            mapping[name.strip().lower()] = uid
-    return mapping
+def _score_profile(
+    profile: tuple[set[str], set[str], set[str]],
+    *,
+    text: str,
+    title_lower: str,
+    paths: list[str],
+    commit_tokens: set[str],
+) -> int:
+    subcodes, concept_markers, tokens = profile
+    score = 0
+    for sc in subcodes:
+        if re.search(rf"(?<![a-z0-9]){re.escape(sc)}(?:-\d+)?(?![a-z0-9])", text):
+            score += 24
+    for marker in concept_markers:
+        if any(marker in p for p in paths):
+            score += 8
+        elif _word_match(marker, title_lower):
+            score += 7
+        elif _word_match(marker, text):
+            score += 3
+    overlap = commit_tokens & tokens
+    score += min(10, len(overlap) * 2)
+    return score
 
 
-def _match_commits_to_tasks(
+def _match_commits_to_tasks_and_criteria(
     session: Session,
     project_id: UUID,
     tasks: list[Task],
     meta_by_task: dict[UUID, BTaskMeta],
-    assignees_by_task: dict[UUID, set[UUID]],
     modules_by_id: dict[UUID, str],
-) -> tuple[dict[UUID, TaskMatchStat], int, int]:
-    """把本项目全部非机器人 GitHub 提交映射到最匹配的任务，返回每个任务的命中统计。"""
+    criteria_by_task: dict[UUID, list[AcceptanceCriterion]],
+) -> tuple[dict[UUID, TaskMatchStat], dict[UUID, dict], int, int]:
+    """严格基于代码文件、提交信息与 AI 摘要将提交精准匹配至任务及具体交付标准。"""
     stats_by_task: dict[UUID, TaskMatchStat] = {t.id: TaskMatchStat() for t in tasks}
     if not tasks:
-        return stats_by_task, 0, 0
+        return stats_by_task, {}, 0, 0
 
     commits = list(
         session.scalars(
@@ -307,8 +623,9 @@ def _match_commits_to_tasks(
         )
     )
     if not commits:
-        return stats_by_task, 0, 0
+        return stats_by_task, {}, 0, 0
 
+    ai_summaries = _load_ai_summaries(session, project_id)
     explicit_links = {
         row.source_id: row.task_id
         for row in session.scalars(
@@ -321,8 +638,17 @@ def _match_commits_to_tasks(
         if row.task_id is not None
     }
     by_seq = {meta.seq: meta.task_id for meta in meta_by_task.values()}
-    profiles = {t.id: _task_profile(t, modules_by_id.get(t.module_id, "")) for t in tasks}
-    aliases = _member_aliases(session, project_id)
+
+    task_profiles: dict[UUID, tuple[set[str], set[str], set[str]]] = {}
+    crit_profiles: dict[UUID, tuple[set[str], set[str], set[str]]] = {}
+    for t in tasks:
+        crits = criteria_by_task.get(t.id, [])
+        crit_blob = "\n".join(c.text for c in crits)
+        task_profiles[t.id] = _extract_profile(
+            f"{t.title}\n{t.description or ''}\n{modules_by_id.get(t.module_id, '')}\n{crit_blob}"
+        )
+        for c in crits:
+            crit_profiles[c.id] = _extract_profile(f"{c.text}\n{t.title}")
 
     scanned = 0
     matched_commits = 0
@@ -333,67 +659,58 @@ def _match_commits_to_tasks(
             continue
         scanned += 1
         occurred = _utc(row.occurred_at)
-        text, paths, has_test = _commit_text_and_files(row)
+        ai_summary = ai_summaries.get(row.id)
+        text, title_lower, paths, has_test = _commit_text_and_files(row, ai_summary)
+        commit_tokens = {
+            tok for tok in _ASCII_TOKEN_RE.findall(text) if tok not in _STOP_ASCII
+        } | _cjk_bigrams(text)
 
-        target_task_id: UUID | None = explicit_links.get(row.id)
-        if target_task_id is not None and target_task_id not in stats_by_task:
-            target_task_id = None
+        matched_targets: list[tuple[UUID, int]] = []
+        explicit_tid = explicit_links.get(row.id)
+        if explicit_tid is not None and explicit_tid in stats_by_task:
+            matched_targets.append((explicit_tid, 100))
 
-        if target_task_id is None:
+        if not matched_targets:
             for m in _TASK_CODE_RE.finditer(f"{row.title}\n{row.summary}"):
                 seq = int(m.group(1))
                 if seq in by_seq:
-                    target_task_id = by_seq[seq]
+                    matched_targets.append((by_seq[seq], 100))
                     break
 
-        if target_task_id is None:
-            author_uid = row.author_user_id
-            if author_uid is None:
-                for cand in (row.author_login, row.author_name):
-                    if cand and cand.strip().lower() in aliases:
-                        author_uid = aliases[cand.strip().lower()]
-                        break
+        if not matched_targets:
+            # 纯分支合并提交包含大量跨模块历史改动，不作为自动代码匹配证据
+            if _MERGE_COMMIT_RE.match((row.title or "").strip()):
+                continue
 
-            # 提取提交自身文本与路径里的信号
-            commit_ascii = set(_ASCII_TOKEN_RE.findall(text))
-            commit_bigrams = _cjk_bigrams(text)
-
-            best_score = 0
-            best_task_id: UUID | None = None
+            scored: list[tuple[int, UUID]] = []
             for task in tasks:
-                subcodes, concept_markers, tokens = profiles[task.id]
-                score = 0
-                # 1. 提交明确带 A5 / B3 等模块编号
-                for sc in subcodes:
-                    if re.search(rf"\b{re.escape(sc)}(?:-\d+)?\b", text):
-                        score += 24
-                # 2. 概念规则命中文件路径与标题关键词
-                title_lower = (row.title or "").lower()
-                for marker in concept_markers:
-                    if marker in title_lower:
-                        score += 6
-                    elif any(marker in p for p in paths):
-                        score += 5
-                    elif marker in text:
-                        score += 3
-                # 3. 共享词命中
-                overlap = (commit_ascii | commit_bigrams) & tokens
-                score += min(12, len(overlap) * 2)
-                # 4. 提交者恰好是该任务负责人时的合理加权
-                if author_uid is not None and author_uid in assignees_by_task.get(task.id, set()):
-                    score += 5
+                score = _score_profile(
+                    task_profiles[task.id],
+                    text=text,
+                    title_lower=title_lower,
+                    paths=paths,
+                    commit_tokens=commit_tokens,
+                )
+                if score >= 8:
+                    scored.append((score, task.id))
+            scored.sort(key=lambda item: item[0], reverse=True)
+            if scored:
+                best_score, best_tid = scored[0]
+                matched_targets.append((best_tid, best_score))
+                # 若同一提交确切同时改动了第二个任务的核心文件，允许最多关联 2 个任务
+                if len(scored) > 1:
+                    second_score, second_tid = scored[1]
+                    if second_score >= 14 and second_score >= best_score * 0.72:
+                        matched_targets.append((second_tid, second_score))
 
-                if score > best_score:
-                    best_score = score
-                    best_task_id = task.id
+        if not matched_targets:
+            continue
 
-            if best_score >= 6 and best_task_id is not None:
-                target_task_id = best_task_id
-
-        if target_task_id is not None:
-            matched_commits += 1
-            stat = stats_by_task[target_task_id]
+        matched_commits += 1
+        for tid, t_score in matched_targets:
+            stat = stats_by_task[tid]
             stat.commit_count += 1
+            stat.matched_activity_ids.add(row.id)
             if has_test:
                 stat.test_commit_count += 1
             if stat.earliest_at is None or occurred < stat.earliest_at:
@@ -401,35 +718,349 @@ def _match_commits_to_tasks(
             if stat.latest_at is None or occurred > stat.latest_at:
                 stat.latest_at = occurred
 
-    return stats_by_task, scanned, matched_commits
+            crits = criteria_by_task.get(tid, [])
+            if not crits:
+                continue
+            crit_scores: list[tuple[int, UUID]] = []
+            for c in crits:
+                cs = _score_profile(
+                    crit_profiles[c.id],
+                    text=text,
+                    title_lower=title_lower,
+                    paths=paths,
+                    commit_tokens=commit_tokens,
+                )
+                crit_scores.append((cs, c.id))
+            crit_scores.sort(key=lambda item: item[0], reverse=True)
+            top_cs = crit_scores[0][0]
+            chosen_cids = [
+                cid
+                for cs, cid in crit_scores
+                if cs >= 6 and (cs >= top_cs * 0.65 or len(crits) <= 2)
+            ]
+            if not chosen_cids:
+                # 显式 #T-001 绑定时默认覆盖最相近的标准（若任务只有 1 条标准则直接覆盖）
+                if t_score >= 100 or len(crits) == 1:
+                    chosen_cids = [crit_scores[0][1]]
+                elif top_cs >= 4:
+                    chosen_cids = [crit_scores[0][1]]
+            for cid in chosen_cids:
+                stat.criterion_hits.setdefault(cid, []).append((t_score + top_cs, has_test, row))
+
+    return stats_by_task, ai_summaries, scanned, matched_commits
 
 
-def _estimate_code_progress(stat: TaskMatchStat) -> int:
-    """根据真实提交数量与是否含测试变更估算进度（封顶 90%，保留人工最终提交与验收）。"""
-    n = stat.commit_count
-    if n <= 0:
+def _create_candidate_evidences(
+    session: Session,
+    project_id: UUID,
+    tasks: list[Task],
+    stats_by_task: dict[UUID, TaskMatchStat],
+    ai_summaries: dict[UUID, dict],
+    criteria_by_task: dict[UUID, list[AcceptanceCriterion]],
+    fallback_actor_id: UUID | None,
+) -> int:
+    """把各交付标准命中的代表性 GitHub 提交幂等写入 C 模块真实候选证据表。"""
+    if fallback_actor_id is None:
         return 0
-    if n == 1:
-        base = 25
-    elif n == 2:
-        base = 40
-    elif n <= 4:
-        base = 55
-    elif n <= 8:
-        base = 70
-    elif n <= 14:
-        base = 80
-    else:
-        base = 85
-    if stat.test_commit_count > 0 and n >= 2:
-        base = min(MAX_AUTO_CODE_PROGRESS, base + 5)
-    return min(MAX_AUTO_CODE_PROGRESS, base)
+
+    existing_rows = session.execute(
+        select(
+            Evidence.id,
+            Evidence.task_id,
+            Evidence.status,
+            EvidenceSourceSnapshot.content_json,
+        )
+        .join(EvidenceSourceSnapshot, EvidenceSourceSnapshot.evidence_id == Evidence.id)
+        .where(
+            Evidence.project_id == project_id,
+            Evidence.source_type == "github",
+            EvidenceSourceSnapshot.version_no == 1,
+        )
+    ).all()
+    existing_by_key: dict[tuple[UUID, str], tuple[UUID, str]] = {}
+    for ev_id, task_id, status, content_json in existing_rows:
+        src_id = (content_json or {}).get("source_id") if isinstance(content_json, dict) else None
+        if isinstance(src_id, str):
+            existing_by_key[(task_id, src_id)] = (ev_id, status)
+
+    existing_ec = set(
+        session.execute(
+            select(EvidenceCriterion.evidence_id, EvidenceCriterion.criterion_id)
+            .join(Evidence, Evidence.id == EvidenceCriterion.evidence_id)
+            .where(Evidence.project_id == project_id)
+        ).all()
+    )
+    existing_state_rows = list(
+        session.scalars(
+            select(ActivityRecordState).where(
+                ActivityRecordState.project_id == project_id,
+                ActivityRecordState.source_type == "github",
+            )
+        )
+    )
+    existing_states = {row.source_id: row for row in existing_state_rows}
+    existing_identities = {row.source_identity for row in existing_state_rows}
+
+    created = 0
+    for task in tasks:
+        stat = stats_by_task.get(task.id)
+        crits = criteria_by_task.get(task.id, [])
+        if stat is None or not stat.criterion_hits or not crits:
+            continue
+
+        # 为每条交付标准挑出 Top 2 最具代表性的提交，合并到按 commit 去重的证据集合中
+        selected_cids_by_act: dict[UUID, set[UUID]] = {}
+        act_obj: dict[UUID, GithubActivity] = {}
+        act_rank: dict[UUID, tuple[int, int, int, datetime]] = {}
+        for c in crits:
+            hits = stat.criterion_hits.get(c.id, [])
+            if not hits:
+                continue
+            hits_sorted = sorted(
+                hits,
+                key=lambda item: (
+                    item[0],
+                    1 if item[2].id in ai_summaries else 0,
+                    1 if item[1] else 0,
+                    _utc(item[2].occurred_at),
+                ),
+                reverse=True,
+            )
+            seen_for_crit: set[UUID] = set()
+            for score, has_test, act in hits_sorted:
+                if act.id in seen_for_crit:
+                    continue
+                seen_for_crit.add(act.id)
+                selected_cids_by_act.setdefault(act.id, set()).add(c.id)
+                act_obj[act.id] = act
+                rank = (
+                    score,
+                    1 if act.id in ai_summaries else 0,
+                    1 if has_test else 0,
+                    _utc(act.occurred_at),
+                )
+                if act.id not in act_rank or rank > act_rank[act.id]:
+                    act_rank[act.id] = rank
+                if len(seen_for_crit) >= MAX_EVIDENCE_PER_CRITERION:
+                    break
+
+        # 保证每条命中的交付标准至少保留 1 条代表提交，总自动候选证据受上限控制
+        ordered_acts = sorted(
+            selected_cids_by_act.keys(),
+            key=lambda aid: (len(selected_cids_by_act[aid]), act_rank[aid]),
+            reverse=True,
+        )
+        kept_acts: list[UUID] = []
+        covered_cids: set[UUID] = set()
+        for aid in ordered_acts:
+            cids = selected_cids_by_act[aid]
+            if len(kept_acts) < MAX_AUTO_EVIDENCE_PER_TASK or not cids.issubset(covered_cids):
+                kept_acts.append(aid)
+                covered_cids.update(cids)
+
+        for aid in kept_acts:
+            act = act_obj[aid]
+            cids = sorted(selected_cids_by_act[aid], key=str)
+            key = (task.id, str(act.id))
+            if key in existing_by_key:
+                ev_id, ev_status = existing_by_key[key]
+                # 只为仍处于 candidate 的自动证据补充新命中的标准关联，绝不覆盖人工采纳/撤回
+                if ev_status == "candidate":
+                    for cid in cids:
+                        if (ev_id, cid) not in existing_ec:
+                            session.add(EvidenceCriterion(evidence_id=ev_id, criterion_id=cid))
+                            existing_ec.add((ev_id, cid))
+                continue
+
+            sha = (act.revision or act.external_id or str(act.id))[:40]
+            short_sha = sha[:7]
+            detail = act.detail if isinstance(act.detail, dict) else {}
+            raw_files = detail.get("files") if isinstance(detail.get("files"), list) else []
+            file_paths = [
+                str(item.get("path"))
+                for item in raw_files
+                if isinstance(item, dict) and item.get("path")
+            ]
+            ai_sum = ai_summaries.get(act.id)
+            ai_title = (
+                ai_sum.get("summary_title").strip()
+                if isinstance(ai_sum, dict) and isinstance(ai_sum.get("summary_title"), str)
+                else ""
+            )
+            ai_feat = (
+                ai_sum.get("implemented_features").strip()
+                if isinstance(ai_sum, dict) and isinstance(ai_sum.get("implemented_features"), str)
+                else ""
+            )
+            ev_title = f"[{short_sha}] {ai_title or act.title or 'GitHub 代码提交'}"[:240]
+            desc_lines: list[str] = []
+            if ai_feat:
+                desc_lines.append(f"AI 代码实现分析：{ai_feat}")
+            elif act.summary:
+                desc_lines.append(act.summary.strip())
+            else:
+                desc_lines.append(f"GitHub 提交：{act.title}")
+            if file_paths:
+                preview = "、".join(file_paths[:8])
+                suffix = f" 等 {len(file_paths)} 个文件" if len(file_paths) > 8 else ""
+                desc_lines.append(f"改动文件：{preview}{suffix}")
+            author_label = act.author_name or act.author_login or "项目成员"
+            desc_lines.append(f"提交人：{author_label} · 提交编号：{short_sha}")
+            ev_desc = "\n".join(desc_lines)
+
+            author_id = act.author_user_id or fallback_actor_id
+            ev_id = uuid4()
+            source_url = _safe_github_url(act.url)
+            source_payload = {
+                "kind": "commit",
+                "sha": sha,
+                "title": act.title,
+                "summary": ai_feat or act.summary or act.title,
+                "body": ev_desc,
+                "url": source_url,
+                "author_login": act.author_login,
+                "author_name": act.author_name,
+                "files": file_paths[:20],
+            }
+
+            session.add(
+                Evidence(
+                    id=ev_id,
+                    project_id=project_id,
+                    task_id=task.id,
+                    author_id=author_id,
+                    title=ev_title,
+                    description=ev_desc,
+                    source_type="github",
+                    source_url=source_url,
+                    status="candidate",
+                    lock_version=0,
+                    source_changed=False,
+                )
+            )
+            session.flush()
+            for cid in cids:
+                session.add(EvidenceCriterion(evidence_id=ev_id, criterion_id=cid))
+                existing_ec.add((ev_id, cid))
+            session.add(
+                EvidenceSourceSnapshot(
+                    evidence_id=ev_id,
+                    version_no=1,
+                    source_identity=sha,
+                    source_revision=sha,
+                    content_hash=content_hash(
+                        {"availability": "available", "source": source_payload}
+                    ),
+                    content_json={
+                        "source_id": str(act.id),
+                        "availability": "available",
+                        "source": source_payload,
+                    },
+                    captured_by=author_id,
+                )
+            )
+            session.add(
+                EvidenceDecision(
+                    evidence_id=ev_id,
+                    actor_id=author_id,
+                    decision="submitted",
+                    resulting_status="candidate",
+                    reason="代码同步按改动文件与交付标准自动关联为候选证据，待人工确认采纳。",
+                )
+            )
+            existing_by_key[key] = (ev_id, "candidate")
+            created += 1
+
+            # 同步写入 ActivityRecordState，确保任务详情里的 GitHub 提交面板同步可见
+            st = existing_states.get(act.id)
+            state_identity = f"commit:{sha}"
+            if st is None and state_identity not in existing_identities:
+                st = ActivityRecordState(
+                    id=uuid4(),
+                    project_id=project_id,
+                    source_type="github",
+                    source_id=act.id,
+                    source_identity=state_identity,
+                    status="candidate",
+                    task_id=task.id,
+                    evidence_id=None,
+                )
+                session.add(st)
+                existing_states[act.id] = st
+                existing_identities.add(state_identity)
+            elif st is not None and st.task_id is None and st.status != "ignored":
+                st.task_id = task.id
+
+    session.flush()
+    return created
+
+
+def task_criteria_metrics(
+    session: Session, project_id: UUID, tasks: list[Task]
+) -> dict[UUID, TaskCriterionMetrics]:
+    """只读计算各任务的交付标准达成与真实证据统计。"""
+    out: dict[UUID, TaskCriterionMetrics] = {t.id: TaskCriterionMetrics() for t in tasks}
+    if not tasks:
+        return out
+    task_ids = [t.id for t in tasks]
+
+    criteria = session.scalars(
+        select(AcceptanceCriterion).where(AcceptanceCriterion.task_id.in_(task_ids))
+    ).all()
+    criteria_ids_by_task: dict[UUID, set[UUID]] = {tid: set() for tid in task_ids}
+    for c in criteria:
+        criteria_ids_by_task.setdefault(c.task_id, set()).add(c.id)
+    for tid, cids in criteria_ids_by_task.items():
+        out[tid].criteria_total = len(cids)
+
+    evidences = session.scalars(
+        select(Evidence).where(
+            Evidence.project_id == project_id,
+            Evidence.task_id.in_(task_ids),
+            Evidence.status.in_(("candidate", "pending_confirmation", "formal")),
+            Evidence.source_changed.is_(False),
+        )
+    ).all()
+    if not evidences:
+        return out
+
+    ev_by_id = {e.id: e for e in evidences}
+    for e in evidences:
+        out[e.task_id].evidence_count += 1
+        if e.source_type == "github":
+            out[e.task_id].matched_commits += 1
+            ts = _utc(e.created_at) if e.created_at else None
+            if ts and (
+                out[e.task_id].latest_commit_at is None or ts > out[e.task_id].latest_commit_at
+            ):
+                out[e.task_id].latest_commit_at = ts
+
+    ec_rows = session.execute(
+        select(EvidenceCriterion.evidence_id, EvidenceCriterion.criterion_id).where(
+            EvidenceCriterion.evidence_id.in_(list(ev_by_id.keys()))
+        )
+    ).all()
+    evidenced_by_task: dict[UUID, set[UUID]] = {tid: set() for tid in task_ids}
+    confirmed_by_task: dict[UUID, set[UUID]] = {tid: set() for tid in task_ids}
+    for ev_id, cid in ec_rows:
+        ev = ev_by_id.get(ev_id)
+        if ev is None or cid not in criteria_ids_by_task.get(ev.task_id, set()):
+            continue
+        evidenced_by_task[ev.task_id].add(cid)
+        if ev.status == "formal":
+            confirmed_by_task[ev.task_id].add(cid)
+
+    for tid in task_ids:
+        out[tid].criteria_evidenced = len(evidenced_by_task[tid])
+        out[tid].criteria_confirmed = len(confirmed_by_task[tid])
+
+    return out
 
 
 def task_commit_metrics(
     session: Session, project_id: UUID, tasks: list[Task]
 ) -> dict[UUID, TaskMatchStat]:
-    """只读计算本项目每个任务关联到的真实提交数量与最近提交时间。"""
+    """只读计算本项目每个任务关联到的真实提交数量与最近提交时间（兼容旧调用）。"""
     if not tasks:
         return {}
     task_ids = [t.id for t in tasks]
@@ -437,23 +1068,42 @@ def task_commit_metrics(
         m.task_id: m
         for m in session.scalars(select(BTaskMeta).where(BTaskMeta.project_id == project_id))
     }
-    assignees_by_task: dict[UUID, set[UUID]] = {}
-    for row in session.scalars(
-        select(TaskAssignee).where(
-            TaskAssignee.task_id.in_(task_ids), TaskAssignee.unassigned_at.is_(None)
-        )
-    ):
-        assignees_by_task.setdefault(row.task_id, set()).add(row.user_id)
     modules_by_id = {
         m.id: m.name
         for m in session.scalars(
             select(FunctionalModule).where(FunctionalModule.project_id == project_id)
         )
     }
-    stats_by_task, _, _ = _match_commits_to_tasks(
-        session, project_id, tasks, meta_by_task, assignees_by_task, modules_by_id
+    criteria_by_task: dict[UUID, list[AcceptanceCriterion]] = {}
+    for c in session.scalars(
+        select(AcceptanceCriterion)
+        .where(AcceptanceCriterion.task_id.in_(task_ids))
+        .order_by(AcceptanceCriterion.sort_order, AcceptanceCriterion.id)
+    ):
+        criteria_by_task.setdefault(c.task_id, []).append(c)
+
+    stats_by_task, _, _, _ = _match_commits_to_tasks_and_criteria(
+        session, project_id, tasks, meta_by_task, modules_by_id, criteria_by_task
     )
     return stats_by_task
+
+
+def _estimate_criterion_progress(
+    metrics: TaskCriterionMetrics,
+    *,
+    has_test: bool,
+) -> int:
+    """严格按交付标准覆盖比例估算进度（仅候选证据时封顶 90%，待人工确认与完成验收）。"""
+    total = metrics.criteria_total
+    if total <= 0:
+        return 0
+    confirmed = min(metrics.criteria_confirmed, total)
+    candidate_only = max(0, min(metrics.criteria_evidenced, total) - confirmed)
+    if confirmed == 0 and candidate_only == 0:
+        return 0
+    candidate_weight = 0.90 if has_test else 0.85
+    raw = round(((confirmed * 1.0 + candidate_only * candidate_weight) / total) * 100)
+    return min(MAX_AUTO_CODE_PROGRESS, max(1, raw))
 
 
 def sync_task_code_progress(
@@ -462,9 +1112,10 @@ def sync_task_code_progress(
     *,
     actor: User | None = None,
     require_member_auth: bool = False,
+    recalculate: bool = False,
     request=None,
 ) -> CodeProgressSyncDTO:
-    """根据已同步的 GitHub 提交自动推进关联任务至进行中并更新参考进度（最高 90%）。"""
+    """按代码内容关联交付标准、写入真实候选证据，并按标准覆盖度更新任务与里程碑进度。"""
     if require_member_auth:
         if actor is None:
             raise ApiError(401, "UNAUTHORIZED", "请先登录。")
@@ -507,12 +1158,14 @@ def sync_task_code_progress(
             select(FunctionalModule).where(FunctionalModule.project_id == project_id)
         )
     }
+    criteria_by_task: dict[UUID, list[AcceptanceCriterion]] = {}
+    for c in session.scalars(
+        select(AcceptanceCriterion)
+        .where(AcceptanceCriterion.task_id.in_(task_ids))
+        .order_by(AcceptanceCriterion.sort_order, AcceptanceCriterion.id)
+    ):
+        criteria_by_task.setdefault(c.task_id, []).append(c)
 
-    stats_by_task, scanned, matched_commits = _match_commits_to_tasks(
-        session, project_id, tasks, meta_by_task, assignees_by_task, modules_by_id
-    )
-
-    parent_ids = {t.parent_task_id for t in tasks if t.parent_task_id is not None}
     fallback_actor_id = actor.id if actor is not None else None
     if fallback_actor_id is None:
         fallback_actor_id = session.scalar(
@@ -521,29 +1174,55 @@ def sync_task_code_progress(
             .limit(1)
         )
 
+    stats_by_task, ai_summaries, scanned, matched_commits = _match_commits_to_tasks_and_criteria(
+        session, project_id, tasks, meta_by_task, modules_by_id, criteria_by_task
+    )
+
+    evidences_created = _create_candidate_evidences(
+        session,
+        project_id,
+        tasks,
+        stats_by_task,
+        ai_summaries,
+        criteria_by_task,
+        fallback_actor_id,
+    )
+
+    crit_metrics = task_criteria_metrics(session, project_id, tasks)
+    total_criteria_covered = sum(m.criteria_evidenced for m in crit_metrics.values())
+
+    parent_ids = {t.parent_task_id for t in tasks if t.parent_task_id is not None}
     ts = now()
     tasks_updated = 0
     for task in tasks:
         if task.id in parent_ids:
             continue  # 父任务进度从子任务自动汇总
-        stat = stats_by_task.get(task.id)
-        if stat is None or stat.commit_count == 0:
-            continue
         if task.status not in {"not_started", "in_progress", "pending_submission"}:
             continue
 
-        estimated = _estimate_code_progress(stat)
+        cm = crit_metrics.get(task.id, TaskCriterionMetrics())
+        stat = stats_by_task.get(task.id)
+        has_test = bool(stat and stat.test_commit_count > 0)
+        estimated = _estimate_criterion_progress(cm, has_test=has_test)
+
         changed = False
         prev_status = task.status
         prev_progress = task.progress_percent
 
-        if task.status == "not_started":
-            task.status = "in_progress"
-            if task.started_at is None:
-                task.started_at = stat.earliest_at or ts
-            changed = True
-        if estimated > task.progress_percent:
-            task.progress_percent = estimated
+        if cm.criteria_evidenced > 0:
+            if task.status == "not_started":
+                task.status = "in_progress"
+                if task.started_at is None:
+                    task.started_at = (stat.earliest_at if stat else None) or ts
+                changed = True
+            if (recalculate and estimated != task.progress_percent) or (
+                not recalculate and estimated > task.progress_percent
+            ):
+                task.progress_percent = estimated
+                changed = True
+        elif recalculate and task.status == "in_progress" and task.progress_percent > 0:
+            task.status = "not_started"
+            task.progress_percent = 0
             changed = True
 
         if changed:
@@ -556,6 +1235,12 @@ def sync_task_code_progress(
                 or task.created_by
             )
             if ev_actor is not None:
+                reason = (
+                    f"依据代码证据覆盖 {cm.criteria_evidenced}/{cm.criteria_total} 条交付标准"
+                    f"（已人工确认 {cm.criteria_confirmed} 条，待人工确认后正式完成）"
+                    if cm.criteria_evidenced > 0
+                    else "重新按代码与交付标准核对：暂无匹配的代码证据，重置为未开始"
+                )
                 session.add(
                     ProgressEvent(
                         id=uuid4(),
@@ -566,14 +1251,10 @@ def sync_task_code_progress(
                         to_status=task.status,
                         progress_before=prev_progress,
                         progress_after=task.progress_percent,
-                        reason=(
-                            f"GitHub 代码同步自动关联 {stat.commit_count} 次提交"
-                            "（参考进度上限 90%，待人工提交验收）"
-                        ),
+                        reason=reason,
                     )
                 )
 
-    # 联动里程碑状态：若里程碑下已有任务进入进行中，则把里程碑从 not_started 推进至 in_progress
     milestones_updated = 0
     milestones = list(session.scalars(select(Milestone).where(Milestone.project_id == project_id)))
     if milestones:
@@ -592,7 +1273,7 @@ def sync_task_code_progress(
                 ms.lock_version += 1
                 milestones_updated += 1
 
-    if tasks_updated > 0 and actor is not None:
+    if (tasks_updated > 0 or evidences_created > 0) and actor is not None:
         record_audit(
             session,
             actor=actor,
@@ -603,6 +1284,8 @@ def sync_task_code_progress(
             after={
                 "commits_scanned": scanned,
                 "commits_matched": matched_commits,
+                "evidences_created": evidences_created,
+                "criteria_covered": total_criteria_covered,
                 "tasks_updated": tasks_updated,
                 "milestones_updated": milestones_updated,
             },
@@ -614,4 +1297,6 @@ def sync_task_code_progress(
         commits_matched=matched_commits,
         tasks_updated=tasks_updated,
         milestones_updated=milestones_updated,
+        evidences_created=evidences_created,
+        criteria_covered=total_criteria_covered,
     )

@@ -17,9 +17,18 @@ from app.db.base import Base
 from app.db.models import Milestone, Project, ProjectMember, Task, User
 from app.modules.a.ai.functions import _normalize_weights_to_100
 from app.modules.a.models import GithubActivity, GithubRepoLink
-from app.modules.b import ai_blueprint_service, code_progress_service, tasks_view_service
+from app.modules.b import (
+    ai_blueprint_service,
+    code_progress_service,
+    planning_service,
+    tasks_view_service,
+)
 from app.modules.b.models import BModuleMeta, BProjectMaterial, BRequirementMeta, BTaskMeta
+from app.modules.b.planning_schemas import ConfirmAssignment, FreezePlan
 from app.modules.b.ports import get_verification_port
+from app.modules.c.models import Evidence, EvidenceCriterion
+from app.modules.d import acceptance
+from app.modules.d import models as _d_models  # noqa: F401
 from tests.b_fixtures import _user, b_postgres_schema, b_test_database_url
 
 
@@ -57,6 +66,10 @@ def bp_db(monkeypatch):
                 "joined_at",
                 "linked_at",
                 "occurred_at",
+                "checked_at",
+                "decided_at",
+                "synced_at",
+                "recorded_at",
             }:
                 setattr(target, column.key, now)
 
@@ -318,6 +331,8 @@ def test_code_progress_sync_matches_commits_and_caps_at_90_percent(bp_db):
     assert sync_res.commits_matched == 22
     assert sync_res.tasks_updated == 1
     assert sync_res.milestones_updated == 1
+    assert sync_res.evidences_created >= 1
+    assert sync_res.criteria_covered >= 1
 
     bp_db.refresh(task)
     bp_db.refresh(milestone)
@@ -326,6 +341,145 @@ def test_code_progress_sync_matches_commits_and_caps_at_90_percent(bp_db):
     assert task.progress_percent == 90
     assert milestone.status == "in_progress"
 
+    # 真实候选证据已入库并关联到交付标准，再次同步幂等不重复建证据
+    ev_rows = list(bp_db.scalars(select(Evidence).where(Evidence.task_id == task.id)))
+    assert len(ev_rows) == sync_res.evidences_created
+    assert all(e.source_type == "github" and e.status == "candidate" for e in ev_rows)
+    ec_rows = list(
+        bp_db.scalars(
+            select(EvidenceCriterion.criterion_id).where(
+                EvidenceCriterion.evidence_id.in_([e.id for e in ev_rows])
+            )
+        )
+    )
+    assert len(ec_rows) >= 1
+
+    replay_res = code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+    assert replay_res.evidences_created == 0
+
     page = tasks_view_service.list_tasks(bp_db, leader, project.id, view="list")
     assert page.items[0].matched_commits == 22
     assert page.items[0].progress_percent == 90
+    assert page.items[0].criteria_total >= 1
+    assert page.items[0].criteria_evidenced == page.items[0].criteria_total
+    assert page.items[0].criteria_confirmed == 0
+    assert page.items[0].evidence_count == len(ev_rows)
+
+    # 冻结计划后验证：未采纳为正式证据前不可直接完成任务；全部采纳后可走完验收闭环变为 100% 已完成
+    project.setup_status = "frozen"
+    bp_db.flush()
+    plan_dto = planning_service.plan_view(bp_db, leader, project.id)
+    planning_service.confirm_mine(
+        bp_db, leader, project.id, ConfirmAssignment(task_versions=plan_dto.my_task_versions)
+    )
+    member_plan = planning_service.plan_view(bp_db, _member, project.id)
+    planning_service.confirm_mine(
+        bp_db, _member, project.id, ConfirmAssignment(task_versions=member_plan.my_task_versions)
+    )
+    plan_dto = planning_service.plan_view(bp_db, leader, project.id)
+    planning_service.freeze(
+        bp_db, leader, project.id, FreezePlan(expected_version=plan_dto.lock_version)
+    )
+
+    with pytest.raises(ApiError) as exc:
+        acceptance.complete_by_criteria(bp_db, project.id, task.id, leader)
+    assert exc.value.code == "CRITERIA_NOT_CONFIRMED"
+
+    for ev in ev_rows:
+        ev.status = "formal"
+        ev.lock_version += 1
+    bp_db.flush()
+
+    page_after_adopt = tasks_view_service.list_tasks(bp_db, leader, project.id, view="list")
+    assert page_after_adopt.items[0].criteria_confirmed == page_after_adopt.items[0].criteria_total
+
+    done = acceptance.complete_by_criteria(bp_db, project.id, task.id, leader)
+    assert done["status"] == "completed"
+    assert done["task_status"] == "completed"
+    assert done["progress_percent"] == 100
+    bp_db.refresh(task)
+    assert task.status == "completed"
+    assert task.progress_percent == 100
+
+
+def test_code_matching_does_not_spill_by_assignee_alone(bp_db):
+    leader, _member, project = _seed_independent_project(bp_db)
+    mat = BProjectMaterial(
+        id=uuid4(),
+        project_id=project.id,
+        kind="text",
+        title="规划.txt",
+        text_content="A1 仓库协作与 CI",
+        extract_status="ready",
+        created_by=leader.id,
+    )
+    bp_db.add(mat)
+    bp_db.flush()
+    ai_blueprint_service.generate_and_apply_blueprint(
+        bp_db, leader, project.id, get_verification_port()
+    )
+    task = bp_db.scalar(select(Task).where(Task.project_id == project.id))
+    assert task is not None
+
+    link = GithubRepoLink(
+        id=uuid4(),
+        project_id=project.id,
+        owner="acme",
+        repo="demo",
+        installation_id=123,
+        default_branch="main",
+        linked_by_id=leader.id,
+    )
+    bp_db.add(link)
+    bp_db.flush()
+
+    # 提交者虽是负责人，但内容只是无关的 Merge 提交与无关文档改动，不应错误关联该任务
+    bp_db.add(
+        GithubActivity(
+            id=uuid4(),
+            project_id=project.id,
+            link_id=link.id,
+            kind="commit",
+            external_id="merge-01",
+            revision="merge-01",
+            title="Merge branch 'develop' into main",
+            summary="",
+            author_login="ZZJ1977",
+            author_name="卓子杰",
+            author_user_id=leader.id,
+            detail={"sha": "merge-01", "files": [{"path": "README.md"}]},
+            occurred_at=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+            synced_at=datetime(2026, 11, 20, 10, 5, tzinfo=UTC),
+        )
+    )
+    bp_db.add(
+        GithubActivity(
+            id=uuid4(),
+            project_id=project.id,
+            link_id=link.id,
+            kind="commit",
+            external_id="unrelated-01",
+            revision="unrelated-01",
+            title="chore: tweak typography spacing",
+            summary="",
+            author_login="ZZJ1977",
+            author_name="卓子杰",
+            author_user_id=leader.id,
+            detail={"sha": "unrelated-01", "files": [{"path": "docs/notes.txt"}]},
+            occurred_at=datetime(2026, 11, 20, 11, 0, tzinfo=UTC),
+            synced_at=datetime(2026, 11, 20, 11, 5, tzinfo=UTC),
+        )
+    )
+    bp_db.flush()
+
+    res = code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+    assert res.commits_scanned == 2
+    assert res.commits_matched == 0
+    assert res.evidences_created == 0
+    bp_db.refresh(task)
+    assert task.status == "not_started"
+    assert task.progress_percent == 0
