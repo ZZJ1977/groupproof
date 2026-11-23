@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
@@ -58,7 +58,9 @@ MAX_AUTO_EVIDENCE_PER_TASK = 6
 _TASK_CODE_RE = re.compile(r"(?:#|\b)T-?0*(\d+)\b", re.IGNORECASE)
 _MODULE_CODE_RE = re.compile(r"\b([A-Za-z]\d+(?:-\d+)?)\b")
 _ASCII_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{2,}", re.IGNORECASE)
-_MERGE_COMMIT_RE = re.compile(r"^merge\s+(?:branch|pull request|remote-tracking)\b", re.IGNORECASE)
+_MERGE_COMMIT_RE = re.compile(r"^merge\s+(?:branch|remote-tracking)\b", re.IGNORECASE)
+_PR_MERGE_RE = re.compile(r"^merge\s+pull\s+request\b", re.IGNORECASE)
+_AUTO_EVIDENCE_REASON = "代码同步按改动文件与交付标准自动关联为候选证据，待人工确认采纳。"
 
 _STOP_ASCII = {
     "api",
@@ -116,136 +118,109 @@ _STOP_ASCII = {
 # 跨项目通用的双语领域概念规则：(任务/标准关键词, 对应的文件路径或词边界触发词)
 # 带 `/` 或 `.` 的触发词按路径子串匹配；纯英文词严格按词边界匹配，避免 "ci" 误命中 "service"。
 _CONCEPT_RULES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    # A1 拆分为原子概念：CI 检查 vs Docker/环境栈 vs 仓库协作规范
     (
-        (
-            "仓库协作",
-            "分支保护",
-            "模板",
-            "ci",
-            "actions",
-            "eslint",
-            "ruff",
-            "lint",
-            "docker compose",
-        ),
-        (
-            ".github/",
-            "workflows/",
-            "docker-compose",
-            ".env.example",
-            "codeowners",
-            "eslint",
-            "ruff",
-            "prettier",
-            "ci/cd",
-        ),
+        ("ci", "actions", "eslint", "ruff", "lint", "自动检查"),
+        (".github/", "workflows/", "eslint", "ruff", "prettier", "ci/cd"),
     ),
     (
-        (
-            "后端核心底座",
-            "数据库迁移",
-            "alembic",
-            "fastapi",
-            "openapi",
-            "celery",
-            "redis",
-            "pgvector",
-            "种子",
-            "乐观锁",
-            "幂等",
-        ),
-        (
-            "alembic/",
-            "migrations/",
-            "app/db/",
-            "export_openapi",
-            "openapi.json",
-            "api.generated.ts",
-            "generate-api-client",
-            "celery",
-            "pgvector",
-            "seed.py",
-        ),
+        ("docker compose", "本地栈", "环境模板", "环境变量"),
+        ("docker-compose", ".env.example", "dev-backend"),
     ),
     (
-        (
-            "登录",
-            "注册",
-            "认证",
-            "oauth",
-            "google",
-            "学校邮箱",
-            "密码",
-            "rbac",
-            "权限",
-            "越权",
-            "入台",
-        ),
-        (
-            "app/auth/",
-            "google_oidc",
-            "oauth",
-            "school_email",
-            "login",
-            "register",
-            "onboarding",
-            "password",
-            "rbac",
-            "permissions.py",
-        ),
+        ("仓库协作", "分支保护", "模板", "目录规范"),
+        ("codeowners", "pull_request_template", ".github/"),
+    ),
+    # A2 拆分为原子概念：数据库迁移 vs OpenAPI 契约 vs 异步任务/队列 vs 种子/骨架
+    (
+        ("数据库迁移", "alembic", "pgvector", "迁移"),
+        ("alembic/", "migrations/", "app/db/", "pgvector"),
     ),
     (
-        ("通知", "审计日志", "待办", "文件存储", "正文提取", "uploadreceipt", "公共服务"),
-        (
-            "modules/a/audit",
-            "modules/a/inbox",
-            "modules/a/storage",
-            "text_extraction",
-            "notification_delivery",
-            "upload_receipt",
-            "a_notifications",
-            "a_audit",
-        ),
+        ("openapi", "自动生成", "前端类型", "契约"),
+        ("export_openapi", "openapi.json", "api.generated.ts", "generate-api-client"),
     ),
     (
-        ("github", "webhook", "多分支", "仓库绑定", "提交统计", "代码增减"),
-        (
-            "github_activity",
-            "github_sync",
-            "github_auto_sync",
-            "github_webhook",
-            "githubstatschart",
-            "modules/a/github",
-            "github_evidence",
-        ),
+        ("celery", "redis", "异步任务", "worker", "sse"),
+        ("celery", "worker/", "redis"),
     ),
+    (
+        ("后端核心底座", "fastapi", "种子", "乐观锁", "幂等"),
+        ("app/main.py", "seed.py", "idempotency"),
+    ),
+    # A3 拆分为原子概念：Google OAuth vs 密码/入台 vs 学校邮箱验证 vs RBAC 权限
+    (
+        ("oauth", "google", "oidc", "账户绑定", "关联"),
+        ("google_oidc", "google_auth", "oauth", "google"),
+    ),
+    (
+        ("学校邮箱", "验证码", "邮箱核验", "未验证拦截"),
+        ("school_email", "email_verification", "mail_outbox", "resend"),
+    ),
+    (
+        ("密码", "注册", "登录", "入台"),
+        ("password", "login", "register", "onboarding"),
+    ),
+    (
+        ("rbac", "权限", "越权"),
+        ("rbac", "permissions.py", "access_grants"),
+    ),
+    # A4 拆分为原子概念：通知/待办 vs 审计日志 vs 文件存储/正文提取
+    (
+        ("通知", "待办", "消息收件箱"),
+        ("modules/a/inbox", "notification_delivery", "a_notifications", "action_items"),
+    ),
+    (
+        ("审计日志", "不可变审计"),
+        ("modules/a/audit", "a_audit", "auth_audit"),
+    ),
+    (
+        ("文件存储", "正文提取", "uploadreceipt", "上传回执"),
+        ("modules/a/storage", "text_extraction", "upload_receipt"),
+    ),
+    # A5 拆分为原子概念：GitHub 接入/同步 vs Webhook vs 统计可视化
+    (
+        ("webhook", "验签", "实时入库"),
+        ("github_webhook", "webhooks/github"),
+    ),
+    (
+        ("提交统计", "代码增减", "可视化", "贡献者"),
+        ("githubstatschart", "github_activity"),
+    ),
+    (
+        ("github", "多分支", "仓库绑定", "github app"),
+        ("github_sync", "github_auto_sync", "modules/a/github", "github_evidence"),
+    ),
+    # A6 飞书
     (
         ("飞书", "feishu", "白名单群", "群消息", "脱敏"),
         ("feishu", "collaboration"),
     ),
+    # A7 拆分为原子概念：OpenRouter 中间层 vs 用量计费 vs AI 能力/摘要
     (
-        (
-            "openrouter",
-            "deepseek",
-            "ai 中间层",
-            "ai中间层",
-            "用量计费",
-            "智能能力",
-            "提示词",
-            "代码功能分析",
-        ),
-        (
-            "modules/a/ai/",
-            "openrouter",
-            "activity_summary",
-            "deepseek",
-            "ai_usage",
-            "ai_blueprint",
-        ),
+        ("用量计费", "用量", "配额", "成本"),
+        ("ai_usage", "usage.py"),
     ),
     (
-        ("railway", "sentry", "双环境", "正式上线", "部署", "监控", "健康检查"),
-        ("railway", "dockerfile", "sentry", "healthz", "readyz", "entrypoint", "deploy"),
+        ("代码功能分析", "提交摘要", "自动分析"),
+        ("activity_summary", "summarize_activity"),
+    ),
+    (
+        ("openrouter", "deepseek", "ai 中间层", "ai中间层", "智能能力", "提示词"),
+        ("modules/a/ai/", "openrouter", "deepseek", "ai_blueprint"),
+    ),
+    # A8 拆分为原子概念：Railway 部署 vs Sentry 监控 vs 健康检查
+    (
+        ("sentry", "错误监控", "告警"),
+        ("sentry",),
+    ),
+    (
+        ("健康检查", "healthz", "readyz"),
+        ("healthz", "readyz"),
+    ),
+    (
+        ("railway", "双环境", "正式上线", "部署"),
+        ("railway", "dockerfile", "entrypoint", "deploy"),
     ),
     (
         ("我的课程", "邀请码", "加入课程", "入课审批"),
@@ -409,6 +384,11 @@ _CONCEPT_RULES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
             "modules/d/acceptance",
             "acceptanceapipage",
             "taskverificationpanel",
+            "integrity_check",
+            "verification_run",
+            "acceptance_decision",
+            "week 4 acceptance",
+            "week 5 acceptance",
         ),
     ),
     (
@@ -648,7 +628,8 @@ def _match_commits_to_tasks_and_criteria(
             f"{t.title}\n{t.description or ''}\n{modules_by_id.get(t.module_id, '')}\n{crit_blob}"
         )
         for c in crits:
-            crit_profiles[c.id] = _extract_profile(f"{c.text}\n{t.title}")
+            # 严格仅按该条交付标准自身描述建特征，绝不混入任务标题，避免单条提交误命中全部标准
+            crit_profiles[c.id] = _extract_profile(c.text)
 
     scanned = 0
     matched_commits = 0
@@ -678,8 +659,11 @@ def _match_commits_to_tasks_and_criteria(
                     break
 
         if not matched_targets:
-            # 纯分支合并提交包含大量跨模块历史改动，不作为自动代码匹配证据
-            if _MERGE_COMMIT_RE.match((row.title or "").strip()):
+            # 纯分支合并提交与超大跨模块 PR 合并提交包含大量无关历史改动，不作为自动代码匹配证据
+            stripped_title = (row.title or "").strip()
+            if _MERGE_COMMIT_RE.match(stripped_title) or (
+                _PR_MERGE_RE.match(stripped_title) and len(paths) > 30
+            ):
                 continue
 
             scored: list[tuple[int, UUID]] = []
@@ -736,13 +720,13 @@ def _match_commits_to_tasks_and_criteria(
             chosen_cids = [
                 cid
                 for cs, cid in crit_scores
-                if cs >= 6 and (cs >= top_cs * 0.65 or len(crits) <= 2)
+                if cs >= 8 and (cs >= top_cs * 0.72 or len(crits) <= 1)
             ]
             if not chosen_cids:
-                # 显式 #T-001 绑定时默认覆盖最相近的标准（若任务只有 1 条标准则直接覆盖）
+                # 显式 #T-001 绑定或单标准任务默认覆盖最相近的标准；多标准任务必须命中具体标准特征
                 if t_score >= 100 or len(crits) == 1:
                     chosen_cids = [crit_scores[0][1]]
-                elif top_cs >= 4:
+                elif top_cs >= 6:
                     chosen_cids = [crit_scores[0][1]]
             for cid in chosen_cids:
                 stat.criterion_hits.setdefault(cid, []).append((t_score + top_cs, has_test, row))
@@ -758,10 +742,54 @@ def _create_candidate_evidences(
     ai_summaries: dict[UUID, dict],
     criteria_by_task: dict[UUID, list[AcceptanceCriterion]],
     fallback_actor_id: UUID | None,
+    *,
+    recalculate: bool = False,
 ) -> int:
     """把各交付标准命中的代表性 GitHub 提交幂等写入 C 模块真实候选证据表。"""
     if fallback_actor_id is None:
         return 0
+
+    if recalculate:
+        # 仅清理旧版自动同步写入且尚未人工采纳的 candidate 证据，绝不触碰 formal / 人工提交证据
+        auto_ev_ids = list(
+            session.scalars(
+                select(Evidence.id)
+                .join(EvidenceDecision, EvidenceDecision.evidence_id == Evidence.id)
+                .where(
+                    Evidence.project_id == project_id,
+                    Evidence.source_type == "github",
+                    Evidence.status == "candidate",
+                    EvidenceDecision.decision == "submitted",
+                    EvidenceDecision.reason == _AUTO_EVIDENCE_REASON,
+                )
+            )
+        )
+        if auto_ev_ids:
+            # 跳过已被 ActivityRecordState 引用的证据（双重保护）
+            referenced_ids = set(
+                session.scalars(
+                    select(ActivityRecordState.evidence_id).where(
+                        ActivityRecordState.evidence_id.in_(auto_ev_ids)
+                    )
+                )
+            )
+            removable_ids = [eid for eid in auto_ev_ids if eid not in referenced_ids]
+            if removable_ids:
+                session.execute(
+                    delete(EvidenceCriterion).where(
+                        EvidenceCriterion.evidence_id.in_(removable_ids)
+                    )
+                )
+                session.execute(
+                    delete(EvidenceSourceSnapshot).where(
+                        EvidenceSourceSnapshot.evidence_id.in_(removable_ids)
+                    )
+                )
+                session.execute(
+                    delete(EvidenceDecision).where(EvidenceDecision.evidence_id.in_(removable_ids))
+                )
+                session.execute(delete(Evidence).where(Evidence.id.in_(removable_ids)))
+                session.flush()
 
     existing_rows = session.execute(
         select(
@@ -965,7 +993,7 @@ def _create_candidate_evidences(
                     actor_id=author_id,
                     decision="submitted",
                     resulting_status="candidate",
-                    reason="代码同步按改动文件与交付标准自动关联为候选证据，待人工确认采纳。",
+                    reason=_AUTO_EVIDENCE_REASON,
                 )
             )
             existing_by_key[key] = (ev_id, "candidate")
@@ -1186,6 +1214,7 @@ def sync_task_code_progress(
         ai_summaries,
         criteria_by_task,
         fallback_actor_id,
+        recalculate=recalculate,
     )
 
     crit_metrics = task_criteria_metrics(session, project_id, tasks)

@@ -500,3 +500,95 @@ def test_code_matching_does_not_spill_by_assignee_alone(bp_db):
     bp_db.refresh(task)
     assert task.status == "not_started"
     assert task.progress_percent == 0
+
+
+def test_partial_criterion_coverage_produces_intermediate_progress(bp_db):
+    from app.db.models import AcceptanceCriterion, FunctionalModule
+
+    leader, _member, project = _seed_independent_project(bp_db)
+    mod = FunctionalModule(id=uuid4(), project_id=project.id, name="模块 A：认证与权限")
+    bp_db.add(mod)
+    bp_db.flush()
+    task = Task(
+        id=uuid4(),
+        project_id=project.id,
+        module_id=mod.id,
+        title="A3 Google/密码认证、学校邮箱验证与 RBAC 权限",
+        description="A3 认证与权限",
+        priority="high",
+        weight=100,
+        status="not_started",
+        progress_percent=0,
+        created_by=leader.id,
+    )
+    bp_db.add(task)
+    bp_db.flush()
+    bp_db.add(BTaskMeta(task_id=task.id, project_id=project.id, seq=1, origin="ai"))
+    bp_db.add_all(
+        [
+            AcceptanceCriterion(
+                id=uuid4(),
+                task_id=task.id,
+                criterion_key="AC-1",
+                text="打通 Google OAuth 回调与账户绑定解除流程",
+                sort_order=1,
+            ),
+            AcceptanceCriterion(
+                id=uuid4(),
+                task_id=task.id,
+                criterion_key="AC-2",
+                text="实现学校邮箱验证码发送、核验与未验证拦截",
+                sort_order=2,
+            ),
+            AcceptanceCriterion(
+                id=uuid4(),
+                task_id=task.id,
+                criterion_key="AC-3",
+                text="落实基于课程和项目关系的共享 RBAC 越权校验",
+                sort_order=3,
+            ),
+        ]
+    )
+    link = GithubRepoLink(
+        id=uuid4(),
+        project_id=project.id,
+        owner="acme",
+        repo="demo",
+        installation_id=123,
+        default_branch="main",
+        linked_by_id=leader.id,
+    )
+    bp_db.add(link)
+    bp_db.flush()
+
+    # 仅提交 Google OAuth 相关代码（包含 A3 编号），不应误判为 3/3 全部标准完成
+    bp_db.add(
+        GithubActivity(
+            id=uuid4(),
+            project_id=project.id,
+            link_id=link.id,
+            kind="commit",
+            external_id="oauth-only-1",
+            revision="oauth-only-1",
+            title="feat(A3): add Google OAuth callback and link flow",
+            summary="Google OIDC callback",
+            author_login="ZZJ1977",
+            author_name="卓子杰",
+            author_user_id=leader.id,
+            detail={
+                "sha": "oauth-only-1",
+                "files": [{"path": "services/api/app/auth/services/google_oidc.py"}],
+            },
+            occurred_at=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+            synced_at=datetime(2026, 11, 20, 10, 5, tzinfo=UTC),
+        )
+    )
+    bp_db.flush()
+
+    res = code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+    assert res.criteria_covered == 1
+    bp_db.refresh(task)
+    assert task.status == "in_progress"
+    assert 20 <= task.progress_percent <= 35  # 1/3 标准命中，约 28%-30%，绝非 90%
