@@ -518,7 +518,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             <div className="mb-4">
               <Feedback tone="info">
                 任务计划尚未冻结：当前可以随时同步代码并用 AI 分析每次提交实现的功能；冻结任务计划后，即可将提交直接关联任务或采纳为证据。
-                <Link className="ml-2 font-medium underline" href={`/projects/${projectId}/planning`}>前往任务规划 →</Link>
+                <Link className="ml-2 font-medium underline" href={`/projects/${projectId}/tasks?view=plan`}>前往分工与规划 →</Link>
               </Feedback>
             </div>
           ) : (

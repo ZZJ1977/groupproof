@@ -15,7 +15,6 @@ const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
 for (const href of [
   base,
   `${base}/requirements`,
-  `${base}/planning`,
   `${base}/tasks?view=tree`,
   `${base}/milestones`,
   `${base}/github`,
@@ -28,6 +27,7 @@ for (const href of [
   `${base}/settings`,
 ]) assert.ok(hrefs.includes(href), `keeps existing destination ${href}`);
 assert.ok(!hrefs.includes(`${base}/setup`), "setup is reached from overview rather than a flat primary nav item");
+assert.ok(!hrefs.includes(`${base}/planning`), "planning is unified inside tasks workspace rather than a duplicate nav item");
 
 const independent = buildSetupCards({
   projectId,

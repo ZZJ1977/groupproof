@@ -59,7 +59,11 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const planKey = ["b-plan", userId, projectId];
   const plan = useQuery({ queryKey: planKey, queryFn: () => bPlanningApi.plan(projectId), ...queryPolicy });
-  const refresh = () => Promise.all([client.invalidateQueries({ queryKey: planKey }), client.invalidateQueries({ queryKey: ["b-plan-suggestions", userId, projectId] })]);
+  const refresh = () => Promise.all([
+    client.invalidateQueries({ queryKey: planKey }),
+    client.invalidateQueries({ queryKey: ["b-plan-suggestions", userId, projectId] }),
+    client.invalidateQueries({ queryKey: ["b-tasks", userId, projectId] }),
+  ]);
   const fail = (error: unknown) => setNotice({ tone: "error", text: errorText(error), items: errorItems(error, tr) });
   const freeze = useMutation({
     mutationFn: (current: BPlan) => bPlanningApi.freeze(projectId, current),
@@ -94,6 +98,12 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
         {data.can_lead && frozen && <button type="button" className={secondary} onClick={() => setUnlockOpen(true)}><Unlock size={14} />{tr("解锁修改")}</button>}
         <Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>
       </>} />
+    <nav aria-label={tr("任务视图")} className="gp-segmented mt-4">
+      <Link href={`/projects/${projectId}/tasks?view=tree`} className="gp-segmented-item">{tr("任务树")}</Link>
+      <Link href={`/projects/${projectId}/tasks?view=board`} className="gp-segmented-item">{tr("看板")}</Link>
+      <Link href={`/projects/${projectId}/tasks?view=list`} className="gp-segmented-item">{tr("列表")}</Link>
+      <Link href={`/projects/${projectId}/tasks?view=plan`} aria-current="page" data-active="true" className="gp-segmented-item">{tr("分工与规划")}</Link>
+    </nav>
     <div className="mt-4 space-y-3">
       {data.baseline_required && !data.baseline_frozen && <Feedback tone="warning">{tr("课程项目需要先确认需求基线，才能制定正式任务计划。")}<Link className="ml-2 underline" href={`/projects/${projectId}/requirements`}>{tr("前往需求工作区")}</Link></Feedback>}
       {!data.baseline_required && !data.baseline_frozen && <Feedback tone="info">{tr("个人项目不要求冻结需求基线，可以直接制定任务计划。需求可随项目推进继续补充。")}<Link className="ml-2 underline" href={`/projects/${projectId}/requirements`}>{tr("整理需求（可选）")}</Link></Feedback>}

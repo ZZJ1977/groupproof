@@ -38,7 +38,8 @@ const iconByKey: Record<string, typeof Home> = {
 function NavLink({ item, label, pathname, search }: { item: NavItem; label: string; pathname: string; search: string }) {
   const Icon = item.icon;
   const [hrefPath, hrefSearch] = item.href.split("?");
-  const active = hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search);
+  const isPlanningAlias = hrefPath.endsWith("/tasks") && pathname === `${hrefPath.slice(0, -"/tasks".length)}/planning`;
+  const active = isPlanningAlias || (hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search));
   return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={17} strokeWidth={1.9} /><span>{label}</span></Link>;
 }
 
