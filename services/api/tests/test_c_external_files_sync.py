@@ -427,15 +427,62 @@ def test_storage_unreachable_falls_back_to_db_snapshot_with_hmac_content(sync_db
             text="# Live GitHub README\n",
         )
     )
+    sync_db.add(
+        FeishuChatLink(
+            id=uuid4(),
+            project_id=project.id,
+            chat_id="oc_fallback_chat",
+            linked_by_id=leader.id,
+        )
+    )
     sync_db.flush()
+
+    feishu_reader = FakeFeishuReader(
+        messages=[
+            feishu.FeishuMessageItem(
+                message_id="om_doc_fallback",
+                msg_type="text",
+                create_time_ms=1_732_000_200_000,
+                sender_open_id="ou_1",
+                sender_type="user",
+                deleted=False,
+                content=json.dumps({"text": "规范 https://team.feishu.cn/docx/FallbackDoc999"}),
+            )
+        ],
+        docs={"FallbackDoc999": ("技术选型规范", "统一使用 FastAPI + Next.js。")},
+    )
 
     res = sync_external_project_files(
         sync_db,
         leader,
         project.id,
         storage_client=None,
+        feishu_reader=feishu_reader,
     )
     assert res.github_synced == 1
+    assert res.feishu_synced == 1
+    doc_row = sync_db.scalar(
+        select(LogicalFile).where(
+            LogicalFile.project_id == project.id, LogicalFile.name == "技术选型规范.md"
+        )
+    )
+    assert doc_row is not None
+    doc_ver = sync_db.scalar(select(FileVersion).where(FileVersion.file_id == doc_row.id))
+    assert doc_ver is not None and doc_ver.storage_provider == "feishu_doc"
+    doc_signed = get_signed_link(
+        sync_db, leader, project.id, doc_row.id, doc_ver.id, "preview", UnavailableStoragePort()
+    )
+    doc_qs = parse_qs(urlsplit(doc_signed["url"]).query)
+    doc_data, _, _ = read_internal_file_content(
+        sync_db,
+        project.id,
+        doc_row.id,
+        doc_ver.id,
+        purpose=doc_qs["purpose"][0],
+        exp=int(doc_qs["exp"][0]),
+        sig=doc_qs["sig"][0],
+    )
+    assert "统一使用 FastAPI + Next.js" in doc_data.decode("utf-8")
     row = sync_db.scalar(
         select(LogicalFile).where(
             LogicalFile.project_id == project.id, LogicalFile.name == "README.md"
