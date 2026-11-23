@@ -16,6 +16,7 @@ import {
   StatusBadge,
 } from "@/components/common";
 import { projectRequest } from "@/features/github-binding/integration-request";
+import { GithubStatsChart, type GithubActivityStats } from "./GithubStatsChart";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import {
@@ -167,6 +168,17 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     enabled: selectedEnabled && sourceType === "github" && Boolean(selectedId),
     ...queryPolicy,
   });
+  const githubStatsQuery = useQuery({
+    queryKey: ["a-github-activity-stats", userId, projectId],
+    queryFn: ({ signal }) =>
+      projectRequest<GithubActivityStats>(
+        `/api/v1/a/projects/${encodeURIComponent(projectId)}/github/stats?days=14`,
+        { signal },
+      ),
+    enabled: enabled && sourceType === "github" && Boolean(access?.actor.is_member),
+    retry: false,
+    staleTime: 15_000,
+  });
   const summaryById = new Map<string, ActivitySummary>((summaries.data ?? []).map((item) => [item.source_id, item]));
   const groups = [...new Set([
     ...(connected?.kind === "feishu" ? connected.items.map((group) => group.chat_id) : []),
@@ -213,6 +225,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       context.refetch(),
       list.refetch(),
       ...(context.data?.actor.is_member ? [bindings.refetch()] : []),
+      ...(sourceType === "github" && context.data?.actor.is_member ? [githubStatsQuery.refetch()] : []),
       ...(selectedId ? [detail.refetch(), history.refetch()] : []),
       ...(summaryIds.length ? [summaries.refetch()] : []),
       ...(selectedId && sourceType === "github" ? [selectedSummaryQuery.refetch()] : []),
@@ -403,6 +416,17 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           {connected?.kind === "feishu" && <p className="text-sm text-slate-700">{connected.items.length ? `已绑定 ${connected.items.length} 个飞书群` : "此项目尚未绑定飞书群。"}</p>}
           {connected?.kind === "github" && (connected.items.length ? <div className="space-y-2"><div className="flex flex-wrap items-center gap-3">{connected.items.map((repo) => <div key={repo.owner + "/" + repo.repo} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50/90 px-3.5 py-2 text-sm"><a className="gp-link font-semibold" href={`https://github.com/${repo.owner}/${repo.repo}`} target="_blank" rel="noopener noreferrer">{repo.owner}/{repo.repo}</a><span className="gp-pill">默认分支 {repo.default_branch} + 活跃分支</span><span className="text-xs text-slate-500">{repo.last_synced_at ? `仓库文件与开发活动上次同步 ${formatDate(repo.last_synced_at)}` : "尚未同步仓库文件与开发活动"}</span></div>)}</div><p className="text-xs text-slate-500">分页总数按当前筛选统计本项目已同步的活动快照；记录谁在何时提交了代码，并由 AI 按统一结构化规范分析具体实现的功能。</p></div> : <p className="text-sm text-slate-600">此项目尚未绑定 GitHub 仓库。</p>)}
         </Section>}
+        {sourceType === "github" && access.actor.is_member && (
+          <GithubStatsChart
+            stats={githubStatsQuery.data}
+            loading={githubStatsQuery.isPending}
+            selectedAuthorId={filters.author_id ?? undefined}
+            onSelectAuthor={(authorUserId) => {
+              updateQuery({ author: authorUserId, kind: authorUserId ? "commit" : filters.kind ?? null, page: null, record: null });
+              setCommand(null);
+            }}
+          />
+        )}
         {!access.permissions.can_manage_activity && (
           access.actor.is_member && access.project.lifecycle === "active" && access.tasks.length === 0 ? (
             <div className="mb-4">

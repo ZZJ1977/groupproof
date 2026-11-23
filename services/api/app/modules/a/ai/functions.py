@@ -12,6 +12,9 @@ AI 不可用时抛 ``ApiError(503, "AI_UNAVAILABLE")``，页面应提示“AI �
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from pydantic import BaseModel, ValidationError
 
 from app.api.errors import ApiError
@@ -38,9 +41,55 @@ from app.modules.a.ai.schemas import (
 )
 from app.modules.a.ai.usage import metered, note_provider_call, note_provider_usage
 
+logger = logging.getLogger("groupproof.a.ai")
+
 
 def ai_unavailable() -> ApiError:
     return ApiError(503, "AI_UNAVAILABLE", "AI 暂不可用，请改为人工处理。")
+
+
+def _sanitize_summary_raw(raw: dict[str, Any]) -> dict[str, Any]:
+    """容错规范化模型输出的摘要字段，避免轻微超长或多余字段导致整条有效分析被丢弃。"""
+    if not isinstance(raw, dict):
+        return raw
+    allowed = {
+        "headline",
+        "implementation",
+        "impact",
+        "verification",
+        "risks",
+        "evidence",
+        "confidence",
+        "insufficient_context",
+    }
+    cleaned = {k: v for k, v in raw.items() if k in allowed}
+    if isinstance(cleaned.get("headline"), str):
+        cleaned["headline"] = cleaned["headline"].strip()[:240]
+    if isinstance(cleaned.get("implementation"), str):
+        cleaned["implementation"] = cleaned["implementation"].strip()[:600]
+    if isinstance(cleaned.get("impact"), str):
+        text = cleaned["impact"].strip()
+        cleaned["impact"] = text[:600] if text else None
+    for list_key in ("verification", "risks", "insufficient_context"):
+        items = cleaned.get(list_key)
+        if isinstance(items, list):
+            cleaned[list_key] = [str(item).strip()[:300] for item in items if str(item).strip()][:8]
+        elif items is None:
+            cleaned[list_key] = []
+    if isinstance(cleaned.get("evidence"), list):
+        ev_out = []
+        for item in cleaned["evidence"][:8]:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "").strip().lower()
+            quote = str(item.get("quote") or "").strip()[:300]
+            if source in {"title", "body", "metadata", "files"} and quote:
+                ev_out.append({"source": source, "quote": quote})
+        cleaned["evidence"] = ev_out
+    conf = cleaned.get("confidence")
+    if isinstance(conf, int | float):
+        cleaned["confidence"] = max(0.0, min(1.0, float(conf)))
+    return cleaned
 
 
 def _run[ResultT: BaseModel](
@@ -58,10 +107,13 @@ def _run[ResultT: BaseModel](
             )
         )
         note_provider_usage(provider)
+        if feature == "summarize_activity":
+            raw = _sanitize_summary_raw(raw)
         return result_model.model_validate(
             {**raw, "provider": provider.name, "is_placeholder": provider.is_placeholder}
         )
     except (AIUnavailable, ValidationError, TypeError, KeyError) as exc:
+        logger.warning("AI feature %s failed validation/call: %s", feature, exc)
         raise ai_unavailable() from exc
 
 
@@ -137,12 +189,32 @@ def analyze_implementation(
     return result
 
 
+def _strip_diff_prefixes(patch: str) -> str:
+    """去掉 unified diff 每行开头的 +/-/空格 前缀，避免模型引用真实代码行时因不含 + 被误判。"""
+    lines = []
+    for line in (patch or "").splitlines():
+        if line.startswith(("+++", "---", "@@")):
+            lines.append(line)
+        elif line.startswith(("+", "-", " ")):
+            lines.append(line[1:])
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 @metered("summarize_activity")
 def summarize_activity(
     payload: ActivitySummaryInput, *, provider: AIProvider | None = None
 ) -> ActivitySummaryResult:
     """为来源活动生成可追溯的两层摘要；不得凭空生成文件、测试或功能。"""
     result = _run("summarize_activity", payload, ActivitySummaryResult, provider)
+    files_raw = "\n".join(
+        f"{item.path} ({item.status}, +{item.additions}/-{item.deletions})\n{item.patch or ''}"
+        for item in payload.files
+    )
+    files_stripped = "\n".join(
+        f"{item.path}\n{_strip_diff_prefixes(item.patch or '')}" for item in payload.files
+    )
     source_text = {
         "title": payload.title,
         "body": payload.body,
@@ -151,15 +223,13 @@ def summarize_activity(
             for key, value in sorted(payload.metadata.items())
             if value is not None
         ),
-        "files": "\n".join(
-            f"{item.path} ({item.status}, +{item.additions}/-{item.deletions})\n{item.patch or ''}"
-            for item in payload.files
-        ),
+        "files": f"{files_raw}\n{files_stripped}",
     }
     squashed_sources = {key: _squash(val) for key, val in source_text.items()}
     for evidence in result.evidence:
         quote = _squash(evidence.quote)
         if not quote:
+            logger.warning("summarize_activity rejected empty quote")
             raise ai_unavailable()
         if quote in squashed_sources[evidence.source]:
             continue
@@ -167,6 +237,11 @@ def summarize_activity(
             (key for key, text in squashed_sources.items() if quote in text), None
         )
         if matched_source is None:
+            logger.warning(
+                "summarize_activity rejected unverified quote source=%s len=%d",
+                evidence.source,
+                len(evidence.quote),
+            )
             raise ai_unavailable()
         evidence.source = matched_source  # type: ignore[assignment]
     return result
