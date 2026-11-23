@@ -391,3 +391,86 @@ def test_feishu_missing_scope_does_not_block_github_readme_sync(sync_db):
         "https://open.feishu.cn/app/cli_demo/auth?q=im:message.history:readonly"
     )
     assert len(res.warnings) == 1
+
+
+def test_storage_unreachable_falls_back_to_db_snapshot_with_hmac_content(sync_db, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    from app.api.errors import ApiError
+    from app.modules.c.external_files_sync import read_internal_file_content
+    from app.modules.c.files_service import get_signed_link
+    from app.modules.c.files_storage import UnavailableStoragePort
+
+    monkeypatch.setenv("APP_ORIGIN", "https://staging.groupproof.example")
+    monkeypatch.setenv("EMAIL_CHALLENGE_HMAC_KEY", "test-hmac-secret-key")
+
+    leader, project = _seed_project(sync_db)
+    gh_link = GithubRepoLink(
+        id=uuid4(),
+        project_id=project.id,
+        owner="ZZJ1977",
+        repo="groupproof",
+        installation_id=101,
+        default_branch="main",
+        linked_by_id=leader.id,
+    )
+    sync_db.add(gh_link)
+    sync_db.flush()
+    sync_db.add(
+        GithubFile(
+            id=uuid4(),
+            project_id=project.id,
+            link_id=gh_link.id,
+            path="README.md",
+            blob_sha="d" * 40,
+            size_bytes=22,
+            text="# Live GitHub README\n",
+        )
+    )
+    sync_db.flush()
+
+    res = sync_external_project_files(
+        sync_db,
+        leader,
+        project.id,
+        storage_client=None,
+    )
+    assert res.github_synced == 1
+    row = sync_db.scalar(
+        select(LogicalFile).where(
+            LogicalFile.project_id == project.id, LogicalFile.name == "README.md"
+        )
+    )
+    assert row is not None
+    ver = sync_db.scalar(select(FileVersion).where(FileVersion.file_id == row.id))
+    assert ver is not None and ver.storage_provider == "github"
+
+    signed = get_signed_link(
+        sync_db, leader, project.id, row.id, ver.id, "preview", UnavailableStoragePort()
+    )
+    assert signed["url"].startswith("https://staging.groupproof.example/api/v1/projects/")
+    qs = parse_qs(urlsplit(signed["url"]).query)
+    data, media_type, filename = read_internal_file_content(
+        sync_db,
+        project.id,
+        row.id,
+        ver.id,
+        purpose=qs["purpose"][0],
+        exp=int(qs["exp"][0]),
+        sig=qs["sig"][0],
+    )
+    assert data == b"# Live GitHub README\n"
+    assert "text/markdown" in media_type
+    assert filename == "README.md"
+
+    with pytest.raises(ApiError) as tampered:
+        read_internal_file_content(
+            sync_db,
+            project.id,
+            row.id,
+            ver.id,
+            purpose="preview",
+            exp=int(qs["exp"][0]),
+            sig="0" * 64,
+        )
+    assert tampered.value.status_code == 403

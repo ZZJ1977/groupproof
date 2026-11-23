@@ -1,7 +1,9 @@
 from typing import Annotated, Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 
 from app.api.responses import SuccessResponse, success
 from app.modules.c.evidence_router import (
@@ -12,7 +14,10 @@ from app.modules.c.evidence_router import (
     commit_command,
     private_response,
 )
-from app.modules.c.external_files_sync import sync_external_project_files
+from app.modules.c.external_files_sync import (
+    read_internal_file_content,
+    sync_external_project_files,
+)
 from app.modules.c.files_schemas import (
     AppendFileVersion,
     DesignateFileVersion,
@@ -191,6 +196,36 @@ def link(
 ):
     return success(
         get_signed_link(session, user, project_id, file_id, version_id, purpose, storage), request
+    )
+
+
+@router.get("/projects/{project_id}/files/{file_id}/versions/{version_id}/content")
+def content(
+    project_id: UUID,
+    file_id: UUID,
+    version_id: UUID,
+    session: Database,
+    purpose: FilePurpose = "preview",
+    exp: int = Query(ge=0),
+    sig: str = Query(min_length=16, max_length=128),
+):
+    data, media_type, filename = read_internal_file_content(
+        session,
+        project_id,
+        file_id,
+        version_id,
+        purpose=purpose,
+        exp=exp,
+        sig=sig,
+    )
+    disposition = "attachment" if purpose == "download" else "inline"
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
