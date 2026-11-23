@@ -1532,6 +1532,13 @@
             "title": "Failed",
             "type": "integer"
           },
+          "hourly_24h": {
+            "items": {
+              "$ref": "#/components/schemas/AiHourlyPointDTO"
+            },
+            "title": "Hourly 24H",
+            "type": "array"
+          },
           "p50_latency_ms": {
             "anyOf": [
               {
@@ -1610,7 +1617,8 @@
           "top_users",
           "top_projects",
           "recent_failures",
-          "summary_jobs"
+          "summary_jobs",
+          "hourly_24h"
         ],
         "title": "AdminAiDiagnosticsDTO",
         "type": "object"
@@ -2243,6 +2251,59 @@
           "feature"
         ],
         "title": "AiFailureItemDTO",
+        "type": "object"
+      },
+      "AiHourlyPointDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "cost_by_currency": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Cost By Currency",
+            "type": "object"
+          },
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "hour_start": {
+            "format": "date-time",
+            "title": "Hour Start",
+            "type": "string"
+          },
+          "input_tokens": {
+            "minimum": 0.0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "minimum": 0.0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "requests": {
+            "minimum": 0.0,
+            "title": "Requests",
+            "type": "integer"
+          },
+          "succeeded": {
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hour_start",
+          "requests",
+          "succeeded",
+          "failed",
+          "input_tokens",
+          "output_tokens",
+          "cost_by_currency"
+        ],
+        "title": "AiHourlyPointDTO",
         "type": "object"
       },
       "AiSummaryJobsDTO": {

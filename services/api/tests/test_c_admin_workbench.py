@@ -730,6 +730,8 @@ def test_ai_diagnostics_breakdown_percentiles_and_summary_jobs(http, db, scope):
     assert diag["summary_jobs"]["pending"] >= 1
     assert diag["summary_jobs"]["failed"] >= 1
     assert diag["summary_jobs"]["needs_human_review"] >= 1
+    assert len(diag["hourly_24h"]) == 24
+    assert sum(slot["requests"] for slot in diag["hourly_24h"]) >= 5
 
     filtered = http.client.get(
         f"/api/v1/admin/workbench/ai-diagnostics?days=7&user_id={member.id}&feature=review"

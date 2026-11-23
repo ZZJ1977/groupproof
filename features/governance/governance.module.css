@@ -1236,12 +1236,98 @@
   font-size: 16px;
 }
 
+.usageChartControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.usageTrendTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f5f8fc;
+}
+
+.usageTrendTab {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5b6b82;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.usageTrendTab:hover {
+  color: #0f172a;
+}
+
+.usageTrendTab[aria-pressed="true"] {
+  background: #ffffff;
+  color: #1767dc;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.usageTrendInspector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2eaf4;
+  border-radius: 10px;
+  background: #f8fbff;
+  font-size: 12px;
+  color: #475569;
+}
+
+.usageTrendInspector strong {
+  color: #0f172a;
+}
+
+.usageTrendLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.usageLegendDotSuccess,
+.usageLegendDotFail {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.usageLegendDotSuccess {
+  background: #2563eb;
+}
+
+.usageLegendDotFail {
+  background: #ef4444;
+}
+
 .usageChart {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
   min-height: 210px;
-  padding: 16px 4px 25px;
+  padding: 14px 4px 12px;
   border-top: 1px solid #edf1f6;
   border-bottom: 1px solid #dce5f0;
 }
@@ -1249,27 +1335,43 @@
 .usageBarColumn {
   display: flex;
   min-width: 0;
-  height: 170px;
+  height: 176px;
   flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
   gap: 5px;
+  padding: 4px 1px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: #7c899d;
   font-size: 11px;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.usageBarColumn:hover,
+.usageBarColumn:focus-visible,
+.usageBarColumn[data-active="true"] {
+  background: #eff6ff;
+  color: #1e3a8a;
+  outline: none;
 }
 
 .usageBarValue {
   min-height: 15px;
   color: #5e6e86;
-  font-size: 11px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .usageBarTrack {
   display: flex;
-  width: min(28px, 75%);
+  width: min(26px, 82%);
   height: 132px;
-  align-items: flex-end;
+  flex-direction: column;
+  justify-content: flex-end;
   border-radius: 5px 5px 2px 2px;
   background: #edf3fb;
   overflow: hidden;
@@ -1278,9 +1380,27 @@
 .usageBar {
   width: 100%;
   min-height: 0;
-  border-radius: 5px 5px 0 0;
+  border-radius: 4px 4px 0 0;
   background: linear-gradient(180deg, #3b86f5 0%, #1767dc 100%);
   transition: height 180ms ease;
+}
+
+.usageBarStack {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
+  transition: height 180ms ease;
+}
+
+.usageBarFailSegment {
+  width: 100%;
+  background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+}
+
+.usageBarSuccessSegment {
+  width: 100%;
+  background: linear-gradient(180deg, #3b86f5 0%, #1767dc 100%);
 }
 
 .qualityRow {

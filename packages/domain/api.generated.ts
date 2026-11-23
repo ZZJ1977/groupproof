@@ -6065,6 +6065,8 @@ export interface components {
             error_breakdown: components["schemas"]["AiErrorCountDTO"][];
             /** Failed */
             failed: number;
+            /** Hourly 24H */
+            hourly_24h: components["schemas"]["AiHourlyPointDTO"][];
             /** P50 Latency Ms */
             p50_latency_ms?: number | null;
             /** P95 Latency Ms */
@@ -6303,6 +6305,28 @@ export interface components {
             user_id?: string | null;
             /** User Name */
             user_name: string;
+        };
+        /** AiHourlyPointDTO */
+        AiHourlyPointDTO: {
+            /** Cost By Currency */
+            cost_by_currency: {
+                [key: string]: string;
+            };
+            /** Failed */
+            failed: number;
+            /**
+             * Hour Start
+             * Format: date-time
+             */
+            hour_start: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Requests */
+            requests: number;
+            /** Succeeded */
+            succeeded: number;
         };
         /** AiSummaryJobsDTO */
         AiSummaryJobsDTO: {

@@ -1026,6 +1026,9 @@ function UsageTable({ title, items, formatDimension }: { title: string; items: (
 function UsagePage() {
   const { userId } = useWorkspace(); const { query, updateQuery } = useUrlQuery();
   const [denied, setDenied] = useState<CApiError | null>(null);
+  const [trendMode, setTrendMode] = useState<"24h" | "daily">("daily");
+  const [trendMetric, setTrendMetric] = useState<"requests" | "tokens" | "cost">("requests");
+  const [activeBucketKey, setActiveBucketKey] = useState<string | null>(null);
   const rawDays = Number(query.get("days") ?? 7); const days = rawDays === 30 || rawDays === 90 ? rawDays : 7;
   const filters: UsageQuery = { days, user_id: selected(query.get("user")), feature: query.get("feature") || undefined, model: query.get("model") || undefined };
   const formKey = JSON.stringify([filters.feature, filters.model]);
@@ -1041,7 +1044,6 @@ function UsagePage() {
 
   if (denied) return <ErrorBox error={denied} retry={() => window.location.reload()} label="重新验证管理权限" />;
 
-  const maxDailyRequests = Math.max(...(data?.daily.map((item) => item.requests) ?? [0]), 1);
   const modelRows = data ? [...data.by_model].sort((left, right) => right.requests - left.requests) : [];
   const featureRows = data ? [...data.by_feature].sort((left, right) => right.requests - left.requests) : [];
   const scenarioEntries = [
@@ -1060,9 +1062,84 @@ function UsagePage() {
     return rightCount - leftCount;
   });
   const maxModelRequests = Math.max(...modelRows.map((item) => item.requests), 1);
-  const labelStride = days <= 14 ? 1 : days <= 30 ? 5 : 10;
   const diag = !result.isError ? diagnostics.data : undefined;
   const maxErrCount = Math.max(...(diag?.error_breakdown.map((e) => e.count) ?? [0]), 1);
+
+  type TrendBucket = {
+    key: string;
+    axisLabel: string;
+    fullLabel: string;
+    requests: number;
+    succeeded: number;
+    failed: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    costNumeric: number;
+    costByCurrency: Record<string, string>;
+  };
+  const costSum = (map: Record<string, string>) =>
+    Object.values(map).reduce((acc, val) => acc + (Number.parseFloat(val) || 0), 0);
+  const formatHourAxis = (iso: string) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso.slice(11, 16);
+    return `${String(d.getHours()).padStart(2, "0")}:00`;
+  };
+  const formatHourRange = (iso: string) => {
+    const start = new Date(iso);
+    if (Number.isNaN(start.getTime())) return iso;
+    const end = new Date(start.getTime() + 3600_000);
+    const pad = (v: number) => String(v).padStart(2, "0");
+    return `${start.getMonth() + 1}/${pad(start.getDate())} ${pad(start.getHours())}:00–${pad(end.getHours())}:00`;
+  };
+  const trendBuckets: TrendBucket[] =
+    trendMode === "24h" && diag?.hourly_24h?.length
+      ? diag.hourly_24h.map((slot) => ({
+          key: slot.hour_start,
+          axisLabel: formatHourAxis(slot.hour_start),
+          fullLabel: formatHourRange(slot.hour_start),
+          requests: slot.requests,
+          succeeded: slot.succeeded,
+          failed: slot.failed,
+          inputTokens: slot.input_tokens,
+          outputTokens: slot.output_tokens,
+          totalTokens: slot.input_tokens + slot.output_tokens,
+          costNumeric: costSum(slot.cost_by_currency),
+          costByCurrency: slot.cost_by_currency,
+        }))
+      : (data?.daily ?? []).map((item) => ({
+          key: item.date,
+          axisLabel: item.date.slice(5),
+          fullLabel: `${item.date}（UTC）`,
+          requests: item.requests,
+          succeeded: item.succeeded,
+          failed: item.failed,
+          inputTokens: item.input_tokens,
+          outputTokens: item.output_tokens,
+          totalTokens: item.input_tokens + item.output_tokens,
+          costNumeric: costSum(item.cost_by_currency),
+          costByCurrency: item.cost_by_currency,
+        }));
+  const trendMetricValue = (bucket: TrendBucket) =>
+    trendMetric === "tokens" ? bucket.totalTokens : trendMetric === "cost" ? bucket.costNumeric : bucket.requests;
+  const maxTrendValue = Math.max(...trendBuckets.map(trendMetricValue), 1e-9);
+  const trendTotalRequests = trendBuckets.reduce((acc, b) => acc + b.requests, 0);
+  const trendTotalTokens = trendBuckets.reduce((acc, b) => acc + b.totalTokens, 0);
+  const trendStride = trendMode === "24h" ? 4 : days <= 14 ? 1 : days <= 30 ? 5 : 10;
+  const defaultBucket =
+    [...trendBuckets].reverse().find((b) => b.requests > 0) ?? trendBuckets[trendBuckets.length - 1] ?? null;
+  const activeBucket =
+    (activeBucketKey ? trendBuckets.find((b) => b.key === activeBucketKey) : null) ?? defaultBucket;
+  const formatCompactMetric = (bucket: TrendBucket) => {
+    if (trendMetric === "requests") return bucket.requests ? String(bucket.requests) : "";
+    if (trendMetric === "tokens") {
+      if (!bucket.totalTokens) return "";
+      if (bucket.totalTokens >= 1_000_000) return `${(bucket.totalTokens / 1_000_000).toFixed(1)}M`;
+      if (bucket.totalTokens >= 1_000) return `${Math.round(bucket.totalTokens / 1_000)}k`;
+      return String(bucket.totalTokens);
+    }
+    return bucket.costNumeric > 0 ? bucket.costNumeric.toFixed(3) : "";
+  };
 
   return <>
     <Header
@@ -1120,25 +1197,125 @@ function UsagePage() {
       </Box>
 
       <div className={styles.twoColumns}>
-        <Box title="调用趋势" action={<Badge tone="blue">{tr("最近 {0} 天", { 0: days })}</Badge>}>
+        <Box
+          title="调用趋势"
+          action={
+            <div className={styles.usageChartControls}>
+              <div className={styles.usageTrendTabs} role="group" aria-label="趋势时间范围">
+                {diag?.hourly_24h && (
+                  <button
+                    type="button"
+                    className={styles.usageTrendTab}
+                    aria-pressed={trendMode === "24h"}
+                    onClick={() => {
+                      setTrendMode("24h");
+                      setActiveBucketKey(null);
+                    }}
+                  >
+                    24 小时
+                  </button>
+                )}
+                {([7, 30, 90] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={styles.usageTrendTab}
+                    aria-pressed={trendMode === "daily" && days === value}
+                    onClick={() => {
+                      setTrendMode("daily");
+                      setActiveBucketKey(null);
+                      if (days !== value) updateQuery({ days: String(value) });
+                    }}
+                  >
+                    {tr("{0} 天", { 0: value })}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.usageTrendTabs} role="group" aria-label="趋势指标">
+                {(
+                  [
+                    ["requests", "请求数"],
+                    ["tokens", "Token"],
+                    ["cost", "费用"],
+                  ] as const
+                ).map(([metricKey, label]) => (
+                  <button
+                    key={metricKey}
+                    type="button"
+                    className={styles.usageTrendTab}
+                    aria-pressed={trendMetric === metricKey}
+                    onClick={() => setTrendMetric(metricKey)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          }
+        >
           <div className={styles.panelBody}>
-            <div className={styles.chartSummary}><span><strong>{number(data.requests)}</strong> 次请求</span><span><strong>{number(data.input_tokens + data.output_tokens)}</strong> Token</span></div>
-            {data.requests === 0 ? <Empty>当前筛选范围没有用量记录</Empty> : (
-              <div className={styles.usageChart} role="img" aria-label="按 UTC 日期统计的请求数趋势">
-                {data.daily.map((item, idx) => {
-                  const showLabel = idx % labelStride === 0 || idx === data.daily.length - 1;
+            <div className={styles.chartSummary}>
+              <span><strong>{number(trendTotalRequests)}</strong> 次请求</span>
+              <span><strong>{number(trendTotalTokens)}</strong> Token</span>
+              {trendMetric === "requests" && (
+                <span className={styles.usageTrendLegend}>
+                  <span><i className={styles.usageLegendDotSuccess} />成功</span>
+                  <span><i className={styles.usageLegendDotFail} />失败</span>
+                </span>
+              )}
+            </div>
+            {activeBucket && trendTotalRequests > 0 && (
+              <div className={styles.usageTrendInspector} aria-live="polite">
+                <div>
+                  <strong>{activeBucket.fullLabel}</strong>
+                  <span className="ml-2">
+                    请求 <strong>{number(activeBucket.requests)}</strong>（成功 <span className="font-semibold text-blue-700">{number(activeBucket.succeeded)}</span> / 失败 <span className="font-semibold text-rose-600">{number(activeBucket.failed)}</span> · 成功率 {rate(activeBucket.succeeded, activeBucket.requests)}）
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span>Token <strong>{number(activeBucket.totalTokens)}</strong>（入 {number(activeBucket.inputTokens)} / 出 {number(activeBucket.outputTokens)}）</span>
+                  <span>费用 <strong>{costs(activeBucket.costByCurrency)}</strong></span>
+                </div>
+              </div>
+            )}
+            {trendTotalRequests === 0 ? <Empty>当前筛选范围没有用量记录</Empty> : (
+              <div className={styles.usageChart} role="region" aria-label={trendMode === "24h" ? "近 24 小时按小时统计的 AI 调用趋势" : "按 UTC 日期统计的请求数趋势"}>
+                {trendBuckets.map((bucket, idx) => {
+                  const value = trendMetricValue(bucket);
+                  const pct = value > 0 ? Math.max(8, (value / maxTrendValue) * 100) : 0;
+                  const failPct = bucket.requests > 0 ? (bucket.failed / bucket.requests) * 100 : 0;
+                  const successPct = bucket.requests > 0 ? 100 - failPct : 0;
+                  const showLabel = idx % trendStride === 0 || idx === trendBuckets.length - 1;
+                  const isActive = activeBucket?.key === bucket.key;
+                  const showTopValue = (trendMode === "24h" ? isActive || value > 0 : days <= 30) && value > 0;
                   return (
-                    <div
+                    <button
+                      type="button"
                       className={styles.usageBarColumn}
-                      key={item.date}
-                      title={`${item.date} · 请求 ${item.requests} · 成功 ${item.succeeded} · 失败 ${item.failed}`}
+                      data-active={isActive}
+                      key={bucket.key}
+                      aria-label={`${bucket.fullLabel}：${bucket.requests} 次请求，成功 ${bucket.succeeded}，失败 ${bucket.failed}`}
+                      onMouseEnter={() => setActiveBucketKey(bucket.key)}
+                      onFocus={() => setActiveBucketKey(bucket.key)}
+                      onClick={() => setActiveBucketKey(bucket.key)}
                     >
-                      <div className={styles.usageBarValue}>{days <= 30 && item.requests ? item.requests : ""}</div>
+                      <div className={styles.usageBarValue}>{showTopValue ? formatCompactMetric(bucket) : ""}</div>
                       <div className={styles.usageBarTrack}>
-                        <div className={styles.usageBar} style={{ height: `${Math.max(item.requests ? 8 : 0, (item.requests / maxDailyRequests) * 100)}%` }} />
+                        {trendMetric === "requests" ? (
+                          <div className={styles.usageBarStack} style={{ height: `${pct}%` }}>
+                            {bucket.failed > 0 && (
+                              <div className={styles.usageBarFailSegment} style={{ height: `${failPct}%` }} />
+                            )}
+                            {bucket.succeeded > 0 && (
+                              <div className={styles.usageBarSuccessSegment} style={{ height: `${successPct}%` }} />
+                            )}
+                          </div>
+                        ) : (
+                          <div className={styles.usageBar} style={{ height: `${pct}%` }} />
+                        )}
                       </div>
-                      <span>{showLabel ? item.date.slice(5) : ""}</span>
-                    </div>
+                      <span>{showLabel ? bucket.axisLabel : ""}</span>
+                    </button>
                   );
                 })}
               </div>

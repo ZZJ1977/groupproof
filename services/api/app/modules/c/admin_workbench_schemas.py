@@ -295,6 +295,16 @@ class AiSummaryJobsDTO(WorkbenchDTO):
     needs_human_review: int = Field(ge=0)
 
 
+class AiHourlyPointDTO(WorkbenchDTO):
+    hour_start: AwareDatetime
+    requests: int = Field(ge=0)
+    succeeded: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    cost_by_currency: dict[str, str]
+
+
 class AdminAiDiagnosticsDTO(WorkbenchDTO):
     days: Literal[7, 30, 90]
     since: AwareDatetime
@@ -310,6 +320,7 @@ class AdminAiDiagnosticsDTO(WorkbenchDTO):
     top_projects: list[AiTopProjectDTO]
     recent_failures: list[AiFailureItemDTO]
     summary_jobs: AiSummaryJobsDTO
+    hourly_24h: list[AiHourlyPointDTO]
 
 
 class GithubLinkHealthDTO(WorkbenchDTO):

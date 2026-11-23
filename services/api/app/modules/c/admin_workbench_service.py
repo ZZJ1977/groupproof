@@ -98,6 +98,16 @@ def _utc_day_expr(session: Session, col):
     return func.strftime("%Y-%m-%d", col)
 
 
+def _utc_hour_expr(session: Session, col):
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        return func.to_char(
+            func.timezone(literal_column("'UTC'"), col),
+            literal_column("'YYYY-MM-DD HH24'"),
+        )
+    return func.strftime("%Y-%m-%d %H", col)
+
+
 def _latency_percentiles(
     session: Session, conditions: list, percentiles: tuple[float, ...]
 ) -> dict[float, int | None]:
@@ -970,6 +980,70 @@ def ai_diagnostics(
         )
     ).one()
 
+    # Last 24h hourly buckets (same user/feature/model filters) for fine-grained trend inspection
+    current_hour = until.replace(minute=0, second=0, microsecond=0)
+    since_24h = current_hour - timedelta(hours=23)
+    hourly_where = [AiUsageEvent.occurred_at >= since_24h, AiUsageEvent.occurred_at <= until]
+    if user_id is not None:
+        hourly_where.append(AiUsageEvent.user_id == user_id)
+    if feature:
+        hourly_where.append(AiUsageEvent.feature == feature)
+    if model:
+        hourly_where.append(AiUsageEvent.model == model)
+    hour_expr = _utc_hour_expr(session, AiUsageEvent.occurred_at)
+    hourly_rows = session.execute(
+        select(
+            hour_expr.label("hour_key"),
+            func.count(AiUsageEvent.id).label("requests"),
+            func.sum(case((AiUsageEvent.success.is_(True), 1), else_=0)).label("succeeded"),
+            func.sum(case((AiUsageEvent.success.is_(False), 1), else_=0)).label("failed"),
+            func.coalesce(func.sum(AiUsageEvent.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(AiUsageEvent.output_tokens), 0).label("output_tokens"),
+        )
+        .where(*hourly_where)
+        .group_by(hour_expr)
+    ).all()
+    hourly_map = {
+        str(row.hour_key): (
+            int(row.requests or 0),
+            int(row.succeeded or 0),
+            int(row.failed or 0),
+            int(row.input_tokens or 0),
+            int(row.output_tokens or 0),
+        )
+        for row in hourly_rows
+        if row.hour_key
+    }
+    hourly_cost_rows = session.execute(
+        select(hour_expr.label("hour_key"), AiUsageEvent.currency, func.sum(AiUsageEvent.cost))
+        .where(
+            *hourly_where,
+            AiUsageEvent.cost.is_not(None),
+            AiUsageEvent.currency.is_not(None),
+        )
+        .group_by(hour_expr, AiUsageEvent.currency)
+    ).all()
+    hourly_costs_by_key: dict[str, list] = defaultdict(list)
+    for hkey, cur, amt in hourly_cost_rows:
+        if hkey:
+            hourly_costs_by_key[str(hkey)].append((cur, amt))
+    hourly_24h = []
+    for offset in range(24):
+        slot = since_24h + timedelta(hours=offset)
+        hkey = slot.strftime("%Y-%m-%d %H")
+        reqs, succ, fail, in_tok, out_tok = hourly_map.get(hkey, (0, 0, 0, 0, 0))
+        hourly_24h.append(
+            {
+                "hour_start": slot,
+                "requests": reqs,
+                "succeeded": succ,
+                "failed": fail,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "cost_by_currency": _costs_map(hourly_costs_by_key.get(hkey, [])),
+            }
+        )
+
     return {
         "days": days,
         "since": since,
@@ -1035,6 +1109,7 @@ def ai_diagnostics(
             "failed": int(summary_jobs_row.failed or 0),
             "needs_human_review": int(summary_jobs_row.needs_review or 0),
         },
+        "hourly_24h": hourly_24h,
     }
 
 
