@@ -592,3 +592,115 @@ def test_partial_criterion_coverage_produces_intermediate_progress(bp_db):
     bp_db.refresh(task)
     assert task.status == "in_progress"
     assert 20 <= task.progress_percent <= 35  # 1/3 标准命中，约 28%-30%，绝非 90%
+
+
+def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_task_assignee(bp_db):
+    from app.db.models import AcceptanceCriterion, FunctionalModule
+    from app.modules.a.models import ActivitySummary
+
+    leader, member, project = _seed_independent_project(bp_db)
+    mod = FunctionalModule(id=uuid4(), project_id=project.id, name="模块 A", owner_id=member.id)
+    bp_db.add(mod)
+    bp_db.flush()
+    task = Task(
+        id=uuid4(),
+        project_id=project.id,
+        module_id=mod.id,
+        title="A1 CI 自动检查基建",
+        description="配置前端 lint/typecheck 与后端 ruff/pytest 自动检查",
+        priority="high",
+        weight=100,
+        status="not_started",
+        progress_percent=0,
+        created_by=leader.id,
+    )
+    bp_db.add(task)
+    bp_db.flush()
+    bp_db.add(BTaskMeta(task_id=task.id, project_id=project.id, seq=1, origin="ai"))
+    bp_db.add(TaskAssignee(task_id=task.id, user_id=member.id, role="responsible"))
+    bp_db.add(
+        AcceptanceCriterion(
+            id=uuid4(),
+            task_id=task.id,
+            criterion_key="AC-1",
+            text="CI 自动执行前端 lint/typecheck/build 与后端 ruff/pytest",
+            sort_order=1,
+        )
+    )
+    link = GithubRepoLink(
+        id=uuid4(),
+        project_id=project.id,
+        owner="acme",
+        repo="demo",
+        installation_id=123,
+        default_branch="main",
+        linked_by_id=leader.id,
+    )
+    bp_db.add(link)
+    bp_db.flush()
+
+    act_id = uuid4()
+    bp_db.add(
+        GithubActivity(
+            id=act_id,
+            project_id=project.id,
+            link_id=link.id,
+            kind="commit",
+            external_id="abc1234567890",
+            revision="abc1234567890",
+            title="chore: setup github actions workflow",
+            summary="setup ci",
+            author_login="other_teammate",
+            author_name="其他队友",
+            author_user_id=leader.id,  # 并非任务负责人 member 提交
+            detail={
+                "sha": "abc1234567890",
+                "files": [{"path": ".github/workflows/ci.yml"}],
+            },
+            occurred_at=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+            synced_at=datetime(2026, 11, 20, 10, 5, tzinfo=UTC),
+        )
+    )
+    bp_db.add(
+        ActivitySummary(
+            id=uuid4(),
+            project_id=project.id,
+            source_type="github",
+            source_id=act_id,
+            source_revision="abc1234567890",
+            prompt_version="activity-summary-v2",
+            input_hash="h" * 64,
+            status="ready",
+            result_json={
+                "headline": "接入 GitHub Actions 前后端自动检查流水线",
+                "implementation": (
+                    "新增 CI 工作流，自动运行前端 ESLint/TypeScript/Build "
+                    "以及后端 Ruff 和 Pytest 测试套件。"
+                ),
+                "impact": "所有合入 develop 的提交均须通过自动化质量门禁。",
+                "verification": ["前端 build 与后端 pytest 在工作流中全绿"],
+                "risks": [],
+                "evidence": [{"source": "files", "quote": ".github/workflows/ci.yml"}],
+                "confidence": 0.95,
+                "insufficient_context": [],
+            },
+            provider="openrouter",
+            model="deepseek/deepseek-v3.2",
+            is_placeholder=False,
+            needs_human_review=True,
+        )
+    )
+    bp_db.flush()
+
+    res = code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+    assert res.evidences_created == 1
+    ev = bp_db.scalar(select(Evidence).where(Evidence.task_id == task.id))
+    assert ev is not None
+    assert "接入 GitHub Actions 前后端自动检查流水线" in ev.title
+    assert "实现内容：新增 CI 工作流" in ev.description
+    assert "影响范围：所有合入 develop" in ev.description
+    assert "原提交：chore: setup github actions workflow" in ev.description
+    # 归属给任务负责人 member，确保 member 可以自行采纳此证据而不会被 author_id 拦截
+    assert ev.author_id == member.id
