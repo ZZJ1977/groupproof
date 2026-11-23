@@ -6744,6 +6744,77 @@
         "title": "ExportReportRequest",
         "type": "object"
       },
+      "ExternalFilesSyncDTO": {
+        "properties": {
+          "feishu_auth_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feishu Auth Url"
+          },
+          "feishu_chats": {
+            "default": 0,
+            "title": "Feishu Chats",
+            "type": "integer"
+          },
+          "feishu_skipped": {
+            "default": 0,
+            "title": "Feishu Skipped",
+            "type": "integer"
+          },
+          "feishu_synced": {
+            "default": 0,
+            "title": "Feishu Synced",
+            "type": "integer"
+          },
+          "github_repos": {
+            "default": 0,
+            "title": "Github Repos",
+            "type": "integer"
+          },
+          "github_skipped": {
+            "default": 0,
+            "title": "Github Skipped",
+            "type": "integer"
+          },
+          "github_synced": {
+            "default": 0,
+            "title": "Github Synced",
+            "type": "integer"
+          },
+          "materials_skipped": {
+            "default": 0,
+            "title": "Materials Skipped",
+            "type": "integer"
+          },
+          "materials_synced": {
+            "default": 0,
+            "title": "Materials Synced",
+            "type": "integer"
+          },
+          "missing_feishu_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Feishu Scopes",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "ExternalFilesSyncDTO",
+        "type": "object"
+      },
       "FeishuAttachmentDTO": {
         "properties": {
           "available": {
@@ -11825,6 +11896,22 @@
           "meta"
         ],
         "title": "SuccessResponse[EvidencePageDTO]",
+        "type": "object"
+      },
+      "SuccessResponse_ExternalFilesSyncDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ExternalFilesSyncDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[ExternalFilesSyncDTO]",
         "type": "object"
       },
       "SuccessResponse_FeishuAttachmentDTO_": {
@@ -33676,6 +33763,117 @@
           }
         },
         "summary": "Register",
+        "tags": [
+          "c",
+          "c-files"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/files/sync-external": {
+      "post": {
+        "operationId": "sync_external_api_v1_projects__project_id__files_sync_external_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ExternalFilesSyncDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Verified A authentication is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No project permission or resource is read-only."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found in the requested project."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Stale lock version, idempotency conflict, or invalid state transition."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid UUID, missing reason, or invalid task/source/criterion binding."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file storage or verified external source adapter is not connected."
+          }
+        },
+        "summary": "Sync External",
         "tags": [
           "c",
           "c-files"

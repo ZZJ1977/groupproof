@@ -14,6 +14,7 @@ import { accessFailure, ApiFailure, ApiPager, apiButton, apiInput, isUuid, pageN
 
 type FileVersion = components["schemas"]["FileVersionDTO"];
 type SignedLink = components["schemas"]["SignedFileLinkDTO"];
+type ExternalSyncResult = components["schemas"]["ExternalFilesSyncDTO"];
 const statuses = { draft: "草稿", current: "正式", superseded: "历史版本" } as const;
 const actions = { created: "登记文件", appended: "追加版本", designated: "设为正式" } as const;
 const categories = { all: "全部资料", documents: "文档", images: "图片", exports: "导出文件", archived: "历史版本" } as const;
@@ -46,6 +47,7 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [link, setLink] = useState<SignedLink | null>(null);
+  const [syncResult, setSyncResult] = useState<ExternalSyncResult | null>(null);
   const commandKey = useCommandKey();
   const denial = blocked || [context.error, list.error, detail.error].find(accessFailure);
   const freshContext = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
@@ -75,6 +77,28 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
     const results = await Promise.all([context.refetch(), list.refetch(), ...(selectedId ? [detail.refetch()] : [])]);
     if (results.some((result) => accessFailure(result.error))) { setCommand(null); setBlocked(results.find((result) => accessFailure(result.error))?.error); }
     else if (results[0].isSuccess && results[1].isSuccess) setBlocked(null);
+  }
+  async function syncExternal() {
+    if (!freshContext?.permissions.can_manage_files || busyRef.current) return;
+    busyRef.current = true; setBusy(true); setOperationError(null); setNotice(""); setSyncResult(null);
+    try {
+      const res = await projectApi.syncExternalFiles(projectId);
+      setSyncResult(res);
+      const ghAdded = res.github_synced ?? 0;
+      const fsAdded = res.feishu_synced ?? 0;
+      const matAdded = res.materials_synced ?? 0;
+      const totalAdded = ghAdded + fsAdded + matAdded;
+      const totalSkipped = (res.github_skipped ?? 0) + (res.feishu_skipped ?? 0) + (res.materials_skipped ?? 0);
+      setNotice(
+        totalAdded > 0
+          ? `已同步 ${totalAdded} 份资料（GitHub README ${ghAdded} 份 · 飞书群文档 ${fsAdded} 份 · 初始化资料 ${matAdded} 份）。`
+          : totalSkipped > 0
+            ? `外部资料已是最新（共核对 ${totalSkipped} 份，无新增变更）。`
+            : "同步完成，暂未发现可导入的新文档。"
+      );
+      await refresh();
+    } catch (error) { fail(error); }
+    finally { busyRef.current = false; setBusy(false); }
   }
   async function designate() {
     if (!command || !freshContext?.permissions.can_manage_files || busyRef.current) return;
@@ -112,7 +136,52 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
   }
   if (!enabled) return <EmptyState title="项目地址无效" description="请从已授权项目入口打开资料页。" />;
   return <>
-    <PageHeader title="项目资料" description={freshContext?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新资料</button>} />
+    <PageHeader
+      title="项目资料"
+      description={freshContext?.project.name ?? "正在验证项目权限…"}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          {freshContext?.permissions.can_manage_files && (
+            <button
+              className="gp-btn gp-btn-primary"
+              disabled={busy || context.isFetching || list.isFetching}
+              onClick={() => void syncExternal()}
+            >
+              {busy ? "同步中…" : "同步 GitHub / 飞书资料"}
+            </button>
+          )}
+          <button
+            className={apiButton}
+            disabled={busy || context.isFetching || list.isFetching}
+            onClick={() => void refresh()}
+          >
+            刷新资料
+          </button>
+        </div>
+      }
+    />
+
+    {syncResult && ((syncResult.warnings?.length ?? 0) > 0 || (syncResult.missing_feishu_scopes?.length ?? 0) > 0) && (
+      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
+        <p className="font-medium">外部资料同步提示</p>
+        <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
+          {(syncResult.warnings ?? []).map((w, idx) => <li key={idx}>{w}</li>)}
+        </ul>
+        {(syncResult.missing_feishu_scopes?.length ?? 0) > 0 && (
+          <p className="mt-2 text-xs text-amber-800">
+            缺少飞书只读权限：<code className="rounded bg-amber-100 px-1 py-0.5">{(syncResult.missing_feishu_scopes ?? []).join(", ")}</code>
+            {syncResult.feishu_auth_url && safeHttps(syncResult.feishu_auth_url) && (
+              <>
+                {" · "}
+                <a className="gp-link" href={syncResult.feishu_auth_url} target="_blank" rel="noopener noreferrer">
+                  前往飞书开放平台开通权限
+                </a>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+    )}
 
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isFetching && <p role="status">正在验证项目权限…</p>}

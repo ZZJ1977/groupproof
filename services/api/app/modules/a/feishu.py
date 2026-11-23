@@ -47,10 +47,69 @@ TOKEN_REFRESH_MARGIN = 300  # 访问令牌到期前 5 分钟重新获取
 MAX_TEXT_CHARS = 30000  # 与 C 的来源快照上限一致（脱敏后全文）
 _CHAT_ID = re.compile(r"oc_[A-Za-z0-9_-]{4,120}")
 _UNAVAILABLE = "FEISHU_UNAVAILABLE"
+_FEISHU_DOC_URL_RE = re.compile(
+    r"https://[A-Za-z0-9.-]*\.(?:feishu\.cn|larksuite\.com)/(docx|docs|wiki|sheets|file)/([A-Za-z0-9_-]{6,120})",
+    re.IGNORECASE,
+)
+_FEISHU_SCOPE_LIST_RE = re.compile(r"\[([a-z0-9_:,.\s-]+)\]", re.IGNORECASE)
+_FEISHU_AUTH_URL_RE = re.compile(r"https://open\.(?:feishu\.cn|larksuite\.com)/app/[^\s\"'，。]+")
+
+
+class FeishuScopeDeniedError(ApiError):
+    """飞书应用尚未开通对应只读权限（code=99991672）。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        missing_scopes: list[str] | None = None,
+        auth_url: str | None = None,
+    ) -> None:
+        self.missing_scopes = list(missing_scopes or [])
+        self.auth_url = auth_url
+        super().__init__(
+            503,
+            _UNAVAILABLE,
+            message,
+            details={"missing_scopes": self.missing_scopes, "auth_url": auth_url},
+        )
 
 
 def _unavailable(message: str = "飞书暂时不可用，请稍后重试。") -> ApiError:
     return ApiError(503, _UNAVAILABLE, message)
+
+
+def _raise_feishu_error(body: dict[str, Any], fallback: str) -> None:
+    code = body.get("code")
+    msg = str(body.get("msg") or "")
+    if code == 99991672:
+        scopes: list[str] = []
+        m = _FEISHU_SCOPE_LIST_RE.search(msg)
+        if m:
+            scopes = [part.strip() for part in m.group(1).split(",") if part.strip()]
+        auth_match = _FEISHU_AUTH_URL_RE.search(msg)
+        auth_url = auth_match.group(0) if auth_match else None
+        scope_label = " / ".join(scopes) if scopes else "群消息与文档只读权限"
+        raise FeishuScopeDeniedError(
+            f"飞书应用尚未开通所需只读权限（{scope_label}），请在飞书开放平台开通并发布应用版本后重试。",
+            missing_scopes=scopes,
+            auth_url=auth_url,
+        )
+    raise _unavailable(fallback)
+
+
+def extract_feishu_doc_links(text: str) -> list[tuple[str, str, str]]:
+    """从消息正文中提取去重后的飞书云文档 / 知识库 / 文件链接 (kind, token, url)。"""
+    seen: set[tuple[str, str]] = set()
+    found: list[tuple[str, str, str]] = []
+    for match in _FEISHU_DOC_URL_RE.finditer(text or ""):
+        kind = match.group(1).lower()
+        token = match.group(2)
+        if (kind, token) in seen:
+            continue
+        seen.add((kind, token))
+        found.append((kind, token, match.group(0)))
+    return found
 
 
 # ------------------------------------------------------------------ 配置与客户端
@@ -161,7 +220,10 @@ class FeishuClient:
         except (httpx.HTTPError, ValueError) as exc:
             raise _unavailable() from exc
         if response.status_code != 200 or body.get("code") != 0:
-            raise _unavailable("无法读取该飞书群的消息，请确认机器人已在群中且有读取权限。")
+            _raise_feishu_error(
+                body if isinstance(body, dict) else {},
+                "无法读取该飞书群的消息，请确认机器人已在群中且有读取权限。",
+            )
         data = body.get("data") or {}
         items = [_parse_item(raw) for raw in data.get("items") or []]
         next_token = data.get("page_token") if data.get("has_more") else None
@@ -177,7 +239,14 @@ class FeishuClient:
                 headers={"Authorization": f"Bearer {self._access_token()}"},
             ) as response:
                 if response.status_code != 200:
-                    raise _unavailable("无法读取这个附件，可能已被删除或机器人没有权限。")
+                    try:
+                        err_body = json.loads(response.read().decode("utf-8", errors="ignore"))
+                    except ValueError:
+                        err_body = {}
+                    _raise_feishu_error(
+                        err_body if isinstance(err_body, dict) else {},
+                        "无法读取这个附件，可能已被删除或机器人没有权限。",
+                    )
                 data = bytearray()
                 for chunk in response.iter_bytes():
                     data.extend(chunk)
@@ -186,6 +255,80 @@ class FeishuClient:
         except httpx.HTTPError as exc:
             raise _unavailable() from exc
         return bytes(data)
+
+    def list_chat_tabs(self, chat_id: str) -> list[dict[str, Any]]:
+        """列出飞书群标签页（只读），用于发现群内固定的云文档与链接。"""
+        try:
+            response = self._http.get(
+                f"/open-apis/im/v1/chats/{chat_id}/chat_tabs/list_tabs",
+                headers={"Authorization": f"Bearer {self._access_token()}"},
+            )
+            body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unavailable() from exc
+        if response.status_code != 200 or body.get("code") != 0:
+            _raise_feishu_error(
+                body if isinstance(body, dict) else {},
+                "无法读取该飞书群的标签页。",
+            )
+        return list((body.get("data") or {}).get("chat_tabs") or [])
+
+    def get_docx_document(self, doc_token: str) -> tuple[str, str]:
+        """读取飞书云文档（docx）的标题与纯文本正文（只读）。"""
+        headers = {"Authorization": f"Bearer {self._access_token()}"}
+        try:
+            meta_resp = self._http.get(
+                f"/open-apis/docx/v1/documents/{doc_token}",
+                headers=headers,
+            )
+            meta_body = meta_resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unavailable() from exc
+        if meta_resp.status_code != 200 or meta_body.get("code") != 0:
+            _raise_feishu_error(
+                meta_body if isinstance(meta_body, dict) else {},
+                "无法读取该飞书云文档元信息。",
+            )
+        title = str(
+            ((meta_body.get("data") or {}).get("document") or {}).get("title") or ""
+        ).strip()
+        try:
+            raw_resp = self._http.get(
+                f"/open-apis/docx/v1/documents/{doc_token}/raw_content",
+                headers=headers,
+            )
+            raw_body = raw_resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unavailable() from exc
+        if raw_resp.status_code != 200 or raw_body.get("code") != 0:
+            _raise_feishu_error(
+                raw_body if isinstance(raw_body, dict) else {},
+                "无法读取该飞书云文档正文。",
+            )
+        content = str((raw_body.get("data") or {}).get("content") or "")
+        return title or doc_token, content
+
+    def get_wiki_node_obj(self, node_token: str) -> tuple[str, str, str] | None:
+        """解析知识库节点，返回 (obj_type, obj_token, title)。"""
+        try:
+            resp = self._http.get(
+                "/open-apis/wiki/v2/spaces/get_node",
+                params={"token": node_token},
+                headers={"Authorization": f"Bearer {self._access_token()}"},
+            )
+            body = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unavailable() from exc
+        if resp.status_code != 200 or body.get("code") != 0:
+            _raise_feishu_error(
+                body if isinstance(body, dict) else {},
+                "无法读取该飞书知识库节点。",
+            )
+        node = (body.get("data") or {}).get("node") or {}
+        obj_type = str(node.get("obj_type") or "").lower()
+        obj_token = str(node.get("obj_token") or "")
+        title = str(node.get("title") or "")
+        return (obj_type, obj_token, title) if obj_type and obj_token else None
 
     def list_bot_chats(self, page_token: str | None) -> tuple[list[FeishuChatItem], str | None]:
         """列出机器人所在的群（只读），用于校验用户提交的群聊 ID。"""
@@ -272,8 +415,15 @@ def _post_text(body: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
             if not isinstance(node, dict):
                 continue
             tag = node.get("tag")
-            if tag in ("text", "a"):
+            if tag == "text":
                 parts.append(str(node.get("text") or ""))
+            elif tag == "a":
+                label = str(node.get("text") or "")
+                href = str(node.get("href") or "")
+                if href and _FEISHU_DOC_URL_RE.search(href) and href not in label:
+                    parts.append(f"{label} ({href})" if label else href)
+                else:
+                    parts.append(label)
             elif tag == "at":
                 parts.append("@" + str(node.get("user_name") or "成员"))
             elif tag == "img" and node.get("image_key"):
@@ -303,8 +453,15 @@ def parse_message(msg_type: str, content: str) -> ParsedMessage:
                 attachment["name"] = str(body["file_name"])[:300]
             attachments.append(attachment)
         text = f"[{msg_type}]" + (f" {body['file_name']}" if body.get("file_name") else "")
+    elif msg_type == "interactive":
+        urls = [url for _, _, url in extract_feishu_doc_links(content)]
+        title_obj = body.get("title")
+        card_title = title_obj if isinstance(title_obj, str) else ""
+        text_parts = [p for p in ("[interactive]", card_title, *urls) if p]
+        text = " ".join(text_parts)
     else:
-        text = f"[{msg_type}]"
+        urls = [url for _, _, url in extract_feishu_doc_links(content)]
+        text = f"[{msg_type}]" + (" " + " ".join(urls) if urls else "")
     unique: dict[str, dict[str, Any]] = {}
     for item in attachments:
         unique.setdefault(item["file_key"], item)

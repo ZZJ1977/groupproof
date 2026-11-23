@@ -12,9 +12,11 @@ from app.modules.c.evidence_router import (
     commit_command,
     private_response,
 )
+from app.modules.c.external_files_sync import sync_external_project_files
 from app.modules.c.files_schemas import (
     AppendFileVersion,
     DesignateFileVersion,
+    ExternalFilesSyncDTO,
     FileDetailDTO,
     FilePageDTO,
     FilePurpose,
@@ -189,4 +191,23 @@ def link(
 ):
     return success(
         get_signed_link(session, user, project_id, file_id, version_id, purpose, storage), request
+    )
+
+
+@router.post(
+    "/projects/{project_id}/files/sync-external",
+    response_model=SuccessResponse[ExternalFilesSyncDTO],
+)
+def sync_external(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    return success(
+        commit_command(
+            session,
+            lambda: sync_external_project_files(session, user, project_id).model_dump(mode="json"),
+        ),
+        request,
     )
