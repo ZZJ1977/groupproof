@@ -113,13 +113,13 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const completedTasks = (page.data?.columns ?? []).find((c) => c.status === "completed")?.count ?? 0;
   return <div>
     <PageHeader title={tr(title)} description={tr(description)} actions={<button type="button" className={secondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}><RefreshCw size={14} className={syncCode.isPending ? "animate-spin" : ""} />{syncCode.isPending ? tr("同步中…") : tr("同步代码进度")}</button>} />
-    {page.data && page.data.total > 0 && <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("任务总数")}</p><p className="mt-1 text-xl font-bold text-slate-900">{page.data.total}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("已完成 {0}", { 0: completedTasks })}</p></div>
-      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("活跃推进")}</p><p className="mt-1 text-xl font-bold text-sky-700">{inProgressTasks}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("进行中 / 待验收")}</p></div>
-      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("加权参考进度")}</p><div className="mt-1 flex items-center gap-2"><span className="text-xl font-bold text-slate-900">{avgProgress}%</span><div className="h-1.5 flex-1 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${avgProgress}%` }} /></div></div></div>
-      <div className="gp-surface-card py-3"><p className="text-xs text-slate-500">{tr("代码联动任务")}</p><p className="mt-1 text-xl font-bold text-slate-900">{commitLinked}</p><p className="mt-0.5 text-[11px] text-slate-400">{tr("代码最高计至 90%，待确认")}</p></div>
+    {page.data && page.data.total > 0 && <div className="mt-3 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("任务总数")}</span><span className="text-base font-bold text-slate-900">{page.data.total}<span className="ml-1 text-[11px] font-normal text-slate-400">({tr("完成 {0}", { 0: completedTasks })})</span></span></div>
+      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("活跃推进")}</span><span className="text-base font-bold text-sky-700">{inProgressTasks}</span></div>
+      <div className="gp-surface-card flex items-center justify-between gap-3 py-2.5"><span className="text-xs text-slate-500">{tr("加权进度")}</span><div className="flex flex-1 items-center justify-end gap-2"><div className="h-1.5 max-w-20 flex-1 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${avgProgress}%` }} /></div><span className="text-base font-bold text-slate-900">{avgProgress}%</span></div></div>
+      <div className="gp-surface-card flex items-baseline justify-between gap-2 py-2.5"><span className="text-xs text-slate-500">{tr("代码联动")}</span><span className="text-base font-bold text-slate-900">{commitLinked}<span className="ml-1 text-[11px] font-normal text-slate-400">{tr("项")}</span></span></div>
     </div>}
-    <nav aria-label={tr("任务视图")} className="gp-segmented mt-4">
+    <nav aria-label={tr("任务视图")} className="gp-segmented mt-3">
       {(["tree", "board", "list"] as const).map((v) => (
         <Link key={v} href={viewHref(v)} aria-current={v === view ? "page" : undefined} data-active={v === view ? "true" : undefined} className="gp-segmented-item">
           {tr(viewLabel[v])}
@@ -130,8 +130,8 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
       </Link>
     </nav>
     <Panel className="mt-3">
-      <form className="grid grid-cols-2 gap-2 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); setFilters({ q: q.trim() || null, page: null }); }}>
-        <div className="col-span-2"><label className={label} htmlFor="tasks-q">{tr("搜索")}</label><input id="tasks-q" className={input} placeholder={tr("名称、说明或编号 T-001")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <form className={`grid grid-cols-2 gap-2 ${view === "list" ? "md:grid-cols-[minmax(140px,1.4fr)_repeat(5,minmax(0,1fr))_auto]" : "md:grid-cols-[minmax(160px,1.5fr)_repeat(4,minmax(0,1fr))_auto]"}`} onSubmit={(e) => { e.preventDefault(); setFilters({ q: q.trim() || null, page: null }); }}>
+        <div className="col-span-2 md:col-span-1"><label className={label} htmlFor="tasks-q">{tr("搜索")}</label><input id="tasks-q" className={input} placeholder={tr("名称、说明或编号 T-001")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <div><label className={label} htmlFor="tasks-status">{tr("状态")}</label><select id="tasks-status" className={input} value={filters.status} onChange={(e) => setFilters({ status: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{tr(v)}</option>)}</select></div>
         <div><label className={label} htmlFor="tasks-assignee">{tr("负责人")}</label><select id="tasks-assignee" className={input} value={filters.assignee} onChange={(e) => setFilters({ assignee: e.target.value || null, page: null })}><option value="">{tr("全部")}</option><option value="me">{tr("我")}</option><option value="none">{tr("未分配")}</option>{page.data?.members.map((m) => <option key={m.id} value={m.id}>{m.name ?? tr("组员")}</option>)}</select></div>
         <div><label className={label} htmlFor="tasks-module">{tr("模块")}</label><select id="tasks-module" className={input} value={filters.module} onChange={(e) => setFilters({ module: e.target.value || null, page: null })}><option value="">{tr("全部")}</option>{page.data?.modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
@@ -214,7 +214,7 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
       title={row.blocked_reason ?? tr("拖到下一列")} onDragStart={() => setDragged(row)} onDragEnd={() => setDragged(undefined)}
       className={`rounded-xl border border-slate-200/80 bg-white p-3 text-sm shadow-2xs transition-shadow hover:shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}>
       <div className="font-mono text-xs text-slate-500">{row.code}</div>
-      <Link className="font-medium text-slate-900 hover:underline" href={row.links.detail}>{row.title}</Link>
+      <Link className="font-medium text-slate-900 hover:underline" draggable={false} href={row.links.detail}>{row.title}</Link>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500"><span><Assignees row={row} /> · {row.progress_percent}%</span>{(row.matched_commits ?? 0) > 0 && <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"><GitCommitHorizontal size={11} />{row.matched_commits}</span>}</div>
       <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-[var(--gp-action)]" style={{ width: `${row.progress_percent}%` }} /></div>
       {row.blocked_reason && <div className="mt-1 text-xs text-slate-400">{row.blocked_reason}</div>}
