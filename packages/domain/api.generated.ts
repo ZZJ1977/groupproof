@@ -3066,6 +3066,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/files/sync-external": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync External */
+        post: operations["sync_external_api_v1_projects__project_id__files_sync_external_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/materials": {
         parameters: {
             query?: never;
@@ -7901,6 +7918,55 @@ export interface components {
              */
             format: "csv" | "markdown" | "json";
         };
+        /** ExternalFilesSyncDTO */
+        ExternalFilesSyncDTO: {
+            /** Feishu Auth Url */
+            feishu_auth_url?: string | null;
+            /**
+             * Feishu Chats
+             * @default 0
+             */
+            feishu_chats: number;
+            /**
+             * Feishu Skipped
+             * @default 0
+             */
+            feishu_skipped: number;
+            /**
+             * Feishu Synced
+             * @default 0
+             */
+            feishu_synced: number;
+            /**
+             * Github Repos
+             * @default 0
+             */
+            github_repos: number;
+            /**
+             * Github Skipped
+             * @default 0
+             */
+            github_skipped: number;
+            /**
+             * Github Synced
+             * @default 0
+             */
+            github_synced: number;
+            /**
+             * Materials Skipped
+             * @default 0
+             */
+            materials_skipped: number;
+            /**
+             * Materials Synced
+             * @default 0
+             */
+            materials_synced: number;
+            /** Missing Feishu Scopes */
+            missing_feishu_scopes?: string[];
+            /** Warnings */
+            warnings?: string[];
+        };
         /** FeishuAttachmentDTO */
         FeishuAttachmentDTO: {
             /** Available */
@@ -9811,6 +9877,11 @@ export interface components {
         /** SuccessResponse[EvidencePageDTO] */
         SuccessResponse_EvidencePageDTO_: {
             data: components["schemas"]["EvidencePageDTO"];
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** SuccessResponse[ExternalFilesSyncDTO] */
+        SuccessResponse_ExternalFilesSyncDTO_: {
+            data: components["schemas"]["ExternalFilesSyncDTO"];
             meta: components["schemas"]["ResponseMeta"];
         };
         /** SuccessResponse[FeishuAttachmentDTO] */
@@ -22095,6 +22166,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessResponse_SignedFileLinkDTO_"];
+                };
+            };
+            /** @description Verified A authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No project permission or resource is read-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found in the requested project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale lock version, idempotency conflict, or invalid state transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid UUID, missing reason, or invalid task/source/criterion binding. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file storage or verified external source adapter is not connected. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    sync_external_api_v1_projects__project_id__files_sync_external_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse_ExternalFilesSyncDTO_"];
                 };
             };
             /** @description Verified A authentication is required. */

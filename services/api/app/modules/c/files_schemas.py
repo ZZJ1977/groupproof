@@ -92,3 +92,17 @@ class SignedFileLinkDTO(BaseModel):
     purpose: FilePurpose
     url: str
     expires_at: datetime
+
+
+class ExternalFilesSyncDTO(BaseModel):
+    github_repos: int = 0
+    github_synced: int = 0
+    github_skipped: int = 0
+    feishu_chats: int = 0
+    feishu_synced: int = 0
+    feishu_skipped: int = 0
+    materials_synced: int = 0
+    materials_skipped: int = 0
+    missing_feishu_scopes: list[str] = Field(default_factory=list)
+    feishu_auth_url: str | None = None
+    warnings: list[str] = Field(default_factory=list)

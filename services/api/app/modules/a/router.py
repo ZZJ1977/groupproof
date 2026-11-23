@@ -205,6 +205,15 @@ def sync_feishu(project_id: UUID, request: Request, session: Database, user: Cur
         if isinstance(reader, feishu.FeishuClient):
             reader.close()
     session.commit()
+    try:
+        from app.modules.c.external_files_sync import sync_external_project_files
+
+        sync_external_project_files(
+            session, user, project_id, refresh_sources=False, require_member_auth=False
+        )
+        session.commit()
+    except Exception:  # noqa: BLE001 - 外部资料同步不阻断飞书同步返回
+        session.rollback()
     return success(FeishuSyncDTO(**totals), request)
 
 
@@ -467,6 +476,15 @@ def sync_github(
         code_progress_service.sync_task_code_progress(session, project_id, actor=user)
         session.commit()
     except Exception:  # noqa: BLE001 - 代码进度联动不阻断 GitHub 同步返回
+        session.rollback()
+    try:
+        from app.modules.c.external_files_sync import sync_external_project_files
+
+        sync_external_project_files(
+            session, user, project_id, refresh_sources=False, require_member_auth=False
+        )
+        session.commit()
+    except Exception:  # noqa: BLE001 - README 同步不阻断 GitHub 同步返回
         session.rollback()
     bind = session.get_bind()
     if bind is not None and bind.dialect.name == "postgresql":

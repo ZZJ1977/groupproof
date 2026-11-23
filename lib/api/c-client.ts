@@ -148,6 +148,11 @@ export function createCClient(client = createApiClient()) {
         params: { path: { project_id: projectId, file_id: fileId, version_id: versionId }, query: { purpose } },
       }));
     },
+    async syncExternalFiles(projectId: string) {
+      return unwrap(await client.POST("/api/v1/projects/{project_id}/files/sync-external", {
+        params: { path: { project_id: projectId } },
+      }));
+    },
     async adminUsers(query: AdminUserQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/users", { params: { query } }));
     },

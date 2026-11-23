@@ -94,7 +94,7 @@ export function FileUploadForm({ scope, scopeId, target, saved, denied }: Props)
       if (!controller.signal.aborted) { setStatus(""); setPercent(null); }
     }
   }
-  return <form className="my-4 space-y-3 rounded-md border p-4" onSubmit={submit}>
+  return <form className="my-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs" onSubmit={submit}>
     <fieldset disabled={busy} className="space-y-2">
       <legend className="font-semibold">{target ? "上传新版本 · " + target.name : "上传文件"}</legend>
       <label className="block">选择文件<input type="file" required className="block" accept={uploadAccept}

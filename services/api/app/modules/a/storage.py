@@ -118,6 +118,16 @@ class SupabaseStorageClient:
         response.raise_for_status()
         return f"{self.settings.url}/storage/v1{response.json()['url']}"
 
+    def upload_bytes(self, object_id: str, data: bytes, mime_type: str) -> None:
+        upload_url = self.create_signed_upload_url(object_id)
+        response = httpx.put(
+            upload_url,
+            content=data,
+            headers={"Content-Type": mime_type},
+            timeout=self._timeout,
+        )
+        response.raise_for_status()
+
     def download(self, object_id: str, *, max_bytes: int) -> bytes:
         chunks: list[bytes] = []
         size = 0
@@ -371,6 +381,72 @@ def _reject(session: Session, row: UploadReceiptRow, reason: str) -> UploadRecei
     row.rejection_reason = reason
     session.flush()
     raise ApiError(422, "UPLOAD_REJECTED", "文件未通过检查。", details={"reason": reason})
+
+
+def store_system_bytes(
+    session: Session,
+    user: User,
+    *,
+    scope: Scope,
+    scope_id: UUID,
+    filename: str,
+    mime_type: str,
+    data: bytes,
+    client: StorageClient | None = None,
+    scanner: ContentScanner | None = None,
+) -> UploadReceiptRow:
+    """服务端直传同步资料字节流（如 GitHub README / 飞书群文档），并生成已完成校验的上传凭证。"""
+    resolved_client = _require_client(client if client is not None else get_storage_client())
+    extension = validate_file(filename, mime_type, len(data))
+    reason = (scanner or BasicContentScanner()).scan(data, extension=extension)
+    if reason:
+        raise ApiError(
+            422, "UPLOAD_REJECTED", "同步文件未通过安全检查。", details={"reason": reason}
+        )
+    receipt_id = uuid4()
+    safe_name = _FILENAME_SAFE.sub("_", filename)[-120:] or f"file.{extension}"
+    object_id = f"{scope}/{scope_id}/{receipt_id}/{safe_name}"
+    try:
+        upload_fn = getattr(resolved_client, "upload_bytes", None)
+        if callable(upload_fn):
+            upload_fn(object_id, data, mime_type)
+        else:
+            upload_url = resolved_client.create_signed_upload_url(object_id)
+            resp = httpx.put(
+                upload_url,
+                content=data,
+                headers={"Content-Type": mime_type},
+                timeout=20.0,
+            )
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        raise ApiError(503, "FILE_STORAGE_UNAVAILABLE", "文件存储暂时不可用。") from exc
+    now = datetime.now(UTC)
+    digest = hashlib.sha256(data).hexdigest()
+    row = UploadReceiptRow(
+        id=receipt_id,
+        scope=scope,
+        scope_id=scope_id,
+        actor_id=user.id,
+        provider=PROVIDER,
+        bucket=resolved_client.bucket,
+        object_id=object_id,
+        filename=filename,
+        declared_mime=mime_type,
+        declared_size=len(data),
+        status="completed",
+        scan_status="clean",
+        content_hash=digest,
+        size_bytes=len(data),
+        mime_type=mime_type,
+        revision=f"sha256:{digest}",
+        created_at=now,
+        upload_expires_at=now + UPLOAD_URL_TTL,
+        completed_at=now,
+    )
+    session.add(row)
+    session.flush()
+    return row
 
 
 def signed_download_url(
