@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.errors import ApiError
 from app.db.base import Base
-from app.db.models import Milestone, Project, ProjectMember, Task, User
+from app.db.models import Milestone, Project, ProjectMember, Task, TaskAssignee, User
 from app.modules.a.ai.functions import _normalize_weights_to_100
 from app.modules.a.models import GithubActivity, GithubRepoLink
 from app.modules.b import (
@@ -84,9 +84,12 @@ def bp_db(monkeypatch):
                 if "gen_random_uuid" in raw or "::jsonb" in raw or "now()" in raw:
                     col.server_default = None
     meta.create_all(engine)
-    with Session(engine) as session:
-        yield session
-    engine.dispose()
+    try:
+        with Session(engine) as session:
+            yield session
+    finally:
+        event.remove(Mapper, "before_insert", fill_defaults)
+        engine.dispose()
 
 
 def _seed_independent_project(session: Session) -> tuple[User, User, Project]:
@@ -383,8 +386,22 @@ def test_code_progress_sync_matches_commits_and_caps_at_90_percent(bp_db):
         bp_db, leader, project.id, FreezePlan(expected_version=plan_dto.lock_version)
     )
 
+    assignee_id = bp_db.scalar(
+        select(TaskAssignee.user_id).where(
+            TaskAssignee.task_id == task.id,
+            TaskAssignee.role == "responsible",
+            TaskAssignee.unassigned_at.is_(None),
+        )
+    )
+    responsible = leader if assignee_id == leader.id else _member
+    other_member = _member if responsible is leader else leader
+
+    with pytest.raises(ApiError) as non_resp_exc:
+        acceptance.complete_by_criteria(bp_db, project.id, task.id, other_member)
+    assert non_resp_exc.value.code == "TASK_RESPONSIBLE_REQUIRED"
+
     with pytest.raises(ApiError) as exc:
-        acceptance.complete_by_criteria(bp_db, project.id, task.id, leader)
+        acceptance.complete_by_criteria(bp_db, project.id, task.id, responsible)
     assert exc.value.code == "CRITERIA_NOT_CONFIRMED"
 
     for ev in ev_rows:
@@ -395,7 +412,7 @@ def test_code_progress_sync_matches_commits_and_caps_at_90_percent(bp_db):
     page_after_adopt = tasks_view_service.list_tasks(bp_db, leader, project.id, view="list")
     assert page_after_adopt.items[0].criteria_confirmed == page_after_adopt.items[0].criteria_total
 
-    done = acceptance.complete_by_criteria(bp_db, project.id, task.id, leader)
+    done = acceptance.complete_by_criteria(bp_db, project.id, task.id, responsible)
     assert done["status"] == "completed"
     assert done["task_status"] == "completed"
     assert done["progress_percent"] == 100
