@@ -199,13 +199,20 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const hasPendingServerSummaries = sourceType === "github"
     && (summaries.data ?? []).some((item) => item.status === "pending");
 
-  // 每条新提交自动触发 AI 代码功能分析（无需人工点击），逐条完成并实时刷新卡片
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // 每条新提交自动触发 AI 代码功能分析（3 路并发，无需人工点击；refetch 不会中断队列）
   useEffect(() => {
     if (
       sourceType !== "github" ||
       !access?.actor.is_member ||
       !summaries.isSuccess ||
-      summaries.isFetching ||
       syncing ||
       summaryBusy ||
       autoRunningRef.current
@@ -220,36 +227,41 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     if (!toAnalyze.length) return;
     for (const id of toAnalyze) autoTriggeredRef.current.add(id);
     autoRunningRef.current = true;
-    let cancelled = false;
-    setAutoAnalyzingIds(toAnalyze);
+    setAutoAnalyzingIds((prev) => [...new Set([...prev, ...toAnalyze])]);
 
     void (async () => {
       try {
-        for (const id of toAnalyze) {
-          if (cancelled) break;
-          try {
-            await projectApi.generateGithubActivitySummary(projectId, id);
-          } catch {
-            // 单条失败留给列表显示「重试摘要」，不阻塞其余提交自动分析
-          }
-          if (cancelled) break;
-          setAutoAnalyzingIds((prev) => prev.filter((item) => item !== id));
-          await summaries.refetch();
-          if (selectedId === id) {
-            await selectedSummaryQuery.refetch();
-          }
-        }
+        const queue = [...toAnalyze];
+        const workerCount = Math.min(3, queue.length);
+        await Promise.all(
+          Array.from({ length: workerCount }, async () => {
+            while (queue.length > 0 && mountedRef.current) {
+              const id = queue.shift();
+              if (!id) break;
+              try {
+                await projectApi.generateGithubActivitySummary(projectId, id);
+              } catch {
+                // 单条失败留给列表显示「重试摘要」，不阻塞其余提交自动分析
+              }
+              if (!mountedRef.current) break;
+              setAutoAnalyzingIds((prev) => prev.filter((item) => item !== id));
+              void summaries.refetch();
+              if (selectedId === id) {
+                void selectedSummaryQuery.refetch();
+              }
+            }
+          }),
+        );
       } finally {
         autoRunningRef.current = false;
-        if (!cancelled) setAutoAnalyzingIds([]);
+        if (mountedRef.current) {
+          setAutoAnalyzingIds((prev) => prev.filter((id) => !toAnalyze.includes(id)));
+          void summaries.refetch();
+        }
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceType, projectId, access?.actor.is_member, summaries.isSuccess, summaries.isFetching, syncing, summaryBusy, summaryIds.join(",")]);
+  }, [sourceType, projectId, access?.actor.is_member, summaries.isSuccess, syncing, summaryBusy, summaryIds.join(",")]);
 
   // 若服务端后台同步任务仍在分析某些提交，每 3 秒自动轮询直到结果就绪
   useEffect(() => {
@@ -603,7 +615,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             {rows.items.map((item) => {
               const isCommit = sourceType === "github" && item.kind === "commit";
               const summary = isCommit ? summaryById.get(item.source_id) : undefined;
-              const isAnalyzing = isCommit && (
+              const isAnalyzing = isCommit && summary?.status !== "ready" && (
                 summaryBusy === item.source_id ||
                 autoAnalyzingIds.includes(item.source_id) ||
                 summary?.status === "pending"

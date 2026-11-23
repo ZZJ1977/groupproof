@@ -9,8 +9,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -28,7 +29,8 @@ logger = logging.getLogger("groupproof.a.activity_summary")
 
 PROMPT_VERSION = "activity-summary-v2"
 SUMMARY_STATUSES = ("not_generated", "pending", "ready", "failed", "unsupported")
-MAX_AUTO_SUMMARY_PER_SYNC = 15
+MAX_AUTO_SUMMARY_PER_SYNC = 20
+_FAILED_RETRY_COOLDOWN_MINUTES = 10
 
 
 def _hydrate_commit_detail(session: Session, row: GithubActivity) -> None:
@@ -269,11 +271,27 @@ def generate_summary(
             usage=AIUsageContext(user_id=actor.id, project_id=project_id),
         )
     except ApiError as error:
-        cached.status = "failed"
-        cached.error_code = error.code
-        cached.result_json = None
-        session.flush()
-        return _apply_row(data, cached)
+        # 对瞬时模型超时/限流自动重试一次，提升自动摘要成功率
+        if error.code == "AI_UNAVAILABLE" and provider is None:
+            time.sleep(1.5)
+            try:
+                result = ai.summarize_activity(
+                    payload,
+                    provider=provider,
+                    usage=AIUsageContext(user_id=actor.id, project_id=project_id),
+                )
+            except ApiError as retry_error:
+                cached.status = "failed"
+                cached.error_code = retry_error.code
+                cached.result_json = None
+                session.flush()
+                return _apply_row(data, cached)
+        else:
+            cached.status = "failed"
+            cached.error_code = error.code
+            cached.result_json = None
+            session.flush()
+            return _apply_row(data, cached)
     cached.status = "ready"
     cached.result_json = result.model_dump(mode="json")
     cached.provider = result.provider
@@ -289,7 +307,7 @@ def generate_summary(
 def recent_unanalyzed_commit_ids(
     session: Session, project_id: UUID, *, limit: int = MAX_AUTO_SUMMARY_PER_SYNC
 ) -> list[UUID]:
-    """返回本项目最新尚未生成当前版本 ready 摘要的 GitHub 提交 ID 列表。"""
+    """返回本项目最新尚未生成当前版本 ready 摘要（且近期未刚失败）的 GitHub 提交 ID 列表。"""
     rows = session.scalars(
         select(GithubActivity)
         .where(
@@ -302,18 +320,28 @@ def recent_unanalyzed_commit_ids(
     ).all()
     if not rows:
         return []
-    ready_ids = set(
-        session.scalars(
-            select(ActivitySummary.source_id).where(
-                ActivitySummary.project_id == project_id,
-                ActivitySummary.source_type == "github",
-                ActivitySummary.prompt_version == PROMPT_VERSION,
-                ActivitySummary.status == "ready",
-                ActivitySummary.source_id.in_([row.id for row in rows]),
+    existing = session.scalars(
+        select(ActivitySummary).where(
+            ActivitySummary.project_id == project_id,
+            ActivitySummary.source_type == "github",
+            ActivitySummary.prompt_version == PROMPT_VERSION,
+            ActivitySummary.source_id.in_([row.id for row in rows]),
+        )
+    ).all()
+    cooldown_cutoff = datetime.now(UTC) - timedelta(minutes=_FAILED_RETRY_COOLDOWN_MINUTES)
+    skip_ids: set[UUID] = set()
+    for summary in existing:
+        if summary.status in {"ready", "pending"}:
+            skip_ids.add(summary.source_id)
+        elif summary.status == "failed" and summary.updated_at is not None:
+            upd = (
+                summary.updated_at.astimezone(UTC)
+                if summary.updated_at.tzinfo is not None
+                else summary.updated_at.replace(tzinfo=UTC)
             )
-        ).all()
-    )
-    pending = [row.id for row in rows if row.id not in ready_ids]
+            if upd >= cooldown_cutoff:
+                skip_ids.add(summary.source_id)
+    pending = [row.id for row in rows if row.id not in skip_ids]
     return pending[:limit]
 
 
@@ -358,6 +386,6 @@ def run_auto_summaries(
     targets = list(dict.fromkeys(commit_ids))[:MAX_AUTO_SUMMARY_PER_SYNC]
     if len(targets) == 1:
         return 1 if _process_one(targets[0]) else 0
-    with ThreadPoolExecutor(max_workers=min(3, len(targets))) as pool:
+    with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
         results = list(pool.map(_process_one, targets))
     return sum(1 for ok in results if ok)

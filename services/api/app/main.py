@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
@@ -19,6 +20,7 @@ from app.auth.routers import capabilities as auth_capabilities_router
 from app.auth.routers import github as auth_github_router
 from app.auth.routers import me as auth_me_router
 from app.db.session import engine
+from app.modules.a import github_auto_sync
 from app.modules.a.router import router as a_router
 from app.modules.b.router import router as b_router
 from app.modules.c.router import router as c_router
@@ -40,10 +42,21 @@ from app.observability import init_sentry
 
 init_sentry()
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    github_auto_sync.start_auto_sync_loop()
+    try:
+        yield
+    finally:
+        github_auto_sync.stop_auto_sync_loop()
+
+
 app = FastAPI(
     title="GroupProof API",
     version="0.2.0",
     description="Modular API with a PostgreSQL project example and shared response contract.",
+    lifespan=lifespan,
 )
 
 
