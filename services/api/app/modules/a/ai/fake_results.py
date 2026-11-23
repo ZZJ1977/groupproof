@@ -183,3 +183,82 @@ def generate_project_blueprint(payload: dict[str, Any]) -> dict:
         "in_scope": "覆盖上传资料中的全部核心模块与交付需求。",
         "out_of_scope": "未在资料中约定的扩展能力。",
     }
+
+
+def analyze_feishu_collaboration(payload: dict[str, Any]) -> dict:
+    messages = payload.get("messages") or []
+    tasks = payload.get("tasks") or []
+    if not messages:
+        return {
+            "overview": "当前暂无可分析的飞书群聊消息。",
+            "items": [],
+        }
+
+    confirm_tokens = ("收到", "ok", "可以", "没问题", "同意", "确认", "行", "好的")
+    division_tokens = ("分工", "计划", "方案", "安排", "排期")
+
+    items: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+
+    for idx, msg in enumerate(messages):
+        text_lower = str(msg.get("text") or "").lower()
+        if any(tok in text_lower for tok in division_tokens):
+            thread_msgs = [msg]
+            senders = {msg.get("sender_label")}
+            for follow in messages[idx + 1 : idx + 12]:
+                ftext = str(follow.get("text") or "").lower()
+                if any(tok in ftext for tok in confirm_tokens):
+                    thread_msgs.append(follow)
+                    senders.add(follow.get("sender_label"))
+            ids = [m["id"] for m in thread_msgs]
+            used_ids.update(ids)
+            confirmed_n = len(senders)
+            member_count = int(payload.get("member_count") or 1)
+            done = confirmed_n >= min(member_count, 2) and len(thread_msgs) >= 2
+            items.append(
+                {
+                    "title": "团队分工方案已完成确认" if done else "团队分工方案讨论推进中",
+                    "category": "division_confirm",
+                    "status": "completed" if done else "in_progress",
+                    "summary": (
+                        f"群内发送分工相关内容「{_quote(msg.get('text', ''))}」后，"
+                        f"共有 {confirmed_n} 位成员参与确认。"
+                    ),
+                    "judgment_basis": (
+                        f"发起消息后共检测到 {len(thread_msgs) - 1} 条确认回复（收到/OK/可以等）。"
+                    ),
+                    "task_codes": [tasks[0]["code"]] if tasks else [],
+                    "confirmed_count": confirmed_n,
+                    "message_ids": ids,
+                    "confidence": 0.9 if done else 0.72,
+                }
+            )
+            break
+
+    remaining = [m for m in messages if m["id"] not in used_ids]
+    if remaining and not items:
+        sample = remaining[: min(5, len(remaining))]
+        senders = {m.get("sender_label") for m in sample}
+        items.append(
+            {
+                "title": f"【示例】群聊协作进展汇总：{payload.get('project_name') or '项目'}",
+                "category": "task_progress",
+                "status": "in_progress",
+                "summary": (
+                    f"汇总 {len(sample)} 条群内讨论，"
+                    f"首条内容为「{_quote(sample[0].get('text', ''))}」。"
+                ),
+                "judgment_basis": "固定假结果，接入真实 AI 后按语义自动提炼。",
+                "task_codes": [tasks[0]["code"]] if tasks else [],
+                "confirmed_count": len(senders),
+                "message_ids": [m["id"] for m in sample],
+                "confidence": 0.75,
+            }
+        )
+
+    return {
+        "overview": (
+            f"共分析 {len(messages)} 条有效群聊消息，识别出 {len(items)} 条协作结论（需人工确认）。"
+        ),
+        "items": items,
+    }

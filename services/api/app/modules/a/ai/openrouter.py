@@ -37,6 +37,7 @@ RESULT_MODELS = {
     "analyze_implementation": schemas.ImplementationAnalysisResult,
     "summarize_activity": schemas.ActivitySummaryResult,
     "generate_project_blueprint": schemas.ProjectBlueprintResult,
+    "analyze_feishu_collaboration": schemas.FeishuCollaborationResult,
 }
 
 INSTRUCTIONS = {
@@ -64,6 +65,18 @@ INSTRUCTIONS = {
         "4) tasks：将需求与分工拆解为可执行的模块级任务（建议 8~32 个，避免上百个过碎卡片），"
         "填写 assignee_ids（必须使用 members 中真实 id）、关联 requirement_titles 与 milestone_titles、"
         "可检查的 acceptance_criteria（每条任务至少 1 条），并让所有任务的 weight 合计严格等于 100。"
+    ),
+    "analyze_feishu_collaboration": (
+        "仔细阅读项目飞书群按时间顺序排列的聊天记录（messages）与项目任务列表（tasks），"
+        "过滤掉无实质意义的闲聊、吐槽、系统通知和孤立的口头语，把相关的多条对话聚合提炼为清晰的「协作进展与结论」（items，建议 3~15 条，按最新时间倒序排列）：\n"
+        "1) 分工与方案确认（category='division_confirm'）：当有人发送分工文档、计划表或设计方案并征求意见，随后多名不同群成员（sender_label 不同）回复「收到」「可以」「OK」「OK了」「没问题」「那就按照这个来吧」等同义确认词时，"
+        "判断该分工/方案已达成一致（status='completed'；若仅少数人回复或仍有分歧则为 'in_progress'），标题要直白明了（如「四人分工计划已确认」「多维表格设计方案已达成一致」），confirmed_count 填参与确认的不同成员人数；\n"
+        "2) 任务推进与阶段交付（category='task_progress'）：成员同步某模块/文档/周报/ER图/接口/功能已完成、已提交或正在推进；能明确对应 tasks 中任务时，在 task_codes 中填入真实任务编号（如 ['T-003']），不确定则留空数组；\n"
+        "3) 文档与规范同步（category='doc_review'）：发送飞书云文档、Wiki、开发规范、提交规范等资料供团队查阅执行；\n"
+        "4) 团队决策（category='decision'）：就技术栈、数据库、排期、演示分工等达成的明确共识；\n"
+        "5) 阻塞或待跟进事项（category='blocker'）：群内反映的故障、权限卡点、进度风险或待确认问题（status='needs_followup'）。\n"
+        "严格约束：每条结论的 message_ids 必须且只能引用输入 messages 中真实存在的 UUID，并包含支撑该结论的完整上下文消息（如发起消息 + 成员讨论 + 收到/OK 确认回复），"
+        "以便用户点击详情查看真实聊天记录；严禁编造消息 id 或未发生过的讨论。overview 用 1~2 句话概括群聊整体协作态势。"
     ),
 }
 

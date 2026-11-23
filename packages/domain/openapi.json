@@ -1848,6 +1848,18 @@
         "title": "AnalyzeCodeRequest",
         "type": "object"
       },
+      "AnalyzeFeishuInsightsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          }
+        },
+        "title": "AnalyzeFeishuInsightsRequest",
+        "type": "object"
+      },
       "AppealInput": {
         "properties": {
           "evidence_id": {
@@ -7004,6 +7016,328 @@
         "title": "FeishuChatLinkDTO",
         "type": "object"
       },
+      "FeishuCollaborationInsightsDTO": {
+        "properties": {
+          "analyzed_messages": {
+            "default": 0,
+            "title": "Analyzed Messages",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "is_placeholder": {
+            "default": false,
+            "title": "Is Placeholder",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuInsightItemDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "needs_human_review": {
+            "default": true,
+            "title": "Needs Human Review",
+            "type": "boolean"
+          },
+          "overview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overview"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_generated",
+              "pending",
+              "failed",
+              "empty"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total_messages": {
+            "default": 0,
+            "title": "Total Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "FeishuCollaborationInsightsDTO",
+        "type": "object"
+      },
+      "FeishuInsightAttachmentDTO": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "title": "FeishuInsightAttachmentDTO",
+        "type": "object"
+      },
+      "FeishuInsightItemDTO": {
+        "properties": {
+          "category": {
+            "enum": [
+              "division_confirm",
+              "task_progress",
+              "doc_review",
+              "decision",
+              "blocker"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.8,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "confirmed_count": {
+            "default": 0,
+            "title": "Confirmed Count",
+            "type": "integer"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "judgment_basis": {
+            "title": "Judgment Basis",
+            "type": "string"
+          },
+          "linked_tasks": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuInsightTaskDTO"
+            },
+            "title": "Linked Tasks",
+            "type": "array"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuInsightMessageDTO"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "in_progress",
+              "needs_followup"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "category",
+          "status",
+          "summary",
+          "judgment_basis"
+        ],
+        "title": "FeishuInsightItemDTO",
+        "type": "object"
+      },
+      "FeishuInsightMessageDTO": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/FeishuInsightAttachmentDTO"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "msg_type": {
+            "title": "Msg Type",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "sender_label": {
+            "title": "Sender Label",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "chat_id",
+          "occurred_at",
+          "sender_label",
+          "msg_type",
+          "text"
+        ],
+        "title": "FeishuInsightMessageDTO",
+        "type": "object"
+      },
+      "FeishuInsightTaskDTO": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "title",
+          "status"
+        ],
+        "title": "FeishuInsightTaskDTO",
+        "type": "object"
+      },
       "FeishuMessageDetailDTO": {
         "properties": {
           "attachments": {
@@ -11946,6 +12280,22 @@
         "title": "SuccessResponse[FeishuChatLinkDTO]",
         "type": "object"
       },
+      "SuccessResponse_FeishuCollaborationInsightsDTO_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FeishuCollaborationInsightsDTO"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SuccessResponse[FeishuCollaborationInsightsDTO]",
+        "type": "object"
+      },
       "SuccessResponse_FeishuMessageDetailDTO_": {
         "properties": {
           "data": {
@@ -15571,6 +15921,145 @@
           }
         },
         "summary": "Bind Feishu Chat",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/insights": {
+      "get": {
+        "description": "读取本项目由 AI 从飞书群聊提炼的协作结论（附关联原始聊天记录）。",
+        "operationId": "get_feishu_collaboration_insights_api_v1_a_projects__project_id__feishu_insights_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuCollaborationInsightsDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Feishu Collaboration Insights",
+        "tags": [
+          "a"
+        ]
+      }
+    },
+    "/api/v1/a/projects/{project_id}/feishu/insights/analyze": {
+      "post": {
+        "description": "触发 AI 分析本项目飞书群聊上下文，提炼分工确认、任务进展与决策结论。",
+        "operationId": "analyze_feishu_collaboration_insights_api_v1_a_projects__project_id__feishu_insights_analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-User-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AnalyzeFeishuInsightsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_FeishuCollaborationInsightsDTO_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Feishu Collaboration Insights",
         "tags": [
           "a"
         ]
