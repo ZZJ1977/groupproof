@@ -4010,6 +4010,15 @@ const catalog: Record<string, string> = {
  "切换其他分类或前往「待处理事项」查看历史记录。": "Switch categories or open Action Items to view past records.",
  "该分类下暂无通知": "No notifications in this category",
  "切换其他筛选条件或前往「通知」页面查看全部记录。": "Switch filters or open Notifications to view all records.",
- "收件箱模块切换": "Inbox section switcher"
+ "收件箱模块切换": "Inbox section switcher",
+ "吴同学": "Wu",
+ "讨论区侧栏": "Discussion sidebar",
+ "AI 洞察": "AI Insights",
+ "群成员 ({0})": "Members ({0})",
+ "{0} · 站内群聊为界面预览，当前请通过飞书群聊同步协作记录。": "{0} · Native chat is a UI preview; use Feishu sync for team collaboration.",
+ "站内群聊为界面预览，当前请通过飞书群聊同步协作记录。": "Native chat is a UI preview; use Feishu sync for team collaboration.",
+ "飞书项目群 · 实际同步渠道": "Feishu Group · Active Sync Channel",
+ "{0} 位成员": "{0} members",
+ "输入消息体验对话界面（仅本地预览，不会发送至服务端）…": "Type a message to preview the chat UI (local only, not sent to server)…"
 };
 export default catalog;
