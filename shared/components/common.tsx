@@ -6,17 +6,18 @@ import { Inbox, type LucideIcon } from "lucide-react";
 import { useGpThemeScope } from "@/shared/components/ui/theme-scope";
 import { cn } from "@/shared/lib/utils";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/shared/components/ui/sheet";
+import "@/shared/styles/lux-student.css";
 
 export function PageHeader({ title, description, eyebrow, actions, icon: Icon }: { title: string; description?: string; eyebrow?: string; actions?: ReactNode; icon?: LucideIcon }) {
   const isTeacher = useGpThemeScope() === "teacher";
   if (isTeacher) {
     return (
-      <div className="gp-page-header flex flex-wrap items-center justify-between gap-4">
+      <div className="gp-page-header gp-slide-in flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           {eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}
           <div className="flex items-center gap-3">
             {Icon && (
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[var(--gp-action-soft,#e8f0fe)] text-[var(--gp-action,#3370ff)]">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[var(--gp-action-soft,#e8f0fe)] text-[var(--gp-action,#3370ff)] transition-transform duration-[180ms]">
                 <Icon size={20} aria-hidden="true" />
               </span>
             )}
@@ -30,7 +31,7 @@ export function PageHeader({ title, description, eyebrow, actions, icon: Icon }:
       </div>
     );
   }
-  return <div className="gp-page-header flex flex-wrap items-start justify-between gap-3"><div>{eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}<div className="flex items-center gap-3">{Icon && <span className="flex h-10 w-10 items-center justify-center rounded-[7px] bg-[var(--gp-action-soft)] text-[var(--gp-action)]"><Icon size={21} /></span>}<div><h1 className="gp-page-title">{title}</h1>{description && <p className="gp-page-description">{description}</p>}</div></div></div>{actions && <div className="flex items-center gap-2">{actions}</div>}</div>;
+  return <div className="gp-page-header gp-slide-in flex flex-wrap items-start justify-between gap-3"><div>{eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}<div className="flex items-center gap-3">{Icon && <span className="flex h-10 w-10 items-center justify-center rounded-[7px] bg-[var(--gp-action-soft)] text-[var(--gp-action)] transition-transform duration-[180ms]"><Icon size={21} /></span>}<div><h1 className="gp-page-title">{title}</h1>{description && <p className="gp-page-description">{description}</p>}</div></div></div>{actions && <div className="flex items-center gap-2">{actions}</div>}</div>;
 }
 
 export function Panel({ title, action, children, className, bodyClassName, noPadding = false }: { title?: string; action?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; noPadding?: boolean }) {
@@ -76,7 +77,14 @@ export function StatusBadge({ status, label, tone, className }: { status?: strin
 }
 
 export function ProgressBar({ value, className, color }: { value: number; className?: string; color?: string }) {
-  return <div className={cn("gp-progress", className)} role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} /></div>;
+  return (
+    <div className={cn("gp-progress", className)} role="progressbar" aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={100}>
+      <span
+        className="transition-[width] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"
+        style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }}
+      />
+    </div>
+  );
 }
 
 export function Stat({ label, value, sub, icon: Icon, className, accent }: { label: string; value: string | number; sub?: string; icon?: LucideIcon; className?: string; accent?: string }) {
@@ -89,11 +97,11 @@ export function Avatar({ name, color, size = 28 }: { name: string; color?: strin
 
 export function EmptyState({ title, description, action, icon: Icon }: { title: string; description?: string; action?: ReactNode; icon?: LucideIcon }) {
   const isTeacher = useGpThemeScope() === "teacher";
+  const EmptyIcon = Icon ?? Inbox;
   if (isTeacher) {
-    const EmptyIcon = Icon ?? Inbox;
     return (
-      <div className="gp-empty flex flex-col items-center justify-center text-center">
-        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--gp-surface-subtle,#f8f9fa)] text-[var(--gp-subtle,#8f959e)] ring-1 ring-[var(--gp-border-subtle,#ebedf0)]">
+      <div className="gp-empty gp-fade-in flex flex-col items-center justify-center text-center">
+        <span className="gp-empty-icon mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--gp-surface-subtle,#f8f9fa)] text-[var(--gp-subtle,#8f959e)] ring-1 ring-[var(--gp-border-subtle,#ebedf0)] motion-safe:animate-[gp-empty-float_3.4s_ease-in-out_infinite]">
           <EmptyIcon size={20} aria-hidden="true" />
         </span>
         <div className="text-sm font-semibold text-[var(--gp-ink-soft,#4e5969)]">{title}</div>
@@ -102,7 +110,16 @@ export function EmptyState({ title, description, action, icon: Icon }: { title: 
       </div>
     );
   }
-  return <div className="gp-empty"><div className="font-semibold text-[#52647f]">{title}</div>{description && <p className="mt-1 text-[12px]">{description}</p>}{action && <div className="mt-4">{action}</div>}</div>;
+  return (
+    <div className="gp-empty gp-fade-in flex flex-col items-center justify-center text-center">
+      <span className="gp-empty-icon mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#f1f6fd] text-[#4e6b94] ring-1 ring-[#e2eaf5] motion-safe:animate-[gp-empty-float_3.4s_ease-in-out_infinite]">
+        <EmptyIcon size={20} aria-hidden="true" />
+      </span>
+      <div className="font-semibold text-[#52647f]">{title}</div>
+      {description && <p className="mt-1 max-w-md text-[12px] leading-relaxed">{description}</p>}
+      {action && <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{action}</div>}
+    </div>
+  );
 }
 
 /** 认证/账户服务不可用：可重试，不回退演示数据 */
@@ -118,7 +135,7 @@ export function ServiceUnavailable() {
 
 /** 统一操作反馈（阶段 14 组件状态表）：成功/失败/提示，保留输入场景配合表单使用 */
 export function Feedback({ tone = "info", children, className }: { tone?: "info" | "success" | "error" | "warning"; children: ReactNode; className?: string }) {
-  return <div className={cn("gp-feedback gp-fade-in", className)} data-tone={tone === "info" ? undefined : tone} role="status">{children}</div>;
+  return <div className={cn("gp-feedback gp-slide-in", className)} data-tone={tone === "info" ? undefined : tone} role="status">{children}</div>;
 }
 
 /** 表单保存状态：未保存/保存中/已保存/失败（含版本冲突提示） */

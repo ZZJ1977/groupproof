@@ -84,7 +84,7 @@ export function ConfirmDialog({
     return (
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent
-          className="flex flex-col justify-between"
+          className="flex flex-col justify-between transition-[border-color,box-shadow] duration-[180ms] motion-reduce:transition-none"
           onEscapeKeyDown={(event) => {
             if (loading) event.preventDefault();
           }}
@@ -116,6 +116,7 @@ export function ConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        className="border-[var(--gp-border,#e2e8f0)] shadow-[0_24px_48px_-16px_rgba(15,23,42,0.18)] transition-[border-color,box-shadow] duration-[180ms] motion-reduce:transition-none"
         onEscapeKeyDown={(event) => {
           if (loading) event.preventDefault();
         }}
