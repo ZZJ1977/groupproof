@@ -582,7 +582,6 @@
     "closeMenu": "Close navigation",
     "projectFallback": "Project",
     "courseFallback": "Course",
-    "footer": "MUST · Software Engineering\nGroupProof V1",
     "roles": {
       "student": "Student",
       "leader": "Leader",
