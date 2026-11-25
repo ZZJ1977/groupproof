@@ -1106,3 +1106,133 @@ def test_build_report_snapshot_records_skills_loaded_and_dual_models(monkeypatch
     assert meta["visual_model"] == "google/gemini-2.5-flash"
     assert meta["skills_loaded"] == ["report_writing_skill.md", "report_visual_skill.md"]
     assert ".svg)" in data["sections"]["overview"]
+
+
+def test_refresh_report_dispatches_background_thread_outside_pytest_sync(monkeypatch):
+    """Outside pytest/REPORT_INLINE_SYNC, /refresh returns immediately with status='generating'."""
+    project_id = uuid4()
+    user_id = uuid4()
+    report_obj = SimpleNamespace(
+        id=uuid4(),
+        project_id=project_id,
+        created_by=user_id,
+        status="draft",
+        includes_appendix=False,
+        lock_version=0,
+    )
+
+    class _FakeSession:
+        def __init__(self):
+            self.added = []
+            self.committed = False
+
+        def add(self, obj):
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid4()
+            self.added.append(obj)
+
+        def flush(self):
+            return None
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            return None
+
+        def scalar(self, _stmt):
+            return None
+
+    dispatched: list[tuple[str, bool]] = []
+    inline_called = False
+
+    def fake_bg(snapshot_id: str, appendix: bool):
+        dispatched.append((snapshot_id, appendix))
+        return SimpleNamespace(name=f"report-preview-{snapshot_id[:8]}")
+
+    def fail_if_inline(*_a, **_k):
+        nonlocal inline_called
+        inline_called = True
+        raise AssertionError("should not block synchronously outside pytest/REPORT_INLINE_SYNC")
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("REPORT_INLINE_SYNC", raising=False)
+    assert not reporting._should_run_inline_sync()
+    assert reporting.STALE_GENERATING_SECONDS >= 240
+
+    monkeypatch.setattr(
+        reporting,
+        "get_project_access",
+        lambda *_a, **_k: SimpleNamespace(
+            leader=True,
+            teacher=False,
+            project=SimpleNamespace(id=project_id, name="GroupProof", lifecycle="active"),
+        ),
+    )
+    monkeypatch.setattr(reporting, "report_for", lambda *_a, **_k: report_obj)
+    monkeypatch.setattr(reporting, "versions", lambda *_a, **_k: [])
+    monkeypatch.setattr(reporting, "current_frozen_snapshot", lambda *_a, **_k: None)
+    monkeypatch.setattr(reporting, "_should_run_inline", lambda *_a, **_k: True)
+    monkeypatch.setattr(reporting, "_run_preview_in_background_thread", fake_bg)
+    monkeypatch.setattr(reporting, "_complete_preview_inline_safe", fail_if_inline)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_request_id(request, call_next):
+        request.state.request_id = "test-async-refresh"
+        return await call_next(request)
+
+    install_exception_handlers(app)
+    app.include_router(reporting.router)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=user_id, name="组长")
+    fake_db = _FakeSession()
+    app.dependency_overrides[get_session] = lambda: fake_db
+
+    client = TestClient(app)
+    res = client.post(
+        f"/api/v1/projects/{project_id}/reports/refresh",
+        json={"includes_appendix": False},
+    )
+    assert res.status_code == 202
+    body = res.json()["data"]
+    assert body["status"] == "generating"
+    assert body["version"] == 1
+    assert fake_db.committed is True
+    assert inline_called is False
+    assert len(dispatched) == 1
+    assert dispatched[0] == (body["id"], False)
+
+
+def test_run_preview_in_background_thread_runs_and_catches_errors(monkeypatch):
+    """Background daemon thread invokes generate_preview and logs exceptions without crashing."""
+    import threading
+
+    done = threading.Event()
+    seen: list[tuple[str, bool]] = []
+
+    def fake_preview(snapshot_id: str, appendix: bool) -> None:
+        seen.append((snapshot_id, appendix))
+        done.set()
+
+    monkeypatch.setattr(report_tasks, "generate_preview", fake_preview)
+    thread = reporting._run_preview_in_background_thread("snap-12345678", True)
+    assert thread.daemon is True
+    assert thread.name == "report-preview-snap-123"
+    assert done.wait(timeout=3.0)
+    thread.join(timeout=3.0)
+    assert seen == [("snap-12345678", True)]
+
+    # Verify exceptions are safely caught & logged inside the daemon thread
+    err_done = threading.Event()
+
+    def failing_preview(_snapshot_id: str, _appendix: bool) -> None:
+        try:
+            raise RuntimeError("simulated worker boom")
+        finally:
+            err_done.set()
+
+    monkeypatch.setattr(report_tasks, "generate_preview", failing_preview)
+    t2 = reporting._run_preview_in_background_thread("snap-err12345", False)
+    assert err_done.wait(timeout=3.0)
+    t2.join(timeout=3.0)
