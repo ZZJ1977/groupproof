@@ -68,6 +68,7 @@ function healthText(status: "healthy" | "warning" | "degraded"): string {
 }
 
 type OverviewWindow = "all" | "30d" | "7d";
+type PulseSeries = "audit" | "ai" | "sync";
 
 const windowOptions: readonly { value: OverviewWindow; label: string }[] = [
   { value: "all", label: "全部" },
@@ -78,6 +79,7 @@ const windowOptions: readonly { value: OverviewWindow; label: string }[] = [
 export function AdminDashboardPage() {
   const { userId } = useWorkspace();
   const [windowRange, setWindowRange] = useState<OverviewWindow>("all");
+  const [hoveredPulse, setHoveredPulse] = useState<{ index: number; series: PulseSeries | null } | null>(null);
   const overview = useQuery({
     queryKey: ["admin-workbench-overview", userId, windowRange],
     queryFn: () => governance.workbenchOverview({ window: windowRange }),
@@ -143,7 +145,10 @@ export function AdminDashboardPage() {
                   type="button"
                   className={styles.usageTrendTab}
                   aria-pressed={windowRange === opt.value}
-                  onClick={() => setWindowRange(opt.value)}
+                  onClick={() => {
+                    setWindowRange(opt.value);
+                    setHoveredPulse(null);
+                  }}
                 >
                   {opt.label}
                 </button>
@@ -275,6 +280,7 @@ export function AdminDashboardPage() {
 
       <div className={styles.twoColumns}>
         <Box
+          className={styles.pulsePanel}
           title={pulseTitle}
           action={<Link className="gp-link inline-flex items-center gap-1 text-xs" href="/admin/logs">查看系统日志 <ArrowRight size={13} /></Link>}
         >
@@ -286,8 +292,9 @@ export function AdminDashboardPage() {
                 <div
                   className={compactPulse ? `${styles.pulseChart} ${styles.pulseChartCompact}` : styles.pulseChart}
                   style={{ gridTemplateColumns: `repeat(${activitySeries.length}, minmax(0, 1fr))` }}
-                  role="img"
+                  role="region"
                   aria-label={`${pulseTitle}：审计事件、AI 调用和集成同步活动趋势`}
+                  onMouseLeave={() => setHoveredPulse(null)}
                 >
                   {activitySeries.map((day, idx) => {
                     const syncCount = day.github_activities + day.feishu_messages;
@@ -295,16 +302,114 @@ export function AdminDashboardPage() {
                     const hAi = day.ai_requests ? Math.max(8, Math.round((day.ai_requests / maxPulse) * 110)) : 3;
                     const hSync = syncCount ? Math.max(8, Math.round((syncCount / maxPulse) * 110)) : 3;
                     const showLabel = idx % pulseLabelStride === 0 || idx === activitySeries.length - 1;
+                    const isHovered = hoveredPulse?.index === idx;
+                    const activeSeries = isHovered ? hoveredPulse.series : null;
+                    const ratio = activitySeries.length > 1 ? idx / (activitySeries.length - 1) : 0.5;
+                    const tooltipAlign =
+                      activitySeries.length <= 2
+                        ? "center"
+                        : idx < 2 || ratio < 0.22
+                          ? "left"
+                          : idx >= activitySeries.length - 2 || ratio > 0.78
+                            ? "right"
+                            : "center";
                     return (
                       <div
                         className={styles.pulseDayCol}
                         key={String(day.date)}
-                        title={`${day.date} · 审计 ${day.audit_events} · AI ${day.ai_requests}（失败 ${day.ai_failed}）· 同步 ${syncCount} · 新用户 ${day.new_users}`}
+                        tabIndex={0}
+                        role="group"
+                        data-active={isHovered ? "true" : undefined}
+                        aria-label={`${day.date}：业务审计 ${day.audit_events}，AI 调用 ${day.ai_requests}（失败 ${day.ai_failed}），GitHub/飞书同步 ${syncCount}`}
+                        onMouseEnter={() => setHoveredPulse({ index: idx, series: null })}
+                        onFocus={() => setHoveredPulse({ index: idx, series: null })}
+                        onBlur={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setHoveredPulse((prev) => (prev?.index === idx ? null : prev));
+                          }
+                        }}
                       >
+                        {isHovered && (
+                          <div
+                            role="tooltip"
+                            className={styles.pulseTooltip}
+                            data-align={tooltipAlign}
+                          >
+                            <div className={styles.pulseTooltipHeader}>
+                              <span>{String(day.date)}</span>
+                              {day.new_users > 0 && (
+                                <span className={styles.pulseTooltipMeta}>+{day.new_users} 新用户</span>
+                              )}
+                            </div>
+                            <div
+                              className={styles.pulseTooltipRow}
+                              data-highlighted={activeSeries === "audit" ? "true" : undefined}
+                            >
+                              <span className={styles.pulseTooltipLabel}>
+                                <span className={styles.pulseDot} style={{ background: "#60a5fa" }} />
+                                业务审计
+                              </span>
+                              <strong className={styles.pulseTooltipValue}>{day.audit_events}</strong>
+                            </div>
+                            <div
+                              className={styles.pulseTooltipRow}
+                              data-highlighted={activeSeries === "ai" ? "true" : undefined}
+                            >
+                              <span className={styles.pulseTooltipLabel}>
+                                <span
+                                  className={styles.pulseDot}
+                                  style={{ background: day.ai_failed > 0 ? "#f87171" : "#a78bfa" }}
+                                />
+                                AI 调用
+                              </span>
+                              <strong className={styles.pulseTooltipValue}>
+                                {day.ai_requests}
+                                <span className={day.ai_failed > 0 ? styles.pulseTooltipFail : styles.pulseTooltipSub}>
+                                  （失败 {day.ai_failed}）
+                                </span>
+                              </strong>
+                            </div>
+                            <div
+                              className={styles.pulseTooltipRow}
+                              data-highlighted={activeSeries === "sync" ? "true" : undefined}
+                            >
+                              <span className={styles.pulseTooltipLabel}>
+                                <span className={styles.pulseDot} style={{ background: "#34d399" }} />
+                                GitHub / 飞书同步
+                              </span>
+                              <strong className={styles.pulseTooltipValue}>
+                                {syncCount}
+                                {syncCount > 0 && (
+                                  <span className={styles.pulseTooltipSub}>
+                                    （GH {day.github_activities} / 飞书 {day.feishu_messages}）
+                                  </span>
+                                )}
+                              </strong>
+                            </div>
+                          </div>
+                        )}
                         <div className={styles.pulseBars}>
-                          <div className={styles.pulseBar} style={{ height: `${hAudit}px`, background: "#2563eb" }} />
-                          <div className={styles.pulseBar} style={{ height: `${hAi}px`, background: day.ai_failed > 0 ? "#dc2626" : "#7c3aed" }} />
-                          <div className={styles.pulseBar} style={{ height: `${hSync}px`, background: "#059669" }} />
+                          <div
+                            className={styles.pulseBar}
+                            style={{ height: `${hAudit}px`, background: "#2563eb" }}
+                            data-focused={activeSeries === "audit" ? "true" : undefined}
+                            data-dimmed={activeSeries !== null && activeSeries !== "audit" ? "true" : undefined}
+                            onMouseEnter={() => setHoveredPulse({ index: idx, series: "audit" })}
+                          />
+                          <div
+                            className={styles.pulseBar}
+                            style={{ height: `${hAi}px`, background: day.ai_failed > 0 ? "#dc2626" : "#7c3aed" }}
+                            data-focused={activeSeries === "ai" ? "true" : undefined}
+                            data-dimmed={activeSeries !== null && activeSeries !== "ai" ? "true" : undefined}
+                            onMouseEnter={() => setHoveredPulse({ index: idx, series: "ai" })}
+                          />
+                          <div
+                            className={styles.pulseBar}
+                            style={{ height: `${hSync}px`, background: "#059669" }}
+                            data-focused={activeSeries === "sync" ? "true" : undefined}
+                            data-dimmed={activeSeries !== null && activeSeries !== "sync" ? "true" : undefined}
+                            onMouseEnter={() => setHoveredPulse({ index: idx, series: "sync" })}
+                          />
                         </div>
                         <span className="h-[16px] whitespace-nowrap text-[11px] text-slate-500">
                           {showLabel ? String(day.date).slice(5) : ""}

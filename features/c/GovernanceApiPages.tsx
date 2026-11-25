@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, AlertTriangle, Check, CircleAlert, Coins, Copy, Gauge, Layers3, ListFilter, RefreshCw, ShieldOff, Zap } from "lucide-react";
 import { CApiError } from "@/lib/api/c-client";
 import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type SharedAuditQuery, type UsageQuery } from "@/lib/api/c-governance-client";
-import { CompactUserSelect, CopyableId, EntityLabel, describeAuditAction, describeAuditTargetType, formatDurationMs, isUuidString, useAdminLabels } from "@/features/c/AdminPrimitives";
+import { CompactUserSelect, CopyableId, EntityLabel, SearchableUserCombobox, describeAuditAction, describeAuditTargetType, formatDurationMs, isUuidString, useAdminLabels } from "@/features/c/AdminPrimitives";
 import { useWorkspace } from "@/lib/workspace";
 import type { components } from "@/packages/domain/api.generated";
 import { Badge, Box, Empty, Header, Metric, Notice, Table, formatDateTime } from "@/features/governance/primitives";
@@ -1153,24 +1153,66 @@ function UsagePage() {
           <div className={styles.actions} aria-label="时间范围">{[7, 30, 90].map((value) => <button key={value} className={`${styles.button} ${days === value ? styles.primaryButton : ""}`} type="button" aria-pressed={days === value} onClick={() => updateQuery({ days: String(value) })}>{tr("最近 {0} 天", { 0: value })}</button>)}</div>
           <span className={styles.subtle}>{data ? `${formatDateTime(data.since)} — ${formatDateTime(data.until)} UTC` : "正在读取范围…"}</span>
         </div>
-        <div className={styles.usageFilterGrid}>
-          <CompactUserSelect label="使用者" value={filters.user_id ?? ""} onUnauthorized={setDenied} onChange={(value) => updateQuery({ user: value || null })} />
-          <form className={styles.usageInlineForm} key={formKey} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); updateQuery({ feature: inputValue(input, "feature") || null, model: inputValue(input, "model") || null }); }}>
-            <Field label="功能">
-              <input className={styles.input} name="feature" list="ai-feature-suggestions" maxLength={100} defaultValue={filters.feature ?? ""} placeholder="例如：analyze_implementation" />
-            </Field>
-            <Field label="模型">
-              <input className={styles.input} name="model" list="ai-model-suggestions" maxLength={160} defaultValue={filters.model ?? ""} placeholder="例如：provider/model" />
-            </Field>
-            <datalist id="ai-feature-suggestions">
-              {usageScenarioDefinitions.map((item) => <option key={item.feature} value={item.feature}>{item.label}</option>)}
-            </datalist>
-            <datalist id="ai-model-suggestions">
-              {modelRows.map((item) => <option key={item.key} value={item.key} />)}
-            </datalist>
-            <div className={styles.usageFormActions}><button className={styles.primaryButton} type="submit"><ListFilter size={15} aria-hidden="true" />查询用量</button><button className={styles.button} type="button" onClick={(event) => { event.currentTarget.form?.reset(); updateQuery({ user: null, feature: null, model: null, days: null }); }}>重置</button></div>
-          </form>
-        </div>
+        <form
+          className={styles.usageFilterRow}
+          key={formKey}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const input = new FormData(event.currentTarget);
+            updateQuery({
+              feature: inputValue(input, "feature") || null,
+              model: inputValue(input, "model") || null,
+            });
+          }}
+        >
+          <SearchableUserCombobox
+            label="使用者"
+            value={filters.user_id ?? ""}
+            onUnauthorized={setDenied}
+            onChange={(value) => updateQuery({ user: value || null })}
+          />
+          <Field label="功能">
+            <input
+              className={`${styles.input} ${styles.usageFilterInput}`}
+              name="feature"
+              list="ai-feature-suggestions"
+              maxLength={100}
+              defaultValue={filters.feature ?? ""}
+              placeholder="例如：analyze_implementation"
+            />
+          </Field>
+          <Field label="模型">
+            <input
+              className={`${styles.input} ${styles.usageFilterInput}`}
+              name="model"
+              list="ai-model-suggestions"
+              maxLength={160}
+              defaultValue={filters.model ?? ""}
+              placeholder="例如：provider/model"
+            />
+          </Field>
+          <datalist id="ai-feature-suggestions">
+            {usageScenarioDefinitions.map((item) => <option key={item.feature} value={item.feature}>{item.label}</option>)}
+          </datalist>
+          <datalist id="ai-model-suggestions">
+            {modelRows.map((item) => <option key={item.key} value={item.key} />)}
+          </datalist>
+          <div className={styles.usageFormActions}>
+            <button className={`${styles.primaryButton} ${styles.usageFilterActionBtn}`} type="submit">
+              <ListFilter size={15} aria-hidden="true" />查询用量
+            </button>
+            <button
+              className={`${styles.button} ${styles.usageFilterActionBtn}`}
+              type="button"
+              onClick={(event) => {
+                event.currentTarget.form?.reset();
+                updateQuery({ user: null, feature: null, model: null, days: null });
+              }}
+            >
+              重置
+            </button>
+          </div>
+        </form>
       </div>
     </Box>
 

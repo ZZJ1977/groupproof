@@ -1188,6 +1188,7 @@
 }
 
 .usageFilterPanel {
+  overflow: visible;
   border-color: #d9e4f3;
   background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
 }
@@ -1204,28 +1205,165 @@
   gap: 6px;
 }
 
-.usageFilterGrid {
+.usageFilterRow {
   display: grid;
-  grid-template-columns: minmax(230px, 0.75fr) minmax(0, 1.25fr);
-  gap: 18px;
-  margin-top: 18px;
-}
-
-.usageInlineForm {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  grid-template-columns: minmax(250px, 1.45fr) minmax(160px, 1fr) minmax(160px, 1fr) auto;
   gap: 12px;
   align-items: end;
+  margin-top: 14px;
+}
+
+.usageFilterInput {
+  height: 40px;
+  min-height: 40px;
+}
+
+.usageFilterActionBtn {
+  height: 40px;
+  min-height: 40px;
+  padding-inline: 14px;
 }
 
 .usageFormActions {
   display: flex;
+  align-items: center;
   gap: 8px;
-  padding-bottom: 1px;
 }
 
 .usageFormActions button {
   gap: 6px;
+}
+
+.comboboxField {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: #4b5b73;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.comboboxControl {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.comboboxInput {
+  height: 40px;
+  min-height: 40px;
+  padding-right: 54px;
+  text-overflow: ellipsis;
+}
+
+.comboboxSuffix {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+.comboboxIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.comboboxIconBtn:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.comboboxDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #d7e2f1;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+}
+
+.comboboxOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 110ms ease;
+}
+
+.comboboxOption:hover,
+.comboboxOption[data-highlighted="true"] {
+  background: #f1f6ff;
+}
+
+.comboboxOption[aria-selected="true"] {
+  background: #e8f1ff;
+}
+
+.comboboxOptionPrimary {
+  display: block;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comboboxOptionMeta {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comboboxStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .chartSummary {
@@ -1502,7 +1640,8 @@
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .usageMetrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .twoColumns { grid-template-columns: 1fr; }
-  .usageFilterGrid { grid-template-columns: 1fr; }
+  .usageFilterRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .usageFormActions { grid-column: 1 / -1; justify-content: flex-start; }
   .scenarioGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -1514,8 +1653,9 @@
   .toolbar { flex-wrap: wrap; }
   .filters .select { flex: 1; }
   .metric { min-height: 90px; }
-  .usageInlineForm { grid-template-columns: 1fr; }
-  .usageFormActions { padding-bottom: 0; }
+  .usageFilterRow { grid-template-columns: 1fr; }
+  .usageFormActions { grid-column: auto; }
+  .usageFormActions .usageFilterActionBtn { flex: 1 1 0; }
   .usageChart { gap: 3px; }
   .usageBarTrack { width: min(18px, 80%); }
   .breakdownMeta { flex-wrap: wrap; }
@@ -1730,6 +1870,10 @@
   line-height: 1.45;
 }
 
+.pulsePanel {
+  overflow: visible;
+}
+
 .pulseChart {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -1740,11 +1884,28 @@
 }
 
 .pulseDayCol {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  padding: 4px 2px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 120ms ease;
+}
+
+.pulseDayCol[data-active="true"] {
+  z-index: 10;
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.pulseDayCol:focus-visible {
+  z-index: 10;
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: inset 0 0 0 1.5px #93c5fd;
 }
 
 .pulseBars {
@@ -1762,11 +1923,123 @@
   width: 10px;
   min-height: 3px;
   border-radius: 4px 4px 0 0;
-  transition: height 180ms ease;
+  transform-origin: bottom center;
+  transition: height 180ms ease, opacity 120ms ease, transform 120ms ease, filter 120ms ease;
+}
+
+.pulseBar[data-focused="true"] {
+  transform: scaleX(1.16);
+  filter: brightness(1.08);
+}
+
+.pulseBar[data-dimmed="true"] {
+  opacity: 0.38;
+}
+
+.pulseTooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 20;
+  min-width: 210px;
+  max-width: 268px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.26);
+  transform: translateX(-50%);
+}
+
+.pulseTooltip[data-align="left"] {
+  left: 0;
+  transform: none;
+}
+
+.pulseTooltip[data-align="right"] {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.pulseTooltipHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.pulseTooltipMeta {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.18);
+  color: #6ee7b7;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pulseTooltipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 3px 5px;
+  margin: 0 -5px;
+  border-radius: 6px;
+  color: #cbd5e1;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.pulseTooltipRow[data-highlighted="true"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.pulseTooltipLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.pulseTooltipValue {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+}
+
+.pulseTooltipFail {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fca5a5;
+}
+
+.pulseTooltipSub {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #94a3b8;
 }
 
 .pulseChartCompact {
   gap: 3px;
+}
+
+.pulseChartCompact .pulseDayCol {
+  padding-inline: 0;
 }
 
 .pulseChartCompact .pulseBars {

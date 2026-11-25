@@ -338,7 +338,9 @@ test("C7-06 true sample totals preserve currencies and URL period; 503 hides the
   await expect.poll(() => queries.at(-1)?.searchParams.get("days")).toBe("30");
   await expect(page.getByLabel("功能", { exact: true })).toHaveValue("review");
   await expect(page.getByLabel("模型", { exact: true })).toHaveValue("sample-model");
-  await page.getByRole("combobox", { name: "使用者", exact: true }).selectOption(teacherId);
+  const userCombo = page.getByRole("combobox", { name: "使用者", exact: true });
+  await userCombo.click();
+  await page.getByRole("option", { name: new RegExp(teacher.name ?? "") }).click();
   await expect.poll(() => queries.at(-1)?.searchParams.get("user_id")).toBe(teacherId);
   await expect(page.getByLabel("功能", { exact: true })).toHaveValue("review");
   await expect(page.getByLabel("模型", { exact: true })).toHaveValue("sample-model");
@@ -429,7 +431,7 @@ test("C7 a revoked user lookup removes previously visible AI costs", async ({ pa
   await page.goto("/admin/ai-usage");
   await expect(page.getByRole("heading", { name: "用量汇总" })).toBeVisible();
   allowed = false;
-  await page.getByLabel("使用者搜索", { exact: true }).fill("核对");
+  await page.getByRole("combobox", { name: "使用者", exact: true }).fill("核对");
   await expect(page.locator("main").getByRole("alert")).toContainText("无权");
   await expect(page.getByRole("heading", { name: "用量汇总" })).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText("0.030000");

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Copy } from "lucide-react";
+import { Check, ChevronDown, Copy, X } from "lucide-react";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { createGovernanceClient, type ResolveLabelsDTO } from "@/lib/api/c-governance-client";
 import { useWorkspace } from "@/lib/workspace";
@@ -338,6 +338,302 @@ export function CompactUserSelect({
           {!options.length && " 当前查询没有可选用户。"}
         </small>
       )}
+    </div>
+  );
+}
+
+type AdminDirectoryOption = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  student_no?: string | null;
+};
+
+function formatUserOptionMeta(user: AdminDirectoryOption): string {
+  return [user.student_no, user.email].filter(Boolean).join(" · ");
+}
+
+function formatUserDisplay(user: AdminDirectoryOption): string {
+  const primary = user.name || user.email || user.id.slice(0, 8);
+  const meta = formatUserOptionMeta(user);
+  return meta ? `${primary} (${meta})` : primary;
+}
+
+/** Single-row searchable user combobox (replaces stacked search+select sub-card on /admin/ai-usage). */
+export function SearchableUserCombobox({
+  label,
+  value,
+  onChange,
+  onUnauthorized,
+  placeholder = "全部用户（可输入姓名/学号/邮箱搜索）",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onUnauthorized?: (error: CApiError) => void;
+  placeholder?: string;
+}) {
+  const { userId } = useWorkspace();
+  const inputId = useId();
+  const listboxId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+
+  useEffect(() => {
+    if (!searchText.trim()) {
+      setDebouncedSearch("");
+      return;
+    }
+    const timer = window.setTimeout(() => setDebouncedSearch(searchText.trim()), 150);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
+  const query = {
+    page: 1,
+    page_size: 20,
+    q: debouncedSearch || undefined,
+  };
+
+  const list = useQuery({
+    queryKey: ["c-governance-users-combobox", userId, query],
+    queryFn: async () => {
+      try {
+        return await directoryClient.adminUsers(query);
+      } catch (error) {
+        if (unauthorized(error)) onUnauthorized?.(error);
+        throw error;
+      }
+    },
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+
+  const selectedUser = useQuery({
+    queryKey: ["c-governance-selected-user", userId, value],
+    queryFn: async () => {
+      try {
+        return await directoryClient.adminUser(value);
+      } catch (error) {
+        if (unauthorized(error)) onUnauthorized?.(error);
+        throw error;
+      }
+    },
+    enabled: Boolean(value),
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const items: AdminDirectoryOption[] = useMemo(() => {
+    const fetched = (list.data?.items ?? []) as AdminDirectoryOption[];
+    const sel =
+      selectedUser.isSuccess && selectedUser.data.id === value
+        ? (selectedUser.data as AdminDirectoryOption)
+        : null;
+    if (sel && !debouncedSearch && !fetched.some((item) => item.id === sel.id)) {
+      return [sel, ...fetched];
+    }
+    return fetched;
+  }, [debouncedSearch, list.data?.items, selectedUser.data, selectedUser.isSuccess, value]);
+
+  const selectedLabel = useMemo(() => {
+    if (!value) return "";
+    const fromList = items.find((item) => item.id === value);
+    if (fromList) return formatUserDisplay(fromList);
+    if (selectedUser.isSuccess && selectedUser.data.id === value) {
+      return formatUserDisplay(selectedUser.data as AdminDirectoryOption);
+    }
+    return value.slice(0, 8);
+  }, [items, selectedUser.data, selectedUser.isSuccess, value]);
+
+  // Options list: index 0 is "全部用户" (value ""), followed by filtered users.
+  const totalOptions = 1 + items.length;
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setIsEditing(false);
+        setSearchText("");
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [open]);
+
+  function selectOption(nextValue: string) {
+    onChange(nextValue);
+    setOpen(false);
+    setIsEditing(false);
+    setSearchText("");
+    setHighlightIndex(0);
+  }
+
+  const displayValue = isEditing ? searchText : selectedLabel;
+
+  return (
+    <div ref={containerRef} className={styles.comboboxField}>
+      <label htmlFor={inputId}>{label}</label>
+      <div className={styles.comboboxControl}>
+        <input
+          id={inputId}
+          type="text"
+          role="combobox"
+          aria-label={label}
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={open ? `${listboxId}-opt-${highlightIndex}` : undefined}
+          autoComplete="off"
+          className={`${styles.input} ${styles.comboboxInput}`}
+          placeholder={placeholder}
+          value={displayValue}
+          onFocus={() => {
+            setOpen(true);
+            setHighlightIndex(0);
+          }}
+          onChange={(event) => {
+            setIsEditing(true);
+            setSearchText(event.target.value);
+            setOpen(true);
+            setHighlightIndex(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              if (!open) {
+                setOpen(true);
+                setHighlightIndex(0);
+              } else {
+                setHighlightIndex((prev) => (prev + 1) % totalOptions);
+              }
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              if (!open) {
+                setOpen(true);
+                setHighlightIndex(totalOptions - 1);
+              } else {
+                setHighlightIndex((prev) => (prev - 1 + totalOptions) % totalOptions);
+              }
+            } else if (event.key === "Enter" && open) {
+              event.preventDefault();
+              if (highlightIndex === 0) {
+                selectOption("");
+              } else {
+                const picked = items[highlightIndex - 1];
+                if (picked) selectOption(picked.id);
+              }
+            } else if (event.key === "Escape") {
+              setOpen(false);
+              setIsEditing(false);
+              setSearchText("");
+            }
+          }}
+        />
+        <div className={styles.comboboxSuffix}>
+          {(value || (isEditing && searchText)) && (
+            <button
+              type="button"
+              className={styles.comboboxIconBtn}
+              aria-label={`清空${label}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectOption("")}
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.comboboxIconBtn}
+            aria-label={open ? `收起${label}列表` : `展开${label}列表`}
+            tabIndex={-1}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setOpen((prev) => {
+                const next = !prev;
+                if (!next) {
+                  setIsEditing(false);
+                  setSearchText("");
+                }
+                return next;
+              });
+            }}
+          >
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={open ? "rotate-180 transition-transform" : "transition-transform"}
+            />
+          </button>
+        </div>
+        {open && (
+          <div id={listboxId} role="listbox" aria-label={`${label}选项`} className={styles.comboboxDropdown}>
+            <button
+              id={`${listboxId}-opt-0`}
+              type="button"
+              role="option"
+              aria-selected={!value}
+              data-highlighted={highlightIndex === 0 ? "true" : undefined}
+              className={styles.comboboxOption}
+              onMouseEnter={() => setHighlightIndex(0)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectOption("")}
+            >
+              <span className={styles.comboboxOptionPrimary}>全部用户</span>
+              {!value && <Check size={14} className="shrink-0 text-blue-600" aria-hidden="true" />}
+            </button>
+            {list.isError && (
+              <div className={styles.comboboxStatus}>
+                <span>用户目录暂不可用</span>
+                <button
+                  type="button"
+                  className={styles.textButton}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void list.refetch()}
+                >
+                  重试
+                </button>
+              </div>
+            )}
+            {list.isFetching && !items.length && (
+              <div className={styles.comboboxStatus}>正在搜索用户…</div>
+            )}
+            {!list.isFetching && !list.isError && items.length === 0 && (
+              <div className={styles.comboboxStatus}>未找到匹配用户</div>
+            )}
+            {items.map((item, idx) => {
+              const optionIndex = idx + 1;
+              const isSelected = value === item.id;
+              const meta = formatUserOptionMeta(item);
+              return (
+                <button
+                  key={item.id}
+                  id={`${listboxId}-opt-${optionIndex}`}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  data-highlighted={highlightIndex === optionIndex ? "true" : undefined}
+                  className={styles.comboboxOption}
+                  onMouseEnter={() => setHighlightIndex(optionIndex)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => selectOption(item.id)}
+                >
+                  <span className="min-w-0">
+                    <span className={styles.comboboxOptionPrimary}>{item.name || "未命名用户"}</span>
+                    {meta && <span className={styles.comboboxOptionMeta}>{meta}</span>}
+                  </span>
+                  {isSelected && <Check size={14} className="shrink-0 text-blue-600" aria-hidden="true" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
