@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import ApiError
 from app.db.models import (
     Course,
+    CourseMember,
     GroupMember,
     Milestone,
     Project,
@@ -50,6 +51,8 @@ from app.modules.b.models import (
 from app.modules.b.ports import MaterialTextPort
 from app.modules.b.projects_schemas import (
     AddMaterial,
+    AttachCourseResultDTO,
+    AttachProjectToCourse,
     CreatedProjectDTO,
     CreateProject,
     DraftDTO,
@@ -741,4 +744,216 @@ def material_count(session: Session, project_id: UUID) -> int:
             .where(BProjectMaterial.project_id == project_id)
         )
         or 0
+    )
+
+
+# ---------------------------------------------------------------- attach project to course
+
+
+def _unique_group_name(session: Session, course_id: UUID, base_name: str) -> str:
+    clean = base_name.strip()[:120] or "项目小组"
+    candidate = clean
+    suffix = 2
+    while (
+        session.scalar(
+            select(ProjectGroup.id).where(
+                ProjectGroup.course_id == course_id,
+                ProjectGroup.name == candidate,
+            )
+        )
+        is not None
+    ):
+        tag = f" ({suffix})"
+        candidate = f"{clean[: 120 - len(tag)]}{tag}"
+        suffix += 1
+    return candidate
+
+
+def attach_project_to_course(
+    session: Session,
+    user: User,
+    project_id: UUID,
+    command: AttachProjectToCourse,
+    request=None,
+) -> AttachCourseResultDTO:
+    project = session.scalar(
+        select(Project)
+        .where(Project.id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if project is None:
+        raise ApiError(404, "PROJECT_NOT_FOUND", "项目不存在。")
+
+    caller_member = session.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project.id,
+            ProjectMember.user_id == user.id,
+            ProjectMember.left_at.is_(None),
+        )
+    )
+    if caller_member is None or caller_member.role != "leader":
+        raise ApiError(403, "PROJECT_LEADER_REQUIRED", "只有项目组长可以将独立项目移入课程。")
+
+    if project.lifecycle != "active":
+        raise ApiError(409, "PROJECT_NOT_ACTIVE", "仅进行中的项目可以移入课程。")
+
+    if project.course_id is not None:
+        raise ApiError(409, "PROJECT_ALREADY_IN_COURSE", "该项目已关联课程，无需重复移入。")
+
+    course = session.scalar(
+        select(Course)
+        .where(Course.id == command.course_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if course is None:
+        raise ApiError(404, "COURSE_NOT_FOUND", "课程不存在。")
+    if course.status != "active":
+        raise ApiError(409, "COURSE_CLOSED", "课程已经结束。")
+
+    course_member = session.scalar(
+        select(CourseMember).where(
+            CourseMember.course_id == course.id,
+            CourseMember.user_id == user.id,
+            CourseMember.role == "student",
+            CourseMember.status == "active",
+            CourseMember.left_at.is_(None),
+        )
+    )
+    if course_member is None:
+        raise ApiError(403, "COURSE_MEMBER_REQUIRED", "只有本课程的学生可以将项目移入该课程。")
+
+    if command.group_id is not None:
+        group = session.scalar(
+            select(ProjectGroup)
+            .where(ProjectGroup.id == command.group_id, ProjectGroup.course_id == course.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if group is None:
+            raise ApiError(404, "GROUP_NOT_FOUND", "小组不存在。")
+        gm = session.scalar(
+            select(GroupMember).where(
+                GroupMember.group_id == group.id,
+                GroupMember.user_id == user.id,
+                GroupMember.left_at.is_(None),
+            )
+        )
+        if gm is None or gm.role != "leader":
+            raise ApiError(403, "GROUP_LEADER_REQUIRED", "只有该小组的组长可以将项目关联到此小组。")
+        existing_proj = session.scalar(
+            select(Project.id).where(
+                Project.group_id == group.id,
+                Project.archived_at.is_(None),
+            )
+        )
+        if existing_proj is not None:
+            raise ApiError(409, "GROUP_HAS_PROJECT", "该小组已有项目，无法再移入其他项目。")
+    else:
+        existing_group = session.scalar(
+            select(ProjectGroup)
+            .join(GroupMember, GroupMember.group_id == ProjectGroup.id)
+            .where(
+                ProjectGroup.course_id == course.id,
+                GroupMember.user_id == user.id,
+                GroupMember.left_at.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if existing_group is not None:
+            gm = session.scalar(
+                select(GroupMember).where(
+                    GroupMember.group_id == existing_group.id,
+                    GroupMember.user_id == user.id,
+                    GroupMember.left_at.is_(None),
+                )
+            )
+            if gm is None or gm.role != "leader":
+                raise ApiError(
+                    403, "GROUP_LEADER_REQUIRED", "只有该小组的组长可以将项目关联到此小组。"
+                )
+            existing_proj = session.scalar(
+                select(Project.id).where(
+                    Project.group_id == existing_group.id,
+                    Project.archived_at.is_(None),
+                )
+            )
+            if existing_proj is not None:
+                raise ApiError(
+                    409, "GROUP_HAS_PROJECT", "你在该课程所在的小组已有项目，无法再移入其他项目。"
+                )
+            group = existing_group
+        else:
+            group = ProjectGroup(
+                course_id=course.id,
+                name=_unique_group_name(session, course.id, project.name[:120]),
+                leader_id=user.id,
+            )
+            session.add(group)
+            session.flush()
+            session.add(GroupMember(group_id=group.id, user_id=user.id, role="leader"))
+
+    members_synced = 0
+    if not group.roster_frozen:
+        other_project_members = session.scalars(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id != user.id,
+                ProjectMember.left_at.is_(None),
+            )
+        ).all()
+        for pm in other_project_members:
+            in_course = session.scalar(
+                select(CourseMember.id).where(
+                    CourseMember.course_id == course.id,
+                    CourseMember.user_id == pm.user_id,
+                    CourseMember.status == "active",
+                    CourseMember.left_at.is_(None),
+                )
+            )
+            if in_course is None:
+                continue
+            in_any_group = session.scalar(
+                select(GroupMember.id)
+                .join(ProjectGroup, ProjectGroup.id == GroupMember.group_id)
+                .where(
+                    ProjectGroup.course_id == course.id,
+                    GroupMember.user_id == pm.user_id,
+                    GroupMember.left_at.is_(None),
+                )
+            )
+            if in_any_group is not None:
+                continue
+            session.add(GroupMember(group_id=group.id, user_id=pm.user_id, role="member"))
+            members_synced += 1
+
+    project.course_id = course.id
+    project.group_id = group.id
+    project.lock_version += 1
+    session.flush()
+
+    record_audit(
+        session,
+        actor=user,
+        action="project.attached_to_course",
+        target=("project", project.id),
+        project_id=project.id,
+        course_id=course.id,
+        after={
+            "course_id": str(course.id),
+            "group_id": str(group.id),
+            "group_name": group.name,
+            "members_synced": members_synced,
+        },
+        request=request,
+    )
+    return AttachCourseResultDTO(
+        project_id=project.id,
+        course_id=course.id,
+        group_id=group.id,
+        group_name=group.name,
+        members_synced=members_synced,
+        already_attached=False,
     )

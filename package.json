@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "check:routes": "tsx scripts/check-routes.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:teacher": "playwright test --config playwright.teacher-workbench.config.ts",
     "test:c5-storage-staging": "playwright test -c playwright.c-storage-staging.config.ts project-file-versions.staging.ts",
     "test:c5-freeze-staging": "playwright test -c playwright.c-storage-staging.config.ts course-freeze.staging.ts",
     "api:generate": "node scripts/generate-api-client.mjs",

@@ -37,7 +37,7 @@ from app.db.models import (
     User,
 )
 from app.modules.a import permissions
-from app.modules.a.ai import extract_requirements
+from app.modules.a.ai import AIUsageContext, extract_requirements
 from app.modules.a.ai.provider import AIProvider
 from app.modules.a.ai.schemas import (
     DocumentSegment,
@@ -392,9 +392,14 @@ def run_analysis(bind: Engine | Connection, run_id: UUID, provider: AIProvider |
                     for m in materials
                 ],
             )
+            usage_ctx = AIUsageContext(
+                user_id=run.requested_by,
+                project_id=run.project_id,
+                session_factory=lambda: Session(bind),
+            )
             # End the read transaction: the AI call may take a while.
             session.rollback()
-            result = extract_requirements(payload, provider=provider)
+            result = extract_requirements(payload, provider=provider, usage=usage_ctx)
         except ApiError as error:
             session.rollback()
             _finish(

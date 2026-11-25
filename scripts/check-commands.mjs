@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { seedData } from "../mocks/seed.ts";
-import { DomainError, createCommandRunner } from "../lib/commands/core.ts";
-import { archiveProject, commands } from "../lib/commands/registry.ts";
-import { can } from "../lib/access/policy.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { DomainError, createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { archiveProject, commands } from "../shared/legacy-mock/commands/registry.ts";
+import { can } from "../shared/legacy-mock/access/policy.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

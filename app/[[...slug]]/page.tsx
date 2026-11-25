@@ -1,16 +1,16 @@
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { RouteDispatcher } from "@/features/route-dispatcher";
-import { WorkspaceProvider } from "@/lib/workspace";
-import { LoginPage } from "@/features/auth/LoginPage";
-import { ResetPasswordPage } from "@/features/auth/ResetPasswordPage";
-import { AccountShell } from "@/components/account-shell";
-import { AccountView } from "@/features/account/AccountView";
-import { ServiceUnavailable } from "@/components/common";
-import { classifyPath } from "@/lib/routes";
-import { getAuthSession, sanitizeReturnTo } from "@/lib/auth/server";
-import type { SessionDTO } from "@/lib/api/auth-client";
+import { RouteDispatcher } from "@/shared/components/route-dispatcher";
+import { WorkspaceProvider } from "@/shared/lib/workspace";
+import { LoginPage } from "@/shared/auth/LoginPage";
+import { ResetPasswordPage } from "@/shared/auth/ResetPasswordPage";
+import { AccountShell } from "@/shared/components/account-shell";
+import { AccountView } from "@/shared/auth/AccountView";
+import { ServiceUnavailable } from "@/shared/components/common";
+import { classifyPath } from "@/shared/lib/routes";
+import { getAuthSession, sanitizeReturnTo } from "@/shared/auth/server";
+import type { SessionDTO } from "@/shared/auth/auth-client";
 
 export const dynamic = "force-dynamic";
 

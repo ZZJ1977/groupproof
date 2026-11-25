@@ -159,6 +159,17 @@ class ConfirmBaseline(Strict):
     comment: str | None = Field(default=None, max_length=2000)
 
 
+class BlueprintResultDTO(BaseModel):
+    analysis_run_id: UUID
+    modules_added: int
+    requirements_added: int
+    milestones_added: int
+    tasks_added: int
+    suggestions_added: int
+    is_placeholder: bool
+    needs_human_review: bool = True
+
+
 class ForceFreeze(Strict):
     reason: str | None = Field(default=None, max_length=2000)
 

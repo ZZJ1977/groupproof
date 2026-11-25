@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Request
 from starlette.background import BackgroundTask
 
 from app.api.errors import ApiError
-from app.modules.b import baseline_service, requirements_service
+from app.modules.b import ai_blueprint_service, baseline_service, requirements_service
 from app.modules.b.common import (
     ERROR_RESPONSES,
     CurrentUser,
@@ -97,6 +97,29 @@ def analysis(
     project_id: UUID, run_id: UUID, request: Request, session: Database, user: CurrentUser
 ):
     return envelope(requirements_service.analysis(session, user, project_id, run_id), request)
+
+
+@router.post("/projects/{project_id}/ai/generate-plan")
+def generate_ai_blueprint(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    key: IdempotencyKey,
+    verification: Verification,
+):
+    return _write(
+        session,
+        request,
+        user,
+        key,
+        f"project.ai.blueprint:{project_id}",
+        {},
+        lambda: ai_blueprint_service.generate_and_apply_blueprint(
+            session, user, project_id, verification, request=request
+        ),
+        200,
+    )
 
 
 @router.post("/projects/{project_id}/modules", status_code=201)

@@ -247,3 +247,112 @@ class ActivitySummaryResult(AIResultMeta):
     evidence: list[ActivityEvidence] = Field(default_factory=list, max_length=8)
     confidence: float = Field(ge=0, le=1)
     insufficient_context: list[str] = Field(default_factory=list, max_length=8)
+
+
+# ------------------------------------------------ A7-08 从项目资料一键生成需求、任务与里程碑
+
+
+class BlueprintMemberBrief(AIModel):
+    id: UUID
+    name: str = Field(min_length=1, max_length=120)
+    github_username: str | None = Field(default=None, max_length=60)
+
+
+class BlueprintMaterialDoc(AIModel):
+    material_id: UUID
+    title: str = Field(min_length=1, max_length=255)
+    text: str = Field(min_length=1, max_length=28000)
+
+
+class ProjectBlueprintInput(AIModel):
+    project_id: UUID
+    project_name: str = Field(min_length=1, max_length=200)
+    start_date: str | None = Field(default=None, max_length=32)
+    end_date: str | None = Field(default=None, max_length=32)
+    members: list[BlueprintMemberBrief] = Field(default_factory=list, max_length=20)
+    documents: list[BlueprintMaterialDoc] = Field(min_length=1, max_length=20)
+
+
+class BlueprintModule(AIModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    owner_id: UUID | None = None
+
+
+class BlueprintRequirement(AIModel):
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=3000)
+    module: str = Field(min_length=1, max_length=200)
+    priority: Literal["high", "medium", "low"] = "medium"
+    material_id: UUID | None = None
+    quote: str = Field(default="", max_length=300)
+
+
+class BlueprintMilestone(AIModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    deadline: str | None = Field(default=None, max_length=32)
+    deliverables: list[str] = Field(default_factory=list, max_length=8)
+
+
+class BlueprintTask(AIModel):
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=3000)
+    module: str = Field(min_length=1, max_length=200)
+    requirement_titles: list[str] = Field(default_factory=list, max_length=10)
+    milestone_titles: list[str] = Field(default_factory=list, max_length=10)
+    assignee_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    priority: Literal["high", "medium", "low"] = "medium"
+    weight: int = Field(default=5, ge=1, le=100)
+    acceptance_criteria: list[str] = Field(min_length=1, max_length=10)
+
+
+class ProjectBlueprintResult(AIResultMeta):
+    modules: list[BlueprintModule] = Field(min_length=1, max_length=20)
+    requirements: list[BlueprintRequirement] = Field(min_length=1, max_length=80)
+    milestones: list[BlueprintMilestone] = Field(default_factory=list, max_length=20)
+    tasks: list[BlueprintTask] = Field(min_length=1, max_length=80)
+    in_scope: str = Field(default="", max_length=2000)
+    out_of_scope: str = Field(default="", max_length=2000)
+
+
+# ------------------------------------------------ A7-09 飞书群聊协作进展与结论分析
+
+
+class CollabTaskBrief(AIModel):
+    code: str = Field(min_length=1, max_length=32)
+    title: str = Field(min_length=1, max_length=240)
+    status: str = Field(default="not_started", max_length=32)
+
+
+class CollabMessageBrief(AIModel):
+    id: UUID
+    occurred_at: str = Field(min_length=1, max_length=80)
+    sender_label: str = Field(min_length=1, max_length=80)
+    msg_type: str = Field(default="text", max_length=40)
+    text: str = Field(min_length=1, max_length=1200)
+
+
+class FeishuCollaborationInput(AIModel):
+    project_id: UUID
+    project_name: str = Field(min_length=1, max_length=200)
+    member_count: int = Field(default=1, ge=1, le=50)
+    tasks: list[CollabTaskBrief] = Field(default_factory=list, max_length=80)
+    messages: list[CollabMessageBrief] = Field(min_length=1, max_length=300)
+
+
+class CollabInsightItem(AIModel):
+    title: str = Field(min_length=1, max_length=120)
+    category: Literal["division_confirm", "task_progress", "doc_review", "decision", "blocker"]
+    status: Literal["completed", "in_progress", "needs_followup"]
+    summary: str = Field(min_length=1, max_length=600)
+    judgment_basis: str = Field(min_length=1, max_length=600)
+    task_codes: list[str] = Field(default_factory=list, max_length=10)
+    confirmed_count: int = Field(default=1, ge=0, le=50)
+    message_ids: list[UUID] = Field(min_length=1, max_length=40)
+    confidence: float = Field(default=0.8, ge=0, le=1)
+
+
+class FeishuCollaborationResult(AIResultMeta):
+    overview: str = Field(min_length=1, max_length=600)
+    items: list[CollabInsightItem] = Field(default_factory=list, max_length=24)

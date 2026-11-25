@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createApiClient } from "../lib/api/client.ts";
-import { CApiError, createCClient } from "../lib/api/c-client.ts";
+import { createApiClient } from "../shared/lib/api-client.ts";
+import { CApiError, createCClient } from "../shared/daily-inbox/c-client.ts";
 
 const requests = [];
 let nextResponse = { status: 200, body: { data: { id: "test-evidence" }, meta: { request_id: "req-test" } } };

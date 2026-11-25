@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.modules.b import planning_service
+from app.modules.b import code_progress_service, planning_service
 from app.modules.b.common import (
     ERROR_RESPONSES,
     CurrentUser,
@@ -259,5 +259,30 @@ def dismiss_suggestion(
         {},
         lambda: planning_service.dismiss_suggestion(
             session, user, project_id, suggestion_id, request
+        ),
+    )
+
+
+@router.post("/projects/{project_id}/tasks/sync-code-progress")
+def sync_code_progress(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    key: IdempotencyKey,
+):
+    return _write(
+        session,
+        request,
+        user,
+        key,
+        f"tasks.code_progress.sync:{project_id}",
+        {},
+        lambda: code_progress_service.sync_task_code_progress(
+            session,
+            project_id,
+            actor=user,
+            require_member_auth=True,
+            request=request,
         ),
     )

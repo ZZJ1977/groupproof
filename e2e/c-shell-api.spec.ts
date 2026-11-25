@@ -47,7 +47,7 @@ test("C denied notification write clears an earlier successful badge until permi
 
 test("C teacher shell takes course from the real route", async ({ page }) => {
   await setup(page, ["teacher"]); await page.goto(`/teacher/courses/${course}/files`);
-  const links = page.locator("aside nav a");
+  const links = page.getByTestId("teacher-course-nav").locator("a");
   await expect(links.first()).toHaveAttribute("href", `/teacher/courses/${course}`);
   for (const href of await links.evaluateAll((items) => items.map((item) => item.getAttribute("href")))) expect(href).toContain(course);
   await expect(page.locator('a[href*="course-1"]')).toHaveCount(0);

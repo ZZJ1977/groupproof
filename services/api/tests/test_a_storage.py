@@ -362,3 +362,169 @@ def test_student_cannot_call_admin_endpoint(db, scope):
     finally:
         app.dependency_overrides.pop(get_session, None)
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_direct_upload_falls_back_to_pg_lob_and_roundtrips_all_formats(db, scope, monkeypatch):
+    """外部 Supabase 不可达时，同源直传自动落盘到 pg_lob，且预览/下载原样还原字节流。"""
+    from app.auth.models import SchoolEmailBinding
+    from app.modules.c import external_files_sync, files_service
+    from app.modules.c.files_schemas import RegisterFile
+    from app.modules.c.files_storage import UnavailableStoragePort
+
+    leader = scope.users["leader"]
+    db.add(
+        SchoolEmailBinding(
+            user_id=leader.id,
+            school_email=leader.email,
+            school_email_normalized=leader.email.lower(),
+            verified_at=datetime.now(UTC),
+        )
+    )
+    db.flush()
+
+    monkeypatch.setenv("APP_ORIGIN", "https://groupproof.example.com")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-key-for-pg-lob-signing")
+
+    class BrokenSupabaseClient(FakeStorageClient):
+        def create_signed_upload_url(self, object_id: str) -> str:
+            raise RuntimeError("DNS lookup failed")
+
+    monkeypatch.setattr(storage, "get_storage_client", lambda: BrokenSupabaseClient())
+
+    app = FastAPI()
+    app.middleware("http")(request_context)
+    install_exception_handlers(app)
+    app.include_router(a_router.router)
+    app.dependency_overrides[get_session] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: scope.users["leader"]
+    monkeypatch.setattr(db, "commit", db.flush)
+
+    png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    jpg_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 16
+    docx_bytes = _zip(["[Content_Types].xml", "word/document.xml"])
+    xlsx_bytes = _zip(["[Content_Types].xml", "xl/workbook.xml"])
+    pptx_bytes = _zip(["[Content_Types].xml", "ppt/presentation.xml"])
+    zip_bytes = _zip(["notes.txt"])
+    samples = [
+        ("report.pdf", "application/pdf", PDF),
+        ("readme.md", "text/markdown", "# 项目说明\n中文内容".encode()),
+        ("notes.txt", "text/plain", "普通文本说明".encode()),
+        ("metrics.csv", "text/csv", "成员,提交数\n卓子杰,12\n".encode()),
+        ("arch.png", "image/png", png_bytes),
+        ("photo.jpg", "image/jpeg", jpg_bytes),
+        (
+            "plan.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            docx_bytes,
+        ),
+        (
+            "budget.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            xlsx_bytes,
+        ),
+        (
+            "slides.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            pptx_bytes,
+        ),
+        ("bundle.zip", "application/zip", zip_bytes),
+    ]
+
+    with TestClient(app) as client:
+        for idx, (fname, mime, payload) in enumerate(samples):
+            res = client.post(
+                "/api/v1/storage/uploads/direct",
+                params={"scope": "project", "scope_id": str(scope.project.id), "filename": fname},
+                content=payload,
+                headers={"Content-Type": mime},
+            )
+            assert res.status_code == 201, f"{fname}: {res.text}"
+            receipt_data = res.json()["data"]
+            assert receipt_data["status"] == "completed"
+            assert receipt_data["size_bytes"] == len(payload)
+            assert receipt_data["content_hash"] == hashlib.sha256(payload).hexdigest()
+
+            registered = files_service.register_file(
+                db,
+                scope.users["leader"],
+                scope.project.id,
+                RegisterFile(
+                    receipt_id=receipt_data["receipt_id"],
+                    reason="本地上传资料",
+                    category="images" if fname.endswith((".png", ".jpg")) else "documents",
+                ),
+                f"direct-key-{idx}",
+                UnavailableStoragePort(),
+            )
+            file_id = registered["id"]
+            version_id = registered["versions"][0]["id"]
+            for purpose in ("preview", "download"):
+                signed = files_service.get_signed_link(
+                    db,
+                    scope.users["leader"],
+                    scope.project.id,
+                    file_id,
+                    version_id,
+                    purpose,
+                    UnavailableStoragePort(),
+                )
+                parsed = urlsplit(signed["url"])
+                qs = parse_qs(parsed.query)
+                exp = int(qs["exp"][0])
+                sig = qs["sig"][0]
+                probed_mime, probed_name = external_files_sync.probe_internal_file_media_type(
+                    db,
+                    scope.project.id,
+                    file_id,
+                    version_id,
+                    purpose=purpose,
+                    exp=exp,
+                    sig=sig,
+                )
+                assert probed_name == fname
+                assert probed_mime.startswith(mime)
+                got_bytes, got_mime, got_name = external_files_sync.read_internal_file_content(
+                    db,
+                    scope.project.id,
+                    file_id,
+                    version_id,
+                    purpose=purpose,
+                    exp=exp,
+                    sig=sig,
+                )
+                assert got_bytes == payload
+                assert got_name == fname
+                assert got_mime.startswith(mime)
+
+
+def test_direct_upload_rejects_bad_content_and_unauthorized_actors(db, scope, monkeypatch):
+    monkeypatch.setattr(storage, "get_storage_client", lambda: None)
+    app = FastAPI()
+    app.middleware("http")(request_context)
+    install_exception_handlers(app)
+    app.include_router(a_router.router)
+    app.dependency_overrides[get_session] = lambda: db
+    actor = {"user": scope.users["leader"]}
+    app.dependency_overrides[get_current_user] = lambda: actor["user"]
+    monkeypatch.setattr(db, "commit", db.flush)
+
+    with TestClient(app) as client:
+        bad = client.post(
+            "/api/v1/storage/uploads/direct",
+            params={"scope": "project", "scope_id": str(scope.project.id), "filename": "fake.pdf"},
+            content=b"not a pdf",
+            headers={"Content-Type": "application/pdf"},
+        )
+        assert bad.status_code == 422 and bad.json()["error"]["code"] == "UPLOAD_REJECTED"
+
+        actor["user"] = scope.users["teacher"]
+        denied = client.post(
+            "/api/v1/storage/uploads/direct",
+            params={"scope": "project", "scope_id": str(scope.project.id), "filename": "spec.pdf"},
+            content=PDF,
+            headers={"Content-Type": "application/pdf"},
+        )
+        assert (
+            denied.status_code == 403
+            and denied.json()["error"]["code"] == "PROJECT_MEMBER_REQUIRED"
+        )

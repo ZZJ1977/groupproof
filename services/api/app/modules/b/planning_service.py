@@ -44,7 +44,7 @@ from app.db.models import (
     User,
 )
 from app.modules.a import permissions
-from app.modules.a.ai import TaskSuggestionInput, suggest_tasks
+from app.modules.a.ai import AIUsageContext, TaskSuggestionInput, suggest_tasks
 from app.modules.a.ai.provider import AIProvider
 from app.modules.a.ai.schemas import RequirementBrief, TaskBrief
 from app.modules.a.audit import record_audit
@@ -1000,7 +1000,11 @@ def generate_suggestions(
             for t in facts.tasks[:500]
         ],
     )
-    result = suggest_tasks(payload, provider=provider)
+    result = suggest_tasks(
+        payload,
+        provider=provider,
+        usage=AIUsageContext(user_id=user.id, project_id=project_id),
+    )
     _, project, plan = _writer(session, user, project_id)
     created = duplicates = 0
     for item in result.suggestions:

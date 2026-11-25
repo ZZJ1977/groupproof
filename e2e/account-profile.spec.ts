@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import type { MeDTO } from "../lib/api/auth-client";
+import type { MeDTO } from "../shared/auth/auth-client";
 
 function account(verified = false): MeDTO {
   return {

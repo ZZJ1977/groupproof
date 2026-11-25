@@ -167,3 +167,29 @@ def test_token_failure_is_503_not_empty_result(private_pem):
     with pytest.raises(ApiError) as exc:
         client.installation_token(9)
     assert exc.value.status_code == 503
+
+
+def test_branches_paginates_all_pages(private_pem):
+    pages_requested: list[tuple[str | None, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/access_tokens"):
+            return httpx.Response(201, json={"token": "t", "expires_at": "2026-11-11T13:00:00Z"})
+        assert request.url.path == "/repos/acme/demo/branches"
+        per_page = request.url.params.get("per_page")
+        page = request.url.params.get("page")
+        pages_requested.append((per_page, page))
+        if page == "1":
+            return httpx.Response(200, json=[{"name": f"branch-{i}"} for i in range(100)])
+        if page == "2":
+            return httpx.Response(200, json=[{"name": "branch-100"}, {"name": "branch-101"}])
+        raise AssertionError(f"unexpected page {page}")
+
+    client = github.GithubClient(
+        _settings(private_pem), transport=httpx.MockTransport(handler), now=lambda: NOW
+    )
+    result = client.branches("acme", "demo", 1)
+    assert len(result) == 102
+    assert result[0]["name"] == "branch-0"
+    assert result[-1]["name"] == "branch-101"
+    assert pages_requested == [("100", "1"), ("100", "2")]

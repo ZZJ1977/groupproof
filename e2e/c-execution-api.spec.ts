@@ -492,29 +492,37 @@ test("C3 another author cannot decide; revoked context clears evidence and never
   await expect(page.getByText("契约验证候选", { exact: true })).toHaveCount(0);
 });
 
-test("C6 new discussion binds four canonical selectors and mentions, retries safely, and confirms cancel", async ({ page }) => {
+test("C6 discussion preview renders project context, Feishu links, local preview only, and hides on 403", async ({ page }) => {
+  let accessDenied = false;
   await setup(page);
-  let created = false;
-  await page.route(`**${base}/discussions?**`, (route) => success(route, { items: created ? [discussion] : [], page: 1, page_size: 10, total: created ? 1 : 0 }));
-  await page.route(`**${base}/discussions/${did}`, (route) => success(route, discussion));
-  await page.route(`**${base}/discussions/${did}/replies?**`, (route) => success(route, { items: [], page: 1, page_size: 10, total: 0, discussion_lock_version: 1 }));
-  const attempts: { key: string | undefined; body: Schema["CreateDiscussion"] }[] = [];
-  await page.route(`**${base}/discussions`, (route) => { attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postDataJSON() }); if (attempts.length === 1) return failure(route, 503); created = true; return success(route, discussion); });
+  await page.route(`**${base}/c-context`, (route) => (
+    accessDenied ? failure(route, 403) : success(route, context)
+  ));
+  let discussionPosts = 0;
+  await page.route(`**${base}/discussions`, (route) => {
+    if (route.request().method() === "POST") discussionPosts++;
+    return failure(route, 500);
+  });
   await page.goto(`/projects/${pid}/discussions`);
-  await page.getByRole("button", { name: "新建讨论", exact: true }).click();
-  await page.getByRole("textbox", { name: "讨论标题", exact: true }).fill("真实接口讨论");
-  await page.getByRole("textbox", { name: "讨论正文", exact: true }).fill("讨论原始正文");
-  for (const [name, value] of [["新讨论关联任务", tid], ["新讨论关联需求", id(411)], ["新讨论关联模块", id(412)], ["新讨论关联里程碑", id(413)]]) await page.getByRole("combobox", { name, exact: true }).selectOption(value);
-  await page.getByRole("checkbox", { name: "成员甲", exact: true }).check();
-  await page.getByRole("button", { name: "取消新讨论", exact: true }).click();
-  await page.getByRole("button", { name: "继续编辑", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "讨论正文", exact: true })).toHaveValue("讨论原始正文");
-  await page.getByRole("button", { name: "发布讨论", exact: true }).click();
-  await expect(page.getByText("服务暂不可用，暂不能确认结果。请稍后重试。", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "发布讨论", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "真实接口讨论", exact: true })).toBeVisible();
-  expect(attempts).toHaveLength(2); expect(attempts[0].key).toBeTruthy(); expect(attempts[1]).toEqual(attempts[0]);
-  expect(attempts[0].body).toMatchObject({ expected_version: 0, task_id: tid, requirement_id: id(411), module_id: id(412), milestone_id: id(413), mention_user_ids: [aid] });
+  await expect(page.getByRole("heading", { name: "项目讨论区", exact: true })).toBeVisible();
+  await expect(page.locator(".gp-page-description")).toContainText("授权执行项目");
+  await expect(page.getByRole("link", { name: "前往飞书协作记录", exact: true })).toHaveAttribute(
+    "href",
+    `/projects/${pid}/collaboration`,
+  );
+  await expect(page.getByRole("link", { name: "配置飞书群接入", exact: true })).toHaveAttribute(
+    "href",
+    `/projects/${pid}/settings#feishu-integration`,
+  );
+  await page.getByLabel("输入预览消息", { exact: true }).fill("接口预览消息");
+  await page.getByRole("button", { name: "发送预览", exact: true }).click();
+  await expect(page.getByText("接口预览消息", { exact: true })).toBeVisible();
+  expect(discussionPosts).toBe(0);
+
+  accessDenied = true;
+  await page.reload();
+  await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
+  await expect(page.getByText("GroupProof AI 进度助手", { exact: true })).toHaveCount(0);
 });
 
 test("C6 reply retains concurrent replies, important changes use reason/CAS, then read-only authority hides writes", async ({ page }) => {

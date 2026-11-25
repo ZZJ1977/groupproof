@@ -126,13 +126,28 @@ test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject 
   await expect(page.getByText("来源记录第 1 页", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.getByText("来源记录第 2 页", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "查询活动", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "重置", exact: true })).toHaveCount(0);
+  const filterControls = [
+    page.getByRole("textbox", { name: "搜索记录", exact: true }),
+    page.getByRole("combobox", { name: "记录类型", exact: true }),
+    page.getByRole("combobox", { name: "处理状态", exact: true }),
+    page.getByRole("combobox", { name: "关联任务", exact: true }),
+    page.getByRole("combobox", { name: "记录作者", exact: true }),
+    page.getByLabel("开始日期", { exact: true }),
+    page.getByLabel("结束日期", { exact: true }),
+  ];
+  const boxes = await Promise.all(filterControls.map((locator) => locator.boundingBox()));
+  expect(boxes.every((box) => box !== null && box.height <= 40)).toBe(true);
+  const firstY = boxes[0]!.y;
+  expect(boxes.every((box) => Math.abs(box!.y - firstY) <= 4)).toBe(true);
   await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("接口");
   await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption({ label: "提交记录" });
   await page.getByRole("combobox", { name: "关联任务", exact: true }).selectOption(taskId);
   await page.getByLabel("开始日期", { exact: true }).fill("2026-10-01");
   await page.getByLabel("结束日期", { exact: true }).fill("2026-10-12");
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
   await expect(page).toHaveURL(/date_from=2026-10-01/);
+  await expect.poll(() => requests.at(-1)?.searchParams.get("q")).toBe("接口");
   await expect.poll(() => requests.at(-1)?.searchParams.get("until")).toBe("2026-10-12T23:59:59.999999Z");
   expect(requests.at(-1)?.searchParams.get("task_id")).toBe(taskId);
   expect(requests.at(-1)?.searchParams.get("kind")).toBe("commit");
@@ -176,7 +191,7 @@ test("C4 Feishu group and kind filters use authorized page metadata, combine in 
   await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption({ label: "消息" });
   await page.getByRole("combobox", { name: "处理状态", exact: true }).selectOption("candidate");
   await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("乙组讨论");
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("q")).toBe("乙组讨论");
   await expect.poll(() => requests.at(-1)?.searchParams.get("group_id")).toBe(groupB);
   expect(requests.at(-1)?.searchParams.get("kind")).toBe("message");
   expect(requests.at(-1)?.searchParams.get("status")).toBe("candidate");
@@ -189,12 +204,19 @@ test("C4 Feishu group and kind filters use authorized page metadata, combine in 
   await expect(page.getByText("群记录 11", { exact: true })).toBeVisible();
   await expect(group).toHaveValue(groupB);
   await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("message");
-  await page.goBack();
+  for (let i = 0; i < 4; i += 1) {
+    await page.goBack();
+  }
   await expect(page).toHaveURL(/page=2/);
   await expect(group).toHaveValue("");
-  await page.goForward();
+  for (let i = 0; i < 4; i += 1) {
+    await page.goForward();
+  }
   await expect(group).toHaveValue(groupB);
-  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await group.selectOption("");
+  await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption("");
+  await page.getByRole("combobox", { name: "处理状态", exact: true }).selectOption("");
+  await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("");
   await expect.poll(() => requests.at(-1)?.searchParams.has("group_id")).toBe(false);
   expect(requests.at(-1)?.searchParams.has("kind")).toBe(false);
   await expect(group.locator("option")).toHaveText(["全部群组", groupA]);
@@ -215,10 +237,10 @@ test("C4 an empty linked group remains explicit, legacy group links work, and de
   await expect(group).toHaveValue("oc_empty");
   await expect(group.locator("option")).toHaveText(["全部群组", "当前 URL 群组筛选（待来源核对）"]);
   expect(requests.at(-1)?.searchParams.get("group_id")).toBe("oc_empty");
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption("");
   await expect(page).toHaveURL(/group_id=oc_empty/);
   expect(new URL(page.url()).searchParams.has("group")).toBe(false);
-  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await group.selectOption("");
   await expect(group.locator("option")).toHaveText(["全部群组", "oc_visible_only"]);
   await page.route(`**${base}/c-context`, (route) => failure(route, 403));
   await page.getByRole("button", { name: "刷新活动", exact: true }).click();
@@ -237,7 +259,7 @@ test("C4 GitHub PR filter keeps its exact wire value and does not forward Feishu
   await page.goto(`/projects/${projectId}/github?kind=pr&group_id=oc_other_surface`);
   await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("pr");
   await expect(page.getByRole("combobox", { name: "来源群组", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await page.getByRole("textbox", { name: "搜索记录", exact: true }).press("Enter");
   await expect.poll(() => requests.at(-1)?.searchParams.get("kind")).toBe("pr");
   expect(requests.every((url) => !url.searchParams.has("group_id"))).toBe(true);
   expect(new URL(page.url()).searchParams.has("group_id")).toBe(false);
@@ -353,6 +375,15 @@ test("C4 ignored record restores with a reason, read-only context hides mutation
   await expect(page.locator("main").getByText("接口讨论文档", { exact: true })).toHaveCount(0);
 });
 
+function linkRoutes(page: Page, targetFileId = fileId, urlFor: (versionId: string, purpose: "preview" | "download") => string = (vid, purpose) => `https://storage.example.test/${targetFileId}/${vid}?purpose=${purpose}`) {
+  return page.route(`**${base}/files/${targetFileId}/versions/*/link**`, (route) => {
+    const reqUrl = new URL(route.request().url());
+    const versionId = reqUrl.pathname.split("/").at(-2) ?? "";
+    const purpose = reqUrl.searchParams.get("purpose") === "download" ? "download" : "preview";
+    return success(route, { version_id: versionId, purpose, url: urlFor(versionId, purpose), expires_at: new Date(Date.now() + 60_000).toISOString() } satisfies Schema["SignedFileLinkDTO"]);
+  });
+}
+
 test("C5-02 project upload verifies bytes before registration and reuses the receipt after an uncertain save", async ({ page }) => {
   await contextRoute(page);
   const { payload, stage, receipt } = await storageRoutes(page, "project", projectId);
@@ -365,6 +396,8 @@ test("C5-02 project upload verifies bytes before registration and reuses the rec
     return keys.length === 1 ? failure(route, 503) : success(route, file);
   });
   await page.goto(`/projects/${projectId}/files`);
+  await expect(page.getByLabel("选择文件", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "上传文件", exact: true }).click();
   await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
   await page.getByLabel("版本说明", { exact: true }).fill("新增说明");
   const submit = page.getByRole("button", { name: "上传并保存草稿", exact: true });
@@ -372,6 +405,7 @@ test("C5-02 project upload verifies bytes before registration and reuses the rec
   await expect(page.getByText("上传服务暂不可用，请稍后重试。", { exact: true })).toBeVisible();
   await submit.click();
   await expect(page.getByText("文件草稿版本已保存。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(stage.issued).toBe(1); expect(stage.put).toBe(1);
   expect(keys).toHaveLength(2); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
 });
@@ -393,7 +427,9 @@ for (const failureCase of ["different bytes of the same size", "missing stored o
       }
       return success(route, new URL(route.request().url()).pathname.endsWith(`/${fileId}`) ? file : fileRows(file));
     });
+    await linkRoutes(page);
     await page.goto(`/projects/${projectId}/files?file=${fileId}`);
+    await page.getByRole("button", { name: /版本与历史/ }).click();
     await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
     await page.getByLabel("版本说明", { exact: true }).fill("追加说明");
     const submit = page.getByRole("button", { name: "上传并保存草稿", exact: true });
@@ -401,7 +437,7 @@ for (const failureCase of ["different bytes of the same size", "missing stored o
     const message = failureCase === "missing stored object" ? "还没有收到文件" : "存储内容与所选文件不一致";
     await expect(page.getByRole("alert").filter({ hasText: message })).toBeVisible();
     expect(appends).toBe(0);
-    await expect(page.getByRole("button", { name: "申请下载 v1", exact: true })).toBeEnabled();
+    await expect(page.getByRole("link", { name: "下载", exact: true })).toBeVisible();
     stage.storedBytes = payload.buffer;
     await submit.click();
     await expect(page.getByText("文件草稿版本已保存。", { exact: true })).toBeVisible();
@@ -420,6 +456,7 @@ test("C5-02 permissions revoked during upload prevent file registration and hide
     return success(route, fileRows(file));
   });
   await page.goto(`/projects/${projectId}/files`);
+  await page.getByRole("button", { name: "上传文件", exact: true }).click();
   await page.getByLabel("选择文件", { exact: true }).setInputFiles(payload);
   await page.getByLabel("版本说明", { exact: true }).fill("新增说明");
   await page.getByRole("button", { name: "上传并保存草稿" }).click();
@@ -432,6 +469,7 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await contextRoute(page);
   let detail = structuredClone(file);
   await page.route(`**${base}/files**`, (route) => new URL(route.request().url()).pathname.endsWith(`/${fileId}`) ? success(route, detail) : success(route, fileRows(detail)));
+  await linkRoutes(page);
   const attempts: { key: string | undefined; body: unknown }[] = [];
   await page.route(`**${base}/files/${fileId}/designate`, (route) => {
     attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postDataJSON() });
@@ -444,6 +482,7 @@ test("C5 designation preserves earlier versions and retries the same payload aft
     return success(route, detail);
   });
   await page.goto(`/projects/${projectId}/files?file=${fileId}`);
+  await page.getByRole("button", { name: /版本与历史/ }).click();
   await expect(page.getByLabel("选择文件", { exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "上传并保存草稿" })).toBeDisabled();
   await page.getByRole("button", { name: "设为正式 v2", exact: true }).click();
@@ -455,6 +494,7 @@ test("C5 designation preserves earlier versions and retries the same payload aft
   await expect(page.getByText("v1 · 历史版本", { exact: true })).toBeVisible();
   await expect(page.getByText("v2 · 正式", { exact: true })).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: /版本与历史/ }).click();
   const firstHistory = page.getByRole("list", { name: "v1 操作历史", exact: true });
   const secondHistory = page.getByRole("list", { name: "v2 操作历史", exact: true });
   await expect(firstHistory).toContainText("保留原始发布记录");
@@ -467,21 +507,25 @@ test("C5 designation preserves earlier versions and retries the same payload aft
 test("C5-02 returning to an evidence file reference discards a pending download for another version", async ({ page }) => {
   await contextRoute(page);
   await page.route(`**${base}/files**`, (route) => new URL(route.request().url()).pathname.endsWith(`/${fileId}`) ? success(route, file) : success(route, fileRows(file)));
+  await page.route(`**${base}/files/${fileId}/versions/${v1Id}/link?**`, (route) => {
+    const purpose = new URL(route.request().url()).searchParams.get("purpose") ?? "preview";
+    return success(route, { version_id: v1Id, purpose, url: `https://storage.example.test/v1?purpose=${purpose}`, expires_at: new Date(Date.now() + 60_000).toISOString() });
+  });
   const signature = `${base}/files/${fileId}/versions/${v2Id}/link`;
   let release!: () => void;
   const pending = new Promise<void>((resolve) => { release = resolve; });
   await page.route(`**${signature}?**`, async (route) => {
-    await pending;
-    return success(route, { version_id: v2Id, purpose: "download", url: "https://fixture.invalid/v2", expires_at: new Date(Date.now() + 60_000).toISOString() });
+    const purpose = new URL(route.request().url()).searchParams.get("purpose") ?? "preview";
+    if (purpose === "download") await pending;
+    return success(route, { version_id: v2Id, purpose, url: `https://fixture.invalid/v2?purpose=${purpose}`, expires_at: new Date(Date.now() + 60_000).toISOString() });
   });
   await page.goto(`/projects/${projectId}/files?file=${fileId}&version=${v1Id}`);
   const oldVersion = page.getByRole("article", { name: "证据引用的版本 v1" });
   await expect(oldVersion).toBeFocused();
-  await page.getByRole("button", { name: "查看版本", exact: true }).first().click();
-  const requested = page.waitForRequest((request) => new URL(request.url()).pathname === signature);
-  await page.getByRole("button", { name: "申请下载 v2", exact: true }).click();
+  const requested = page.waitForRequest((request) => new URL(request.url()).pathname === signature && new URL(request.url()).searchParams.get("purpose") === "download");
+  await page.getByRole("combobox", { name: "切换版本", exact: true }).selectOption(v2Id);
   await requested;
-  const responded = page.waitForResponse((response) => new URL(response.url()).pathname === signature);
+  const responded = page.waitForResponse((response) => new URL(response.url()).pathname === signature && new URL(response.url()).searchParams.get("purpose") === "download");
   try {
     await page.goBack();
     await expect(oldVersion).toBeFocused();
@@ -489,29 +533,36 @@ test("C5-02 returning to an evidence file reference discards a pending download 
     release();
   }
   await (await responded).finished();
-  await expect(page.getByRole("link", { name: "下载文件", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "切换版本", exact: true })).toHaveValue(v1Id);
+  await expect(page.getByRole("link", { name: "下载", exact: true })).toHaveAttribute("href", "https://storage.example.test/v1?purpose=download");
 });
 
 test("C5 signed links are validated, read-only files remain readable, and revocation clears previous content", async ({ page }) => {
   await contextRoute(page, { ...context, permissions: { ...context.permissions, can_manage_files: false } });
   await page.route(`**${base}/files**`, (route) => new URL(route.request().url()).pathname.endsWith(`/${fileId}`) ? success(route, file) : success(route, fileRows(file)));
   let linkUrl = "javascript:alert(1)";
-  await page.route(`**${base}/files/${fileId}/versions/${v1Id}/link?**`, (route) => success(route, { version_id: v1Id, purpose: "download", url: linkUrl, expires_at: new Date(Date.now() + 60_000).toISOString() } satisfies Schema["SignedFileLinkDTO"]));
+  await page.route(`**${base}/files/${fileId}/versions/${v1Id}/link?**`, (route) => {
+    const purpose = new URL(route.request().url()).searchParams.get("purpose") === "download" ? "download" : "preview";
+    return success(route, { version_id: v1Id, purpose, url: linkUrl, expires_at: new Date(Date.now() + 60_000).toISOString() } satisfies Schema["SignedFileLinkDTO"]);
+  });
   await page.goto(`/projects/${projectId}/files?file=${fileId}`);
   await expect(page.getByText("当前项目资料只读。", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "设为正式 v2", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "申请下载 v1", exact: true }).click();
+  await expect(page.getByRole("button", { name: "上传文件", exact: true })).toHaveCount(0);
   await expect(page.getByText("请求未成功，输入已保留。请重试。", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "下载文件", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "下载", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: /版本与历史/ }).click();
+  await expect(page.getByRole("button", { name: "设为正式 v2", exact: true })).toHaveCount(0);
   linkUrl = "https://storage.example.test/signed/file?token=fixture";
-  await page.getByRole("button", { name: "申请下载 v1", exact: true }).click();
-  await expect(page.getByRole("link", { name: "下载文件", exact: true })).toHaveAttribute("href", linkUrl);
+  await page.getByRole("button", { name: "重新获取预览", exact: true }).click();
+  await expect(page.getByRole("link", { name: "下载", exact: true })).toHaveAttribute("href", linkUrl);
+  await expect(page.locator("iframe[title='需求第一版.pdf PDF 预览']")).toHaveAttribute("src", linkUrl);
+  await page.getByRole("button", { name: "关闭" }).click();
   await page.route(`**${base}/c-context`, (route) => failure(route, 403));
   await page.getByRole("button", { name: "刷新资料", exact: true }).click();
   await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
   await expect(page.getByText("真实需求说明", { exact: true })).toHaveCount(0);
   await expect(page.getByText("已授权的真实项目", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "下载文件", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "下载", exact: true })).toHaveCount(0);
 });
 
 test("C5 file filters survive reload, and a denied project never renders another project's records", async ({ page }) => {
@@ -534,4 +585,79 @@ test("C5 file filters survive reload, and a denied project never renders another
   await expect(page.getByText("当前访问权限已失效，项目数据已隐藏。", { exact: true })).toBeVisible();
   await expect(page.getByText("真实需求说明", { exact: true })).toHaveCount(0);
   await expect(page.locator("main table")).toHaveCount(0);
+});
+
+test("C5 inline preview renders markdown safely, image, code, and binary metadata inside the viewer drawer", async ({ page }) => {
+  await contextRoute(page);
+  const mdId = "00000000-0000-0000-0000-000000000311";
+  const imgId = "00000000-0000-0000-0000-000000000312";
+  const jsonId = "00000000-0000-0000-0000-000000000313";
+  const binId = "00000000-0000-0000-0000-000000000314";
+  const makeDetail = (id: string, vid: string, name: string, original: string, ext: string, mime: string): Schema["FileDetailDTO"] => ({
+    id, project_id: projectId, name, category: "documents", latest_version_no: 1, official_version_no: 1, lock_version: 1,
+    created_by: actorId, created_at: stamp, updated_at: stamp, decisions: [],
+    versions: [{ id: vid, file_id: id, version_no: 1, original_name: original, extension: ext, mime_type: mime, size_bytes: 512, content_hash: "c".repeat(64), uploaded_by: actorId, status: "current", created_at: stamp }],
+  });
+  const mdDetail = makeDetail(mdId, "00000000-0000-0000-0000-000000000321", "README.md", "README.md", "md", "text/markdown");
+  const imgDetail = makeDetail(imgId, "00000000-0000-0000-0000-000000000322", "架构图", "arch.png", "png", "image/png");
+  const jsonDetail = makeDetail(jsonId, "00000000-0000-0000-0000-000000000323", "config.json", "config.json", "json", "application/json");
+  const binDetail = makeDetail(binId, "00000000-0000-0000-0000-000000000324", "打包产物", "bundle.zip", "zip", "application/zip");
+  const details = new Map([[mdId, mdDetail], [imgId, imgDetail], [jsonId, jsonDetail], [binId, binDetail]]);
+  const mdBody = "# 周报标题\n\n包含 **加粗** 与 `inline_code` 和 [安全链接](https://example.com) 及 [危险脚本](javascript:alert(1))\n\n![安全图片](https://preview.example.test/embedded.png)\n\n![危险图片](javascript:alert(1))\n\n![危险SVG](data:image/svg+xml;base64,PHN2Zy8+)\n\n<script>window.__xss=1</script>\n\n- 列表项一\n\n| 列A | 列B |\n| --- | --- |\n| 值1 | 值2 |\n";
+  const downloadRequests: string[] = [];
+  await page.route(`https://preview.example.test/**`, (route) => {
+    const reqUrl = new URL(route.request().url());
+    const pathname = reqUrl.pathname;
+    const isDownload = reqUrl.searchParams.get("purpose") === "download";
+    const headers = isDownload ? { "content-disposition": 'attachment; filename="README.md"' } : undefined;
+    if (pathname.endsWith("/md")) return route.fulfill({ status: 200, contentType: "text/markdown; charset=utf-8", headers, body: mdBody });
+    if (pathname.endsWith("/json")) return route.fulfill({ status: 200, contentType: "application/json", headers, body: "{\"ok\":true}" });
+    return route.fulfill({ status: 200, contentType: "image/png", headers, body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
+  });
+  await page.route(`**${base}/files**`, (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const segments = pathname.split("/");
+    if (segments.at(-2) === "versions" || segments.at(-1) === "link") {
+      const targetFileId = segments.at(-4) ?? "";
+      const versionId = segments.at(-2) ?? "";
+      const purpose = new URL(route.request().url()).searchParams.get("purpose") ?? "preview";
+      if (purpose === "download") downloadRequests.push(`${targetFileId}:${versionId}`);
+      const suffix = targetFileId === mdId ? "md" : targetFileId === jsonId ? "json" : targetFileId === imgId ? "png" : "zip";
+      return success(route, { version_id: versionId, purpose, url: `https://preview.example.test/${suffix}?purpose=${purpose}`, expires_at: new Date(Date.now() + 60_000).toISOString() });
+    }
+    const maybeId = segments.at(-1) ?? "";
+    if (details.has(maybeId)) return success(route, details.get(maybeId));
+    return success(route, { items: [...details.values()].map((d) => ({ ...d.versions[0], project_id: projectId, name: d.name, category: d.category, lock_version: d.lock_version })), total: 4, page: 1, page_size: 10 } satisfies Schema["FilePageDTO"]);
+  });
+  await page.goto(`/projects/${projectId}/files`);
+  await expect(page.locator("tbody tr").first().getByText("README.md", { exact: true })).toHaveCount(1);
+  // Direct row-level download button triggers signed download without opening the preview drawer
+  await page.locator("tbody tr").first().getByRole("button", { name: "下载", exact: true }).click();
+  await expect.poll(() => downloadRequests).toContain(`${mdId}:00000000-0000-0000-0000-000000000321`);
+  await expect(page.getByTestId("markdown-preview")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "README.md", exact: true }).click();
+  const mdPreview = page.getByTestId("markdown-preview");
+  await expect(mdPreview.getByRole("heading", { name: "周报标题" })).toBeVisible();
+  await expect(mdPreview.getByRole("link", { name: "安全链接" })).toHaveAttribute("href", "https://example.com/");
+  await expect(mdPreview.getByRole("link", { name: "危险脚本" })).toHaveCount(0);
+  await expect(mdPreview.getByRole("img", { name: "安全图片" })).toHaveAttribute("src", "https://preview.example.test/embedded.png");
+  await expect(mdPreview.getByRole("img", { name: "危险图片" })).toHaveCount(0);
+  await expect(mdPreview.getByRole("img", { name: "危险SVG" })).toHaveCount(0);
+  await expect(mdPreview.locator("table th", { hasText: "列A" })).toBeVisible();
+  await expect(mdPreview.locator("script")).toHaveCount(0);
+  await expect(mdPreview.getByText("<script>window.__xss=1</script>")).toBeVisible();
+  await page.getByRole("button", { name: "关闭" }).click();
+
+  await page.getByRole("button", { name: "查看内容", exact: true }).nth(1).click();
+  await expect(page.getByRole("img", { name: "arch.png" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭" }).click();
+
+  await page.getByRole("button", { name: "config.json", exact: true }).click();
+  await expect(page.getByTestId("text-preview")).toContainText("\"ok\": true");
+  await page.getByRole("button", { name: "关闭" }).click();
+
+  await page.getByRole("button", { name: "查看内容", exact: true }).nth(3).click();
+  await expect(page.getByText("此类型文件暂不支持在线预览。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "下载文件", exact: true })).toBeVisible();
 });

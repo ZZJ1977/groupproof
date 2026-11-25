@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { seedData } from "../mocks/seed";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
 
 test.beforeEach(async ({ page }) => {
   const data = structuredClone(seedData); data.currentUserId = "admin-1"; data.currentRole = "admin";

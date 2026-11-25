@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { publishCourseRules, saveCourseRuleDraft } from "../lib/commands/course.ts";
-import { createCourseProject } from "../lib/commands/project-create.ts";
-import { advanceSetupStep, runMockRequirementAnalysis, saveSetupDraft } from "../lib/commands/setup.ts";
-import { confirmBaselineSelf, publishBaseline, forcePublishBaseline } from "../lib/commands/baseline.ts";
-import { confirmAssignmentSelf, createPlanDraft, publishPlan, savePlanDraft } from "../lib/commands/plan.ts";
-import { applyCourseRuleChange, getRuleChangeImpact } from "../lib/commands/rule-change.ts";
-import { uploadProjectFile, replaceProjectFile } from "../lib/commands/files.ts";
-import { archiveProject, reopenProject, updateProjectSettings } from "../lib/commands/project.ts";
-import { currentTasks, deriveProgress, getProjectOverview } from "../lib/overview.ts";
-import { publishedCourseRule } from "../lib/versioning.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { publishCourseRules, saveCourseRuleDraft } from "../shared/legacy-mock/commands/course.ts";
+import { createCourseProject } from "../shared/legacy-mock/commands/project-create.ts";
+import { advanceSetupStep, runMockRequirementAnalysis, saveSetupDraft } from "../shared/legacy-mock/commands/setup.ts";
+import { confirmBaselineSelf, publishBaseline, forcePublishBaseline } from "../shared/legacy-mock/commands/baseline.ts";
+import { confirmAssignmentSelf, createPlanDraft, publishPlan, savePlanDraft } from "../shared/legacy-mock/commands/plan.ts";
+import { applyCourseRuleChange, getRuleChangeImpact } from "../shared/legacy-mock/commands/rule-change.ts";
+import { uploadProjectFile, replaceProjectFile } from "../shared/legacy-mock/commands/files.ts";
+import { archiveProject, reopenProject, updateProjectSettings } from "../shared/legacy-mock/commands/project.ts";
+import { currentTasks, deriveProgress, getProjectOverview } from "../shared/legacy-mock/overview.ts";
+import { publishedCourseRule } from "../shared/legacy-mock/versioning.ts";
 
 /**
  * 端到端走查（服务层夹具）：教师规则 → 创建 → 初始化 → 确认 → 计划

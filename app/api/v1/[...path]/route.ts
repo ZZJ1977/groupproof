@@ -8,7 +8,7 @@
  * - 后端不可达时返回统一错误封装，不伪造成功。
  */
 import { NextResponse, type NextRequest } from "next/server";
-import { adminApiBase, ADMIN_ENVIRONMENT_COOKIE, normalizeAdminEnvironment } from "@/lib/admin-environment";
+import { adminApiBase, ADMIN_ENVIRONMENT_COOKIE, normalizeAdminEnvironment } from "@/admin/lib/admin-environment";
 
 export const dynamic = "force-dynamic";
 

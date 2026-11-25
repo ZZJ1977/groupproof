@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { seedData } from "../mocks/seed";
-import type { EvidenceWithCDecisions } from "../features/c/evidence-decisions";
-import type { MockData } from "../types/domain";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
+import type { EvidenceWithCDecisions } from "../shared/legacy-mock/features/c/evidence-decisions";
+import type { MockData } from "../shared/types/domain";
 
 type CWorkspace = Omit<MockData, "evidence"> & {
   evidence: (EvidenceWithCDecisions & { sourceSnapshot?: unknown })[];

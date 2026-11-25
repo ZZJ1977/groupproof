@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { notificationPage, setNotificationRead } from "../features/c/notification-actions.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { notificationPage, setNotificationRead } from "../shared/legacy-mock/features/c/notification-actions.ts";
 
 const data = structuredClone(seedData);
 const actorId = data.currentUserId;

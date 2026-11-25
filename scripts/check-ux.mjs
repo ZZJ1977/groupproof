@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { projectNavItems, resolveObjectContext, taskViewLinks, teacherNavItems } from "../lib/ux/navigation.ts";
-import { completedModuleCount, teacherProjectStats } from "../lib/ux/stats.ts";
-import { teacherOverviewAcceptance, teacherOverviewActivities, teacherOverviewModuleProgress, teacherOverviewProgress, teacherOverviewRisk } from "../lib/ux/teacher-overview.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { projectNavItems, resolveObjectContext, taskViewLinks, teacherNavItems } from "../shared/lib/navigation.ts";
+import { completedModuleCount, teacherProjectStats } from "../shared/legacy-mock/ux/stats.ts";
+import { teacherOverviewAcceptance, teacherOverviewActivities, teacherOverviewModuleProgress, teacherOverviewProgress, teacherOverviewRisk } from "../shared/legacy-mock/ux/teacher-overview.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {
