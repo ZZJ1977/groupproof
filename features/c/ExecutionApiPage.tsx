@@ -94,6 +94,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const [draft, setDraft] = useState<NoteDraft | null>(null);
   const [prepareVersion, setPrepareVersion] = useState<number | null>(null);
   const [evidenceDirty, setEvidenceDirty] = useState(false);
+  const [showAdvancedSubmission, setShowAdvancedSubmission] = useState(false);
   // B conceals a hidden project or task with a named 404. A generic 404
   // indicates that the individual optional route is unavailable.
   const hiddenTarget = [rechecks.error, planVersions.error, verification.error].find((error) =>
@@ -106,6 +107,25 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const noteReady = access && note.isSuccess && !note.isFetching;
   const canNote = Boolean(task?.can_capture_evidence && access?.permissions.can_capture_evidence);
   const canPrepare = Boolean(state && !state.read_only && ["in_progress", "pending_submission"].includes(state.status) && state.responsible_ids.includes(access!.actor.id));
+  const evidenceItems = evidence.isSuccess && !evidence.isFetching ? evidence.data.items : [];
+  const submissionAllAiPassed = Boolean(
+    submission &&
+    task &&
+    task.criteria.length > 0 &&
+    evidence.isSuccess &&
+    !evidence.isFetching &&
+    task.criteria.every((criterion) =>
+      evidenceItems.some(
+        (ev) =>
+          !ev.source_changed &&
+          ["candidate", "pending_confirmation", "formal"].includes(ev.status) &&
+          ev.criterion_ids.includes(criterion.id),
+      ),
+    ),
+  );
+  const showManualSubmissionForms = Boolean(
+    submission && ((!submissionAllAiPassed && state?.status !== "completed") || showAdvancedSubmission),
+  );
   const focusTarget = state && tab === "history" && !submission
     ? noteFocus && savedNote?.versions.some((version) => version.id === noteFocus) ? `note-${noteFocus}`
       : progressFocus && history.isSuccess && !history.isFetching && history.data.items.some((event) => event.id === progressFocus) ? `progress-${progressFocus}` : null
@@ -181,7 +201,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   }
   return <>
     <PageHeader
-      title={submission ? "任务说明与提交准备" : task?.title ?? "任务执行"}
+      title={submission ? "证据确认与任务验收" : task?.title ?? "任务执行"}
       description={access?.project.name ?? "正在验证项目权限…"}
       actions={<div className="flex flex-wrap items-center gap-2">
         <Link className={apiButton} href={`/projects/${projectId}/tasks`}>返回任务列表</Link>
@@ -192,8 +212,51 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
       {(context.isFetching || execution.isFetching) && <p role="status">正在读取当前任务…</p>}{context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}{execution.isError && <ApiFailure error={execution.error} retry={() => void refresh()} />}
       {access && !task && <EmptyState title="当前项目中没有此任务" />}
       {task && execution.isSuccess && execution.data.project_id !== projectId && <EmptyState title="任务不属于当前项目" />}
-      {state && access && task && <>
-        <Panel><p>任务：{task.title}</p><p>状态：{states[state.status]} · 进度：{state.progress}%</p><p className="mt-2 border-l-2 border-sky-400 pl-3 text-sm text-slate-600">{progressExplanation(state.status, state.progress)}</p><p className="mt-2 text-sm text-slate-500">100% 进度不会自动完成任务。验收结论由验收服务提供。</p><div className="mt-3 flex flex-wrap gap-2">{state.can_start && <button className={apiButton} disabled={busy} onClick={() => void perform("start")}>开始任务</button>}{state.can_update_progress && !submission && <button className={apiButton} disabled={busy} onClick={() => { setProgress({ value: state.progress, reason: "", expected: state.version }); setError(null); }}>更新进度</button>}{submission ? <><Link className={apiButton} href={`/projects/${projectId}/tasks`}>返回任务列表</Link><Link className={apiButton} href={`/projects/${projectId}/tasks/${taskId}`}>查看任务详情</Link></> : <Link className={apiButton} href={`/projects/${projectId}/tasks/${taskId}/submit`}>任务说明与候选证据</Link>}</div></Panel>
+      {state && access && task && (() => {
+        const noteSection = (
+          <>
+            <Panel title="任务说明版本">
+              {note.isFetching && <p role="status">正在读取说明…</p>}
+              {note.isError && <ApiFailure error={note.error} retry={() => void note.refetch()} />}
+              {noteReady && <>
+                {savedNote?.versions.map((version) => <details id={`note-${version.id}`} tabIndex={-1} open={noteFocus === version.id || undefined} className={`my-3 ${noteFocus === version.id ? "rounded border border-blue-400 p-3" : ""}`} key={version.id}><summary>v{version.version_no} · {version.title} · {formatDate(version.created_at)}</summary><p className="whitespace-pre-wrap">{version.body}</p></details>)}
+                {!savedNote && <p>尚未保存任务说明。</p>}
+                {noteFocus && !savedNote?.versions.some((version) => version.id === noteFocus) && <p role="status">所定位的说明版本不存在或已不可读取。</p>}
+                {submission && canNote && !draft && <button className={apiButton} onClick={() => { const current = savedNote?.versions.find((version) => version.version_no === savedNote.current_version_no); setDraft({ title: current?.title ?? task.title, body: current?.body ?? "", expected: savedNote?.lock_version ?? 0 }); setError(null); }}>编辑任务说明</button>}
+              </>}
+            </Panel>
+            {submission && draft && canNote && <Panel title="编辑任务说明"><label>说明标题<input className={`${apiInput} block w-full`} maxLength={240} value={draft.title} disabled={busy} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label htmlFor="task-note-body">说明正文</label><textarea id="task-note-body" className={`${apiInput} block min-h-40 w-full`} maxLength={100000} value={draft.body} disabled={busy} onChange={(event) => setDraft({ ...draft, body: event.target.value })} /><p className="my-3 text-sm">每次保存生成新版本，旧版本与其证据快照保留。</p><button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("note")}>保存说明新版本</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => { setDraft(null); setPrepareVersion(null); }}>取消编辑</button></Panel>}
+          </>
+        );
+        const prepareSection = (
+          <Panel title="提交准备">
+            <p className="mb-3">检查完整性前会先保存当前任务说明，并将任务设为待提交。</p>
+            {canPrepare && (prepareVersion === null ? <div className="flex flex-wrap gap-2">
+              <button className={apiButton} disabled={busy || !noteReady} onClick={() => setPrepareVersion(state.version)}>准备提交</button>
+              <button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("prepare", true)}>检查完整性</button>
+            </div> : <><p className="mb-3">{draft ? "当前编辑的说明将与待提交状态一同保存。" : "将保留已保存的说明，并准备提交。"}</p><button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("prepare")}>确认保存提交准备</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => setPrepareVersion(null)}>取消</button></>)}
+          </Panel>
+        );
+        return <>
+        {submission ? (
+          <Panel>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <div className="min-w-0 space-y-0.5">
+                <p className="font-semibold text-slate-900">任务：{task.title}</p>
+                <p className="text-xs text-slate-600">
+                  状态：{states[state.status]} · 进度：{state.progress}%
+                  {!submissionAllAiPassed && ` — ${progressExplanation(state.status, state.progress)}`}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {state.can_start && <button className={apiButton} disabled={busy} onClick={() => void perform("start")}>开始任务</button>}
+                <Link className={apiButton} href={`/projects/${projectId}/tasks/${taskId}`}>查看任务详情</Link>
+              </div>
+            </div>
+          </Panel>
+        ) : (
+          <Panel><p>任务：{task.title}</p><p>状态：{states[state.status]} · 进度：{state.progress}%</p><p className="mt-2 border-l-2 border-sky-400 pl-3 text-sm text-slate-600">{progressExplanation(state.status, state.progress)}</p><p className="mt-2 text-sm text-slate-500">100% 进度不会自动完成任务。验收结论由验收服务提供。</p><div className="mt-3 flex flex-wrap gap-2">{state.can_start && <button className={apiButton} disabled={busy} onClick={() => void perform("start")}>开始任务</button>}{state.can_update_progress && <button className={apiButton} disabled={busy} onClick={() => { setProgress({ value: state.progress, reason: "", expected: state.version }); setError(null); }}>更新进度</button>}<Link className={apiButton} href={`/projects/${projectId}/tasks/${taskId}/submit`}>任务说明与候选证据</Link></div></Panel>
+        )}
         {!submission && <div className="my-4 flex flex-wrap gap-2">{Object.entries(tabs).map(([value, label]) => <button className={apiButton} key={value} aria-pressed={tab === value} onClick={() => updateQuery({ tab: value })}>{label}</button>)}</div>}
         {progress && state.can_update_progress && <Panel title="更新任务进度"><label>任务进度<input className={`${apiInput} block`} type="number" min={0} max={100} step={1} value={progress.value} disabled={busy} onChange={(event) => setProgress({ ...progress, value: Number(event.target.value) })} /></label><label htmlFor="progress-reason">进度变更原因</label><textarea id="progress-reason" className={`${apiInput} block w-full`} maxLength={2000} disabled={busy} value={progress.reason} onChange={(event) => setProgress({ ...progress, reason: event.target.value })} /><div className="mt-3 flex gap-2"><button className={apiButton} disabled={busy} onClick={() => void perform("progress")}>保存进度</button><button className={apiButton} disabled={busy} onClick={() => setProgress(null)}>取消</button></div></Panel>}
         {!submission && tab === "overview" && <Panel title="执行概览"><h3 className="font-semibold">任务描述</h3><p className="my-2 whitespace-pre-wrap">{task.description || "未填写任务描述。"}</p><p>项目进度：{state.project_progress === null ? "暂无可计算进度" : `${state.project_progress}%`}</p><p className="my-2">负责人：{state.responsible_ids.map((id) => access.members.find((member) => member.id === id)?.title ?? "项目负责人").join("、") || "未指派"}</p><h3 className="mt-3 font-semibold">前置任务</h3>{state.dependencies.map((dependency) => <p key={dependency.task_id}>{access.tasks.find((item) => item.id === dependency.task_id)?.title ?? "前置任务"} · {dependency.satisfied ? "已满足" : "尚未满足"}</p>)}{!state.dependencies.length && <p>没有前置任务。</p>}<Link className="gp-link mt-3 inline-block" href={`/projects/${projectId}/tasks/${taskId}?tab=verification`}>查看逐项验收结果与人工决定</Link></Panel>}
@@ -203,6 +266,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
           taskStatus={state.status}
           actorId={access.actor.id}
           canLeadOrTeach={Boolean(access.actor.is_leader || access.actor.is_teacher)}
+          isLeader={Boolean(access.actor.is_leader)}
           isResponsible={state.responsible_ids.includes(access.actor.id)}
           canCaptureEvidence={Boolean(task.can_capture_evidence && access.permissions.can_capture_evidence)}
           criteria={task.criteria}
@@ -220,20 +284,20 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
           taskStatus={state.status}
           actorId={access.actor.id}
           canLeadOrTeach={Boolean(access.actor.is_leader || access.actor.is_teacher)}
+          isLeader={Boolean(access.actor.is_leader)}
           isResponsible={state.responsible_ids.includes(access.actor.id)}
           canCaptureEvidence={Boolean(task.can_capture_evidence && access.permissions.can_capture_evidence)}
           criteria={task.criteria}
           requirements={access.requirements}
-          evidences={evidence.isSuccess && !evidence.isFetching ? evidence.data.items : []}
+          evidences={evidenceItems}
           onChanged={refresh}
         />}
         {(() => {
           if (!submission && tab !== "evidence") return null;
-          const items = evidence.isSuccess && !evidence.isFetching ? evidence.data.items : [];
           const criterionIdSet = new Set(task.criteria.map((c) => c.id));
           const displayItems = submission && task.criteria.length > 0
-            ? items.filter((ev) => !(!ev.source_changed && ["candidate", "pending_confirmation", "formal"].includes(ev.status) && ev.criterion_ids.some((cid) => criterionIdSet.has(cid))))
-            : items;
+            ? evidenceItems.filter((ev) => !(!ev.source_changed && ["candidate", "pending_confirmation", "formal"].includes(ev.status) && ev.criterion_ids.some((cid) => criterionIdSet.has(cid))))
+            : evidenceItems;
           if (submission && task.criteria.length > 0 && !evidence.isFetching && !evidence.isError && displayItems.length === 0) {
             return null;
           }
@@ -247,17 +311,38 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
             </>}
           </Panel>;
         })()}
-        {(submission || tab === "history") && <Panel title="任务说明版本">{note.isFetching && <p role="status">正在读取说明…</p>}{note.isError && <ApiFailure error={note.error} retry={() => void note.refetch()} />}{noteReady && <>{savedNote?.versions.map((version) => <details id={`note-${version.id}`} tabIndex={-1} open={noteFocus === version.id || undefined} className={`my-3 ${noteFocus === version.id ? "rounded border border-blue-400 p-3" : ""}`} key={version.id}><summary>v{version.version_no} · {version.title} · {formatDate(version.created_at)}</summary><p className="whitespace-pre-wrap">{version.body}</p></details>)}{!savedNote && <p>尚未保存任务说明。</p>}{noteFocus && !savedNote?.versions.some((version) => version.id === noteFocus) && <p role="status">所定位的说明版本不存在或已不可读取。</p>}{submission && canNote && !draft && <button className={apiButton} onClick={() => { const current = savedNote?.versions.find((version) => version.version_no === savedNote.current_version_no); setDraft({ title: current?.title ?? task.title, body: current?.body ?? "", expected: savedNote?.lock_version ?? 0 }); setError(null); }}>编辑任务说明</button>}</>}</Panel>}
-        {submission && draft && canNote && <Panel title="编辑任务说明"><label>说明标题<input className={`${apiInput} block w-full`} maxLength={240} value={draft.title} disabled={busy} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label htmlFor="task-note-body">说明正文</label><textarea id="task-note-body" className={`${apiInput} block min-h-40 w-full`} maxLength={100000} value={draft.body} disabled={busy} onChange={(event) => setDraft({ ...draft, body: event.target.value })} /><p className="my-3 text-sm">每次保存生成新版本，旧版本与其证据快照保留。</p><button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("note")}>保存说明新版本</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => { setDraft(null); setPrepareVersion(null); }}>取消编辑</button></Panel>}
+        {!submission && tab === "history" && noteSection}
         {!submission && tab === "history" && <Panel title="任务进度与状态历史">{history.isFetching && <p role="status">正在读取执行历史…</p>}{history.isError && <ApiFailure error={history.error} retry={() => void history.refetch()} />}{history.isSuccess && !history.isFetching && <>{history.data.items.map((event) => <article id={`progress-${event.id}`} tabIndex={-1} key={event.id} className={`mb-3 border-l-2 pl-3 ${progressFocus === event.id ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}><p>{event.actor_name} · {formatDate(event.created_at)}</p><p>{event.from_status ? states[event.from_status] ?? event.from_status : "—"} → {event.to_status ? states[event.to_status] ?? event.to_status : "—"} · {event.progress_before ?? "—"}% → {event.progress_after ?? "—"}%</p><p>{event.reason ?? "未提供原因"}</p></article>)}{!history.data.items.length && <p>暂无执行历史。</p>}<ApiPager page={history.data.page} pageSize={history.data.page_size} total={history.data.total} change={(page) => updateQuery({ history_page: String(page), progress: null })} /></>}</Panel>}
-        {submission && <Panel title="提交准备"><p className="mb-3">检查完整性前会先保存当前任务说明，并将任务设为待提交。</p>{canPrepare && (prepareVersion === null ? <div className="flex flex-wrap gap-2">
-          <button className={apiButton} disabled={busy || !noteReady} onClick={() => setPrepareVersion(state.version)}>准备提交</button>
-          <button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("prepare", true)}>检查完整性</button>
-        </div> : <><p className="mb-3">{draft ? "当前编辑的说明将与待提交状态一同保存。" : "将保留已保存的说明，并准备提交。"}</p><button className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("prepare")}>确认保存提交准备</button><button className={`${apiButton} ml-2`} disabled={busy} onClick={() => setPrepareVersion(null)}>取消</button></>)}</Panel>}
+        {showManualSubmissionForms && <>
+          {noteSection}
+          {prepareSection}
+        </>}
+        {submission && (!submissionAllAiPassed && state.status !== "completed" ? null : (
+          <div className="mt-3 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-xs text-slate-600">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>{submissionAllAiPassed ? "已由代码证据覆盖全部交付标准，上方可直接一键确认完成；如需补充人工材料可展开手动选项。" : "如需查看说明版本或补充人工材料，可展开手动选项。"}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {canPrepare && (
+                  <button type="button" className={apiButton} disabled={busy || !noteReady} onClick={() => void perform("prepare", true)}>
+                    检查完整性
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => setShowAdvancedSubmission((open) => !open)}
+                >
+                  {showAdvancedSubmission ? "收起手动补充选项" : "展开手动补充选项"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
         {error && <ApiFailure error={error} />}{versionFailure(error) && <button className={apiButton} disabled={busy} onClick={() => void reviewLatest()}>刷新并核对输入</button>}{notice && <p role="status" className="my-3">{notice}</p>}
-      </>}
+      </>;
+      })()}
       {!submission && tab === "discussion" && <DiscussionsApiPage projectId={projectId} taskId={taskId} visible={Boolean(state)} />}
-      {submission && context.data && <EvidenceCapturePanel context={context.data} userId={userId} fixedTaskId={taskId} visible={Boolean(state && canNote)} onSaved={() => void evidence.refetch()} onDenied={deny} onDirtyChange={setEvidenceDirty} />}
+      {submission && context.data && <EvidenceCapturePanel context={context.data} userId={userId} fixedTaskId={taskId} visible={Boolean(state && canNote && showManualSubmissionForms)} onSaved={() => void evidence.refetch()} onDenied={deny} onDirtyChange={setEvidenceDirty} />}
     </>}
   </>;
 }

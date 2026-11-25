@@ -11,6 +11,7 @@ import { bTasksApi, type BTaskRow, type BTaskView, type BTransition } from "@/li
 import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
+import { projectApi } from "@/features/c/c-project-api";
 import { button, input, label, queryPolicy, secondary } from "@/features/b/ui";
 import { useUiText } from "@/lib/i18n/use-ui-text";
 
@@ -64,8 +65,15 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     sort: view === "list" ? filters.sort : undefined, page: view === "list" ? filters.page : undefined, page_size: view === "list" ? PAGE_SIZE : undefined,
   };
   const page = useQuery({ queryKey: ["b-tasks", userId, projectId, query], queryFn: () => bTasksApi.list(projectId, query), ...queryPolicy });
+  const projectContext = useQuery({
+    queryKey: ["c-project-context", userId, projectId],
+    queryFn: () => projectApi.projectContext(projectId),
+    ...queryPolicy,
+    retry: false,
+  });
+  const isLeader = Boolean(projectContext.data?.actor.is_leader);
   const invalidateAll = () => {
-    for (const name of ["b-tasks", "b-milestones", "b-plan", "c-evidence", "c-task-evidence"]) {
+    for (const name of ["b-tasks", "b-milestones", "b-plan", "c-evidence", "c-task-evidence", "c-project-context"]) {
       void client.invalidateQueries({ queryKey: [name, userId, projectId] });
     }
   };
@@ -180,7 +188,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     r.status !== "completed"
     && (r.criteria_total ?? 0) > 0
     && (r.criteria_evidenced ?? 0) >= (r.criteria_total ?? 0)
-    && r.assignees.some((a) => a.id === userId),
+    && (isLeader || r.assignees.some((a) => a.id === userId)),
   );
 
   return <div>
@@ -255,6 +263,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
             onCollapsed={(next) => setFilters({ collapsed: next })}
             onPage={(next) => setFilters({ page: next })}
             userId={userId}
+            isLeader={isLeader}
             confirmingTaskId={confirmingTaskId}
             confirmingAll={confirmingAll}
             onConfirmAiTask={(row) => void confirmAiTask(row)}
@@ -336,7 +345,7 @@ function ProgressCell({ row }: { row: BTaskRow }) {
 type BTasksPageIssue = { code: string; message: string; task_id: string | null; task_ids: string[] };
 
 function UnifiedTaskTable({
-  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage, userId, confirmingTaskId, confirmingAll, onConfirmAiTask,
+  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage, userId, isLeader, confirmingTaskId, confirmingAll, onConfirmAiTask,
 }: {
   mode: "tree" | "list";
   rows: BTaskRow[];
@@ -348,6 +357,7 @@ function UnifiedTaskTable({
   onCollapsed: (next: string[]) => void;
   onPage: (page: number) => void;
   userId: string;
+  isLeader: boolean;
   confirmingTaskId: string | null;
   confirmingAll: boolean;
   onConfirmAiTask: (row: BTaskRow) => void;
@@ -416,7 +426,7 @@ function UnifiedTaskTable({
               {row.status !== "completed"
                 && (row.criteria_total ?? 0) > 0
                 && (row.criteria_evidenced ?? 0) >= (row.criteria_total ?? 0)
-                && row.assignees.some((a) => a.id === userId) && (
+                && (isLeader || row.assignees.some((a) => a.id === userId)) && (
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
