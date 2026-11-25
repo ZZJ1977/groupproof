@@ -4,16 +4,33 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Crown, FileText, Lock, Upload, UserMinus, UserPlus } from "lucide-react";
-import { Avatar, EmptyState, Feedback, PageHeader, Panel, ProgressBar, Stat, StatusBadge } from "@/components/common";
+import { ArrowRight, FileText, Lock, Settings, Upload } from "lucide-react";
+import { EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { BApiError, newIdempotencyKey } from "@/lib/api/b-client";
 import { projectRequest } from "@/features/github-binding/integration-request";
+import { projectApi } from "@/features/c/c-project-api";
+import { useUrlQuery } from "@/features/c/use-url-query";
+import type { FeishuCollaborationInsights } from "@/features/c/FeishuCollaborationInsights";
+import type { GithubActivityStats } from "@/features/c/GithubStatsChart";
 import { bGroupsApi } from "@/lib/api/b-groups";
+import { bMilestonesApi } from "@/lib/api/b-milestones";
 import { bProjectsApi, type BMaterial, type BProjectDraft, type BProjectSetup } from "@/lib/api/b-projects";
 import { bRequirementsApi } from "@/lib/api/b-requirements";
+import { bTasksApi } from "@/lib/api/b-tasks";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { ProjectSetupCenter } from "@/features/b/ProjectSetupCenter";
+import {
+  OverviewLeftTabsCard,
+  OverviewRightSidebar,
+  ProjectSettingsModal,
+  type GithubRepoDTO,
+  type LinkedFeishuChatDTO,
+  type OverviewTab,
+  type ProjectReopenDTO,
+  type ProjectSettingsDTO,
+  type TaskQuickFilter,
+} from "@/features/b/ProjectOverviewPanels";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
 import { useUiText } from "@/lib/i18n/use-ui-text";
 
@@ -116,190 +133,382 @@ export function NewProjectApiPage({ courseId }: { courseId: string }) {
 }
 
 const setupLabel: Record<string, string> = { not_initialized: "未初始化", draft: "初始化中", pending_confirmation: "等待组员确认", frozen: "基线已冻结" };
+const VALID_OVERVIEW_TABS = new Set<OverviewTab>(["overview", "milestones", "integrations"]);
 
-/** Page 07 (B3-02): entry by project state plus live server-side stats. */
+/** Page 07 (B3-02): compact Bento workspace with real project data and folded settings modal. */
 export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
   const tr = useUiText();
+  const cache = useQueryClient();
   const { userId } = useWorkspace();
-  const overview = useQuery({ queryKey: ["b-project-overview", userId, projectId], queryFn: () => bProjectsApi.overview(projectId), ...queryPolicy });
+  const { query, updateQuery } = useUrlQuery();
+  const [taskFilter, setTaskFilter] = useState<TaskQuickFilter>("all");
+
+  const rawTab = query.get("tab");
+  const urlWantsSettings = query.get("settings") === "1" || rawTab === "settings";
+  const [settingsModalOpen, setSettingsModalOpen] = useState(urlWantsSettings);
+
+  useEffect(() => {
+    if (urlWantsSettings) setSettingsModalOpen(true);
+  }, [urlWantsSettings]);
+
+  const activeTab: OverviewTab = rawTab && VALID_OVERVIEW_TABS.has(rawTab as OverviewTab)
+    ? (rawTab as OverviewTab)
+    : "overview";
+
+  const handleTabChange = (next: OverviewTab) => {
+    updateQuery({ tab: next === "overview" ? null : next });
+  };
+
+  const handleSettingsOpenChange = (open: boolean) => {
+    setSettingsModalOpen(open);
+    if (!open && (query.get("settings") === "1" || query.get("tab") === "settings")) {
+      updateQuery({
+        settings: null,
+        tab: query.get("tab") === "settings" ? null : query.get("tab"),
+      });
+    }
+  };
+
+  const overview = useQuery({
+    queryKey: ["b-project-overview", userId, projectId],
+    queryFn: () => bProjectsApi.overview(projectId),
+    ...queryPolicy,
+  });
+
+  const overviewReady = overview.isSuccess;
+  const encodedId = encodeURIComponent(projectId);
+
+  const tasks = useQuery({
+    queryKey: ["b-overview-tasks", userId, projectId],
+    queryFn: () => bTasksApi.list(projectId, { view: "list", page: 1, page_size: 100 }),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const milestones = useQuery({
+    queryKey: ["b-overview-milestones", userId, projectId],
+    queryFn: () => bMilestonesApi.list(projectId),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const repos = useQuery({
+    queryKey: ["project-integration-repos", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<GithubRepoDTO[]>(`/api/v1/a/projects/${encodedId}/github/repos`, { signal }),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const githubStats = useQuery({
+    queryKey: ["a-github-activity-stats", userId, projectId, "all", "", ""],
+    queryFn: ({ signal }) =>
+      projectRequest<GithubActivityStats>(`/api/v1/a/projects/${encodedId}/github/stats?range=all`, { signal }),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const chats = useQuery({
+    queryKey: ["project-integration-chats", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<LinkedFeishuChatDTO[]>(`/api/v1/a/projects/${encodedId}/feishu/chats`, { signal }),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const feishuInsights = useQuery({
+    queryKey: ["a-feishu-collaboration-insights", userId, projectId],
+    queryFn: ({ signal }) =>
+      projectRequest<FeishuCollaborationInsights>(`/api/v1/a/projects/${encodedId}/feishu/insights`, { signal }),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const context = useQuery({
+    queryKey: ["c-project-context", userId, projectId],
+    queryFn: () => projectApi.projectContext(projectId),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: ["d-project-settings", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<ProjectSettingsDTO>(`/api/v1/projects/${encodedId}/settings`, { signal }),
+    enabled: overviewReady,
+    ...queryPolicy,
+  });
+
+  const reopensQuery = useQuery({
+    queryKey: ["d-project-reopens", userId, projectId],
+    queryFn: ({ signal }) => projectRequest<ProjectReopenDTO[]>(`/api/v1/projects/${encodedId}/reopens`, { signal }),
+    enabled: overviewReady && settingsModalOpen,
+    ...queryPolicy,
+  });
+
   if (overview.isPending) return <Loading />;
   if (overview.isError) return <LoadError error={overview.error} onRetry={() => void overview.refetch()} />;
+
   const project = overview.data;
   const stats = project.stats;
-  const progressText = stats.progress_status === "available" ? `${stats.progress}%` : stats.progress_status === "no_weighted_tasks" ? tr("暂无任务") : tr("任务结构异常");
-  return <div>
-    <PageHeader title={project.name} description={project.description ?? tr("未填写简介")}
-      actions={<div className="flex items-center gap-2">
-        {project.entry === "readonly" && <StatusBadge tone="gray" label={project.lifecycle === "archived" ? tr("已归档 · 只读") : tr("已定稿 · 只读")} />}
-        <Link className={secondary} href={`/projects/${projectId}/settings`}>{tr("项目设置")}</Link>
-        {project.entry !== "readonly" && <Link className={button} href={`/projects/${projectId}/tasks?view=plan`}>{tr("开始规划")} <ArrowRight size={15} /></Link>}
-      </div>} />
-    <div className="mt-5 grid gap-3 md:grid-cols-4">
-      <Stat label={tr("任务")} value={stats.task_count} sub={tr("已完成 {0}", { 0: stats.completed_count })} />
-      <Stat label={tr("总进度")} value={progressText} />
-      <Stat label={tr("成员")} value={stats.member_count} />
-      <Stat label={tr("里程碑")} value={stats.milestone_count} sub={project.next_milestone ? tr("下一个：{0}", { 0: project.next_milestone.title }) : undefined} />
-    </div>
-    {stats.progress_status === "available" && <ProgressBar className="mt-3" value={stats.progress ?? 0} />}
-    <ProjectSetupCenter projectId={projectId} overview={project} />
-    <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <Panel title={tr("项目状态")}><dl className="space-y-2 text-sm">
-        <div className="flex gap-3"><dt className="w-24 text-slate-500">{tr("初始化")}</dt><dd>{tr("{0}（第 {1} 步）", { 0: tr(setupLabel[project.setup_status]) ?? project.setup_status, 1: project.setup_step })}</dd></div>
-        <div className="flex gap-3"><dt className="w-24 text-slate-500">{tr("截止日期")}</dt><dd>{dateOnly(project.final_deadline, tr("未设置"))}</dd></div>
-        {project.next_milestone && <div className="flex gap-3"><dt className="w-24 text-slate-500">{tr("下一个里程碑")}</dt><dd>{project.next_milestone.title} · {dateOnly(project.next_milestone.deadline, tr("未设置"))}</dd></div>}
-        {!project.can_edit && <p className="flex items-center gap-1 pt-2 text-xs text-slate-500"><Lock size={13} />{tr("你可以查看，但不能修改这个项目。")}</p>}
-      </dl></Panel>
-      <div id="project-members" className="scroll-mt-20">
-        <ProjectMembersPanel projectId={projectId} project={project} currentUserId={userId} />
-      </div>
-    </div>
-  </div>;
-}
+  const progressValue = stats.progress_status === "available" ? (stats.progress ?? 0) : null;
+  const progressText =
+    stats.progress_status === "available"
+      ? `${stats.progress}%`
+      : stats.progress_status === "no_weighted_tasks"
+        ? tr("暂无任务")
+        : tr("任务结构异常");
 
-function ProjectMembersPanel({
-  projectId,
-  project,
-  currentUserId,
-}: {
-  projectId: string;
-  project: {
-    course_id: string | null;
-    group_id: string | null;
-    lifecycle: string;
-    is_leader: boolean;
-    members: { id: string; name: string | null; role?: string | null }[];
-  };
-  currentUserId: string;
-}) {
-  const tr = useUiText();
-  const cache = useQueryClient();
-  const [identifier, setIdentifier] = useState("");
-  const [memberNotice, setMemberNotice] = useState<Notice>();
-  const isPersonal = !project.course_id && !project.group_id;
-  const canManage = isPersonal && project.is_leader && project.lifecycle === "active";
+  const access = context.isSuccess ? context.data : null;
+  const isMember = access ? Boolean(access.actor.is_member) : project.members.some((m) => m.id === userId) || project.can_edit;
+  const isLeader = access ? Boolean(access.actor.is_member && access.actor.is_leader) : project.is_leader;
+  const writableSettings = access
+    ? Boolean(isLeader && access.project.lifecycle === "active" && access.permissions.can_manage_files && !context.isFetching)
+    : Boolean(project.is_leader && project.can_edit && project.lifecycle === "active");
 
-  const refreshMembers = () =>
-    Promise.all([
-      cache.invalidateQueries({ queryKey: ["b-project-overview"] }),
-      cache.invalidateQueries({ queryKey: ["b-plan"] }),
-      cache.invalidateQueries({ queryKey: ["c-project-context"] }),
+  const repoList = repos.isSuccess ? repos.data : undefined;
+  const chatList = chats.isSuccess ? chats.data : undefined;
+  const ghStatsData = githubStats.isSuccess ? githubStats.data : undefined;
+  const feishuData = feishuInsights.isSuccess ? feishuInsights.data : undefined;
+  const settingsData = settingsQuery.isSuccess ? settingsQuery.data : undefined;
+
+  const commitCount = ghStatsData ? (ghStatsData.all_time_commits ?? ghStatsData.total_commits) : null;
+  const feishuInsightCount = feishuData ? feishuData.items.length : null;
+  const hasGithub = (repoList?.length ?? 0) > 0;
+  const hasFeishu = (chatList?.length ?? 0) > 0;
+  const syncStatusText = hasGithub && hasFeishu
+    ? tr("双源已连接")
+    : hasGithub
+      ? tr("已连 GitHub")
+      : hasFeishu
+        ? tr("已连飞书")
+        : tr("待绑定");
+
+  const projectKindText = project.course_id ? tr("课程项目") : tr("独立项目");
+  const visibilityText = settingsData
+    ? settingsData.visibility === "course"
+      ? tr("课程成员")
+      : tr("仅项目成员")
+    : null;
+  const headerBadgeText = visibilityText ? `${projectKindText} · ${visibilityText}` : projectKindText;
+  const firstRepoLabel = repoList?.[0] ? `${repoList[0].owner}/${repoList[0].repo}` : null;
+
+  const handleSettingsSaved = async () => {
+    await Promise.all([
+      cache.invalidateQueries({ queryKey: ["b-project-overview", userId, projectId] }),
+      cache.invalidateQueries({ queryKey: ["d-project-settings", userId, projectId] }),
+      cache.invalidateQueries({ queryKey: ["d-project-reopens", userId, projectId] }),
+      cache.invalidateQueries({ queryKey: ["c-project-context", userId, projectId] }),
     ]);
-
-  const addMember = useMutation({
-    mutationFn: () =>
-      projectRequest<{ user_id: string; name: string | null }>(
-        `/api/v1/a/projects/${encodeURIComponent(projectId)}/members`,
-        { method: "POST", body: { identifier: identifier.trim() } },
-      ),
-    onSuccess: async (added) => {
-      setIdentifier("");
-      setMemberNotice({ tone: "success", text: tr("已将 {0} 加入项目，现在可以在任务计划中分配任务。", { 0: added.name ?? tr("成员") }) });
-      await refreshMembers();
-    },
-    onError: (err) => {
-      setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("添加队友失败，请核对学号、用户名或邮箱。") });
-    },
-  });
-
-  const removeMember = useMutation({
-    mutationFn: (memberId: string) =>
-      projectRequest(`/api/v1/a/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(memberId)}`, {
-        method: "DELETE",
-      }),
-    onSuccess: async () => {
-      setMemberNotice({ tone: "info", text: tr("已移除该成员。") });
-      await refreshMembers();
-    },
-    onError: (err) => {
-      setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("移除成员失败。") });
-    },
-  });
-
-  const transferLeader = useMutation({
-    mutationFn: (newLeaderId: string) =>
-      projectRequest(`/api/v1/a/projects/${encodeURIComponent(projectId)}/leader`, {
-        method: "POST",
-        body: { new_leader_id: newLeaderId },
-      }),
-    onSuccess: async () => {
-      setMemberNotice({ tone: "success", text: tr("组长身份已转让。") });
-      await refreshMembers();
-    },
-    onError: (err) => {
-      setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("转让组长失败。") });
-    },
-  });
+  };
 
   return (
-    <Panel title={tr("项目成员")}>
-      {isPersonal && <p className="mb-3 text-xs text-slate-500">{tr("独立项目可直接按学号、用户名或邮箱邀请队友")}</p>}
-      {memberNotice && <div className="mb-3"><Feedback tone={memberNotice.tone}>{memberNotice.text}</Feedback></div>}
-      <ul className="divide-y divide-slate-100 text-sm">
-        {project.members.map((member) => {
-          const isSelf = member.id === currentUserId;
-          const isMemberLeader = member.role === "leader" || (project.is_leader && isSelf);
-          return (
-            <li key={member.id} className="flex items-center justify-between gap-2 py-2.5">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <Avatar name={member.name || "成"} />
-                <span className="truncate font-medium text-slate-800">{member.name ?? tr("未命名")}</span>
-                {isMemberLeader && <span className="gp-pill shrink-0">{tr("组长")}</span>}
-              </div>
-              {canManage && !isSelf && (
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                    disabled={transferLeader.isPending || removeMember.isPending}
-                    title={tr("转让组长")}
-                    onClick={() => transferLeader.mutate(member.id)}
-                  >
-                    <Crown size={12} />
-                    {tr("设为组长")}
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50"
-                    disabled={removeMember.isPending || transferLeader.isPending}
-                    title={tr("移除成员")}
-                    onClick={() => removeMember.mutate(member.id)}
-                  >
-                    <UserMinus size={12} />
-                    {tr("移除")}
-                  </button>
+    <div className="space-y-2.5">
+      {/* ROW 1: Single tight Header + Inline 4-Col KPI Divider Strip */}
+      <section className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight text-slate-900">{project.name}</h1>
+              <span className="rounded-full border border-slate-200 bg-slate-100/80 px-2 py-0.5 text-xs font-medium text-slate-600">
+                {headerBadgeText}
+              </span>
+              {project.entry === "readonly" ? (
+                <StatusBadge
+                  tone="gray"
+                  label={project.lifecycle === "archived" ? tr("已归档 · 只读") : tr("已定稿 · 只读")}
+                />
+              ) : (
+                <StatusBadge
+                  tone={project.setup_status === "frozen" ? "green" : "blue"}
+                  label={tr(setupLabel[project.setup_status]) ?? project.setup_status}
+                />
+              )}
+              <span className="text-xs text-slate-500">
+                {settingsData?.project_type ? `${settingsData.project_type} · ` : ""}
+                {tr("截止 {0}", { 0: dateOnly(project.final_deadline, tr("未设置")) })}
+              </span>
+            </div>
+            <p
+              className="truncate text-xs text-slate-500"
+              title={project.description ?? tr("未填写简介")}
+            >
+              {project.description ?? tr("未填写简介")}
+            </p>
+            {!project.can_edit && (
+              <p className="flex items-center gap-1 pt-0.5 text-xs text-slate-500">
+                <Lock size={12} aria-hidden="true" />
+                {tr("你可以查看，但不能修改这个项目。")}
+              </p>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSettingsModalOpen(true)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                settingsModalOpen
+                  ? "border-[var(--gp-action)] bg-sky-50 text-[var(--gp-action)]"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <Settings size={13} aria-hidden="true" />
+              {tr("项目设置")}
+            </button>
+            {project.entry !== "readonly" && (
+              <Link
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--gp-action)] px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition-colors hover:bg-[var(--gp-action-hover)]"
+                href={`/projects/${projectId}/tasks?view=plan`}
+              >
+                {tr("开始规划")}
+                <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Inline 4-Col KPI Divider Strip */}
+        <div className="grid grid-cols-2 divide-y divide-slate-200/80 rounded-lg border border-slate-200/80 bg-slate-50/70 lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+          <div className="space-y-1.5 px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{tr("总进度")}</span>
+              <span className="font-medium text-slate-700">
+                {tr("已完成 {0}/{1}", { 0: stats.completed_count, 1: stats.task_count })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-semibold tabular-nums text-slate-900">{progressText}</span>
+              {progressValue !== null && (
+                <div
+                  className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200/80"
+                  role="progressbar"
+                  aria-valuenow={Math.round(progressValue)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div
+                    className="h-full rounded-full bg-[var(--gp-action)] transition-all"
+                    style={{ width: `${Math.min(100, Math.max(0, progressValue))}%` }}
+                  />
                 </div>
               )}
-            </li>
-          );
-        })}
-      </ul>
-      {canManage && (
-        <form
-          className="mt-3.5 border-t border-slate-100 pt-3.5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (identifier.trim() && !addMember.isPending) addMember.mutate();
-          }}
-        >
-          <label className={label} htmlFor="personal-member-identifier">{tr("邀请队友加入")}</label>
-          <div className="mt-1.5 flex gap-2">
-            <input
-              id="personal-member-identifier"
-              className={input}
-              placeholder={tr("输入学号、用户名或邮箱")}
-              value={identifier}
-              maxLength={320}
-              disabled={addMember.isPending}
-              onChange={(event) => setIdentifier(event.target.value)}
-            />
-            <button type="submit" className={`${button} shrink-0`} disabled={!identifier.trim() || addMember.isPending}>
-              <UserPlus size={14} />
-              {addMember.isPending ? tr("添加中…") : tr("添加")}
-            </button>
+            </div>
           </div>
-        </form>
-      )}
-    </Panel>
+
+          <div className="space-y-1 px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{tr("里程碑")}</span>
+              {project.next_milestone?.deadline && (
+                <span className="font-medium text-[var(--gp-action)]">
+                  {dateOnly(project.next_milestone.deadline, "")}
+                </span>
+              )}
+            </div>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="text-xl font-semibold tabular-nums text-slate-900">{stats.milestone_count}</span>
+              <span
+                className="truncate text-xs text-slate-500"
+                title={project.next_milestone?.title ?? tr("暂无里程碑")}
+              >
+                {project.next_milestone ? project.next_milestone.title : tr("暂无里程碑")}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-1 px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{tr("代码与协作")}</span>
+              <span className={`font-medium ${hasGithub || hasFeishu ? "text-emerald-700" : "text-slate-400"}`}>
+                {syncStatusText}
+              </span>
+            </div>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="text-xl font-semibold tabular-nums text-slate-900">
+                {commitCount !== null ? commitCount : "—"}
+              </span>
+              <span className="truncate text-xs text-slate-500">
+                {tr("次提交 · {0} 条飞书结论", { 0: feishuInsightCount !== null ? feishuInsightCount : "—" })}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-1 px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{tr("团队与状态")}</span>
+              <span className="truncate text-slate-500">
+                {tr(setupLabel[project.setup_status]) ?? project.setup_status}
+              </span>
+            </div>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="text-xl font-semibold tabular-nums text-slate-900">
+                {tr("{0} 人", { 0: stats.member_count })}
+              </span>
+              <span className="truncate text-xs text-slate-500" title={firstRepoLabel ?? undefined}>
+                {firstRepoLabel
+                  ? hasFeishu
+                    ? tr("{0} · {1} 飞书群", { 0: firstRepoLabel, 1: chatList?.length ?? 0 })
+                    : firstRepoLabel
+                  : hasFeishu
+                    ? tr("{0} 个飞书群", { 0: chatList?.length ?? 0 })
+                    : tr("可随时在集成页绑定")}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ROW 2: Compact Project Setup Readiness Strip */}
+      <ProjectSetupCenter projectId={projectId} overview={project} compact />
+
+      {/* ROW 3: Single-Viewport 2-Column Bento Body */}
+      <div className="grid grid-cols-1 items-start gap-2.5 xl:grid-cols-[minmax(0,1.55fr)_minmax(310px,1fr)]">
+        <OverviewLeftTabsCard
+          projectId={projectId}
+          userId={userId}
+          project={project}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          taskFilter={taskFilter}
+          onTaskFilterChange={setTaskFilter}
+          tasksPage={tasks.isSuccess ? tasks.data : undefined}
+          tasksLoading={tasks.isPending}
+          milestones={milestones.isSuccess ? milestones.data.items : undefined}
+          milestonesLoading={milestones.isPending}
+          repos={repoList}
+          githubStats={ghStatsData}
+          chats={chatList}
+          feishuInsights={feishuData}
+          writableSettings={writableSettings}
+        />
+
+        <OverviewRightSidebar
+          projectId={projectId}
+          project={project}
+          currentUserId={userId}
+          tasksPage={tasks.isSuccess ? tasks.data : undefined}
+          milestones={milestones.isSuccess ? milestones.data.items : undefined}
+          githubStats={ghStatsData}
+          onSelectTab={handleTabChange}
+          onFilterVerification={() => {
+            setTaskFilter("pending_verification");
+            handleTabChange("overview");
+          }}
+        />
+      </div>
+
+      {/* Folded Project Settings Dialog Modal */}
+      <ProjectSettingsModal
+        open={settingsModalOpen}
+        onOpenChange={handleSettingsOpenChange}
+        projectId={projectId}
+        userId={userId}
+        project={project}
+        settings={settingsData}
+        reopens={reopensQuery.isSuccess ? reopensQuery.data : undefined}
+        writable={writableSettings}
+        isLeader={isLeader}
+        isMember={isMember}
+        onSaved={handleSettingsSaved}
+      />
+    </div>
   );
 }
 
