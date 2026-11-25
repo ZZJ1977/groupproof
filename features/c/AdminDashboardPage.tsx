@@ -8,8 +8,11 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
+  Coins,
   FileCheck2,
+  Gauge,
   GitBranch,
+  Layers3,
   MessageSquare,
   RefreshCw,
   ShieldCheck,
@@ -31,6 +34,37 @@ const roleTones: Record<string, "blue" | "purple" | "green" | "amber" | "gray"> 
   ta: "green",
   admin: "amber",
 };
+
+const aiFeatureLabels: Record<string, string> = {
+  summarize_activity: "提交与群聊活动摘要",
+  generate_project_blueprint: "AI 项目研发蓝图",
+  analyze_implementation: "GitHub 仓库提交分析",
+  match_evidence: "证据与群聊追踪",
+  extract_requirements: "需求文档解析",
+  suggest_tasks: "任务规划建议",
+  explain_risk: "风险与进度解释",
+};
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatCompactTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`;
+  if (tokens >= 1_000) {
+    const k = tokens / 1_000;
+    return `${k >= 100 ? Math.round(k) : Number(k.toFixed(1))}k`;
+  }
+  return String(tokens);
+}
+
+function formatCostAmount(raw: string): string {
+  const num = Number.parseFloat(raw);
+  if (!Number.isFinite(num)) return raw;
+  if (num >= 1) return num.toFixed(2);
+  if (num >= 0.01) return num.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return num.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") || "0";
+}
 
 function Distribution({ items, total }: { items: { label: string; value: number; color: string }[]; total: number }) {
   return (
@@ -80,15 +114,28 @@ export function AdminDashboardPage() {
   const { userId } = useWorkspace();
   const [windowRange, setWindowRange] = useState<OverviewWindow>("all");
   const [hoveredPulse, setHoveredPulse] = useState<{ index: number; series: PulseSeries | null } | null>(null);
+  const usageDays: 7 | 30 | 90 = windowRange === "7d" ? 7 : windowRange === "30d" ? 30 : 90;
   const overview = useQuery({
     queryKey: ["admin-workbench-overview", userId, windowRange],
     queryFn: () => governance.workbenchOverview({ window: windowRange }),
     staleTime: 20_000,
     retry: false,
   });
+  const aiUsage = useQuery({
+    queryKey: ["admin-overview-ai-usage", userId, usageDays],
+    queryFn: () => governance.usage({ days: usageDays }),
+    staleTime: 20_000,
+    retry: false,
+  });
+  const aiDiagnostics = useQuery({
+    queryKey: ["admin-overview-ai-diagnostics", userId, usageDays],
+    queryFn: () => governance.workbenchAiDiagnostics({ days: usageDays }),
+    staleTime: 20_000,
+    retry: false,
+  });
 
   const data = overview.data;
-  const loading = overview.isFetching;
+  const loading = overview.isFetching || aiUsage.isFetching || aiDiagnostics.isFetching;
   const users = data?.users;
   const queues = data?.queues;
   const teaching = data?.teaching;
@@ -97,9 +144,28 @@ export function AdminDashboardPage() {
 
   const onlyAdmin = Boolean(users && users.total === 1 && teaching && teaching.courses_total === 0);
   const verifiedRate = users && users.total > 0 ? `${Math.round((users.verified_school_email / users.total) * 100)}%` : "—";
+  const aiCostFormatted = ai
+    ? Object.entries(ai.cost_by_currency).map(([c, v]) => `${c} ${formatCostAmount(v)}`).join(" · ")
+    : "";
   const aiCostLabel = ai
-    ? Object.entries(ai.cost_by_currency).map(([c, v]) => `${c} ${v}`).join(" · ") || (ai.requests ? "未计价" : "暂无费用")
+    ? aiCostFormatted || (ai.requests ? "未计价" : "暂无费用")
     : "—";
+  const aiTotalTokens = ai ? ai.input_tokens + ai.output_tokens : 0;
+  const avgLatencyMs = aiDiagnostics.data?.avg_latency_ms ?? null;
+  const p95LatencyMs = ai?.p95_latency_ms ?? aiDiagnostics.data?.p95_latency_ms ?? null;
+  const topFeatures = aiUsage.data
+    ? [...aiUsage.data.by_feature]
+        .filter((item) => item.requests > 0)
+        .sort((a, b) => b.requests - a.requests)
+        .slice(0, 4)
+    : [];
+  const topModels = aiUsage.data
+    ? [...aiUsage.data.by_model]
+        .filter((item) => item.requests > 0)
+        .sort((a, b) => b.requests - a.requests)
+        .slice(0, 4)
+    : [];
+  const usageTotalForShare = Math.max(1, aiUsage.data?.requests ?? ai?.requests ?? 1);
 
   const roleItems = [
     { label: "学生", value: users?.by_role.student ?? 0, color: "#2563eb" },
@@ -116,13 +182,20 @@ export function AdminDashboardPage() {
   const activitySeries = data?.activity_series ?? data?.activity_7d ?? [];
   const compactPulse = activitySeries.length > 14;
   const pulseLabelStride =
-    activitySeries.length <= 7 ? 1 : activitySeries.length <= 15 ? 2 : activitySeries.length <= 35 ? 5 : 10;
+    activitySeries.length <= 7
+      ? 1
+      : activitySeries.length <= 15
+        ? 2
+        : activitySeries.length <= 35
+          ? 5
+          : Math.max(10, Math.ceil(activitySeries.length / 6));
+  const pulseMinEndGap = pulseLabelStride === 1 ? 1 : Math.max(2, Math.ceil(pulseLabelStride * 0.6));
   const maxPulse = Math.max(
     1,
     ...activitySeries.map((day) => Math.max(day.audit_events, day.ai_requests, day.github_activities + day.feishu_messages)),
   );
-  const aiCardLabel =
-    windowRange === "all" ? "教学 AI（全部）" : windowRange === "30d" ? "教学 AI（近 30 天）" : "教学 AI（近 7 天）";
+  const windowLabel = windowRange === "all" ? "全部" : windowRange === "30d" ? "近 30 天" : "近 7 天";
+  const aiCardLabel = `教学 AI（${windowLabel}）`;
   const pulseTitle =
     windowRange === "all" ? "全部平台活动脉搏" : windowRange === "30d" ? "近 30 天平台活动脉搏" : "近 7 天平台活动脉搏";
   const aiFailTitle =
@@ -154,7 +227,16 @@ export function AdminDashboardPage() {
                 </button>
               ))}
             </div>
-            <button type="button" className={styles.button} disabled={loading} onClick={() => void overview.refetch()}>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={loading}
+              onClick={() => {
+                void overview.refetch();
+                void aiUsage.refetch();
+                void aiDiagnostics.refetch();
+              }}
+            >
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
               {loading ? "刷新中…" : "刷新数据"}
             </button>
@@ -301,7 +383,10 @@ export function AdminDashboardPage() {
                     const hAudit = day.audit_events ? Math.max(8, Math.round((day.audit_events / maxPulse) * 110)) : 3;
                     const hAi = day.ai_requests ? Math.max(8, Math.round((day.ai_requests / maxPulse) * 110)) : 3;
                     const hSync = syncCount ? Math.max(8, Math.round((syncCount / maxPulse) * 110)) : 3;
-                    const showLabel = idx % pulseLabelStride === 0 || idx === activitySeries.length - 1;
+                    const lastIdx = activitySeries.length - 1;
+                    const showLabel =
+                      idx === lastIdx ||
+                      (idx % pulseLabelStride === 0 && lastIdx - idx >= pulseMinEndGap);
                     const isHovered = hoveredPulse?.index === idx;
                     const activeSeries = isHovered ? hoveredPulse.series : null;
                     const ratio = activitySeries.length > 1 ? idx / (activitySeries.length - 1) : 0.5;
@@ -411,7 +496,15 @@ export function AdminDashboardPage() {
                             onMouseEnter={() => setHoveredPulse({ index: idx, series: "sync" })}
                           />
                         </div>
-                        <span className="h-[16px] whitespace-nowrap text-[11px] text-slate-500">
+                        <span
+                          className={`h-[16px] whitespace-nowrap text-[11px] text-slate-500 ${
+                            compactPulse && idx === 0
+                              ? "self-start"
+                              : compactPulse && idx === lastIdx
+                                ? "self-end"
+                                : ""
+                          }`}
+                        >
                           {showLabel ? String(day.date).slice(5) : ""}
                         </span>
                       </div>
@@ -484,6 +577,150 @@ export function AdminDashboardPage() {
           </div>
         </Box>
       </div>
+
+      <Box
+        title={`AI 用量与成本概览（${windowLabel}）`}
+        action={
+          <Link className="gp-link inline-flex items-center gap-1 text-xs" href={`/admin/ai-usage?days=${usageDays}`}>
+            查看 AI 详情 <ArrowRight size={13} />
+          </Link>
+        }
+      >
+        <div className={styles.panelBody}>
+          <div className={styles.aiOverviewMetrics}>
+            <div className={styles.aiOverviewTile}>
+              <div className={styles.aiOverviewTileHead}>
+                <span className={styles.aiOverviewTileIcon} data-tone="blue"><Activity size={15} /></span>
+                <span>请求总数</span>
+              </div>
+              <strong className={styles.aiOverviewTileValue}>{ai ? formatCount(ai.requests) : "—"}</strong>
+              <span className={styles.aiOverviewTileMeta}>
+                {ai ? `成功 ${formatCount(ai.succeeded)} / 失败 ${formatCount(ai.failed)}` : "读取中…"}
+              </span>
+            </div>
+
+            <div className={styles.aiOverviewTile}>
+              <div className={styles.aiOverviewTileHead}>
+                <span className={styles.aiOverviewTileIcon} data-tone="indigo"><Layers3 size={15} /></span>
+                <span>总 Token</span>
+              </div>
+              <strong className={styles.aiOverviewTileValue}>{ai ? formatCount(aiTotalTokens) : "—"}</strong>
+              <span className={styles.aiOverviewTileMeta}>
+                {ai ? `输入 ${formatCompactTokens(ai.input_tokens)} / 输出 ${formatCompactTokens(ai.output_tokens)}` : "读取中…"}
+              </span>
+            </div>
+
+            <div className={styles.aiOverviewTile}>
+              <div className={styles.aiOverviewTileHead}>
+                <span className={styles.aiOverviewTileIcon} data-tone={ai && ai.unpriced_requests > 0 ? "amber" : "green"}><Coins size={15} /></span>
+                <span>累计费用</span>
+              </div>
+              <strong className={styles.aiOverviewTileValue}>{aiCostLabel}</strong>
+              <span className={styles.aiOverviewTileMeta}>
+                {ai
+                  ? ai.unpriced_requests > 0
+                    ? `含 ${formatCount(ai.unpriced_requests)} 次未计价`
+                    : ai.requests > 0
+                      ? "计费记录完整"
+                      : "暂无调用"
+                  : "读取中…"}
+              </span>
+            </div>
+
+            <div className={styles.aiOverviewTile}>
+              <div className={styles.aiOverviewTileHead}>
+                <span
+                  className={styles.aiOverviewTileIcon}
+                  data-tone={ai && ai.requests >= 3 && (ai.success_rate ?? 100) < 80 ? "red" : "purple"}
+                >
+                  <Gauge size={15} />
+                </span>
+                <span>性能与成功率</span>
+              </div>
+              <strong
+                className={styles.aiOverviewTileValue}
+                data-tone={ai && ai.requests >= 3 && (ai.success_rate ?? 100) < 80 ? "red" : undefined}
+              >
+                {ai?.success_rate !== null && ai?.success_rate !== undefined ? `${ai.success_rate}%` : "—"}
+              </strong>
+              <span className={styles.aiOverviewTileMeta}>
+                {ai
+                  ? avgLatencyMs !== null
+                    ? `平均 ${formatDurationMs(avgLatencyMs)} / P95 ${formatDurationMs(p95LatencyMs)}`
+                    : `P95 ${formatDurationMs(p95LatencyMs)}`
+                  : "读取中…"}
+              </span>
+            </div>
+          </div>
+
+          <div className={styles.aiOverviewBreakdowns}>
+            <div className={styles.aiOverviewRankCol}>
+              <div className={styles.aiOverviewRankHeader}>
+                <h3>高频业务场景</h3>
+                <span>Top {topFeatures.length || 0}</span>
+              </div>
+              {aiUsage.isFetching && !aiUsage.data ? (
+                <p className={styles.muted}>正在读取场景分布…</p>
+              ) : !topFeatures.length ? (
+                <p className={styles.muted}>当前窗口暂无场景调用记录</p>
+              ) : (
+                <div className={styles.aiOverviewRankList}>
+                  {topFeatures.map((item) => {
+                    const pct = Math.round((item.requests / usageTotalForShare) * 100);
+                    const width = Math.max(4, pct);
+                    const label = aiFeatureLabels[item.key] ?? item.key;
+                    return (
+                      <div key={item.key} className={styles.aiOverviewRankItem}>
+                        <div className={styles.aiOverviewRankMeta}>
+                          <span className={styles.aiOverviewRankName} title={item.key}>{label}</span>
+                          <span className={styles.aiOverviewRankCount}>
+                            <strong>{formatCount(item.requests)}</strong> 次 · {pct}%
+                          </span>
+                        </div>
+                        <div className={styles.aiOverviewRankTrack}>
+                          <div className={styles.aiOverviewRankFill} data-tone="blue" style={{ width: `${width}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className={styles.aiOverviewRankCol}>
+              <div className={styles.aiOverviewRankHeader}>
+                <h3>高频模型排行</h3>
+                <span>Top {topModels.length || 0}</span>
+              </div>
+              {aiUsage.isFetching && !aiUsage.data ? (
+                <p className={styles.muted}>正在读取模型排行…</p>
+              ) : !topModels.length ? (
+                <p className={styles.muted}>当前窗口暂无模型调用记录</p>
+              ) : (
+                <div className={styles.aiOverviewRankList}>
+                  {topModels.map((item) => {
+                    const pct = Math.round((item.requests / usageTotalForShare) * 100);
+                    const width = Math.max(4, pct);
+                    return (
+                      <div key={item.key} className={styles.aiOverviewRankItem}>
+                        <div className={styles.aiOverviewRankMeta}>
+                          <span className={styles.aiOverviewRankName} title={item.key}>{item.key}</span>
+                          <span className={styles.aiOverviewRankCount}>
+                            <strong>{formatCount(item.requests)}</strong> 次 · {pct}%
+                          </span>
+                        </div>
+                        <div className={styles.aiOverviewRankTrack}>
+                          <div className={styles.aiOverviewRankFill} data-tone="purple" style={{ width: `${width}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Box>
 
       <div className={styles.twoColumns}>
         <Box
