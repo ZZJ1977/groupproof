@@ -1,7 +1,7 @@
 "use client";
 
 import { projectApi } from "@/features/c/c-project-api";
-import type { FeishuCollaborationInsights } from "@/features/c/FeishuCollaborationInsights";
+import type { FeishuCollaborationInsights, FeishuInsightItem } from "@/features/c/FeishuCollaborationInsights";
 import type { GithubActivityStats } from "@/features/c/GithubStatsChart";
 import { projectRequest } from "@/features/github-binding/integration-request";
 import { bProjectsApi, type BProjectOverview } from "@/lib/api/b-projects";
@@ -116,7 +116,519 @@ const MEMBER_COLORS = [
   "#ca8a04", // yellow-600
 ];
 
+const GENERIC_FEISHU_SENDERS = new Set(["飞书成员", "未知发送者", "群机器人", "系统", "system", "unknown"]);
+
 type ActivityItem = components["schemas"]["ActivityDTO"];
+
+type FlexibleInsightMessage = FeishuInsightItem["messages"][number] & {
+  author_user_id?: string | null;
+  user_id?: string | null;
+  author_id?: string | null;
+  sender_name?: string | null;
+};
+
+type FlexibleInsightItem = Omit<FeishuInsightItem, "messages"> & {
+  messages?: FlexibleInsightMessage[];
+  participants?: (string | { user_id?: string | null; id?: string | null; name?: string | null })[];
+};
+
+type FlexibleFeishuInsights = FeishuCollaborationInsights & {
+  conclusions?: FlexibleInsightItem[];
+  topics?: FlexibleInsightItem[];
+};
+
+export type FeishuMemberAttribution = {
+  collabTopics: number;
+  collabRecords: number;
+  collabScore: number;
+};
+
+function normalizeToken(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+export function extractSenderLetter(label: string | null | undefined): string | null {
+  const text = (label ?? "").trim();
+  if (!text) return null;
+  const match =
+    text.match(/^(?:群成员|成员|组员|同学|角色|member|user)\s*[-_·:：]?\s*([A-Z])$/i) ??
+    text.match(/^([A-Z])$/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function extractModuleLetterFromTask(task: BTaskRow): { letter: string; weight: number } | null {
+  const moduleCode = (task.module?.code ?? "").trim();
+  if (moduleCode) {
+    const m = moduleCode.match(/^([A-Z])(?:\d*)$/i);
+    if (m && m[1].toUpperCase() !== "T") {
+      return { letter: m[1].toUpperCase(), weight: 4 };
+    }
+  }
+
+  const moduleName = (task.module?.name ?? "").trim();
+  if (moduleName) {
+    const m =
+      moduleName.match(
+        /^\s*(?:模块|成员|组员|角色|part|module)?\s*[\[【(（]?\s*([A-Z])\s*[\]】)）]?(?:\s*(?:模块|端|组|部分|成员)|[\s:：·\-—_、.．]|$)/i,
+      ) ??
+      moduleName.match(/(?:模块|成员|组员)\s*([A-Z])(?![A-Za-z])/i) ??
+      moduleName.match(/(?<![A-Za-z])([A-Z])\s*(?:模块|端|部分)(?![A-Za-z])/i);
+    if (m) {
+      return { letter: m[1].toUpperCase(), weight: 3 };
+    }
+  }
+
+  const taskCode = (task.code ?? "").trim();
+  if (taskCode) {
+    const m =
+      taskCode.match(/^([A-Z])[-_]?\d+/i) ??
+      taskCode.match(/^(?:mod|m)[-_]?([A-Z])(?:\d|$)/i);
+    if (m && m[1].toUpperCase() !== "T") {
+      return { letter: m[1].toUpperCase(), weight: 2 };
+    }
+  }
+
+  const title = (task.title ?? "").trim();
+  if (title) {
+    const m =
+      title.match(/^\s*[\[【(（]\s*([A-Z])\s*[\]】)）]/i) ??
+      title.match(/^\s*(?:模块|成员|组员)\s*([A-Z])(?![A-Za-z])/i) ??
+      title.match(/^\s*([A-Z])\s*(?:模块|端|部分)(?![A-Za-z])/i) ??
+      title.match(/^\s*([A-Z])\d+(?![A-Za-z0-9])/i);
+    if (m && m[1].toUpperCase() !== "T") {
+      return { letter: m[1].toUpperCase(), weight: 1 };
+    }
+  }
+
+  return null;
+}
+
+function buildModuleLetterRegex(letter: string): RegExp {
+  const L = letter.toUpperCase();
+  const parts = [
+    `(?:模块|module|part)\\s*${L}(?![A-Za-z])`,
+    `(?<![A-Za-z])${L}\\s*(?:模块|端|部分|方向|任务)`,
+  ];
+  if (L !== "T") {
+    parts.push(`(?<![A-Za-z0-9])${L}[-_]?\\d{1,2}(?![A-Za-z0-9])`);
+  }
+  return new RegExp(parts.join("|"), "i");
+}
+
+function buildSenderLetterMentionRegex(letter: string): RegExp {
+  const L = letter.toUpperCase();
+  return new RegExp(`(?:群成员|成员|组员|同学)\\s*${L}(?![A-Za-z])|(?<![A-Za-z])${L}\\s*(?:同学|组员|成员)`, "i");
+}
+
+function buildTaskCodeRegex(code: string): RegExp {
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "i");
+}
+
+function solveOneToOneAssignment(
+  votes: Map<string, Map<string, number>>,
+): Map<string, string> {
+  const pairs: { key: string; target: string; score: number }[] = [];
+  for (const [key, targetScores] of votes.entries()) {
+    for (const [target, score] of targetScores.entries()) {
+      if (score > 0) pairs.push({ key, target, score });
+    }
+  }
+  pairs.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key) || a.target.localeCompare(b.target));
+  const assigned = new Map<string, string>();
+  const usedTargets = new Set<string>();
+  for (const pair of pairs) {
+    if (assigned.has(pair.key) || usedTargets.has(pair.target)) continue;
+    assigned.set(pair.key, pair.target);
+    usedTargets.add(pair.target);
+  }
+  return assigned;
+}
+
+function addVote(votes: Map<string, Map<string, number>>, key: string, target: string, delta: number) {
+  let inner = votes.get(key);
+  if (!inner) {
+    inner = new Map<string, number>();
+    votes.set(key, inner);
+  }
+  inner.set(target, (inner.get(target) ?? 0) + delta);
+}
+
+export function resolveFeishuMemberAttribution(params: {
+  orderedIds: string[];
+  memberNameMap: Map<string, string>;
+  assignedTasksByUser: Map<string, BTaskRow[]>;
+  githubLoginByUser: Map<string, string | null>;
+  feishuInsights: FeishuCollaborationInsights | null;
+  feishuActivities: ActivityItem[];
+}): Map<string, FeishuMemberAttribution> {
+  const {
+    orderedIds,
+    memberNameMap,
+    assignedTasksByUser,
+    githubLoginByUser,
+    feishuInsights,
+    feishuActivities,
+  } = params;
+
+  const result = new Map<string, FeishuMemberAttribution>();
+  for (const uid of orderedIds) {
+    result.set(uid, { collabTopics: 0, collabRecords: 0, collabScore: 0 });
+  }
+  if (orderedIds.length === 0) return result;
+
+  const flexibleInsights = feishuInsights as FlexibleFeishuInsights | null;
+  const insightItems: FlexibleInsightItem[] =
+    flexibleInsights?.items ??
+    flexibleInsights?.conclusions ??
+    flexibleInsights?.topics ??
+    [];
+
+  // Build lookup tables for exact real name / login matching
+  const memberIdsByName = new Map<string, string[]>();
+  const memberIdsByLogin = new Map<string, string[]>();
+  const assignedTaskIdsByUser = new Map<string, Set<string>>();
+  const assignedTaskCodesByUser = new Map<string, Set<string>>();
+  const taskOwnerIdsByTaskId = new Map<string, string[]>();
+  const moduleLetterVotes = new Map<string, Map<string, number>>(); // letter -> uid -> votes
+
+  for (const uid of orderedIds) {
+    const normName = normalizeToken(memberNameMap.get(uid));
+    if (normName) {
+      const list = memberIdsByName.get(normName) ?? [];
+      list.push(uid);
+      memberIdsByName.set(normName, list);
+    }
+    const normLogin = normalizeToken(githubLoginByUser.get(uid));
+    if (normLogin.length >= 3) {
+      const list = memberIdsByLogin.get(normLogin) ?? [];
+      list.push(uid);
+      memberIdsByLogin.set(normLogin, list);
+    }
+
+    const tasks = assignedTasksByUser.get(uid) ?? [];
+    const taskIds = new Set<string>();
+    const taskCodes = new Set<string>();
+    for (const t of tasks) {
+      taskIds.add(t.id);
+      const owners = taskOwnerIdsByTaskId.get(t.id) ?? [];
+      owners.push(uid);
+      taskOwnerIdsByTaskId.set(t.id, owners);
+      if (t.code && t.code.trim()) {
+        taskCodes.add(t.code.trim().toUpperCase());
+      }
+      const extracted = extractModuleLetterFromTask(t);
+      if (extracted) {
+        addVote(moduleLetterVotes, extracted.letter, uid, extracted.weight);
+      }
+    }
+    assignedTaskIdsByUser.set(uid, taskIds);
+    assignedTaskCodesByUser.set(uid, taskCodes);
+  }
+
+  // Primary module letter per member (e.g. A -> 卓子杰, B -> 杨凯景, C -> 郑元泰, D -> 林星妤)
+  const moduleLetterToUser = solveOneToOneAssignment(moduleLetterVotes);
+  const userToModuleLetter = new Map<string, string>();
+  for (const [letter, uid] of moduleLetterToUser.entries()) {
+    userToModuleLetter.set(uid, letter);
+  }
+
+  // Helper: match a speaker/author label or user ID directly to a canonical member (non-anonymized)
+  const matchDirectSpeaker = (
+    candidateId: string | null | undefined,
+    candidateLabel: string | null | undefined,
+  ): string | null => {
+    if (candidateId && memberNameMap.has(candidateId)) return candidateId;
+    const norm = normalizeToken(candidateLabel);
+    if (!norm || GENERIC_FEISHU_SENDERS.has(norm)) return null;
+    const exactName = memberIdsByName.get(norm);
+    if (exactName && exactName.length === 1) return exactName[0];
+    const exactLogin = memberIdsByLogin.get(norm);
+    if (exactLogin && exactLogin.length === 1) return exactLogin[0];
+    // Substring match for display labels like "卓子杰 (组长)" or "卓子杰 · A"
+    const partialMatches: string[] = [];
+    for (const uid of orderedIds) {
+      const memberName = normalizeToken(memberNameMap.get(uid));
+      if (memberName.length >= 2 && norm.includes(memberName)) {
+        partialMatches.push(uid);
+      }
+    }
+    if (partialMatches.length === 1) return partialMatches[0];
+    return null;
+  };
+
+  // Pre-build regexes for module letters & task codes
+  const moduleLetterRegexByLetter = new Map<string, RegExp>();
+  for (const letter of moduleLetterToUser.keys()) {
+    moduleLetterRegexByLetter.set(letter, buildModuleLetterRegex(letter));
+  }
+  const taskCodeRegexByUser = new Map<string, RegExp[]>();
+  for (const uid of orderedIds) {
+    const codes = Array.from(assignedTaskCodesByUser.get(uid) ?? []);
+    taskCodeRegexByUser.set(uid, codes.map(buildTaskCodeRegex));
+  }
+
+  // Discover anonymized sender labels (e.g. "群成员 A/B/C/D") and infer their mapping to members
+  const seenSenderLetters = new Set<string>();
+  const senderLetterVotes = new Map<string, Map<string, number>>(); // senderLetter -> uid -> score
+
+  for (const [letter, uid] of moduleLetterToUser.entries()) {
+    addVote(senderLetterVotes, letter, uid, 2);
+  }
+
+  for (const item of insightItems) {
+    const msgs = item.messages ?? [];
+    const itemSenderLetters = new Set<string>();
+    for (const msg of msgs) {
+      const directUid = matchDirectSpeaker(
+        msg.author_user_id ?? msg.user_id ?? msg.author_id,
+        msg.sender_name ?? msg.sender_label,
+      );
+      if (directUid) continue;
+      const letter = extractSenderLetter(msg.sender_label ?? msg.sender_name);
+      if (!letter) continue;
+      seenSenderLetters.add(letter);
+      itemSenderLetters.add(letter);
+
+      const msgText = `${msg.text ?? ""} ${(msg.attachments ?? []).map((a) => a.name ?? "").join(" ")}`;
+      const msgLower = msgText.toLowerCase();
+
+      // If this anonymized speaker uniquely references one module letter or task code (not a group-wide list), vote strongly
+      const matchedModUids: string[] = [];
+      for (const [modLetter, modUid] of moduleLetterToUser.entries()) {
+        const rx = moduleLetterRegexByLetter.get(modLetter);
+        if (rx && rx.test(msgText)) {
+          matchedModUids.push(modUid);
+        }
+      }
+      if (matchedModUids.length === 1) {
+        const firstPerson = /(?:我|这边|已经|提交|完成|推了|改了|搞定|负责)/.test(msgText);
+        addVote(senderLetterVotes, letter, matchedModUids[0], firstPerson ? 4 : 2);
+      }
+      const matchedCodeUids: string[] = [];
+      const matchedNameUids: string[] = [];
+      for (const uid of orderedIds) {
+        const codeRegexes = taskCodeRegexByUser.get(uid) ?? [];
+        if (codeRegexes.some((rx) => rx.test(msgText))) {
+          matchedCodeUids.push(uid);
+        }
+        const memberName = normalizeToken(memberNameMap.get(uid));
+        if (memberName.length >= 2 && msgLower.includes(memberName)) {
+          matchedNameUids.push(uid);
+        }
+      }
+      if (matchedCodeUids.length === 1) {
+        addVote(senderLetterVotes, letter, matchedCodeUids[0], 4);
+      }
+      if (matchedNameUids.length === 1) {
+        addVote(senderLetterVotes, letter, matchedNameUids[0], 2);
+      }
+    }
+
+    // If an insight has a single anonymized sender and linked tasks owned by a single member, vote strongly
+    if (itemSenderLetters.size === 1 && (item.linked_tasks?.length ?? 0) > 0) {
+      const onlyLetter = Array.from(itemSenderLetters)[0];
+      const linkedOwners = new Set<string>();
+      for (const lt of item.linked_tasks ?? []) {
+        for (const ownerId of taskOwnerIdsByTaskId.get(lt.id) ?? []) {
+          linkedOwners.add(ownerId);
+        }
+      }
+      if (linkedOwners.size === 1) {
+        addVote(senderLetterVotes, onlyLetter, Array.from(linkedOwners)[0], 5);
+      }
+    }
+  }
+
+  for (const act of feishuActivities) {
+    const directUid = matchDirectSpeaker(act.author_id, act.author_name);
+    if (directUid) continue;
+    const letter = extractSenderLetter(act.author_name);
+    if (letter) seenSenderLetters.add(letter);
+  }
+
+  // Resolve anonymized sender letters to canonical members (votes first, then stable order fallback)
+  const senderLetterToUser = solveOneToOneAssignment(senderLetterVotes);
+  const usedUsersForSenders = new Set<string>(senderLetterToUser.values());
+  const remainingSenderLetters = Array.from(seenSenderLetters)
+    .filter((l) => !senderLetterToUser.has(l))
+    .sort();
+  const remainingUsers = orderedIds.filter((uid) => !usedUsersForSenders.has(uid));
+  for (let i = 0; i < Math.min(remainingSenderLetters.length, remainingUsers.length); i += 1) {
+    senderLetterToUser.set(remainingSenderLetters[i], remainingUsers[i]);
+  }
+
+  // Pre-build regexes for resolved sender letters (e.g. "群成员 A" -> uB, "成员 B" -> uA)
+  const senderLetterMentionRegexByUser = new Map<string, RegExp[]>();
+  for (const [letter, uid] of senderLetterToUser.entries()) {
+    const list = senderLetterMentionRegexByUser.get(uid) ?? [];
+    list.push(buildSenderLetterMentionRegex(letter));
+    senderLetterMentionRegexByUser.set(uid, list);
+  }
+  // If a member's module letter isn't claimed by a DIFFERENT anonymized sender, also match "成员 <modLetter>"
+  for (const [modLetter, uid] of moduleLetterToUser.entries()) {
+    const claimedBy = senderLetterToUser.get(modLetter);
+    if (!claimedBy || claimedBy === uid) {
+      const list = senderLetterMentionRegexByUser.get(uid) ?? [];
+      list.push(buildSenderLetterMentionRegex(modLetter));
+      senderLetterMentionRegexByUser.set(uid, list);
+    }
+  }
+
+  const resolveSpeakerUserId = (
+    candidateId: string | null | undefined,
+    candidateLabel: string | null | undefined,
+  ): string | null => {
+    const direct = matchDirectSpeaker(candidateId, candidateLabel);
+    if (direct) return direct;
+    const letter = extractSenderLetter(candidateLabel);
+    if (letter) {
+      return senderLetterToUser.get(letter) ?? moduleLetterToUser.get(letter) ?? null;
+    }
+    return null;
+  };
+
+  const textMatchesMember = (uid: string, rawText: string): boolean => {
+    if (!rawText) return false;
+    const lower = rawText.toLowerCase();
+    const normName = normalizeToken(memberNameMap.get(uid));
+    if (normName.length >= 2 && lower.includes(normName)) return true;
+    const normLogin = normalizeToken(githubLoginByUser.get(uid));
+    if (normLogin.length >= 3 && lower.includes(normLogin)) return true;
+    const codeRegexes = taskCodeRegexByUser.get(uid) ?? [];
+    if (codeRegexes.some((rx) => rx.test(rawText))) return true;
+    const modLetter = userToModuleLetter.get(uid);
+    if (modLetter) {
+      const rx = moduleLetterRegexByLetter.get(modLetter);
+      if (rx && rx.test(rawText)) return true;
+    }
+    const senderRegexes = senderLetterMentionRegexByUser.get(uid) ?? [];
+    if (senderRegexes.some((rx) => rx.test(rawText))) return true;
+    return false;
+  };
+
+  // Track unique matched topics and unique matched message/activity IDs per member
+  const matchedTopicIdsByUser = new Map<string, Set<string>>();
+  const matchedRecordIdsByUser = new Map<string, Set<string>>();
+  for (const uid of orderedIds) {
+    matchedTopicIdsByUser.set(uid, new Set<string>());
+    matchedRecordIdsByUser.set(uid, new Set<string>());
+  }
+
+  // 1. Attribute Feishu AI Insights (conclusions/topics + hydrated messages)
+  for (let idx = 0; idx < insightItems.length; idx += 1) {
+    const item = insightItems[idx];
+    const topicId = item.id || `insight-${idx + 1}`;
+    const msgs = item.messages ?? [];
+    const itemHeaderText = `${item.title ?? ""} ${item.summary ?? ""} ${item.judgment_basis ?? ""}`;
+
+    const directMsgsByUser = new Map<string, string[]>();
+    let hasUnresolvableGenericOnly = msgs.length > 0;
+
+    for (const msg of msgs) {
+      const speakerUid = resolveSpeakerUserId(
+        msg.author_user_id ?? msg.user_id ?? msg.author_id,
+        msg.sender_name ?? msg.sender_label,
+      );
+      if (speakerUid) {
+        hasUnresolvableGenericOnly = false;
+        const list = directMsgsByUser.get(speakerUid) ?? [];
+        list.push(msg.id);
+        directMsgsByUser.set(speakerUid, list);
+      }
+
+      const msgBody = `${msg.text ?? ""} ${(msg.attachments ?? []).map((a) => a.name ?? "").join(" ")}`;
+      for (const uid of orderedIds) {
+        if (uid === speakerUid) continue;
+        if (textMatchesMember(uid, msgBody)) {
+          const list = directMsgsByUser.get(uid) ?? [];
+          list.push(msg.id);
+          directMsgsByUser.set(uid, list);
+        }
+      }
+    }
+
+    // Optional participants field (defensive compatibility)
+    const participantUids = new Set<string>();
+    for (const p of item.participants ?? []) {
+      if (typeof p === "string") {
+        const uid = resolveSpeakerUserId(p, p);
+        if (uid) participantUids.add(uid);
+      } else if (p && typeof p === "object") {
+        const uid = resolveSpeakerUserId(p.user_id ?? p.id, p.name);
+        if (uid) participantUids.add(uid);
+      }
+    }
+
+    let matchedAnyMember = false;
+    for (const uid of orderedIds) {
+      const assignedTaskIds = assignedTaskIdsByUser.get(uid) ?? new Set<string>();
+      const assignedTaskCodes = assignedTaskCodesByUser.get(uid) ?? new Set<string>();
+      const directMsgIds = directMsgsByUser.get(uid) ?? [];
+      const linkedToMemberTask = (item.linked_tasks ?? []).some(
+        (lt) =>
+          assignedTaskIds.has(lt.id) ||
+          (lt.code ? assignedTaskCodes.has(lt.code.trim().toUpperCase()) : false),
+      );
+      const inParticipants = participantUids.has(uid);
+      const mentionedInSummary = textMatchesMember(uid, itemHeaderText);
+
+      if (directMsgIds.length > 0 || linkedToMemberTask || inParticipants || mentionedInSummary) {
+        matchedAnyMember = true;
+        matchedTopicIdsByUser.get(uid)!.add(topicId);
+        const recSet = matchedRecordIdsByUser.get(uid)!;
+        if (directMsgIds.length > 0) {
+          for (const mid of directMsgIds) recSet.add(mid);
+        } else {
+          recSet.add(`insight:${topicId}`);
+        }
+      }
+    }
+
+    // Team-wide unanimous confirmation fallback when messages only carried generic labels
+    const isUnanimousTeamItem =
+      (item.confirmed_count ?? 0) >= orderedIds.length ||
+      (item.category === "division_confirm" &&
+        item.status === "completed" &&
+        (item.confirmed_count ?? 0) >= Math.max(2, orderedIds.length - 1));
+    if (isUnanimousTeamItem && (!matchedAnyMember || hasUnresolvableGenericOnly)) {
+      for (const uid of orderedIds) {
+        matchedTopicIdsByUser.get(uid)!.add(topicId);
+        const recSet = matchedRecordIdsByUser.get(uid)!;
+        if (recSet.size === 0 || !matchedAnyMember) {
+          recSet.add(`insight:${topicId}`);
+        }
+      }
+    }
+  }
+
+  // 2. Attribute raw Feishu activity records (deduplicated by message UUID against insights)
+  for (const act of feishuActivities) {
+    const attachmentNames = (act.feishu_attachments ?? []).map((a) => a.name ?? "").join(" ");
+    const actText = `${act.title ?? ""} ${act.summary ?? ""} ${attachmentNames}`;
+    const speakerUid = resolveSpeakerUserId(act.author_id, act.author_name);
+    const actKey = act.source_id || act.record_id || act.source_identity;
+
+    for (const uid of orderedIds) {
+      const assignedTaskIds = assignedTaskIdsByUser.get(uid) ?? new Set<string>();
+      const directAuthor = speakerUid === uid;
+      const linkedTask = act.task_id ? assignedTaskIds.has(act.task_id) : false;
+      const mentioned = textMatchesMember(uid, actText);
+      if (directAuthor || linkedTask || mentioned) {
+        matchedRecordIdsByUser.get(uid)!.add(actKey);
+      }
+    }
+  }
+
+  for (const uid of orderedIds) {
+    const collabTopics = matchedTopicIdsByUser.get(uid)!.size;
+    const collabRecords = matchedRecordIdsByUser.get(uid)!.size;
+    const collabScore = collabTopics * 2 + collabRecords;
+    result.set(uid, { collabTopics, collabRecords, collabScore });
+  }
+
+  return result;
+}
 
 export async function contributionRequest<T>(url: string, method = "GET"): Promise<T> {
   const response = await fetchWithSession(
@@ -148,6 +660,26 @@ async function fetchAllProjectTasks(projectId: string) {
   return { items, members: first.members, total: first.total };
 }
 
+async function fetchAllFeishuActivities(projectId: string): Promise<{ items: ActivityItem[]; total: number }> {
+  const pageSize = 50;
+  const first = await projectApi.activities(projectId, "feishu", { page: 1, page_size: pageSize });
+  const items = [...first.items];
+  const totalPages = Math.min(5, Math.ceil(first.total / pageSize));
+  if (totalPages > 1) {
+    const rest = await Promise.allSettled(
+      Array.from({ length: totalPages - 1 }, (_, idx) =>
+        projectApi.activities(projectId, "feishu", { page: idx + 2, page_size: pageSize }),
+      ),
+    );
+    for (const page of rest) {
+      if (page.status === "fulfilled") {
+        items.push(...page.value.items);
+      }
+    }
+  }
+  return { items, total: first.total };
+}
+
 export async function fetchContributionAnalytics(projectId: string): Promise<ProjectContributionAnalytics> {
   const encodedId = encodeURIComponent(projectId);
   const [
@@ -167,7 +699,7 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
     projectRequest<GithubActivityStats>(`/api/v1/a/projects/${encodedId}/github/stats?range=all`),
     projectApi.activities(projectId, "github", { kind: "pull_request", page: 1, page_size: 50 }),
     projectRequest<FeishuCollaborationInsights>(`/api/v1/a/projects/${encodedId}/feishu/insights`),
-    projectApi.activities(projectId, "feishu", { page: 1, page_size: 50 }),
+    fetchAllFeishuActivities(projectId),
   ]);
 
   if (snapshotRes.status === "rejected") {
@@ -299,13 +831,32 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
     else taskStatusCounts.notStarted += 1;
   }
 
-  // 4. Build initial rows for every active member
+  // 4. Pre-compute per-member tasks & Feishu collaboration attribution
   const orderedIds = Array.from(memberNameMap.keys());
+  const assignedTasksByUser = new Map<string, BTaskRow[]>();
+  const githubLoginByUser = new Map<string, string | null>();
+  for (const uid of orderedIds) {
+    assignedTasksByUser.set(
+      uid,
+      tasksData.items.filter((t) => t.assignees.some((a) => a.id === uid)),
+    );
+    githubLoginByUser.set(uid, githubByUser.get(uid)?.login ?? null);
+  }
+
+  const feishuByUser = resolveFeishuMemberAttribution({
+    orderedIds,
+    memberNameMap,
+    assignedTasksByUser,
+    githubLoginByUser,
+    feishuInsights,
+    feishuActivities: feishuActivities?.items ?? [],
+  });
+
+  // 5. Build rows for every active member
   const rawRows: Omit<MemberAnalyticsRow, "color" | "activityShare">[] = orderedIds.map((uid) => {
     const name = memberNameMap.get(uid) ?? "项目成员";
     const formal = snapshotByUser.get(uid);
-    const assignedTasks = tasksData.items.filter((t) => t.assignees.some((a) => a.id === uid));
-    const assignedTaskIds = new Set(assignedTasks.map((t) => t.id));
+    const assignedTasks = assignedTasksByUser.get(uid) ?? [];
 
     let completedCount = 0;
     let pendingVerificationCount = 0;
@@ -335,36 +886,8 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
           ? Math.round(weightedSum / assignedWeight)
           : Math.round(plainSum / assignedTasks.length);
 
-    // Feishu collaboration signals: direct author attribution + task-linked insights + task-linked messages + name mentions
-    let collabTopics = 0;
-    let collabRecords = 0;
-    const normalizedName = name.trim().toLowerCase();
-
-    for (const item of feishuInsights?.items ?? []) {
-      const linkedToMemberTask = item.linked_tasks.some((lt) => assignedTaskIds.has(lt.id));
-      const mentionsName =
-        normalizedName.length >= 2 &&
-        (item.summary.toLowerCase().includes(normalizedName) ||
-          item.messages.some((m) => m.text.toLowerCase().includes(normalizedName)));
-      if (linkedToMemberTask || mentionsName) {
-        collabTopics += 1;
-        collabRecords += Math.max(1, item.message_count);
-      }
-    }
-
-    for (const act of feishuActivities?.items ?? []) {
-      const directAuthor = act.author_id === uid;
-      const linkedTask = act.task_id ? assignedTaskIds.has(act.task_id) : false;
-      const mentionsName =
-        normalizedName.length >= 2 &&
-        (`${act.title} ${act.summary}`.toLowerCase().includes(normalizedName));
-      if (directAuthor || linkedTask || mentionsName) {
-        collabRecords += 1;
-      }
-    }
-
     const gh = githubByUser.get(uid);
-    const collabScore = collabTopics * 2 + collabRecords;
+    const feishu = feishuByUser.get(uid) ?? { collabTopics: 0, collabRecords: 0, collabScore: 0 };
 
     return {
       userId: uid,
@@ -388,9 +911,9 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
       pullRequests: prsByUser.get(uid) ?? 0,
       githubLogin: gh?.login ?? null,
       lastCommitAt: gh?.lastCommitAt ?? null,
-      collabTopics,
-      collabRecords,
-      collabScore,
+      collabTopics: feishu.collabTopics,
+      collabRecords: feishu.collabRecords,
+      collabScore: feishu.collabScore,
     };
   });
 
@@ -405,7 +928,7 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
     return a.name.localeCompare(b.name, "zh-CN");
   });
 
-  // 5. Compute normalized multi-source activity share (always sums to 100% when any activity exists)
+  // 6. Compute normalized multi-source activity share (always sums to 100% when any activity exists)
   const sumFormal = rawRows.reduce((acc, r) => acc + r.formalShare, 0);
   const sumTaskWork = rawRows.reduce(
     (acc, r) => acc + (r.assignedCount > 0 ? Math.max(1, r.assignedWeight) * (r.weightedTaskProgress / 100) : 0),

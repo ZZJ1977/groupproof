@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { BarChart3, GitCommitHorizontal, MessageSquare, PieChart } from "lucide-react";
-import { Avatar } from "@/components/common";
-import type { MemberAnalyticsRow, ProjectContributionAnalytics, TaskStatusCounts } from "./contribution-analytics";
+import type { MemberAnalyticsRow, ProjectContributionAnalytics } from "./contribution-analytics";
 
 type ShareMode = "formal" | "activity";
 
@@ -35,7 +34,7 @@ export function ContributionDistributionBar({
         subLabel:
           effectiveMode === "formal"
             ? `正式积分 ${m.taskCredit} · ${m.formalTasks.length} 项成果`
-            : `${m.commits} 提交 · ${m.completedCount}/${m.assignedCount} 任务完成`,
+            : `${m.commits} 提交 · ${m.completedCount}/${m.assignedCount} 任务 · 飞书 ${m.collabRecords} 条`,
       })),
     [effectiveMode, members],
   );
@@ -45,20 +44,20 @@ export function ContributionDistributionBar({
   return (
     <section
       aria-label="全员贡献占比分布"
-      className="gp-surface-card space-y-4"
+      className="gp-surface-card space-y-3"
       data-testid="contribution-distribution-bar"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div>
-          <h2 className="flex items-center gap-2 text-[16px] font-bold tracking-tight text-slate-900">
-            <BarChart3 size={17} className="text-[var(--gp-action)]" />
+          <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900">
+            <BarChart3 size={16} className="text-[var(--gp-action)]" />
             团队全员贡献占比分布
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-slate-500">
             覆盖全部 {members.length} 位在组项目成员；
             {effectiveMode === "formal"
-              ? "当前按已确认正式验收成果的责任比例展示（未确认成员显示 0%）。"
-              : "当前按正式成果、任务进度、GitHub 代码提交与飞书协作关联综合展示参考活跃占比。"}
+              ? "按已确认正式验收成果的责任比例展示（未确认成员显示 0%）。"
+              : "按正式成果、任务进度、GitHub 代码提交与飞书协作关联综合展示参考占比。"}
           </p>
         </div>
 
@@ -89,7 +88,7 @@ export function ContributionDistributionBar({
 
       {/* Full-width stacked horizontal bar */}
       <div
-        className="flex h-8 w-full overflow-hidden rounded-xl border border-slate-200/80 bg-slate-100/90 p-0.5"
+        className="flex h-7 w-full overflow-hidden rounded-xl border border-slate-200/80 bg-slate-100/90 p-0.5"
         role="img"
         aria-label="成员贡献占比堆叠条形图"
       >
@@ -110,7 +109,7 @@ export function ContributionDistributionBar({
                 }}
                 className="flex h-full items-center justify-center overflow-hidden px-1.5 text-[11px] font-bold text-white transition-opacity first:rounded-l-[9px] last:rounded-r-[9px]"
               >
-                {seg.value >= 7 && (
+                {seg.value >= 8 && (
                   <span className="truncate tabular-nums">
                     {seg.name} {seg.value.toFixed(1)}%
                   </span>
@@ -125,32 +124,28 @@ export function ContributionDistributionBar({
         )}
       </div>
 
-      {/* All-member legend */}
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Ultra-compact 1-line inline legend pills */}
+      <div className="flex flex-wrap items-center gap-2">
         {segments.map((seg) => {
           const isHovered = hoveredId === seg.userId;
           return (
             <div
               key={seg.userId}
+              title={seg.subLabel}
               onMouseEnter={() => setHoveredId(seg.userId)}
               onMouseLeave={() => setHoveredId(null)}
-              className={`flex items-center justify-between gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
                 isHovered
-                  ? "border-sky-300 bg-sky-50/50 shadow-xs"
-                  : "border-slate-200/70 bg-slate-50/60"
+                  ? "border-sky-300 bg-sky-50/70 text-slate-900"
+                  : "border-slate-200/80 bg-slate-50/70 text-slate-700"
               }`}
             >
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white"
-                  style={{ backgroundColor: seg.color }}
-                />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-slate-900">{seg.name}</div>
-                  <div className="truncate text-[11px] text-slate-500">{seg.subLabel}</div>
-                </div>
-              </div>
-              <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-slate-900">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: seg.color }}
+              />
+              <span className="font-medium text-slate-800">{seg.name}</span>
+              <span className="font-mono font-bold tabular-nums text-slate-900">
                 {seg.value.toFixed(1)}%
               </span>
             </div>
@@ -167,9 +162,9 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
   const maxCollab = Math.max(1, ...members.map((m) => m.collabScore));
 
   // SVG layout metrics
-  const labelWidth = 86;
-  const chartWidth = 340;
-  const valueWidth = 76;
+  const labelWidth = 84;
+  const chartWidth = 310;
+  const valueWidth = 108;
   const totalWidth = labelWidth + chartWidth + valueWidth;
   const rowGap = 14;
   const memberBlockHeight = 68;
@@ -179,27 +174,27 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
   const metrics = [
     { key: "formal", label: "正式成果权重", color: "#0284c7" },
     { key: "tasks", label: "任务完成进度", color: "#059669" },
-    { key: "commits", label: "代码提交活跃", color: "#7c3aed" },
+    { key: "commits", label: "代码提交", color: "#7c3aed" },
     { key: "collab", label: "飞书协作参与", color: "#d97706" },
   ] as const;
 
   return (
     <section
       aria-label="成员多维贡献对比图"
-      className="gp-surface-card flex flex-col justify-between space-y-4"
+      className="gp-surface-card flex flex-col justify-between space-y-3.5"
       data-testid="member-comparison-chart"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-[16px] font-bold tracking-tight text-slate-900">成员多维贡献对比图</h2>
+          <h2 className="text-[15px] font-bold tracking-tight text-slate-900">成员多维贡献对比图</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            按正式成果、任务推进、代码提交与协作参与 4 项指标对比全组每位成员
+            按正式权重、任务进度、代码提交与飞书协作 4 项维度横向对比全组成员
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
+        <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-600">
           {metrics.map((m) => (
-            <span key={m.key} className="inline-flex items-center gap-1.5 font-medium">
-              <span className="h-2.5 w-2.5 rounded-xs" style={{ backgroundColor: m.color }} />
+            <span key={m.key} className="inline-flex items-center gap-1 font-medium">
+              <span className="h-2 w-2 rounded-xs" style={{ backgroundColor: m.color }} />
               {m.label}
             </span>
           ))}
@@ -257,7 +252,7 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
                 {
                   key: "collab",
                   pct: Math.round((member.collabScore / maxCollab) * 100),
-                  text: `${member.collabRecords} 条关联`,
+                  text: `${member.collabRecords} 条 · ${member.collabTopics} 结论`,
                   color: "#d97706",
                 },
               ];
@@ -335,7 +330,7 @@ export function ProjectStatusDonutPanel({
 }: {
   analytics: ProjectContributionAnalytics;
 }) {
-  const { taskStatusCounts, members, feishuInsights } = analytics;
+  const { taskStatusCounts, feishuInsights } = analytics;
   const slices = useMemo(
     () => [
       { key: "completed", label: "已完成", value: taskStatusCounts.completed, color: "#059669" },
@@ -371,7 +366,6 @@ export function ProjectStatusDonutPanel({
     });
   }, [activeSlices, circumference, totalTasks]);
 
-  const maxLines = Math.max(1, ...members.map((m) => m.additions + m.deletions));
   const insightItems = feishuInsights?.items ?? [];
   const insightDone = insightItems.filter((i) => i.status === "completed").length;
   const insightProgress = insightItems.filter((i) => i.status === "in_progress").length;
@@ -379,17 +373,22 @@ export function ProjectStatusDonutPanel({
 
   return (
     <section
-      aria-label="项目任务状态与代码协作分布"
-      className="gp-surface-card space-y-5"
+      aria-label="项目交付概览"
+      className="gp-surface-card flex flex-col justify-between space-y-4"
       data-testid="project-status-donut"
     >
-      {/* Top half: Task status SVG donut */}
+      {/* Top: Task status SVG donut */}
       <div>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-[16px] font-bold tracking-tight text-slate-900">
-            <PieChart size={17} className="text-[var(--gp-action)]" />
-            项目任务状态环形图
-          </h2>
+          <div>
+            <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900">
+              <PieChart size={16} className="text-[var(--gp-action)]" />
+              项目交付概览
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              项目任务状态分布与代码、飞书协作整体统计
+            </p>
+          </div>
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-slate-700">
             共 {totalTasks} 项任务
           </span>
@@ -397,7 +396,7 @@ export function ProjectStatusDonutPanel({
 
         <div className="mt-4 flex flex-wrap items-center gap-6">
           <div className="relative flex shrink-0 items-center justify-center">
-            <svg width="136" height="136" viewBox="0 0 136 136" role="img" aria-label="任务状态环形图">
+            <svg width="136" height="136" viewBox="0 0 136 136" role="img" aria-label="项目任务状态环形图">
               <circle cx="68" cy="68" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="18" />
               <g transform="rotate(-90 68 68)">
                 {donutArcs.map((arc) => (
@@ -449,58 +448,49 @@ export function ProjectStatusDonutPanel({
         </div>
       </div>
 
-      {/* Bottom half: Code + Collaboration distribution bars */}
-      <div className="space-y-3 border-t border-slate-100 pt-4">
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-600">
-            <GitCommitHorizontal size={14} className="text-violet-600" />
-            代码改动与协作活跃分布
-          </h3>
-          <span className="text-[11px] text-slate-500">
-            {analytics.totalCommits} 提交 · +{formatCompact(analytics.totalAdditions)} / -
-            {formatCompact(analytics.totalDeletions)}
-          </span>
-        </div>
-
-        <div className="space-y-2.5">
-          {members.map((m) => {
-            const lines = m.additions + m.deletions;
-            const linePct = lines > 0 ? Math.max(4, Math.round((lines / maxLines) * 100)) : 0;
-            return (
-              <div key={m.userId} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-2 font-medium text-slate-800">
-                    <Avatar name={m.name} size={20} />
-                    {m.name}
-                  </span>
-                  <span className="font-mono text-[11px] tabular-nums text-slate-600">
-                    {m.commits} commit · <span className="text-emerald-700">+{formatCompact(m.additions)}</span>{" "}
-                    <span className="text-rose-600">-{formatCompact(m.deletions)}</span>
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${linePct}%`, backgroundColor: m.color }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50/90 px-3 py-2 text-xs text-slate-600">
-          <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
-            <MessageSquare size={13} className="text-amber-600" />
-            飞书协作同步 {analytics.feishuTotalMessages} 条消息
-          </span>
-          {insightItems.length > 0 ? (
-            <span className="tabular-nums text-[11px] text-slate-500">
-              AI 提炼 {insightItems.length} 项结论（已达成 {insightDone} · 推进中 {insightProgress} · 待跟进{" "}
-              {insightFollowup}）
+      {/* Bottom: Compact project-level aggregate summary (GitHub + Feishu, zero per-member duplication) */}
+      <div className="grid gap-2.5 border-t border-slate-100 pt-3.5 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <GitCommitHorizontal size={14} className="text-violet-600" />
+              代码交付汇总
             </span>
+            <span className="font-mono text-xs font-bold tabular-nums text-slate-900">
+              {analytics.totalCommits} 提交
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs tabular-nums">
+            <span className="font-semibold text-emerald-700">+{formatCompact(analytics.totalAdditions)}</span>
+            <span className="font-semibold text-rose-600">-{formatCompact(analytics.totalDeletions)}</span>
+            <span className="text-slate-500">{analytics.totalPullRequests} PR</span>
+          </div>
+          {analytics.unmatchedCommits > 0 && (
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              含 {analytics.unmatchedCommits} 次未关联到在组账号的提交
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <MessageSquare size={14} className="text-amber-600" />
+              飞书协作汇总
+            </span>
+            <span className="font-mono text-xs font-bold tabular-nums text-slate-900">
+              {analytics.feishuTotalMessages} 条消息
+            </span>
+          </div>
+          {insightItems.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] tabular-nums text-slate-600">
+              <span className="font-semibold text-slate-800">AI 结论 {insightItems.length} 项</span>
+              <span className="text-emerald-700">已达成 {insightDone}</span>
+              <span className="text-sky-700">推进中 {insightProgress}</span>
+              {insightFollowup > 0 && <span className="text-amber-700">待跟进 {insightFollowup}</span>}
+            </div>
           ) : (
-            <span className="text-[11px] text-slate-400">暂无 AI 飞书协作结论</span>
+            <p className="mt-2 text-[11px] text-slate-400">暂无 AI 飞书协作结论</p>
           )}
         </div>
       </div>

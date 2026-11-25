@@ -405,8 +405,13 @@ export function ContributionApiPage({
                   <span className="hidden h-3.5 w-px bg-slate-200 sm:inline-block" aria-hidden="true" />
                   <div className="flex items-center gap-1.5">
                     <MessageSquare size={14} className="text-amber-600" />
-                    <span className="text-slate-500">综合活跃</span>
-                    <span className="font-mono text-sm font-bold text-amber-700">{selectedMember.activityShare.toFixed(1)}%</span>
+                    <span className="text-slate-500">飞书协作</span>
+                    <span className="font-mono text-sm font-bold text-slate-900">
+                      {selectedMember.collabRecords} 条
+                    </span>
+                    <span className="text-slate-400">
+                      ({selectedMember.collabTopics} 项结论 · 综合 {selectedMember.activityShare.toFixed(1)}%)
+                    </span>
                   </div>
                 </div>
 
@@ -566,10 +571,10 @@ export function ContributionApiPage({
                 <ProjectStatusDonutPanel analytics={analytics} />
               </div>
 
-              {/* Visual Section 3: All-members breakdown table */}
+              {/* Visual Section 3: All-members pure-data breakdown table (no redundant progress bars) */}
               <Section
-                title="全员多维贡献明细"
-                description="完整列出全部在组项目成员（含暂未确认正式成果、当前正式占比 0% 的成员）。"
+                title="全员贡献明细"
+                description="全部在组项目成员的精确指标汇总（含正式占比 0% 成员）；图表对比见上方，点击右侧可查看个人任务与证据。"
                 surface
               >
                 {analytics.members.length > 0 ? (
@@ -578,10 +583,10 @@ export function ContributionApiPage({
                       <thead>
                         <tr>
                           <th>成员</th>
-                          <th>正式成果权重</th>
-                          <th>任务完成情况</th>
-                          <th>GitHub 代码提交</th>
-                          <th>协作与综合活跃</th>
+                          <th className="text-right">正式占比 / 积分</th>
+                          <th className="text-right">任务完成</th>
+                          <th className="text-right">GitHub 提交 / PR / 行数</th>
+                          <th className="text-right">飞书关联与结论</th>
                           <th className="text-right">详情</th>
                         </tr>
                       </thead>
@@ -590,7 +595,7 @@ export function ContributionApiPage({
                           <tr key={member.userId} data-testid={`member-row-${member.userId}`}>
                             <td>
                               <div className="flex items-center gap-2.5">
-                                <Avatar name={member.name} size={28} />
+                                <Avatar name={member.name} size={26} />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <span
@@ -599,58 +604,48 @@ export function ContributionApiPage({
                                     />
                                     <span className="font-semibold text-slate-900">{member.name}</span>
                                   </div>
-                                  <div className="text-[11px] text-slate-500">
-                                    {member.githubLogin ? `@${member.githubLogin}` : "未绑定 GitHub 别名"}
-                                  </div>
+                                  {member.githubLogin && (
+                                    <div className="text-[11px] text-slate-400">@{member.githubLogin}</div>
+                                  )}
                                 </div>
                               </div>
                             </td>
-                            <td className="min-w-[160px]">
-                              <div className="flex items-baseline justify-between gap-2">
-                                <span className="font-mono text-sm font-bold tabular-nums text-slate-900">
-                                  {member.formalShare.toFixed(1)}%
-                                </span>
-                                <span className="text-[11px] text-slate-500">
-                                  积分 {member.taskCredit} · {member.formalTasks.length} 项
-                                </span>
+                            <td className="text-right">
+                              <div className="font-mono text-sm font-bold tabular-nums text-slate-900">
+                                {member.formalShare.toFixed(1)}%
                               </div>
-                              <div className="mt-1">
-                                <ProgressBar value={member.formalShare} color={member.color} />
+                              <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
+                                积分 {member.taskCredit} · {member.formalTasks.length} 项成果
                               </div>
                             </td>
-                            <td className="min-w-[155px]">
-                              <div className="flex items-baseline justify-between gap-2">
-                                <span className="font-mono text-xs font-semibold tabular-nums text-slate-800">
-                                  {member.completedCount} / {member.assignedCount} 完成
-                                </span>
-                                <span className="text-[11px] text-slate-500">
-                                  进度 {member.weightedTaskProgress}%
-                                </span>
-                              </div>
-                              <div className="mt-1">
-                                <ProgressBar value={member.weightedTaskProgress} color="#059669" />
-                              </div>
-                              {member.pendingVerificationCount > 0 && (
-                                <div className="mt-0.5 text-[11px] font-medium text-sky-700">
-                                  {member.pendingVerificationCount} 项待人工确认
-                                </div>
-                              )}
-                            </td>
-                            <td>
+                            <td className="text-right">
                               <div className="font-mono text-xs font-semibold tabular-nums text-slate-900">
-                                {member.commits} 次提交{member.pullRequests > 0 ? ` · ${member.pullRequests} PR` : ""}
+                                {member.completedCount} / {member.assignedCount} 完成
+                              </div>
+                              <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
+                                加权 {member.weightedTaskProgress}%
+                                {member.pendingVerificationCount > 0 && (
+                                  <span className="ml-1.5 font-medium text-sky-700">
+                                    · {member.pendingVerificationCount} 待确认
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-right">
+                              <div className="font-mono text-xs font-semibold tabular-nums text-slate-900">
+                                {member.commits} 提交{member.pullRequests > 0 ? ` · ${member.pullRequests} PR` : ""}
                               </div>
                               <div className="mt-0.5 font-mono text-[11px] tabular-nums">
                                 <span className="text-emerald-700">+{formatCompact(member.additions)}</span>{" "}
                                 <span className="text-rose-600">-{formatCompact(member.deletions)}</span>
                               </div>
                             </td>
-                            <td>
+                            <td className="text-right">
                               <div className="font-mono text-xs font-semibold tabular-nums text-slate-900">
-                                综合参考 {member.activityShare.toFixed(1)}%
+                                {member.collabRecords} 条关联 · {member.collabTopics} 项结论
                               </div>
-                              <div className="mt-0.5 text-[11px] text-slate-500">
-                                飞书关联 {member.collabRecords} 条 · {member.collabTopics} 项结论
+                              <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
+                                综合活跃参考 {member.activityShare.toFixed(1)}%
                               </div>
                             </td>
                             <td className="text-right">
