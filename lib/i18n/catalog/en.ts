@@ -4136,6 +4136,17 @@ const catalog: Record<string, string> = {
  "管理项目基础信息、归档与版本重开，以及 GitHub 和飞书集成。": "Manage project details, archiving, version reopening, and GitHub / Feishu integrations.",
  "项目设置视图": "Project settings views",
  "基本设置与归档": "Basic settings & archive",
- "GitHub 与飞书集成": "GitHub & Feishu integrations"
+ "GitHub 与飞书集成": "GitHub & Feishu integrations",
+ "AI 已分析 · 已确认": "AI Analyzed · Confirmed",
+ "AI 已生成 · 待人工确认": "AI Generated · Pending Review",
+ "待生成摘要": "Summary Pending",
+ "生成失败，可重试": "Generation Failed · Retry",
+ "暂不支持摘要": "Summary Unsupported",
+ "摘要已生成并确认。": "Summary generated and confirmed.",
+ "摘要已生成，内容仍需人工确认。": "Summary generated; manual review is still required.",
+ "本页摘要已生成并确认。": "Summaries on this page generated and confirmed.",
+ "本页摘要已生成，内容仍需人工确认。": "Summaries on this page generated; manual review is still required.",
+ "AI 协作结论已确认": "AI collaboration insights confirmed",
+ "AI 判断仅供参考": "AI insights are for reference only"
 };
 export default catalog;
