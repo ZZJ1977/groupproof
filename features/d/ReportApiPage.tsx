@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileText,
   History,
@@ -12,11 +14,24 @@ import {
   Printer,
   RefreshCw,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { Feedback, StatusBadge } from "@/components/common";
 import { button, input, secondary } from "@/features/b/ui";
+import { MarkdownPreview } from "@/features/c/MarkdownPreview";
 import { fetchWithSession } from "@/lib/api/client";
 import { apiConfig } from "@/lib/api/config";
+
+type VersionMeta = {
+  authoring_mode?: string;
+  model?: string | null;
+  generated_at?: string;
+  contribution_status?: string;
+  milestones_completed?: number;
+  milestones_total?: number;
+  github_commits?: number;
+  feishu_conclusions?: number;
+};
 
 type Version = {
   id: string;
@@ -25,8 +40,15 @@ type Version = {
   created_at: string | null;
   created_by: string | null;
   created_by_name: string | null;
-  data: { project_name: string; counts: Record<string, number>; sections: Record<string, string> };
+  data: {
+    project_name: string;
+    counts: Record<string, number>;
+    chapter_order?: string[];
+    sections: Record<string, string>;
+    meta?: VersionMeta;
+  };
 };
+
 type Artifact = {
   id: string;
   version: number;
@@ -37,8 +59,10 @@ type Artifact = {
   requested_by_name: string | null;
   created_at: string | null;
 };
+
 type ExportFormat = "pdf" | "docx" | "md";
-type BusyAction = null | "refresh" | "export" | "download" | "submit" | "review" | "edit" | "restore";
+type BusyAction = null | "refresh" | "export" | "download" | "submit" | "review" | "edit" | "restore" | "rewrite";
+
 type Listing = {
   status: string;
   versions: Version[];
@@ -47,15 +71,44 @@ type Listing = {
   reviews: { action: string; reason: string; actor_id: string; actor_name: string | null; created_at: string | null }[];
 };
 
+const CHAPTER_ORDER = [
+  "overview",
+  "workflow",
+  "progress",
+  "collaboration",
+  "evidence",
+  "contribution",
+  "reflection",
+] as const;
+
 const sectionHeadingLabels: Record<string, string> = {
-  overview: "项目概览",
+  overview: "一、项目概述与目标范围",
+  workflow: "二、开发流程与团队协作机制",
+  progress: "三、项目进度与里程碑复盘",
+  collaboration: "四、团队沟通协作与关键技术决策",
+  evidence: "五、证据链沉淀与质量验收成果",
+  contribution: "六、成员个人贡献与分工画像",
+  reflection: "七、风险复盘与后续改进建议",
   tasks: "任务进展",
   milestones: "里程碑执行",
-  evidence: "正式证据统计",
-  contribution: "成员贡献快照",
   risks: "风险记录",
   risk_explanation: "风险分析与建议",
   appendix: "附录：正式证据清单",
+};
+
+const shortChapterLabels: Record<string, string> = {
+  overview: "1. 项目概述",
+  workflow: "2. 开发流程",
+  progress: "3. 进度里程碑",
+  collaboration: "4. 沟通与决策",
+  evidence: "5. 证据与验收",
+  contribution: "6. 成员贡献",
+  reflection: "7. 风险与建议",
+  tasks: "任务进展",
+  milestones: "里程碑",
+  risks: "风险记录",
+  risk_explanation: "风险分析",
+  appendix: "附录",
 };
 
 const statusMeta: Record<string, { label: string; tone: "blue" | "green" | "amber" | "red" | "gray" }> = {
@@ -87,6 +140,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   REPORT_PREVIEW_FAILED: "报告预览生成失败，请点击重试。",
   REPORT_EXPORT_FAILED: "报告文件导出失败，请点击重试。",
   REPORT_LINK_EXPIRED: "下载链接已过期，请重新点击下载。",
+  AI_UNAVAILABLE: "AI 重写服务暂时不可用，请稍后重试或手动编辑。",
 };
 
 function extractErrorMessage(result: unknown, fallback = "请求失败"): string {
@@ -107,7 +161,7 @@ function parseFilename(disposition: string | null, fallback: string): string {
     try {
       return decodeURIComponent(utf8Match[1].trim());
     } catch {
-      // fall through to ascii filename
+      // fall through
     }
   }
   const plainMatch = /filename="?([^";\n]+)"?/i.exec(disposition);
@@ -122,6 +176,22 @@ function safeFileStem(name: string | undefined): string {
 function formatLabel(format: ExportFormat): string {
   if (format === "md") return "Markdown";
   return format.toUpperCase();
+}
+
+function resolveOrderedSections(data: Version["data"] | undefined): [string, string][] {
+  const sections = data?.sections;
+  if (!sections) return [];
+  const rawOrder = data?.chapter_order;
+  if (Array.isArray(rawOrder) && rawOrder.length > 0) {
+    return rawOrder.filter((key) => key in sections).map((key) => [key, sections[key] ?? ""]);
+  }
+  const canonical = CHAPTER_ORDER.filter((key) => key in sections);
+  const legacyOrder = ["tasks", "milestones", "risks", "risk_explanation", "appendix"];
+  const rest = legacyOrder.filter((key) => key in sections && !canonical.includes(key as (typeof CHAPTER_ORDER)[number]));
+  const extras = Object.keys(sections).filter(
+    (key) => !canonical.includes(key as (typeof CHAPTER_ORDER)[number]) && !rest.includes(key),
+  );
+  return [...canonical, ...rest, ...extras].map((key) => [key, sections[key] ?? ""]);
 }
 
 async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
@@ -176,14 +246,17 @@ export function ReportApiPage({
   const [embeddedMode, setEmbeddedMode] = useState<"preview" | "export">(exportView ? "export" : "preview");
   const isExportView = embedded ? embeddedMode === "export" : exportView;
   const [selected, setSelected] = useState<number | null>(null);
-  const [appendix, setAppendix] = useState(false);
+  const [readMode, setReadMode] = useState<"chapter" | "full">("chapter");
+  const [activeChapter, setActiveChapter] = useState<string>("");
   const [editing, setEditing] = useState("");
   const [draft, setDraft] = useState("");
+  const [rewritingSection, setRewritingSection] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [fileFormat, setFileFormat] = useState<ExportFormat>("pdf");
   const [reviewReason, setReviewReason] = useState("");
+  const readerScrollRef = useRef<HTMLDivElement>(null);
   const busy = busyAction !== null;
 
   const refresh = useCallback(async () => setListing(await request<Listing>(base)), [base]);
@@ -204,9 +277,25 @@ export function ReportApiPage({
   const canRefresh = !busy && !["generating", "submitted", "finalized"].includes(listing.status);
   const canExport = Boolean(viewed && !busy && ["generated", "finalized"].includes(viewed.status));
   const canSubmit = Boolean(latest && ["generated", "returned"].includes(listing.status));
-  const sectionEntries = Object.entries(viewed?.data?.sections ?? {});
+  const canEditChapter = Boolean(viewed && !["submitted", "finalized"].includes(listing.status) && viewed.version === latest?.version);
+
+  const sectionEntries = useMemo(() => resolveOrderedSections(viewed?.data), [viewed?.data]);
+  const resolvedActiveChapter = useMemo(() => {
+    if (sectionEntries.length === 0) return "";
+    if (activeChapter && sectionEntries.some(([key]) => key === activeChapter)) return activeChapter;
+    return sectionEntries[0][0];
+  }, [activeChapter, sectionEntries]);
+
+  const activeChapterIndex = sectionEntries.findIndex(([key]) => key === resolvedActiveChapter);
+  const visibleEntries = useMemo(() => {
+    if (readMode === "full") return sectionEntries;
+    const current = sectionEntries.find(([key]) => key === resolvedActiveChapter);
+    return current ? [current] : sectionEntries.slice(0, 1);
+  }, [readMode, resolvedActiveChapter, sectionEntries]);
+
   const isRefreshing = busyAction === "refresh";
   const isExporting = busyAction === "export" || busyAction === "download";
+  const isAiAuthored = viewed?.data?.meta?.authoring_mode === "ai";
 
   async function mutate(url: string, body?: unknown, successMsg?: string, action: BusyAction = "edit") {
     setBusyAction(action);
@@ -230,21 +319,57 @@ export function ReportApiPage({
     setError("");
     setNotice("");
     try {
-      const created = await request<{ version: number; status: string }>(`${base}/refresh`, "POST", {
-        includes_appendix: appendix,
-      });
+      const created = await request<{ version: number; status: string; data?: Version["data"] }>(
+        `${base}/refresh`,
+        "POST",
+        { includes_appendix: false },
+      );
       await refresh();
       setEditing("");
       setSelected(null);
       if (created.status === "generating") {
         setNotice(`已提交 v${created.version} 报告生成任务，正在后台汇编预览…`);
       } else {
-        setNotice(initial ? `首版报告预览（v${created.version}）已生成。` : `报告预览已刷新至 v${created.version}。`);
+        const aiTag = created.data?.meta?.authoring_mode === "ai" ? "（AI 深度撰写）" : "";
+        setNotice(
+          initial
+            ? `首版 7 章结项报告（v${created.version}）已生成${aiTag}。`
+            : `报告已刷新至 v${created.version}${aiTag}。`,
+        );
       }
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function rewriteChapterWithAi(versionNo: number, sectionKey: string) {
+    setBusyAction("rewrite");
+    setRewritingSection(sectionKey);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await request<{ version: number; authoring_mode?: string }>(
+        `${base}/versions/${versionNo}/sections/${encodeURIComponent(sectionKey)}/ai-rewrite`,
+        "POST",
+        { instruction: "" },
+      );
+      await refresh();
+      setEditing("");
+      setSelected(null);
+      setActiveChapter(sectionKey);
+      const label = sectionHeadingLabels[sectionKey] ?? sectionKey;
+      setNotice(
+        updated.authoring_mode === "ai"
+          ? `AI 已重写「${label}」并保存为 v${updated.version}。`
+          : `已按最新真实数据重新汇编「${label}」并保存为 v${updated.version}。`,
+      );
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setBusyAction(null);
+      setRewritingSection(null);
     }
   }
 
@@ -320,9 +445,22 @@ export function ReportApiPage({
     }
   }
 
+  function selectChapter(sectionKey: string) {
+    setActiveChapter(sectionKey);
+    setEditing("");
+    if (readMode === "full" && readerScrollRef.current) {
+      const target = readerScrollRef.current.querySelector<HTMLElement>(`#report-sec-${sectionKey}`);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } else if (readerScrollRef.current) {
+      readerScrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
   const versionHistoryCard = (
     <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <History size={15} className="text-slate-500" />
           <h2 className="text-sm font-semibold text-slate-900">版本历史与提交审核</h2>
@@ -333,7 +471,7 @@ export function ReportApiPage({
       {listing.versions.length === 0 ? (
         <p className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs text-slate-500">尚未生成报告版本</p>
       ) : (
-        <ul className="divide-y divide-slate-100 text-xs">
+        <ul className="max-h-44 divide-y divide-slate-100 overflow-y-auto text-xs">
           {listing.versions.map((version) => {
             const isActive = viewed?.version === version.version;
             const vMeta = statusMeta[version.status] ?? { label: version.status, tone: "gray" as const };
@@ -362,7 +500,7 @@ export function ReportApiPage({
                       type="button"
                       disabled={busy}
                       className="shrink-0 text-xs font-medium text-sky-700 hover:underline disabled:opacity-50"
-                      onClick={() => void mutate(`${base}/restore`, { version: version.version }, `已恢复至 v${version.version}。`)}
+                      onClick={() => void mutate(`${base}/restore`, { version: version.version }, `已恢复至 v${version.version}。`, "restore")}
                     >
                       恢复此版本
                     </button>
@@ -379,7 +517,7 @@ export function ReportApiPage({
             <button
               type="button"
               disabled={busy}
-              onClick={() => void mutate(`${base}/submit`, undefined, "已提交教师审核。")}
+              onClick={() => void mutate(`${base}/submit`, undefined, "已提交教师审核。", "submit")}
               className={`${compactPrimaryBtn} w-full`}
             >
               <Send size={13} />
@@ -401,7 +539,7 @@ export function ReportApiPage({
                   type="button"
                   disabled={busy || !reviewReason.trim()}
                   className={`${compactBtn} flex-1`}
-                  onClick={() => void mutate(`${base}/review`, { action: "return", reason: reviewReason }, "已退回修改。")}
+                  onClick={() => void mutate(`${base}/review`, { action: "return", reason: reviewReason }, "已退回修改。", "review")}
                 >
                   退回修改
                 </button>
@@ -409,7 +547,7 @@ export function ReportApiPage({
                   type="button"
                   disabled={busy || !reviewReason.trim()}
                   className={`${compactPrimaryBtn} flex-1`}
-                  onClick={() => void mutate(`${base}/review`, { action: "approve", reason: reviewReason }, "已审核通过并定稿。")}
+                  onClick={() => void mutate(`${base}/review`, { action: "approve", reason: reviewReason }, "已审核通过并定稿。", "review")}
                 >
                   <CheckCircle2 size={13} />
                   审核通过并定稿
@@ -424,11 +562,11 @@ export function ReportApiPage({
 
   const exportControlsCard = (
     <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-900">导出与快照设置</h2>
         {viewed && <span className="font-mono text-xs text-slate-500">当前 v{viewed.version}</span>}
       </div>
-      <div className="space-y-3 text-xs">
+      <div className="space-y-2.5 text-xs">
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="mb-1 block font-medium text-slate-600" htmlFor="report-version-select">
@@ -459,21 +597,12 @@ export function ReportApiPage({
               onChange={(event) => setFileFormat(event.target.value as ExportFormat)}
               className={`${compactSelect} w-full`}
             >
-              <option value="pdf">PDF（标准文档）</option>
+              <option value="pdf">PDF（标准排版）</option>
               <option value="docx">DOCX（Word 文档）</option>
-              <option value="md">Markdown（.md 文档）</option>
+              <option value="md">Markdown（.md）</option>
             </select>
           </div>
         </div>
-        <label className="flex items-center gap-2 text-slate-600">
-          <input
-            type="checkbox"
-            checked={appendix}
-            onChange={(event) => setAppendix(event.target.checked)}
-            className="rounded border-slate-300"
-          />
-          生成新版本时包含正式证据附录
-        </label>
         <div className="flex flex-wrap gap-2 pt-0.5">
           {viewed ? (
             <>
@@ -498,30 +627,20 @@ export function ReportApiPage({
               onClick={() => void refreshPreview(true)}
               className={`${compactPrimaryBtn} w-full`}
             >
-              <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
-              {isRefreshing ? "正在生成首版报告快照…" : "生成首版报告快照"}
+              <Sparkles size={13} className={isRefreshing ? "animate-pulse" : ""} />
+              {isRefreshing ? "AI 正在撰写 7 章报告…" : "AI 生成首版结项报告"}
             </button>
           )}
         </div>
-        {viewed && fileFormat !== "md" && (
-          <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
-            <span>基于项目当前真实数据生成快照</span>
-            <button
-              type="button"
-              disabled={!canExport}
-              onClick={() => void mutate(`${base}/exports`, { version: viewed.version, file_format: fileFormat }, "已生成导出文件记录。", "export")}
-              className="font-medium text-sky-700 hover:underline disabled:opacity-50"
-            >
-              后台生成文件
-            </button>
-          </div>
-        )}
       </div>
     </section>
   );
 
   const auditLogsCard = (
-    <details className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs" open={isExportView && (listing.downloads.length > 0 || listing.reviews.length > 0)}>
+    <details
+      className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs"
+      open={isExportView && (listing.downloads.length > 0 || listing.reviews.length > 0)}
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-slate-900">
         <span>导出文件与审核记录（{listing.artifacts.length + listing.downloads.length + listing.reviews.length}）</span>
         <ChevronDown size={15} className="text-slate-400" />
@@ -558,7 +677,7 @@ export function ReportApiPage({
             <p className="text-slate-500">暂无下载记录</p>
           ) : (
             <div className="space-y-1">
-              {listing.downloads.map((item, index) => (
+              {listing.downloads.slice(0, 6).map((item, index) => (
                 <p key={index} className="text-slate-600">
                   v{item.version} · {item.format.toUpperCase()} · {item.user_name ?? item.user_id} · {item.created_at?.slice(0, 16).replace("T", " ")}
                 </p>
@@ -585,19 +704,28 @@ export function ReportApiPage({
   );
 
   return (
-    <div className="space-y-3.5">
+    <div className="space-y-3">
       {/* Compact Header with Inline Status Pill + Primary Actions */}
-      <div className={`${embedded ? "rounded-2xl border border-slate-200/85 bg-white px-4 py-3 shadow-xs" : "mb-3.5"} flex flex-wrap items-center justify-between gap-3`}>
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className={`${embedded ? "rounded-2xl border border-slate-200/85 bg-white px-4 py-2.5 shadow-xs" : "mb-3"} flex flex-wrap items-center justify-between gap-2.5`}>
+        <div className="flex flex-wrap items-center gap-2">
           {embedded ? (
             <h2 className="text-sm font-semibold text-slate-900">结项报告</h2>
           ) : (
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">项目报告</h1>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">项目结项报告</h1>
           )}
           <StatusBadge tone={st.tone} label={st.label} />
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-xs font-medium text-slate-600">
             {latest ? `最新 v${latest.version}` : "尚未生成"}
           </span>
+          {viewed?.data?.counts && (
+            <span className="hidden items-center gap-2 text-xs text-slate-500 lg:inline-flex">
+              <span className="h-3 w-px bg-slate-200" aria-hidden="true" />
+              <span>成员 <strong className="font-mono text-slate-800">{viewed.data.counts.members ?? 0}</strong></span>
+              <span>任务 <strong className="font-mono text-emerald-700">{viewed.data.counts.completed_tasks ?? 0}/{viewed.data.counts.tasks ?? 0}</strong></span>
+              <span>证据 <strong className="font-mono text-sky-700">{viewed.data.counts.evidence ?? 0}</strong></span>
+              <span>风险 <strong className="font-mono text-amber-700">{viewed.data.counts.risks ?? 0}</strong></span>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -611,7 +739,7 @@ export function ReportApiPage({
                 className="gp-segmented-item"
                 onClick={() => setEmbeddedMode("preview")}
               >
-                预览
+                报告阅读
               </button>
               <button
                 type="button"
@@ -627,7 +755,7 @@ export function ReportApiPage({
           ) : (
             <div className="gp-segmented" role="navigation" aria-label="报告视图">
               <Link className="gp-segmented-item" data-active={!isExportView ? "true" : undefined} href={`/projects/${projectId}/reports`}>
-                预览
+                报告阅读
               </Link>
               <Link className="gp-segmented-item" data-active={isExportView ? "true" : undefined} href={`/projects/${projectId}/reports/export`}>
                 导出与历史
@@ -641,19 +769,8 @@ export function ReportApiPage({
             className={compactPrimaryBtn}
           >
             <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
-            {isRefreshing ? "正在生成…" : latest ? "刷新预览" : "生成预览"}
+            {isRefreshing ? "AI 撰写中…" : latest ? "AI 重新生成" : "生成预览"}
           </button>
-          {canSubmit && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void mutate(`${base}/submit`, undefined, "已提交教师审核。", "submit")}
-              className={compactBtn}
-            >
-              <Send size={13} />
-              提交定稿
-            </button>
-          )}
           {viewed && (
             <button
               type="button"
@@ -669,8 +786,15 @@ export function ReportApiPage({
       </div>
 
       {isRefreshing && (
-        <div role="status" className="rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2.5 text-xs text-sky-800">
-          正在基于当前任务、里程碑、正式证据与风险数据生成报告预览，请稍候…
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800">
+          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
+          <span>AI 正在基于任务、GitHub、飞书与证据撰写 7 章结项报告，请稍候…</span>
+        </div>
+      )}
+      {rewritingSection && (
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800">
+          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
+          <span>AI 正在基于最新真实数据重写「{sectionHeadingLabels[rewritingSection] ?? rewritingSection}」…</span>
         </div>
       )}
       {error && (
@@ -680,40 +804,8 @@ export function ReportApiPage({
       )}
       {notice && <Feedback tone="success">{notice}</Feedback>}
 
-      {/* Inline KPI Divider Strip */}
-      {viewed?.data?.counts && (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-slate-200/85 bg-white px-4 py-2.5 text-xs shadow-xs">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-slate-500">项目成员</span>
-            <span className="font-mono text-sm font-bold text-slate-900">{viewed.data.counts.members ?? 0}</span>
-          </div>
-          <span className="hidden h-3.5 w-px bg-slate-200 sm:inline-block" aria-hidden="true" />
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-slate-500">任务完成</span>
-            <span className="font-mono text-sm font-bold text-emerald-700">
-              {viewed.data.counts.completed_tasks ?? 0} / {viewed.data.counts.tasks ?? 0}
-            </span>
-          </div>
-          <span className="hidden h-3.5 w-px bg-slate-200 sm:inline-block" aria-hidden="true" />
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-slate-500">正式证据</span>
-            <span className="font-mono text-sm font-bold text-sky-700">{viewed.data.counts.evidence ?? 0}</span>
-          </div>
-          <span className="hidden h-3.5 w-px bg-slate-200 sm:inline-block" aria-hidden="true" />
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-slate-500">活跃风险</span>
-            <span className="font-mono text-sm font-bold text-amber-700">{viewed.data.counts.risks ?? 0}</span>
-          </div>
-          {viewed.created_at && (
-            <span className="ml-auto text-[11px] text-slate-400">
-              快照时间：{viewed.created_at.slice(0, 16).replace("T", " ")}
-            </span>
-          )}
-        </div>
-      )}
-
       {isExportView ? (
-        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,1fr)] xl:items-start">
+        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.35fr)_minmax(310px,0.9fr)] xl:items-start">
           <div className="space-y-3.5">
             {exportControlsCard}
 
@@ -724,7 +816,7 @@ export function ReportApiPage({
               </div>
               {listing.artifacts.length === 0 ? (
                 <div className="rounded-xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
-                  暂无导出文件记录，生成报告版本后可一键导出 PDF 或 DOCX。
+                  暂无导出文件记录，生成报告版本后可一键导出 PDF、DOCX 或 Markdown。
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -765,7 +857,7 @@ export function ReportApiPage({
                                 className="font-medium text-sky-700 hover:underline disabled:opacity-50"
                                 onClick={() => void download(item.id, item.version, item.format)}
                               >
-                                获取十分钟下载链接
+                                下载文件
                               </button>
                             )}
                             {item.status === "failed" && (
@@ -794,119 +886,216 @@ export function ReportApiPage({
           </div>
         </div>
       ) : (
-        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.5fr)_minmax(310px,1fr)] xl:items-start">
-          {/* Left / Main: Structured Report Preview */}
-          <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <FileText size={16} className="text-sky-600" />
-                <h2 className="text-sm font-semibold text-slate-900">
-                  {viewed ? `${viewed.data.project_name || "项目报告"} · v${viewed.version}` : "报告内容预览"}
-                </h2>
-              </div>
-              {sectionEntries.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {sectionEntries.map(([section]) => (
-                    <a
-                      key={section}
-                      href={`#report-sec-${section}`}
-                      className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-sky-50 hover:text-sky-700"
+        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.85fr)] xl:items-start">
+          {/* Left: Single-Viewport Compact Document Reader */}
+          <section className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs lg:h-[calc(100vh-240px)] lg:min-h-[520px]">
+            {/* Sticky Top Reader Bar */}
+            <div className="shrink-0 space-y-2.5 border-b border-slate-100 bg-white px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <FileText size={16} className="shrink-0 text-sky-600" />
+                  <h2 className="truncate text-sm font-semibold text-slate-900">
+                    {viewed ? `${viewed.data.project_name || "项目报告"} · v${viewed.version}` : "报告内容预览"}
+                  </h2>
+                  {viewed && (
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        isAiAuthored ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600"
+                      }`}
                     >
-                      {sectionHeadingLabels[section] ?? section}
-                    </a>
-                  ))}
+                      {isAiAuthored && <Sparkles size={10} />}
+                      {isAiAuthored ? "AI 深度撰写" : "结构化汇编"}
+                    </span>
+                  )}
+                </div>
+
+                {viewed && sectionEntries.length > 0 && (
+                  <div className="gp-segmented" role="tablist" aria-label="阅读模式">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={readMode === "chapter"}
+                      data-active={readMode === "chapter" ? "true" : undefined}
+                      className="gp-segmented-item"
+                      onClick={() => setReadMode("chapter")}
+                    >
+                      单章聚焦
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={readMode === "full"}
+                      data-active={readMode === "full" ? "true" : undefined}
+                      className="gp-segmented-item"
+                      onClick={() => setReadMode("full")}
+                    >
+                      全文浏览
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {sectionEntries.length > 0 && (
+                <div className="flex flex-wrap gap-1.5" role="navigation" aria-label="报告章节导航">
+                  {sectionEntries.map(([section]) => {
+                    const isCurrent = resolvedActiveChapter === section;
+                    return (
+                      <button
+                        key={section}
+                        type="button"
+                        onClick={() => selectChapter(section)}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                          isCurrent
+                            ? "bg-sky-600 text-white shadow-2xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-sky-50 hover:text-sky-700"
+                        }`}
+                      >
+                        {shortChapterLabels[section] ?? sectionHeadingLabels[section] ?? section}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
-            {viewed?.status === "generating" && (
-              <p role="status" className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                正在后台生成预览…
-              </p>
-            )}
-            {viewed?.status === "failed" && (
-              <p role="alert" className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                预览生成失败，请重试刷新。
-              </p>
-            )}
+            {/* Internal Scrollable Document Body */}
+            <div ref={readerScrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {viewed?.status === "generating" && (
+                <p role="status" className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                  AI 正在后台汇编 7 章结项报告…
+                </p>
+              )}
+              {viewed?.status === "failed" && (
+                <p role="alert" className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  预览生成失败，请点击右上角重试刷新。
+                </p>
+              )}
 
-            {viewed ? (
-              <div className="divide-y divide-slate-100">
-                {sectionEntries.map(([section, body]) => (
-                  <article id={`report-sec-${section}`} key={section} className="py-3 first:pt-0 last:pb-0">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-slate-900">{sectionHeadingLabels[section] ?? section}</h3>
-                      {!["submitted", "finalized"].includes(listing.status) &&
-                        viewed.version === latest?.version &&
-                        editing !== section && (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-sky-700 hover:bg-sky-50"
-                            onClick={() => {
-                              setEditing(section);
-                              setDraft(body);
-                            }}
-                          >
-                            <Pencil size={12} />
-                            编辑
-                          </button>
-                        )}
-                    </div>
-                    {editing === section ? (
-                      <div className="space-y-2">
-                        <textarea
-                          className={input}
-                          rows={5}
-                          value={draft}
-                          onChange={(event) => setDraft(event.target.value)}
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={busy || !draft.trim()}
-                            onClick={() =>
-                              void mutate(
-                                `${base}/sections`,
-                                { section, body: draft, expected_version: latest.version },
-                                "已保存为新版本。",
-                              )
-                            }
-                            className={button}
-                          >
-                            保存为新版本
-                          </button>
-                          <button type="button" onClick={() => setEditing("")} className={secondary}>
-                            取消
-                          </button>
+              {viewed ? (
+                <div className="divide-y divide-slate-100">
+                  {visibleEntries.map(([section, body]) => {
+                    const isRewritingThis = rewritingSection === section;
+                    return (
+                      <article id={`report-sec-${section}`} key={section} className="py-3.5 first:pt-0 last:pb-0">
+                        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="text-base font-bold tracking-tight text-slate-900">
+                            {sectionHeadingLabels[section] ?? section}
+                          </h3>
+                          {canEditChapter && editing !== section && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50/70 px-2.5 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-100/80 disabled:opacity-50"
+                                onClick={() => void rewriteChapterWithAi(viewed.version, section)}
+                              >
+                                <Sparkles size={12} className={isRewritingThis ? "animate-spin" : ""} />
+                                {isRewritingThis ? "AI 重写中…" : "AI 重写本章"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                                onClick={() => {
+                                  setEditing(section);
+                                  setDraft(body);
+                                }}
+                              >
+                                <Pencil size={12} />
+                                编辑
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
-                      <p className="whitespace-pre-wrap rounded-xl bg-slate-50/85 px-3.5 py-2.5 text-sm leading-6 text-slate-700">
-                        {body}
-                      </p>
-                    )}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center rounded-xl bg-slate-50/80 px-4 py-8 text-center">
-                <p className="text-sm font-semibold text-slate-700">尚无报告预览</p>
-                <p className="mt-1 text-xs text-slate-500">基于当前任务、正式证据、贡献与风险数据自动汇编首版报告快照。</p>
+                        {editing === section ? (
+                          <div className="space-y-2">
+                            <textarea
+                              className={`${input} font-mono text-xs leading-6`}
+                              rows={10}
+                              value={draft}
+                              onChange={(event) => setDraft(event.target.value)}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={busy || !draft.trim()}
+                                onClick={() =>
+                                  void mutate(
+                                    `${base}/sections`,
+                                    { section, body: draft, expected_version: latest.version },
+                                    "已保存为新版本。",
+                                    "edit",
+                                  )
+                                }
+                                className={button}
+                              >
+                                保存为新版本
+                              </button>
+                              <button type="button" onClick={() => setEditing("")} className={secondary}>
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                            <MarkdownPreview source={body} />
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-xl bg-slate-50/80 px-4 py-8 text-center">
+                  <Sparkles size={24} className="mb-2 text-sky-600" />
+                  <p className="text-sm font-semibold text-slate-800">尚无结项报告预览</p>
+                  <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-500">
+                    系统将汇总需求基线、任务与里程碑、GitHub 提交、飞书协作结论、正式证据与成员贡献，由 AI 撰写结构完整的 7 章高校课程结项报告。
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!canRefresh}
+                    onClick={() => void refreshPreview(true)}
+                    className={`${compactPrimaryBtn} mt-4`}
+                  >
+                    <Sparkles size={13} className={isRefreshing ? "animate-pulse" : ""} />
+                    {isRefreshing ? "AI 正在撰写首版报告…" : "生成首版预览"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Compact Single-Chapter Navigation Footer */}
+            {viewed && readMode === "chapter" && sectionEntries.length > 1 && (
+              <div className="flex shrink-0 items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-2 text-xs">
                 <button
                   type="button"
-                  disabled={!canRefresh}
-                  onClick={() => void refreshPreview(true)}
-                  className={`${compactPrimaryBtn} mt-3`}
+                  disabled={activeChapterIndex <= 0}
+                  onClick={() => selectChapter(sectionEntries[activeChapterIndex - 1][0])}
+                  className={compactBtn}
                 >
-                  <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
-                  {isRefreshing ? "正在生成首版预览…" : "生成首版预览"}
+                  <ChevronLeft size={13} />
+                  上一章
+                </button>
+                <span className="font-mono text-slate-500">
+                  第 {activeChapterIndex + 1} / {sectionEntries.length} 章
+                  {viewed.created_at ? ` · 快照 ${viewed.created_at.slice(0, 16).replace("T", " ")}` : ""}
+                </span>
+                <button
+                  type="button"
+                  disabled={activeChapterIndex < 0 || activeChapterIndex >= sectionEntries.length - 1}
+                  onClick={() => selectChapter(sectionEntries[activeChapterIndex + 1][0])}
+                  className={compactBtn}
+                >
+                  下一章
+                  <ChevronRight size={13} />
                 </button>
               </div>
             )}
           </section>
 
           {/* Right Sticky Column: Export, Version History, Audit */}
-          <div className="space-y-3.5 xl:sticky xl:top-4">
+          <div className="space-y-3 xl:sticky xl:top-4">
             {exportControlsCard}
             {versionHistoryCard}
             {auditLogsCard}

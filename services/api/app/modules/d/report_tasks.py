@@ -11,7 +11,7 @@ from app.db.models import Project
 from app.db.session import SessionLocal
 from app.modules.d.contribution_week7 import archive_contribution
 from app.modules.d.models import Report, ReportArtifact, ReportSnapshot
-from app.modules.d.reporting import render_document, snapshot_data
+from app.modules.d.reporting import build_report_snapshot_data, render_document
 from app.modules.d.risk_read import risk_advice
 
 celery_app = Celery(
@@ -49,8 +49,17 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
             project = session.scalar(
                 select(Project).where(Project.id == report.project_id).with_for_update()
             )
-            snapshot.data_snapshot = snapshot_data(session, project.id, project.name, appendix)
-            contribution_id = snapshot.data_snapshot["contribution_snapshot_id"]
+            creator_id = snapshot.created_by or report.created_by
+            data = build_report_snapshot_data(
+                session,
+                project.id,
+                project.name,
+                appendix,
+                actor_id=creator_id,
+                use_ai=True,
+            )
+            snapshot.data_snapshot = data
+            contribution_id = data["contribution_snapshot_id"]
             snapshot.contribution_snapshot_id = UUID(contribution_id) if contribution_id else None
             if snapshot.contribution_snapshot_id is not None:
                 archive_contribution(
@@ -60,42 +69,6 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
                     snapshot.id,
                     snapshot.contribution_snapshot_id,
                 )
-            project_id = project.id
-            creator_id = snapshot.created_by or report.created_by
-            active_risk_count = int((snapshot.data_snapshot.get("counts") or {}).get("risks", 0))
-            session.commit()
-        advice = None
-        if active_risk_count > 0:
-            try:
-                with SessionLocal() as session:
-                    advice = risk_advice(session, project_id, creator_id)
-            except Exception:
-                advice = None
-        with SessionLocal() as session:
-            snapshot = session.get(ReportSnapshot, UUID(snapshot_id))
-            report = session.get(Report, snapshot.report_id)
-            data = dict(snapshot.data_snapshot)
-            if advice:
-                data["sections"] = {
-                    **data["sections"],
-                    "risk_explanation": (
-                        advice["summary"]
-                        + "\n"
-                        + advice["explanation"]
-                        + "\n"
-                        + "\n".join(advice["suggestions"])
-                        + "\nAI advice requires human review."
-                    ),
-                }
-                snapshot.data_snapshot = data
-            elif active_risk_count == 0:
-                from app.modules.d.reporting import _deterministic_risk_explanation
-
-                data["sections"] = {
-                    **data["sections"],
-                    "risk_explanation": _deterministic_risk_explanation(data, []),
-                }
-                snapshot.data_snapshot = data
             snapshot.status = "generated"
             report.status = "generated"
             session.commit()
@@ -138,3 +111,6 @@ def generate_export(artifact_id: str) -> None:
             artifact.completed_at = datetime.now(UTC)
             session.commit()
         raise
+
+
+__all__ = ["celery_app", "generate_export", "generate_preview", "risk_advice"]
