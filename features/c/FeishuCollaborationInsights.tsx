@@ -21,7 +21,6 @@ import {
   StatusBadge,
 } from "@/components/common";
 import { formatDate } from "@/lib/utils";
-import { apiButton, apiPrimaryButton } from "./c-project-api";
 
 export type FeishuInsightCategory =
   | "division_confirm"
@@ -101,6 +100,11 @@ const STATUS_LABELS: Record<FeishuInsightStatus, string> = {
   needs_followup: "待跟进",
 };
 
+const compactBtn =
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-2xs transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+const compactPrimaryBtn =
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[var(--gp-action)] px-3 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[var(--gp-action-hover)] disabled:cursor-not-allowed disabled:opacity-50";
+
 function statusTone(status: FeishuInsightStatus): "green" | "blue" | "amber" {
   if (status === "completed") return "green";
   if (status === "in_progress") return "blue";
@@ -108,13 +112,9 @@ function statusTone(status: FeishuInsightStatus): "green" | "blue" | "amber" {
 }
 
 function StatusIcon({ status }: { status: FeishuInsightStatus }) {
-  if (status === "completed") {
-    return <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />;
-  }
-  if (status === "needs_followup") {
-    return <AlertTriangle size={18} className="shrink-0 text-amber-600" />;
-  }
-  return <Clock size={18} className="shrink-0 text-sky-600" />;
+  if (status === "completed") return <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />;
+  if (status === "needs_followup") return <AlertTriangle size={15} className="shrink-0 text-amber-600" />;
+  return <Clock size={15} className="shrink-0 text-sky-600" />;
 }
 
 const SENDER_STYLES = [
@@ -136,12 +136,8 @@ function senderBadgeClass(senderLabel: string): string {
 
 function formatRange(startedAt: string | null, endedAt: string | null): string {
   if (!startedAt && !endedAt) return "";
-  if (startedAt && endedAt && formatDate(startedAt) === formatDate(endedAt)) {
-    return formatDate(startedAt);
-  }
-  if (startedAt && endedAt) {
-    return `${formatDate(startedAt)} ~ ${formatDate(endedAt)}`;
-  }
+  if (startedAt && endedAt && formatDate(startedAt) === formatDate(endedAt)) return formatDate(startedAt);
+  if (startedAt && endedAt) return `${formatDate(startedAt)} ~ ${formatDate(endedAt)}`;
   return formatDate(startedAt || endedAt || "");
 }
 
@@ -195,10 +191,7 @@ export function FeishuCollaborationInsightsPanel({
     [categoryFilter, items],
   );
 
-  const selectedInsight = useMemo(
-    () => items.find((item) => item.id === selectedId) ?? null,
-    [items, selectedId],
-  );
+  const selectedInsight = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId]);
 
   if (loading && !data) {
     return <StateBlock tone="loading" title="正在读取 AI 协作结论" />;
@@ -214,78 +207,50 @@ export function FeishuCollaborationInsightsPanel({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
-                <Sparkles size={13} />
+    <div className="space-y-3.5">
+      {/* Compact AI Insights Summary Bar */}
+      <div className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 font-semibold text-sky-700">
+                <Sparkles size={12} />
                 AI 协作进展分析
               </span>
-              <span className="text-xs text-slate-500">
-                共 {data.total_messages} 条群聊消息（已过滤系统提示，分析 {data.analyzed_messages} 条有效消息）
+              <span className="text-slate-500">
+                共 {data.total_messages} 条消息（有效分析 {data.analyzed_messages} 条）
               </span>
-              {data.stale && (
-                <StatusBadge label="有新消息未分析" tone="amber" />
+              {items.length > 0 && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-medium text-emerald-700">已达成 {counts.completed}</span>
+                  <span className="font-medium text-sky-700">推进中 {counts.inProgress}</span>
+                  {counts.followup > 0 && <span className="font-medium text-amber-800">待跟进 {counts.followup}</span>}
+                </>
               )}
-              {data.generated_at && (
-                <span className="text-xs text-slate-400">
-                  更新于 {formatDate(data.generated_at)}
-                </span>
-              )}
+              {data.stale && <StatusBadge label="有新消息未分析" tone="amber" />}
+              {data.generated_at && <span className="text-slate-400">更新于 {formatDate(data.generated_at)}</span>}
             </div>
-            {data.overview ? (
-              <p className="text-sm leading-6 text-slate-700">{data.overview}</p>
-            ) : (
-              <p className="text-sm leading-6 text-slate-600">
-                AI 会通读群内对话上下文，识别「发送分工/文档 + 成员回复收到/OK/可以」等协作确认信号以及任务推进情况，过滤无关闲聊并生成可回溯原聊天记录的协作结论。
-              </p>
-            )}
-            {items.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-medium text-emerald-700">
-                  已达成 {counts.completed}
-                </span>
-                <span className="rounded-full bg-sky-50 px-2.5 py-0.5 font-medium text-sky-700">
-                  推进中 {counts.inProgress}
-                </span>
-                {counts.followup > 0 && (
-                  <span className="rounded-full bg-amber-50 px-2.5 py-0.5 font-medium text-amber-800">
-                    待跟进 {counts.followup}
-                  </span>
-                )}
-                <span className="text-slate-400">· AI 判断仅供参考，正式任务验收仍需人工确认</span>
-              </div>
-            )}
+            {data.overview && <p className="text-xs leading-5 text-slate-700">{data.overview}</p>}
           </div>
           {canAnalyze && (
-            <button
-              type="button"
-              className={apiPrimaryButton}
-              disabled={analyzing}
-              onClick={onAnalyze}
-            >
-              <Sparkles size={14} className={analyzing ? "animate-pulse" : ""} />
-              {analyzing
-                ? "AI 分析群聊中…"
-                : data.status === "ready"
-                  ? "AI 重新分析"
-                  : "AI 分析群聊协作结论"}
+            <button type="button" className={compactPrimaryBtn} disabled={analyzing} onClick={onAnalyze}>
+              <Sparkles size={13} className={analyzing ? "animate-pulse" : ""} />
+              {analyzing ? "AI 分析中…" : data.status === "ready" ? "AI 重新分析" : "AI 分析群聊协作结论"}
             </button>
           )}
         </div>
         {analyzing && (
-          <div className="mt-4">
+          <div className="mt-3">
             <Feedback tone="info">
               正在通读 {data.analyzed_messages} 条有效群聊消息并提炼分工确认与任务进展，大约需要 10～20 秒…
             </Feedback>
           </div>
         )}
         {data.status === "failed" && !analyzing && (
-          <div className="mt-4">
+          <div className="mt-3">
             <Feedback tone="warning">
-              上次 AI 协作分析未能完成（{data.error_code || "AI_UNAVAILABLE"}），请稍后点击「AI 分析群聊协作结论」重试，或切换查看原始聊天记录。
+              上次 AI 协作分析未能完成（{data.error_code || "AI_UNAVAILABLE"}），请稍后重试或切换查看原始聊天记录。
             </Feedback>
           </div>
         )}
@@ -297,8 +262,8 @@ export function FeishuCollaborationInsightsPanel({
           description="点击上方「AI 分析群聊协作结论」，自动从群聊中提炼分工确认、任务进展与团队决策。"
           action={
             canAnalyze ? (
-              <button type="button" className={apiPrimaryButton} onClick={onAnalyze}>
-                <Sparkles size={14} />
+              <button type="button" className={compactPrimaryBtn} onClick={onAnalyze}>
+                <Sparkles size={13} />
                 立即分析群聊
               </button>
             ) : undefined
@@ -313,103 +278,89 @@ export function FeishuCollaborationInsightsPanel({
         />
       )}
 
+      {/* Dense Scannable Insights List Card */}
       {items.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="按协作结论类型筛选">
-            {(
-              [
-                ["all", `全部结论 (${items.length})`],
-                ["division_confirm", CATEGORY_LABELS.division_confirm],
-                ["task_progress", CATEGORY_LABELS.task_progress],
-                ["doc_review", CATEGORY_LABELS.doc_review],
-                ["decision", CATEGORY_LABELS.decision],
-                ["blocker", CATEGORY_LABELS.blocker],
-              ] as const
-            ).map(([key, label]) => {
-              const count = key === "all" ? items.length : items.filter((item) => item.category === key).length;
-              if (key !== "all" && count === 0) return null;
-              const active = categoryFilter === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setCategoryFilter(key)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                    active
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/80"
-                  }`}
-                >
-                  {key === "all" ? label : `${label} (${count})`}
-                </button>
-              );
-            })}
+        <section className="rounded-2xl border border-slate-200/85 bg-white shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="按协作结论类型筛选">
+              {(
+                [
+                  ["all", `全部 (${items.length})`],
+                  ["division_confirm", CATEGORY_LABELS.division_confirm],
+                  ["task_progress", CATEGORY_LABELS.task_progress],
+                  ["doc_review", CATEGORY_LABELS.doc_review],
+                  ["decision", CATEGORY_LABELS.decision],
+                  ["blocker", CATEGORY_LABELS.blocker],
+                ] as const
+              ).map(([key, label]) => {
+                const count = key === "all" ? items.length : items.filter((item) => item.category === key).length;
+                if (key !== "all" && count === 0) return null;
+                const active = categoryFilter === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setCategoryFilter(key)}
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
+                      active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200/80"
+                    }`}
+                  >
+                    {key === "all" ? label : `${label} (${count})`}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] text-slate-400">AI 判断仅供参考</span>
           </div>
 
-          <div className="space-y-3">
+          <div className="divide-y divide-slate-100">
             {filtered.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-slate-200/80 bg-white p-4 transition hover:border-slate-300/90"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
+              <article key={item.id} className="px-4 py-2.5 transition-colors hover:bg-slate-50/50">
+                <div className="flex flex-wrap items-start justify-between gap-2.5">
+                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
                     <div className="mt-0.5">
                       <StatusIcon status={item.status} />
                     </div>
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-slate-900">{item.title}</h3>
-                        <StatusBadge
-                          label={STATUS_LABELS[item.status]}
-                          tone={statusTone(item.status)}
-                        />
-                        <span className="gp-pill">{CATEGORY_LABELS[item.category]}</span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
+                        <StatusBadge label={STATUS_LABELS[item.status]} tone={statusTone(item.status)} />
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                          {CATEGORY_LABELS[item.category]}
+                        </span>
                       </div>
-                      <p className="text-sm leading-6 text-slate-700">{item.summary}</p>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs text-slate-500">
+                      <p className="line-clamp-2 text-xs leading-5 text-slate-600">{item.summary}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
                         <span className="inline-flex items-center gap-1">
-                          <Users size={13} />
-                          {item.confirmed_count} 位成员参与/确认
+                          <Users size={12} />
+                          {item.confirmed_count} 人参与
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <MessageSquare size={13} />
-                          关联 {item.message_count} 条聊天记录
+                          <MessageSquare size={12} />
+                          {item.message_count} 条引证
                         </span>
-                        {formatRange(item.started_at, item.ended_at) && (
-                          <span>{formatRange(item.started_at, item.ended_at)}</span>
-                        )}
-                        {item.linked_tasks.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {item.linked_tasks.map((task) => (
-                              <Link
-                                key={task.id}
-                                href={`/projects/${projectId}/tasks`}
-                                className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-700"
-                              >
-                                {task.code} {task.title}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
+                        {formatRange(item.started_at, item.ended_at) && <span>{formatRange(item.started_at, item.ended_at)}</span>}
+                        {item.linked_tasks.map((task) => (
+                          <Link
+                            key={task.id}
+                            href={`/projects/${projectId}/tasks`}
+                            className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-700"
+                          >
+                            {task.code} {task.title}
+                          </Link>
+                        ))}
                       </div>
                     </div>
                   </div>
-                  <div className="shrink-0">
-                    <button
-                      type="button"
-                      className={apiButton}
-                      onClick={() => setSelectedId(item.id)}
-                    >
-                      <MessageSquare size={14} />
-                      查看聊天记录
-                    </button>
-                  </div>
+                  <button type="button" className={compactBtn} onClick={() => setSelectedId(item.id)}>
+                    <MessageSquare size={13} />
+                    查看聊天记录
+                  </button>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       <DetailDrawer
@@ -425,63 +376,47 @@ export function FeishuCollaborationInsightsPanel({
         }
       >
         {selectedInsight && (
-          <div className="space-y-5">
+          <div className="space-y-4">
             <Section
               title="AI 协作判断依据"
               description="结论由 AI 基于下方真实群聊记录提炼，仅供参考，不自动替代人工任务验收。"
               surface
             >
-              <div className="space-y-3">
+              <div className="space-y-2.5 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge
-                    label={STATUS_LABELS[selectedInsight.status]}
-                    tone={statusTone(selectedInsight.status)}
-                  />
+                  <StatusBadge label={STATUS_LABELS[selectedInsight.status]} tone={statusTone(selectedInsight.status)} />
                   <span className="gp-pill">{CATEGORY_LABELS[selectedInsight.category]}</span>
-                  <span className="gp-pill">
-                    参与/确认 {selectedInsight.confirmed_count} 人
-                  </span>
-                  <span className="gp-pill">
-                    置信度 {Math.round(selectedInsight.confidence * 100)}%
-                  </span>
+                  <span className="gp-pill">参与/确认 {selectedInsight.confirmed_count} 人</span>
+                  <span className="gp-pill">置信度 {Math.round(selectedInsight.confidence * 100)}%</span>
                 </div>
                 <p className="text-sm leading-6 text-slate-800">{selectedInsight.summary}</p>
                 {selectedInsight.judgment_basis && (
-                  <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs leading-5 text-slate-600">
+                  <div className="rounded-xl bg-slate-50 px-3 py-2 leading-5 text-slate-600">
                     <strong className="font-semibold text-slate-700">判断依据：</strong>
                     {selectedInsight.judgment_basis}
                   </div>
                 )}
                 {selectedInsight.linked_tasks.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    <p className="text-xs font-semibold text-slate-500">关联项目任务</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedInsight.linked_tasks.map((task) => (
-                        <Link
-                          key={task.id}
-                          href={`/projects/${projectId}/tasks`}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-sky-300 hover:text-sky-700"
-                        >
-                          <FileText size={12} />
-                          {task.code} {task.title}
-                        </Link>
-                      ))}
-                    </div>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {selectedInsight.linked_tasks.map((task) => (
+                      <Link
+                        key={task.id}
+                        href={`/projects/${projectId}/tasks`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 font-medium text-slate-700 hover:border-sky-300 hover:text-sky-700"
+                      >
+                        <FileText size={12} />
+                        {task.code} {task.title}
+                      </Link>
+                    ))}
                   </div>
                 )}
               </div>
             </Section>
 
-            <Section
-              title={`关联聊天记录（${selectedInsight.messages.length} 条）`}
-              description="按真实发送时间先后展示支撑该结论的原始飞书群聊记录。"
-            >
-              <div className="space-y-3">
+            <Section title={`关联聊天记录（${selectedInsight.messages.length} 条）`}>
+              <div className="space-y-2.5">
                 {selectedInsight.messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5"
-                  >
+                  <div key={msg.id} className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span
@@ -489,9 +424,7 @@ export function FeishuCollaborationInsightsPanel({
                         >
                           {msg.sender_label}
                         </span>
-                        <span className="text-xs text-slate-400">
-                          {formatMessageTime(msg.occurred_at)}
-                        </span>
+                        <span className="text-xs text-slate-400">{formatMessageTime(msg.occurred_at)}</span>
                       </div>
                       <button
                         type="button"
@@ -504,21 +437,17 @@ export function FeishuCollaborationInsightsPanel({
                         打开原始记录 →
                       </button>
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
-                      {msg.text}
-                    </p>
+                    <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">{msg.text}</p>
                     {msg.attachments.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {msg.attachments.map((att) => (
                           <span
                             key={att.id}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-700"
                           >
-                            <Paperclip size={12} className="text-slate-400" />
+                            <Paperclip size={11} className="text-slate-400" />
                             {att.name || `[${att.kind}]`}
-                            {att.verified && (
-                              <span className="text-emerald-600">· 已核验</span>
-                            )}
+                            {att.verified && <span className="text-emerald-600">· 已核验</span>}
                           </span>
                         ))}
                       </div>
