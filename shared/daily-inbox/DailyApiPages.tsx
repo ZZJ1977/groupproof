@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Activity, ArrowRight, Bell, BookOpen, CheckSquare, Folder, Home, Plus, RefreshCw } from "lucide-react";
+import "@/shared/styles/lux-teacher.css";
+import { JellyActionRow } from "@/shared/components/lux/JellyActionRow";
 import { EmptyState, PageHeader, ProgressBar, Stat, StatusBadge } from "@/shared/components/common";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
 import { useGpThemeScope } from "@/shared/components/ui/theme-scope";
@@ -143,8 +145,24 @@ export function HomeApiPage() {
   const isTeacher = role === "teacher" || role === "ta";
   const t = useTranslations("core.home");
   const [createOpen, setCreateOpen] = useState(false);
+  const [refreshSeq, setRefreshSeq] = useState(0);
+  const [refreshPulse, setRefreshPulse] = useState(false);
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
+
+  useEffect(() => {
+    if (result.isFetching || !refreshPulse) return;
+    const timer = window.setTimeout(() => setRefreshPulse(false), 480);
+    return () => window.clearTimeout(timer);
+  }, [result.isFetching, refreshPulse]);
+
+  const isRefreshing = result.isFetching || refreshPulse;
+  const refreshDir = refreshSeq === 0 ? "init" : refreshSeq % 2 === 1 ? "next" : "prev";
+  const triggerRefresh = () => {
+    setRefreshSeq((prev) => prev + 1);
+    setRefreshPulse(true);
+    void result.refetch();
+  };
   const recentActivity = useQuery({
     queryKey: ["c-home-recent-activity", userId],
     queryFn: () => client.personalActivity({ category: "all", page: 1, page_size: 4 }),
@@ -210,7 +228,7 @@ export function HomeApiPage() {
               {tr("根据你当前的课程、项目和任务计算。")}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <JellyActionRow pill ariaLabel={t("title")}>
             <Link
               href="/teacher/courses"
               data-variant="default"
@@ -249,15 +267,20 @@ export function HomeApiPage() {
               size="sm"
               pill
               disabled={result.isFetching}
-              onClick={() => void result.refetch()}
+              aria-busy={result.isFetching || undefined}
+              onClick={triggerRefresh}
             >
-              <RefreshCw size={14} className={cn(result.isFetching && "animate-spin")} aria-hidden="true" />
+              <RefreshCw
+                size={14}
+                className={cn("gp-refresh-icon", isRefreshing && "is-spinning")}
+                aria-hidden="true"
+              />
               {tr("刷新统计")}
             </Button>
-          </div>
+          </JellyActionRow>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="gp-stagger-list grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {quickCards.map((card) => {
             const CardIcon = card.icon;
             return (
@@ -328,7 +351,11 @@ export function HomeApiPage() {
         {data && (
           <>
             <div className="space-y-2">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div
+                key={refreshSeq}
+                data-refresh-dir={refreshDir}
+                className="gp-jelly-stat-grid grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+              >
                 <Stat label={t("myCourses")} value={data.course_count} icon={BookOpen} />
                 <Stat label={t("myProjects")} value={data.project_count} icon={Folder} />
                 <Stat
@@ -364,7 +391,7 @@ export function HomeApiPage() {
                 </div>
 
                 {data.projects.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="gp-stagger-list space-y-3">
                     {data.projects.map((project) => (
                       <div
                         key={project.id}
@@ -436,7 +463,7 @@ export function HomeApiPage() {
                 </div>
 
                 {data.courses.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="gp-stagger-list space-y-3">
                     {data.courses.map((course) => (
                       <div
                         key={course.id}
@@ -507,7 +534,7 @@ export function HomeApiPage() {
       <PageHeader
         title={t("title")}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <JellyActionRow ariaLabel={t("title")}>
             {isTeacher && <Link href="/teacher/courses" className={buttonVariants({ size: "sm" })}>我的班级 / 创建班级</Link>}
             <button
               type="button"
@@ -525,12 +552,13 @@ export function HomeApiPage() {
               className={buttonVariants({ variant: "ghost", size: "sm" })}
               type="button"
               disabled={result.isFetching}
-              onClick={() => void result.refetch()}
+              aria-busy={result.isFetching || undefined}
+              onClick={triggerRefresh}
             >
-              <RefreshCw size={14} className={result.isFetching ? "animate-spin" : ""} />
+              <RefreshCw size={14} className={cn("gp-refresh-icon", isRefreshing && "is-spinning")} />
               刷新统计
             </button>
-          </div>
+          </JellyActionRow>
         }
       />
 
@@ -540,7 +568,11 @@ export function HomeApiPage() {
       {data && (
         <>
           {/* 单行紧凑 KPI 分隔指标条 */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs">
+          <div
+            key={refreshSeq}
+            data-refresh-dir={refreshDir}
+            className="gp-jelly-stat-bar overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs"
+          >
             <div className="grid grid-cols-2 divide-y divide-slate-100 lg:grid-cols-4 lg:divide-x lg:divide-y-0">
               <div className="gp-stat !min-h-0 !transform-none !rounded-none !border-0 !bg-transparent !px-4 !py-2.5 !shadow-none flex items-center justify-between gap-2.5 border-r border-slate-100 lg:border-r-0">
                 <div className="flex min-w-0 items-center gap-2.5">

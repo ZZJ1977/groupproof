@@ -1,0 +1,216 @@
+/* Lucian UX/UI Prompt #354 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#354 */
+
+.u354-shell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.u354-nav {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--ux-surface-2, #f4f8fc);
+  box-shadow: inset 0 0 0 1px var(--gp-border-subtle, #ebedf0);
+}
+
+.u354-pn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--mw, 0px);
+  height: var(--mh, 0px);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--ux-surface, #ffffff), #edf3ff);
+  box-shadow:
+    0 0 0 1px rgba(51, 112, 255, 0.22),
+    0 6px 14px -8px rgba(36, 107, 250, 0.28),
+    0 1px 2px rgba(15, 23, 42, 0.05);
+  transform: translate3d(var(--mx, 4px), var(--my, 4px), 0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition:
+    transform 0.45s cubic-bezier(0.3, 1.1, 0.4, 1),
+    width 0.45s cubic-bezier(0.3, 1.1, 0.4, 1),
+    height 0.45s cubic-bezier(0.3, 1.1, 0.4, 1),
+    opacity 0.25s var(--ux-ease, ease-out),
+    box-shadow 0.25s var(--ux-ease, ease-out);
+}
+
+.u354-nav.is-ready .u354-pn {
+  opacity: 1;
+}
+
+.u354-nav.is-preview .u354-pn {
+  background: var(--ux-surface, #ffffff);
+  box-shadow:
+    0 0 0 1px rgba(51, 112, 255, 0.36),
+    0 10px 22px -10px rgba(36, 107, 250, 0.32),
+    0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.u354-nav.no-t .u354-pn {
+  transition: opacity 0.25s;
+}
+
+.u354-car {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 0 0 2px 0;
+  background: #edf3ff;
+  box-shadow: 1px 1px 0 rgba(51, 112, 255, 0.24);
+  transform: translate3d(var(--cx, 0px), var(--cy, 0px), 0) rotate(45deg);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition:
+    transform 0.45s cubic-bezier(0.3, 1.1, 0.4, 1),
+    opacity 0.25s var(--ux-ease, ease-out);
+}
+
+.u354-nav.is-ready .u354-car {
+  opacity: 1;
+}
+
+.u354-nav.is-preview .u354-car {
+  background: var(--ux-surface, #ffffff);
+  box-shadow: 1px 1px 0 rgba(51, 112, 255, 0.4);
+}
+
+.u354-nav.no-t .u354-car {
+  transition: opacity 0.25s;
+}
+
+.u354-tab {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 560;
+  color: var(--ux-ink-2, #4e5969);
+  text-decoration: none;
+  transition:
+    color 0.2s,
+    background-color 0.2s,
+    transform 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.u354-tab:active {
+  transform: scale(0.97);
+}
+
+.u354-tab.is-active {
+  color: var(--gp-action-on-soft, #1d4ed8);
+  font-weight: 650;
+}
+
+.u354-nav.is-preview .u354-tab.is-active:not(.is-target) {
+  background: rgba(232, 240, 254, 0.7);
+}
+
+.u354-tab.is-target:not(.is-active) {
+  color: var(--ux-ink, #1f2329);
+}
+
+.u354-tab:focus-visible {
+  outline: 2px solid var(--gp-action, #3370ff);
+  outline-offset: 2px;
+}
+
+.u354-trailing {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1280px) {
+  .u354-shell {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  .u354-nav {
+    flex-wrap: nowrap;
+    border-radius: 999px;
+  }
+}
+
+@media (min-width: 1280px) and (max-width: 1535px) {
+  .u354-tab {
+    gap: 4px;
+    height: 28px;
+    padding: 0 7px;
+    font-size: 11.5px;
+  }
+}
+
+@media (min-width: 1536px) and (max-width: 1679px) {
+  .u354-tab {
+    gap: 4px;
+    padding: 0 8px;
+  }
+}
+
+@keyframes u354-slide-right {
+  from {
+    opacity: 0.15;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes u354-slide-left {
+  from {
+    opacity: 0.15;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.u354-hub-content[data-slide="right"] {
+  animation: u354-slide-right 0.45s cubic-bezier(0.3, 1.1, 0.4, 1) both;
+}
+
+.u354-hub-content[data-slide="left"] {
+  animation: u354-slide-left 0.45s cubic-bezier(0.3, 1.1, 0.4, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .u354-pn,
+  .u354-car,
+  .u354-tab {
+    transition: none !important;
+  }
+  .u354-hub-content[data-slide="right"],
+  .u354-hub-content[data-slide="left"] {
+    animation: none !important;
+  }
+}

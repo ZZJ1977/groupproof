@@ -1,0 +1,198 @@
+/* Lucian UX/UI Prompt #416 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#416 */
+
+.u416-tl {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--ux-surface-2, #f4f8fc);
+  box-shadow: inset 0 0 0 1px var(--ux-line, #e2e8f0);
+}
+
+.u416-tl.u416-tl-pill {
+  border-radius: 16px;
+}
+
+@media (min-width: 1024px) {
+  .u416-tl.u416-tl-pill {
+    border-radius: 999px;
+  }
+}
+
+.u416-th {
+  position: absolute;
+  top: var(--t, 4px);
+  bottom: var(--b, 4px);
+  left: var(--l, 4px);
+  right: var(--r, 4px);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ux-accent, #246bfa) 8%, transparent);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--ux-accent, #246bfa) 46%, transparent),
+    0 6px 14px -8px rgba(36, 107, 250, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  transition:
+    left var(--tl, 0.5s) cubic-bezier(0.3, 1.25, 0.45, 1),
+    right var(--tr, 0.5s) cubic-bezier(0.3, 1.25, 0.45, 1),
+    top 0.38s var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    bottom 0.38s var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    opacity 0.22s var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.u416-tl.u416-tl-pill .u416-th {
+  border-radius: 999px;
+}
+
+.u416-tl.is-ready .u416-th {
+  opacity: 0.45;
+}
+
+.u416-tl.is-ready.is-hot .u416-th {
+  opacity: 1;
+}
+
+.u416-tl.no-t .u416-th {
+  transition: opacity 0.2s;
+}
+
+.u416-tl > a,
+.u416-tl > button {
+  position: relative;
+  z-index: 1;
+  transition:
+    color 0.25s,
+    background-color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s,
+    transform 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.u416-tl > a:active,
+.u416-tl > button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.u416-tl > a:focus-visible,
+.u416-tl > button:focus-visible {
+  outline: 2px solid var(--ux-accent, #246bfa);
+  outline-offset: 2px;
+}
+
+@keyframes u416-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gp-refresh-icon.is-spinning {
+  animation: u416-refresh-spin 0.65s linear infinite;
+}
+
+@keyframes u416-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--d, 1) * 22px));
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes u416-panel-init {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="next"] > *,
+.gp-jelly-stat-bar[data-refresh-dir="next"] .gp-stat > * {
+  --d: 1;
+  animation: u416-panel-in 0.6s cubic-bezier(0.3, 1.3, 0.45, 1) both;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="prev"] > *,
+.gp-jelly-stat-bar[data-refresh-dir="prev"] .gp-stat > * {
+  --d: -1;
+  animation: u416-panel-in 0.6s cubic-bezier(0.3, 1.3, 0.45, 1) both;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="init"] > *,
+.gp-jelly-stat-bar[data-refresh-dir="init"] .gp-stat > * {
+  animation: u416-panel-init 0.35s var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="next"] > :nth-child(1),
+.gp-jelly-stat-grid[data-refresh-dir="prev"] > :nth-child(1),
+.gp-jelly-stat-bar[data-refresh-dir="next"] .gp-stat:nth-child(1) > *,
+.gp-jelly-stat-bar[data-refresh-dir="prev"] .gp-stat:nth-child(1) > * {
+  animation-delay: 0s;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="next"] > :nth-child(2),
+.gp-jelly-stat-grid[data-refresh-dir="prev"] > :nth-child(2),
+.gp-jelly-stat-bar[data-refresh-dir="next"] .gp-stat:nth-child(2) > *,
+.gp-jelly-stat-bar[data-refresh-dir="prev"] .gp-stat:nth-child(2) > * {
+  animation-delay: 0.035s;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="next"] > :nth-child(3),
+.gp-jelly-stat-grid[data-refresh-dir="prev"] > :nth-child(3),
+.gp-jelly-stat-bar[data-refresh-dir="next"] .gp-stat:nth-child(3) > *,
+.gp-jelly-stat-bar[data-refresh-dir="prev"] .gp-stat:nth-child(3) > * {
+  animation-delay: 0.07s;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="next"] > :nth-child(4),
+.gp-jelly-stat-grid[data-refresh-dir="prev"] > :nth-child(4),
+.gp-jelly-stat-bar[data-refresh-dir="next"] .gp-stat:nth-child(4) > *,
+.gp-jelly-stat-bar[data-refresh-dir="prev"] .gp-stat:nth-child(4) > * {
+  animation-delay: 0.105s;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="init"] > :nth-child(2),
+.gp-jelly-stat-bar[data-refresh-dir="init"] .gp-stat:nth-child(2) > * {
+  animation-delay: 0.04s;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="init"] > :nth-child(3),
+.gp-jelly-stat-bar[data-refresh-dir="init"] .gp-stat:nth-child(3) > * {
+  animation-delay: 0.08s;
+}
+
+.gp-jelly-stat-grid[data-refresh-dir="init"] > :nth-child(4),
+.gp-jelly-stat-bar[data-refresh-dir="init"] .gp-stat:nth-child(4) > * {
+  animation-delay: 0.12s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .u416-th,
+  .u416-tl > a,
+  .u416-tl > button {
+    transition: none !important;
+  }
+  .gp-refresh-icon.is-spinning,
+  .gp-jelly-stat-grid > *,
+  .gp-jelly-stat-bar .gp-stat > * {
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+}

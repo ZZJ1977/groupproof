@@ -1,0 +1,280 @@
+/* Teacher Workbench Lucian-aligned interaction polish (scoped to .gp-teacher-shell & .gp-teacher-portal, light-only) */
+
+/* 1. Restore visible :focus-visible blue outline ring across Teacher interactive controls */
+:is(.gp-teacher-shell, .gp-teacher-portal)
+  :is(a, button, input, select, textarea, summary, [role="button"], [role="tab"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--gp-action, #3370ff);
+  outline-offset: 2px;
+}
+
+:is(.gp-teacher-shell, .gp-teacher-portal)
+  :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--gp-action, #3370ff);
+  outline-offset: 1px;
+  border-color: var(--gp-action, #3370ff);
+  box-shadow: 0 0 0 3px rgba(51, 112, 255, 0.16);
+}
+
+/* 2. Card hover lift, stat lift & interactive press scale */
+.gp-teacher-shell .gp-card-interactive,
+.gp-teacher-shell [data-testid^="teacher-class-card-"] {
+  transition:
+    transform var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    box-shadow var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    border-color var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.gp-teacher-shell .gp-card-interactive:hover,
+.gp-teacher-shell [data-testid^="teacher-class-card-"]:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--gp-shadow-float, 0 4px 14px rgba(31, 35, 41, 0.08), 0 1px 3px rgba(31, 35, 41, 0.04));
+  border-color: rgba(51, 112, 255, 0.45);
+}
+
+.gp-teacher-shell :is(a.gp-card-interactive, button.gp-card-interactive, [role="button"].gp-card-interactive):active {
+  transform: translateY(0) scale(0.99);
+}
+
+.gp-teacher-shell .gp-stat {
+  transition:
+    transform var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    box-shadow var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    border-color var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.gp-teacher-shell .gp-stat:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--gp-shadow-float, 0 4px 14px rgba(31, 35, 41, 0.08), 0 1px 3px rgba(31, 35, 41, 0.04));
+  border-color: rgba(51, 112, 255, 0.3);
+}
+
+/* Interactive buttons & toolbar pills */
+.gp-teacher-shell .gp-toolbar-pill {
+  transition:
+    transform var(--gp-dur-micro, 150ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    background-color var(--gp-dur-micro, 150ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    border-color var(--gp-dur-micro, 150ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    box-shadow var(--gp-dur-micro, 150ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+    color var(--gp-dur-micro, 150ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.gp-teacher-shell .gp-toolbar-pill:hover {
+  transform: translateY(-0.5px);
+  box-shadow: 0 3px 10px -4px rgba(31, 35, 41, 0.14);
+}
+
+.gp-teacher-shell .gp-toolbar-pill:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.gp-teacher-shell .gp-toolbar-pill.gp-rainbow-ring::before {
+  opacity: 0.32;
+}
+
+.gp-teacher-shell .gp-toolbar-pill.gp-rainbow-ring:hover::before,
+.gp-teacher-shell .gp-toolbar-pill.gp-rainbow-ring:focus-within::before,
+.gp-teacher-shell .gp-toolbar-pill.gp-rainbow-ring:focus-visible::before {
+  opacity: 0.88;
+}
+
+/* 3. Subtle .gp-rainbow-ring on primary buttons on hover */
+:is(.gp-teacher-shell, .gp-teacher-portal)
+  [data-variant="default"]:not(:disabled):not([aria-disabled="true"]) {
+  position: relative;
+  isolation: isolate;
+}
+
+:is(.gp-teacher-shell, .gp-teacher-portal)
+  [data-variant="default"]:not(:disabled):not([aria-disabled="true"])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--gp-rainbow-angle),
+    #246bfa,
+    #7b61ff,
+    #3d8bff,
+    #1fb89a,
+    #f59e0b,
+    #246bfa
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity var(--gp-dur-ui, 200ms) var(--gp-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  animation: gp-rainbow-spin 3s linear infinite;
+}
+
+:is(.gp-teacher-shell, .gp-teacher-portal)
+  [data-variant="default"]:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible)::before {
+  opacity: 0.85;
+}
+
+/* 4. Staggered list entrance */
+@keyframes gp-teacher-stagger-in {
+  from {
+    opacity: 0.15;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gp-teacher-shell .gp-stagger-list > *,
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > *:not([role="status"]):not(.animate-pulse),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > *:not([role="status"]):not(.animate-pulse),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li,
+.gp-teacher-shell .gp-hub-panel .divide-y > *,
+.gp-teacher-shell .gp-hub-panel tbody > tr {
+  animation: gp-teacher-stagger-in 260ms var(--gp-ease-enter, cubic-bezier(0.05, 0.7, 0.1, 1)) both;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(1),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(1),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(1),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(1),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(1),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(2),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(2),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(2),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(2),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(2),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(3),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(3),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(3),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(3),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(3),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(4),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(4),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(4),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(4),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(4),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(4) {
+  animation-delay: 105ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(5),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(5),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(5),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(5),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(5),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(5) {
+  animation-delay: 140ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(6),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(6),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(6),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(6),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(6),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(6) {
+  animation-delay: 175ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(7),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(7),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(7),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(7),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(7),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(7) {
+  animation-delay: 210ms;
+}
+
+.gp-teacher-shell .gp-stagger-list > :nth-child(n + 8),
+.gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > :nth-child(n + 8),
+.gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > :nth-child(n + 8),
+.gp-teacher-shell .gp-hub-panel ul.space-y-3 > li:nth-child(n + 8),
+.gp-teacher-shell .gp-hub-panel .divide-y > :nth-child(n + 8),
+.gp-teacher-shell .gp-hub-panel tbody > tr:nth-child(n + 8) {
+  animation-delay: 245ms;
+}
+
+/* 5. Skeleton shimmer */
+@keyframes gp-teacher-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.gp-teacher-shell .animate-pulse,
+.gp-teacher-shell .gp-skeleton {
+  position: relative;
+  overflow: hidden;
+  animation: none;
+}
+
+.gp-teacher-shell .animate-pulse::after,
+.gp-teacher-shell .gp-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(224, 242, 254, 0.55) 45%,
+    rgba(255, 255, 255, 0.78) 50%,
+    rgba(224, 242, 254, 0.55) 55%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: gp-teacher-shimmer 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .gp-teacher-shell .gp-card-interactive,
+  .gp-teacher-shell [data-testid^="teacher-class-card-"],
+  .gp-teacher-shell .gp-stat,
+  .gp-teacher-shell .gp-toolbar-pill {
+    transition: none !important;
+    transform: none !important;
+  }
+  .gp-teacher-shell .gp-stagger-list > *,
+  .gp-teacher-shell .gp-hub-panel .space-y-3:not([role="status"]) > *,
+  .gp-teacher-shell .gp-hub-panel .space-y-2\.5:not([role="status"]) > *,
+  .gp-teacher-shell .gp-hub-panel ul.space-y-3 > li,
+  .gp-teacher-shell .gp-hub-panel .divide-y > *,
+  .gp-teacher-shell .gp-hub-panel tbody > tr {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .gp-teacher-shell .animate-pulse::after,
+  .gp-teacher-shell .gp-skeleton::after {
+    animation: none !important;
+    display: none;
+  }
+  :is(.gp-teacher-shell, .gp-teacher-portal)
+    [data-variant="default"]:not(:disabled):not([aria-disabled="true"])::before {
+    animation: none !important;
+    --gp-rainbow-angle: 135deg;
+  }
+}
