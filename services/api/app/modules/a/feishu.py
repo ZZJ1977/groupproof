@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.db.models import User
+from app.db.models import ProjectMember, User
 from app.modules.a import permissions
 from app.modules.a.audit import record_audit
 from app.modules.a.models import (
@@ -1146,8 +1146,39 @@ def _sync_attachments(session: Session, row: FeishuMessage, attachments) -> None
 # ------------------------------------------------------------------ C 的活动来源端口
 
 
+def _load_feishu_member_map(session: Session, project_id: UUID) -> dict[str, tuple[UUID, str]]:
+    """一次查询加载本项目已绑定飞书账号的成员映射：{feishu_account: (user.id, user.name)}。"""
+    rows = session.execute(
+        select(User.feishu_account, User.id, User.name)
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.left_at.is_(None),
+            User.feishu_account.is_not(None),
+        )
+        .order_by(ProjectMember.joined_at.asc(), User.id.asc())
+    ).all()
+    mapping: dict[str, tuple[UUID, str]] = {}
+    for feishu_account, user_id, name in rows:
+        key = (feishu_account or "").strip()
+        if not key or key in mapping:
+            continue
+        mapping[key] = (user_id, (name or "").strip())
+    return mapping
+
+
 def _sender_label(row: FeishuMessage) -> str:
-    return "飞书成员" if row.sender_open_id else "未知发送者"
+    return "飞书成员" if (row.sender_open_id or "").strip() else "未知发送者"
+
+
+def _resolve_sender(
+    row: FeishuMessage, member_map: dict[str, tuple[UUID, str]] | None = None
+) -> tuple[UUID | None, str]:
+    key = (row.sender_open_id or "").strip()
+    if row.sender_type != "app" and key and member_map and key in member_map:
+        user_id, name = member_map[key]
+        return user_id, name or "飞书成员"
+    return None, _sender_label(row)
 
 
 def _attachment_view(a: FeishuAttachment) -> dict[str, Any]:
@@ -1164,12 +1195,17 @@ def _attachment_view(a: FeishuAttachment) -> dict[str, Any]:
 
 
 def _record(
-    row: FeishuMessage, attachments: list[FeishuAttachment] | None = None, *, full: bool = False
+    row: FeishuMessage,
+    attachments: list[FeishuAttachment] | None = None,
+    *,
+    full: bool = False,
+    member_map: dict[str, tuple[UUID, str]] | None = None,
 ) -> ActivitySourceRecord:
     """列表只给前 200 字（短）；``get`` 给脱敏后的全文、版本号和附件引用（full=True）。"""
     first_line = (row.text.strip().splitlines() or [""])[0]
     title = "[已删除的消息]" if row.deleted else (first_line[:60] or f"[{row.msg_type}]")
     summary = "" if row.deleted else (row.text if full else row.text[:200])
+    author_id, author_name = _resolve_sender(row, member_map)
     content: dict[str, Any] = {
         "chat_id": row.chat_id,
         "msg_type": row.msg_type,
@@ -1183,8 +1219,8 @@ def _record(
         id=row.id,
         title=title,
         summary=summary,
-        author_id=None,  # 飞书 open_id 到本站用户的映射尚未建立
-        author_name=_sender_label(row),
+        author_id=author_id,
+        author_name=author_name,
         occurred_at=row.occurred_at,
         kind="message",
         source=VerifiedSource(
@@ -1215,15 +1251,23 @@ class DatabaseFeishuActivityPort:
     ):
         with self._session_factory() as session:
             _check_feishu(session, project_id, actor_id, source_type)
-            if query.author_id is not None:
-                # 飞书发送者到本站用户的映射还没有，不能假装能按人过滤。
-                raise _unavailable("按成员筛选飞书消息暂不可用。")
             if query.include_ids is not None and len(query.include_ids) == 0:
                 return ActivitySourcePage(items=(), total=0)
             if query.record_kind not in (None, "message"):
                 return ActivitySourcePage(items=(), total=0)
 
+            member_map = _load_feishu_member_map(session, project_id)
             filters = [FeishuMessage.project_id == project_id]
+            if query.author_id is not None:
+                matched_open_ids = [
+                    open_id
+                    for open_id, (user_id, _) in member_map.items()
+                    if user_id == query.author_id
+                ]
+                if not matched_open_ids:
+                    return ActivitySourcePage(items=(), total=0)
+                filters.append(FeishuMessage.sender_type != "app")
+                filters.append(func.trim(FeishuMessage.sender_open_id).in_(matched_open_ids))
             if query.group_id:
                 filters.append(FeishuMessage.chat_id == query.group_id)
             if query.since is not None:
@@ -1246,7 +1290,9 @@ class DatabaseFeishuActivityPort:
                 .offset(offset)
                 .limit(query.page_size)
             ).all()
-            return ActivitySourcePage(items=tuple(_record(r) for r in rows), total=total or 0)
+            return ActivitySourcePage(
+                items=tuple(_record(r, member_map=member_map) for r in rows), total=total or 0
+            )
 
     def get(self, *, project_id: UUID, actor_id: UUID, source_type: str, source_id: UUID):
         with self._session_factory() as session:
@@ -1265,7 +1311,8 @@ class DatabaseFeishuActivityPort:
                     .order_by(FeishuAttachment.file_key)
                 )
             )
-            return _record(row, attachments, full=True)
+            member_map = _load_feishu_member_map(session, project_id)
+            return _record(row, attachments, full=True, member_map=member_map)
 
 
 def _escape_like(value: str) -> str:

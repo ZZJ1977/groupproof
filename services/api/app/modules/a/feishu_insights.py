@@ -38,16 +38,34 @@ def _iso_utc(dt: datetime) -> str:
     return aware.astimezone(UTC).isoformat()
 
 
-def _sender_label_map(messages: list[FeishuMessage]) -> dict[str, str]:
-    """把群内不同 sender_open_id 稳定映射为易读的脱敏标签（群成员 A/B/C…）。"""
+def _sender_label_map(
+    messages: list[FeishuMessage],
+    known_names: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """优先用项目成员真实姓名标识 sender_open_id，未绑定者退回脱敏标签（群成员 A/B/C…）。"""
+    resolved_known: dict[str, str] = {}
+    for raw_key, raw_name in (known_names or {}).items():
+        key = (raw_key or "").strip()
+        name = (raw_name or "").strip()
+        if key and name and key not in resolved_known:
+            resolved_known[key] = name
+
     mapping: dict[str, str] = {}
+    fallback_idx = 0
     for msg in messages:
+        if msg.sender_type == "app":
+            continue
         key = (msg.sender_open_id or "").strip()
         if not key or key in mapping:
             continue
-        idx = len(mapping)
-        suffix = _LETTERS[idx] if idx < len(_LETTERS) else str(idx + 1)
-        mapping[key] = f"群成员 {suffix}"
+        if key in resolved_known:
+            mapping[key] = resolved_known[key]
+        else:
+            suffix = (
+                _LETTERS[fallback_idx] if fallback_idx < len(_LETTERS) else str(fallback_idx + 1)
+            )
+            fallback_idx += 1
+            mapping[key] = f"群成员 {suffix}"
     return mapping
 
 
@@ -108,7 +126,20 @@ def _load_project_context(session: Session, project_id: UUID) -> dict[str, Any]:
         ).all():
             attachments_by_msg.setdefault(att.message_row_id, []).append(att)
 
-    labels = _sender_label_map(all_messages)
+    member_rows = session.execute(
+        select(ProjectMember.user_id, User.feishu_account, User.name)
+        .join(User, User.id == ProjectMember.user_id)
+        .where(ProjectMember.project_id == project_id, ProjectMember.left_at.is_(None))
+        .order_by(ProjectMember.joined_at.asc(), User.id.asc())
+    ).all()
+    known_names: dict[str, str] = {}
+    for _, feishu_account, name in member_rows:
+        key = (feishu_account or "").strip()
+        display_name = (name or "").strip()
+        if key and display_name and key not in known_names:
+            known_names[key] = display_name
+
+    labels = _sender_label_map(all_messages, known_names=known_names)
     substantive = [m for m in all_messages if _is_substantive(m, attachments_by_msg.get(m.id, []))]
     # 若群聊超过窗口上限，优先保留最新的有效对话记录
     selected = substantive[-MAX_MESSAGES_FOR_AI:]
@@ -121,14 +152,7 @@ def _load_project_context(session: Session, project_id: UUID) -> dict[str, Any]:
         ).all()
     )
     numbered_tasks = [(f"T-{idx:03d}", t) for idx, t in enumerate(tasks, start=1)]
-    member_count = (
-        len(
-            session.scalars(
-                select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
-            ).all()
-        )
-        or 1
-    )
+    member_count = len(member_rows) or 1
 
     payload: ai.FeishuCollaborationInput | None = None
     digest = ""
@@ -146,7 +170,7 @@ def _load_project_context(session: Session, project_id: UUID) -> dict[str, Any]:
                 ai.CollabMessageBrief(
                     id=m.id,
                     occurred_at=_iso_utc(m.occurred_at),
-                    sender_label=_label_for(m, labels),
+                    sender_label=_label_for(m, labels)[:80],
                     msg_type=(m.msg_type or "text")[:40],
                     text=_message_text_for_ai(m, attachments_by_msg.get(m.id, [])),
                 )

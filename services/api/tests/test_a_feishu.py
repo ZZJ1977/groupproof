@@ -196,6 +196,69 @@ def test_settings_missing_means_not_connected(monkeypatch):
     assert feishu.feishu_settings() is not None
 
 
+def test_record_resolves_mapped_member_and_falls_back_when_unmapped():
+    from uuid import uuid4
+
+    user_id = uuid4()
+    pid = uuid4()
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    member_map = {"ou_zhuo": (user_id, "卓子杰")}
+
+    mapped_row = FeishuMessage(
+        id=uuid4(),
+        project_id=pid,
+        chat_id=CHAT,
+        message_id="om_mapped",
+        sender_open_id=" ou_zhuo ",
+        sender_type="user",
+        msg_type="text",
+        text="已完成接口联调",
+        content_hash="h1",
+        occurred_at=now,
+        deleted=False,
+        version_no=1,
+    )
+    mapped_rec = feishu._record(mapped_row, member_map=member_map)
+    assert mapped_rec.author_id == user_id
+    assert mapped_rec.author_name == "卓子杰"
+
+    unmapped_row = FeishuMessage(
+        id=uuid4(),
+        project_id=pid,
+        chat_id=CHAT,
+        message_id="om_unmapped",
+        sender_open_id="ou_unknown",
+        sender_type="user",
+        msg_type="text",
+        text="未绑定成员消息",
+        content_hash="h2",
+        occurred_at=now,
+        deleted=False,
+        version_no=1,
+    )
+    unmapped_rec = feishu._record(unmapped_row, member_map=member_map)
+    assert unmapped_rec.author_id is None
+    assert unmapped_rec.author_name == "飞书成员"
+
+    empty_sender_row = FeishuMessage(
+        id=uuid4(),
+        project_id=pid,
+        chat_id=CHAT,
+        message_id="om_empty",
+        sender_open_id=None,
+        sender_type="user",
+        msg_type="text",
+        text="无发送者",
+        content_hash="h3",
+        occurred_at=now,
+        deleted=False,
+        version_no=1,
+    )
+    empty_rec = feishu._record(empty_sender_row, member_map=member_map)
+    assert empty_rec.author_id is None
+    assert empty_rec.author_name == "未知发送者"
+
+
 # ------------------------------------------------------------------ 绑定与同步
 
 
@@ -340,7 +403,7 @@ def test_port_outsider_and_other_project_see_nothing(db, scope):
     assert exc.value.status_code == 404
 
 
-def test_port_rejects_github_and_unsupported_filters(db, scope):
+def test_port_rejects_github_and_returns_empty_for_unmapped_author(db, scope):
     _seed(db, scope)
     port = _port(db)
     actor = scope.users["member"].id
@@ -353,14 +416,114 @@ def test_port_rejects_github_and_unsupported_filters(db, scope):
         )
     assert exc.value.status_code == 503
 
-    with pytest.raises(ApiError) as exc:
-        port.query(
-            project_id=scope.project.id,
-            actor_id=actor,
-            source_type="feishu",
-            query=ActivitySourceQuery(author_id=scope.users["member"].id),
-        )
-    assert exc.value.status_code == 503
+    empty = port.query(
+        project_id=scope.project.id,
+        actor_id=actor,
+        source_type="feishu",
+        query=ActivitySourceQuery(author_id=scope.users["member"].id),
+    )
+    assert empty.total == 0 and empty.items == ()
+
+
+def test_port_resolves_member_author_and_filters_by_author_id(db, scope):
+    leader = scope.users["leader"]
+    member = scope.users["member"]
+    outsider = scope.users["outsider"]
+
+    leader.name = "卓子杰"
+    leader.feishu_account = " ou_leader "
+    member.name = "杨凯景"
+    member.feishu_account = "ou_member"
+    outsider.name = "外组成员"
+    outsider.feishu_account = "ou_unmapped"
+    db.flush()
+
+    link_visible_chat(db, leader, scope.project.id, CHAT)
+    feishu.sync_project(
+        db,
+        leader,
+        scope.project.id,
+        FakeReader(
+            [
+                (
+                    _items(
+                        _raw_text("om_l", "组长消息", T1, sender="ou_leader"),
+                        _raw_text("om_m", "成员消息", T1 + 1000, sender="ou_member"),
+                        _raw_text("om_u", "未映射消息", T1 + 2000, sender="ou_unmapped"),
+                    ),
+                    None,
+                )
+            ]
+        ),
+    )
+
+    port = _port(db)
+    all_page = port.query(
+        project_id=scope.project.id,
+        actor_id=member.id,
+        source_type="feishu",
+        query=ActivitySourceQuery(),
+    )
+    assert all_page.total == 3
+    by_title = {r.title: r for r in all_page.items}
+    assert (by_title["组长消息"].author_id, by_title["组长消息"].author_name) == (
+        leader.id,
+        "卓子杰",
+    )
+    assert (by_title["成员消息"].author_id, by_title["成员消息"].author_name) == (
+        member.id,
+        "杨凯景",
+    )
+    assert (by_title["未映射消息"].author_id, by_title["未映射消息"].author_name) == (
+        None,
+        "飞书成员",
+    )
+
+    leader_detail = port.get(
+        project_id=scope.project.id,
+        actor_id=member.id,
+        source_type="feishu",
+        source_id=by_title["组长消息"].id,
+    )
+    assert (leader_detail.author_id, leader_detail.author_name) == (leader.id, "卓子杰")
+
+    unmapped_detail = port.get(
+        project_id=scope.project.id,
+        actor_id=member.id,
+        source_type="feishu",
+        source_id=by_title["未映射消息"].id,
+    )
+    assert (unmapped_detail.author_id, unmapped_detail.author_name) == (None, "飞书成员")
+
+    leader_only = port.query(
+        project_id=scope.project.id,
+        actor_id=member.id,
+        source_type="feishu",
+        query=ActivitySourceQuery(author_id=leader.id),
+    )
+    assert leader_only.total == 1
+    assert [r.title for r in leader_only.items] == ["组长消息"]
+    assert leader_only.items[0].author_id == leader.id
+    assert leader_only.items[0].author_name == "卓子杰"
+
+    member_only = port.query(
+        project_id=scope.project.id,
+        actor_id=member.id,
+        source_type="feishu",
+        query=ActivitySourceQuery(author_id=member.id),
+    )
+    assert member_only.total == 1
+    assert [r.title for r in member_only.items] == ["成员消息"]
+    assert member_only.items[0].author_id == member.id
+    assert member_only.items[0].author_name == "杨凯景"
+
+    outsider_only = port.query(
+        project_id=scope.project.id,
+        actor_id=member.id,
+        source_type="feishu",
+        query=ActivitySourceQuery(author_id=outsider.id),
+    )
+    assert outsider_only.total == 0 and outsider_only.items == ()
 
 
 def test_port_empty_include_ids_matches_nothing(db, scope):
