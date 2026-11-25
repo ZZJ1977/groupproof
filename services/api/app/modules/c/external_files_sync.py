@@ -43,7 +43,7 @@ from app.modules.c.files_service import file_access
 from app.modules.c.files_storage import ALLOWED_MIME, MAX_FILE_BYTES
 from app.modules.c.integration_events import emit_event
 
-INTERNAL_FILE_PROVIDERS = frozenset({"github", "inline", "feishu_doc", "feishu_att"})
+INTERNAL_FILE_PROVIDERS = frozenset({"github", "inline", "feishu_doc", "feishu_att", "pg_lob"})
 INTERNAL_LINK_TTL_SECONDS = 600
 _FEISHU_MEDIA_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{6,120}$")
 _SAFE_MEDIA_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
@@ -54,6 +54,7 @@ _IMAGE_EXTS = {"png", "jpg", "jpeg"}
 _DEFAULT_MIME_BY_EXT = {
     "md": "text/markdown",
     "txt": "text/plain",
+    "csv": "text/csv",
     "pdf": "application/pdf",
     "doc": "application/msword",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -984,6 +985,11 @@ def probe_internal_file_media_type(
     filename = version.original_name or row.name
     if version.storage_provider in {"github", "feishu_doc"}:
         return "text/markdown; charset=utf-8", filename
+    if version.storage_provider == "pg_lob":
+        media = version.mime_type or "application/octet-stream"
+        if media in {"text/plain", "text/markdown", "text/csv"}:
+            media = f"{media}; charset=utf-8"
+        return media, filename
     if version.storage_provider == "feishu_att":
         return version.mime_type or "application/octet-stream", filename
     if version.storage_provider == "inline":
@@ -1054,6 +1060,15 @@ def read_internal_file_content(
             out_name = filename if is_md else f"{PurePosixPath(filename).stem}.txt"
             return mat.text_content.encode("utf-8"), media, out_name
         raise ApiError(404, "FILE_NOT_FOUND", "资料正文快照暂不可用。")
+
+    if version.storage_provider == "pg_lob":
+        data = storage.read_pg_lob_bytes(session, version.storage_object_id)
+        if data is None:
+            raise ApiError(404, "FILE_NOT_FOUND", "文件内容暂不可用。")
+        media = version.mime_type or "application/octet-stream"
+        if media in {"text/plain", "text/markdown", "text/csv"}:
+            media = f"{media}; charset=utf-8"
+        return data, media, filename
 
     if version.storage_provider == "feishu_att":
         base_obj_id = (version.storage_object_id or "").split("#", 1)[0]

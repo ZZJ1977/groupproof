@@ -145,6 +145,61 @@ def complete_upload(receipt_id: UUID, request: Request, session: Database, user:
     )
 
 
+@router.post(
+    "/api/v1/storage/uploads/direct",
+    response_model=SuccessResponse[UploadReceiptDTO],
+    status_code=201,
+    include_in_schema=False,
+    dependencies=[Depends(_private)],
+)
+async def direct_upload(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    scope: Literal["project", "course"] = Query(...),
+    scope_id: UUID = Query(...),
+    filename: str = Query(..., min_length=1, max_length=255),
+):
+    raw_ct = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if not raw_ct:
+        raise ApiError(415, "FILE_TYPE_NOT_ALLOWED", "缺少文件类型。")
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > storage.MAX_FILE_BYTES:
+        raise ApiError(413, "FILE_TOO_LARGE", "文件不能为空，且不能超过 50MB。")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > storage.MAX_FILE_BYTES:
+            raise ApiError(413, "FILE_TOO_LARGE", "文件不能为空，且不能超过 50MB。")
+        chunks.append(chunk)
+    data = b"".join(chunks)
+    row = storage.upload_direct(
+        session,
+        user,
+        scope=scope,
+        scope_id=scope_id,
+        filename=filename,
+        mime_type=raw_ct,
+        data=data,
+    )
+    session.commit()
+    return success(
+        UploadReceiptDTO(
+            receipt_id=row.id,
+            scope=row.scope,
+            scope_id=row.scope_id,
+            filename=row.filename,
+            status=row.status,
+            content_hash=row.content_hash,
+            size_bytes=row.size_bytes,
+            mime_type=row.mime_type,
+            rejection_reason=row.rejection_reason,
+        ),
+        request,
+    )
+
+
 # ------------------------------------------------------------------ A6 飞书只读同步
 
 

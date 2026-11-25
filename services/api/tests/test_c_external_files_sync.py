@@ -1024,3 +1024,167 @@ def test_inline_pdf_resolves_binary_twin_and_falls_back_cleanly_when_alone(sync_
     assert real_bytes == pdf_bytes
     assert real_mime == "application/pdf"
     assert real_name == "分工计划_inline.pdf"
+
+
+def test_direct_local_upload_all_formats_roundtrip_and_headers(sync_db, monkeypatch):
+    """端到端验证本地文件直传降级 pg_lob：10 种格式上传、登记、预览与下载原样还原。"""
+    import io
+    import zipfile
+    from urllib.parse import parse_qs, urlsplit
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.auth import get_current_user
+    from app.api.errors import install_exception_handlers
+    from app.db.session import get_session
+    from app.main import request_context
+    from app.modules.a import router as a_router
+    from app.modules.a import storage
+    from app.modules.c import files_router
+    from app.modules.c.files_storage import UnavailableStoragePort, get_storage_port
+
+    monkeypatch.setenv("APP_ORIGIN", "https://staging.groupproof.example")
+    monkeypatch.setenv("EMAIL_CHALLENGE_HMAC_KEY", "test-hmac-secret-key")
+
+    class BrokenSupabaseClient:
+        host = "dead.supabase.co"
+        bucket = "groupproof-staging"
+
+        def create_signed_upload_url(self, object_id: str) -> str:
+            raise RuntimeError("Name or service not known")
+
+        def download(self, object_id: str, *, max_bytes: int) -> bytes:
+            raise RuntimeError("Name or service not known")
+
+        def create_signed_download_url(self, object_id: str, expires_in: int) -> str:
+            raise RuntimeError("Name or service not known")
+
+    monkeypatch.setattr(storage, "get_storage_client", lambda: BrokenSupabaseClient())
+
+    leader, project = _seed_project(sync_db)
+    outsider = _user(
+        sync_db, tag=f"out_{uuid4().hex[:6]}", role="student", index=2, now=datetime.now(UTC)
+    )
+    sync_db.commit()
+
+    app = FastAPI()
+    app.middleware("http")(request_context)
+    install_exception_handlers(app)
+    app.include_router(a_router.router)
+    app.include_router(files_router.router, prefix="/api/v1")
+    app.dependency_overrides[get_session] = lambda: sync_db
+    actor = {"user": leader}
+    app.dependency_overrides[get_current_user] = lambda: actor["user"]
+    app.dependency_overrides[get_storage_port] = lambda: UnavailableStoragePort()
+
+    def make_zip(entries: dict[str, bytes]) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for name, content in entries.items():
+                zf.writestr(name, content)
+        return buf.getvalue()
+
+    samples = [
+        ("报告.pdf", "application/pdf", b"%PDF-1.7\n%demo\n%%EOF\n", True),
+        ("说明.md", "text/markdown", "# 标题\n正文内容".encode(), True),
+        ("记录.txt", "text/plain", "普通文本内容".encode(), True),
+        ("指标.csv", "text/csv", "成员,完成数\n卓子杰,8\n".encode(), True),
+        ("架构图.png", "image/png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 16, True),
+        ("截图.jpg", "image/jpeg", b"\xff\xd8\xff\xe0" + b"\x00" * 16, True),
+        (
+            "方案.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            make_zip({"[Content_Types].xml": b"<Types/>", "word/document.xml": b"<w:doc/>"}),
+            False,
+        ),
+        (
+            "预算.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            make_zip({"[Content_Types].xml": b"<Types/>", "xl/workbook.xml": b"<wb/>"}),
+            False,
+        ),
+        (
+            "答辩.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            make_zip({"[Content_Types].xml": b"<Types/>", "ppt/presentation.xml": b"<p/>"}),
+            False,
+        ),
+        ("源码包.zip", "application/zip", make_zip({"notes.txt": b"hello"}), False),
+    ]
+
+    with TestClient(app) as client:
+        for idx, (fname, mime, payload, inline_preview) in enumerate(samples):
+            up = client.post(
+                "/api/v1/storage/uploads/direct",
+                params={"scope": "project", "scope_id": str(project.id), "filename": fname},
+                content=payload,
+                headers={"Content-Type": mime},
+            )
+            assert up.status_code == 201, f"{fname}: {up.text}"
+            receipt = up.json()["data"]
+            assert receipt["status"] == "completed"
+            assert receipt["size_bytes"] == len(payload)
+            assert receipt["content_hash"] == hashlib.sha256(payload).hexdigest()
+
+            reg = client.post(
+                f"/api/v1/projects/{project.id}/files",
+                json={
+                    "receipt_id": receipt["receipt_id"],
+                    "reason": "本地上传资料",
+                    "category": "images" if fname.endswith((".png", ".jpg")) else "documents",
+                },
+                headers={"Idempotency-Key": f"local-upload-{idx}"},
+            )
+            assert reg.status_code == 201, f"{fname}: {reg.text}"
+            file_dto = reg.json()["data"]
+            file_id = file_dto["id"]
+            version_id = file_dto["versions"][0]["id"]
+
+            for purpose in ("preview", "download"):
+                link_resp = client.get(
+                    f"/api/v1/projects/{project.id}/files/{file_id}/versions/{version_id}/link",
+                    params={"purpose": purpose},
+                )
+                assert link_resp.status_code == 200, f"{fname} {purpose}: {link_resp.text}"
+                signed_url = link_resp.json()["data"]["url"]
+                parsed = urlsplit(signed_url)
+                qs = parse_qs(parsed.query)
+
+                head_resp = client.head(
+                    parsed.path,
+                    params={"purpose": purpose, "exp": qs["exp"][0], "sig": qs["sig"][0]},
+                )
+                assert head_resp.status_code == 200
+                assert head_resp.headers["content-type"].startswith(mime)
+
+                get_resp = client.get(
+                    parsed.path,
+                    params={"purpose": purpose, "exp": qs["exp"][0], "sig": qs["sig"][0]},
+                )
+                assert get_resp.status_code == 200
+                assert get_resp.content == payload
+                cd = get_resp.headers["content-disposition"]
+                if purpose == "preview" and inline_preview:
+                    assert cd.startswith("inline;")
+                else:
+                    assert cd.startswith("attachment;")
+
+        # 伪造扩展名的 PDF 必须被拒绝
+        bad = client.post(
+            "/api/v1/storage/uploads/direct",
+            params={"scope": "project", "scope_id": str(project.id), "filename": "fake.pdf"},
+            content=b"not a pdf",
+            headers={"Content-Type": "application/pdf"},
+        )
+        assert bad.status_code == 422 and bad.json()["error"]["code"] == "UPLOAD_REJECTED"
+
+        # 非项目成员不能上传
+        actor["user"] = outsider
+        denied = client.post(
+            "/api/v1/storage/uploads/direct",
+            params={"scope": "project", "scope_id": str(project.id), "filename": "ok.txt"},
+            content=b"hello",
+            headers={"Content-Type": "text/plain"},
+        )
+        assert denied.status_code in (403, 404)
