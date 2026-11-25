@@ -7,6 +7,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ArrowRight, BookOpen, Calendar, CheckCircle2, Clock, Plus, Search, Users } from "lucide-react";
 import { EmptyState, Feedback, PageHeader, StatusBadge } from "@/components/common";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { useGpThemeScope } from "@/components/ui/theme-scope";
 import { BApiError, newIdempotencyKey } from "@/lib/api/b-client";
 import { bCoursesApi, type BCoursePreview, type BJoinRequest, type BJoinResult } from "@/lib/api/b-courses";
 import { useUrlFilters } from "@/lib/use-url-filters";
@@ -15,6 +17,10 @@ import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { CreateProjectModal } from "@/features/b/CreateProjectModal";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
+import { tr } from "@/lib/i18n/tr";
+import { cn } from "@/lib/utils";
+import { TeacherFeedbackPill } from "@/features/teacher/components/TeacherFeedbackPill";
+import { TeacherSegmentedTabs } from "@/features/teacher/components/TeacherSegmentedTabs";
 
 const myCourseTabs = ["all", "active", "ended"] as const;
 const myCourseFilters = {
@@ -23,12 +29,17 @@ const myCourseFilters = {
   page: { kind: "int", default: 1, min: 1 },
 } as const;
 const PAGE_SIZE = 10;
+const feishuCard =
+  "rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-5 shadow-[var(--gp-shadow-card)]";
+const feishuInput =
+  "w-full rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-white px-3 py-2 text-sm text-[var(--gp-ink,#1f2329)] outline-none transition-colors focus:border-[var(--gp-action,#3370ff)] focus:ring-2 focus:ring-[#3370ff]/15";
 
 /** Page 31 (B1-01): only the caller's current courses, tab/search/page in the URL. */
 export function MyCoursesApiPage() {
   const t = useTranslations("pages.courses");
   const ts = useTranslations("pages.shared");
   const { userId, role } = useWorkspace();
+  const scope = useGpThemeScope();
   const isTeacher = role === "teacher" || role === "ta";
   const createIntent = useSearchParams().get("intent") === "create-project";
   const errorText = useBErrorMessage();
@@ -42,6 +53,237 @@ export function MyCoursesApiPage() {
   });
   const data = list.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+
+  if (scope === "teacher") {
+    return (
+      <div className="min-w-0 max-w-full space-y-5">
+        <AnnouncementBanner />
+        <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-4")}>
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-[var(--gp-ink,#1f2329)]">
+              <BookOpen size={20} className="shrink-0 text-[var(--gp-action,#3370ff)]" aria-hidden="true" />
+              <span className="truncate">{createIntent ? t("createCourseProjectTitle") : t("title")}</span>
+            </h1>
+            <p className="mt-1 text-xs text-[var(--gp-muted,#646a73)]">
+              {createIntent ? t("chooseProjectCourse") : t("description")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!createIntent && (
+              <Link
+                href="/teacher/courses"
+                data-variant="default"
+                className={buttonVariants({ variant: "default", size: "sm", pill: true })}
+              >
+                <Plus size={15} aria-hidden="true" />
+                {tr("我的班级 / 创建班级")}
+              </Link>
+            )}
+            <Link
+              href="/courses/join"
+              data-variant={createIntent ? "default" : "outline"}
+              className={buttonVariants({ variant: createIntent ? "default" : "outline", size: "sm", pill: true })}
+            >
+              <Plus size={15} aria-hidden="true" />
+              {t("join")}
+            </Link>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TeacherSegmentedTabs
+            variant="segmented"
+            size="sm"
+            ariaLabel={t("title")}
+            activeId={filters.tab}
+            onChange={(key) => setFilters({ tab: key })}
+            items={myCourseTabs.map((key) => ({
+              id: key,
+              label: data ? `${t(`tabs.${key}`)} ${data.counts[key]}` : t(`tabs.${key}`),
+            }))}
+          />
+          <form
+            className="flex w-full max-w-sm items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setFilters({ q: search.trim() });
+            }}
+          >
+            <label className="sr-only" htmlFor="b-course-search">
+              {t("searchLabel")}
+            </label>
+            <div className="relative min-w-0 flex-1">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gp-subtle,#8f959e)]"
+                aria-hidden="true"
+              />
+              <input
+                id="b-course-search"
+                className={cn(feishuInput, "pl-8")}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("searchPlaceholder")}
+              />
+            </div>
+            <Button type="submit" variant="outline" size="sm" pill>
+              {t("search")}
+            </Button>
+          </form>
+        </div>
+
+        {data && data.pending_joins.length > 0 && (
+          <div className="rounded-[12px] border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-xs text-[#b45309] shadow-[var(--gp-shadow-card)]">
+            {data.pending_joins.map((item) => (
+              <span key={item.request_id} className="mr-3 inline-flex items-center gap-1.5 font-medium">
+                <Clock size={14} aria-hidden="true" />
+                {t("pendingJoin", { name: item.course_name })}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {list.isPending ? (
+          <div role="status" className="space-y-4">
+            <span className="sr-only">{t("loading")}</span>
+            {[0, 1].map((idx) => (
+              <div key={idx} className={cn(feishuCard, "animate-pulse space-y-3")}>
+                <div className="h-5 w-48 rounded bg-[var(--gp-surface-hover,#eff0f1)]" />
+                <div className="h-3 w-64 rounded bg-[var(--gp-surface-subtle,#f8f9fa)]" />
+                <div className="h-8 w-full rounded bg-[var(--gp-surface-subtle,#f8f9fa)]" />
+              </div>
+            ))}
+          </div>
+        ) : list.isError ? (
+          <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-3")}>
+            <TeacherFeedbackPill tone="error" message={errorText(list.error)} />
+            <Button type="button" variant="outline" size="sm" pill onClick={() => void list.refetch()}>
+              {ts("retry")}
+            </Button>
+          </div>
+        ) : data && data.items.length ? (
+          <div className="space-y-4">
+            {data.items.map((course) => (
+              <div key={course.id} className={cn(feishuCard, "gp-card-interactive min-w-0")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h2
+                      className="truncate text-base font-semibold text-[var(--gp-ink,#1f2329)]"
+                      title={course.name}
+                    >
+                      {course.name}
+                    </h2>
+                    <p className="mt-1 text-xs text-[var(--gp-muted,#646a73)]">
+                      {t("teacherLine", {
+                        teacher: course.teacher?.name ?? t("toBeAssigned"),
+                        code: course.code,
+                        semester: course.semester,
+                      })}
+                    </p>
+                  </div>
+                  <StatusBadge
+                    tone={course.status === "active" ? "green" : "gray"}
+                    label={
+                      course.status === "active"
+                        ? t("statusActive")
+                        : course.status === "ended"
+                          ? t("statusEnded")
+                          : t("statusNotStarted")
+                    }
+                  />
+                </div>
+                <div className="gp-tabular mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-[var(--gp-ink-soft,#4e5969)]">
+                  <span>{course.group ? t("currentGroup", { name: course.group.name }) : t("noGroup")}</span>
+                  <span>{t("formationDeadline", { date: dateOnly(course.formation_deadline, ts("notSet")) })}</span>
+                  <span>{t("projectDeadline", { date: dateOnly(course.project_deadline, ts("notSet")) })}</span>
+                  {course.pending_count > 0 && (
+                    <span className="rounded-full bg-[#fffbeb] px-2.5 py-0.5 font-medium text-[#b45309]">
+                      {t("pendingCount", { count: course.pending_count })}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--gp-border-subtle,#ebedf0)] pt-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <Link
+                      href={`/courses/${course.id}/rules`}
+                      className="text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] hover:text-[var(--gp-action,#3370ff)]"
+                    >
+                      {t("viewRules")}
+                    </Link>
+                    <Link
+                      href={`/courses/${course.id}/files`}
+                      className="text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] hover:text-[var(--gp-action,#3370ff)]"
+                    >
+                      {t("viewFiles")}
+                    </Link>
+                  </div>
+                  <Link
+                    href={
+                      course.project
+                        ? `/projects/${course.project.id}`
+                        : course.group
+                          ? `/courses/${course.id}/projects/new`
+                          : `/courses/${course.id}/groups`
+                    }
+                    data-variant="tonal"
+                    className={buttonVariants({ variant: "tonal", size: "sm", pill: true })}
+                  >
+                    {course.project ? t("enterProject") : course.group ? t("createProject") : t("startGrouping")}
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={feishuCard}>
+            <EmptyState
+              title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")}
+              description={createIntent ? t("joinBeforeCreate") : undefined}
+              action={
+                <Link
+                  href="/teacher/courses"
+                  data-variant="default"
+                  className={buttonVariants({ variant: "default", size: "sm", pill: true })}
+                >
+                  {tr("前往我的班级创建课程")}
+                </Link>
+              }
+            />
+          </div>
+        )}
+
+        {data && pages > 1 && (
+          <nav
+            aria-label={ts("pagination")}
+            className="flex items-center justify-end gap-2 border-t border-[var(--gp-border-subtle,#ebedf0)] pt-4 text-xs text-[var(--gp-muted,#646a73)]"
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              pill
+              disabled={filters.page <= 1}
+              onClick={() => setFilters({ page: filters.page - 1 })}
+            >
+              {ts("prev")}
+            </Button>
+            <span className="gp-tabular px-2">{ts("pagerOf", { page: filters.page, pages })}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              pill
+              disabled={filters.page >= pages}
+              onClick={() => setFilters({ page: filters.page + 1 })}
+            >
+              {ts("next")}
+            </Button>
+          </nav>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">

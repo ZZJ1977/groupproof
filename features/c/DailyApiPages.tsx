@@ -4,22 +4,30 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Activity, ArrowRight, Bell, BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
-import { EmptyState, PageHeader, ProgressBar, StatusBadge } from "@/components/common";
-import { buttonVariants } from "@/components/ui/button";
+import { Activity, ArrowRight, Bell, BookOpen, CheckSquare, Folder, Home, Plus, RefreshCw } from "lucide-react";
+import { EmptyState, PageHeader, ProgressBar, Stat, StatusBadge } from "@/components/common";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { useGpThemeScope } from "@/components/ui/theme-scope";
 import { projectRequest } from "@/features/github-binding/integration-request";
 import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { CreateProjectModal } from "@/features/b/CreateProjectModal";
+import { TeacherFeedbackPill } from "@/features/teacher/components/TeacherFeedbackPill";
+import { TeacherSegmentedTabs } from "@/features/teacher/components/TeacherSegmentedTabs";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { tr } from "@/lib/i18n/tr";
 import { useWorkspace } from "@/lib/workspace";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { useUrlQuery } from "./use-url-query";
+import { MyAccessRequests } from "./GovernanceApiPages";
 import { HomeInboxPanel } from "./HomeInboxPanel";
 
 const client = createCClient();
 const buttonClass = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 const inputClass = "h-9 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
+const feishuCard =
+  "rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-5 shadow-[var(--gp-shadow-card)]";
+const feishuInput =
+  "rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-white px-3 py-1.5 text-sm text-[var(--gp-ink,#1f2329)] outline-none transition-colors focus:border-[var(--gp-action,#3370ff)] focus:ring-2 focus:ring-[#3370ff]/15";
 const categoryLabels = { all: "全部", development: "开发", evidence: "证据", discussion: "讨论" } as const;
 const categoryDotClass: Record<keyof typeof categoryLabels, string> = {
   all: "bg-slate-400",
@@ -35,11 +43,22 @@ const activityLabels = {
 };
 
 function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
+  const isTeacher = useGpThemeScope() === "teacher";
   const message = error instanceof CApiError && error.status === 401
     ? "当前登录身份暂时无法读取此服务，请重新登录或稍后重试。"
     : error instanceof CApiError && error.status === 403
       ? "你目前没有权限读取这些数据。"
       : error instanceof CApiError ? error.message : "数据暂不可用，请重试。";
+  if (isTeacher) {
+    return (
+      <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-3")}>
+        <TeacherFeedbackPill tone="error" message={tr(message)} />
+        <Button type="button" variant="outline" size="sm" pill onClick={retry}>
+          {tr("重试")}
+        </Button>
+      </div>
+    );
+  }
   return (
     <div role="alert" className="rounded-2xl border border-rose-200/85 bg-rose-50/40 p-4 text-sm text-rose-800 shadow-xs">
       <p>{message}</p>
@@ -49,6 +68,7 @@ function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
 }
 
 function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; userId: string }) {
+  const isTeacher = useGpThemeScope() === "teacher";
   const repos = useQuery({
     queryKey: ["project-integration-repos", userId, projectId],
     queryFn: ({ signal }) => projectRequest<unknown[]>(`/api/v1/a/projects/${projectId}/github/repos`, { signal }),
@@ -73,6 +93,20 @@ function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; us
       : chats.data.length > 0
         ? tr("飞书已接入 · {0} 个群", { 0: chats.data.length })
         : "飞书未接入";
+  if (isTeacher) {
+    const chipClass =
+      "inline-flex items-center rounded-full border border-[var(--gp-border-subtle,#ebedf0)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-2.5 py-1 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] transition-colors hover:border-[var(--gp-action,#3370ff)]/45 hover:text-[var(--gp-action,#3370ff)]";
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link className={chipClass} href={`/projects/${encodeURIComponent(projectId)}/settings#github-integration`}>
+          {githubLabel}
+        </Link>
+        <Link className={chipClass} href={`/projects/${encodeURIComponent(projectId)}/settings#feishu-integration`}>
+          {feishuLabel}
+        </Link>
+      </div>
+    );
+  }
   const githubConnected = repos.isSuccess && repos.data.length > 0;
   const feishuConnected = chats.isSuccess && chats.data.length > 0;
   return (
@@ -104,6 +138,7 @@ function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; us
 /** Canonical queries only; workspace data and demo roles are never a data source. */
 export function HomeApiPage() {
   const { userId, role } = useWorkspace();
+  const scope = useGpThemeScope();
   const isTeacher = role === "teacher" || role === "ta";
   const t = useTranslations("core.home");
   const [createOpen, setCreateOpen] = useState(false);
@@ -112,11 +147,354 @@ export function HomeApiPage() {
   const recentActivity = useQuery({
     queryKey: ["c-home-recent-activity", userId],
     queryFn: () => client.personalActivity({ category: "all", page: 1, page_size: 4 }),
-    enabled: Boolean(data),
+    enabled: scope !== "teacher" && Boolean(data),
     staleTime: 0,
     gcTime: 0,
     retry: false,
   });
+
+  if (scope === "teacher") {
+    const quickCards = [
+      {
+        href: "/teacher/dashboard",
+        title: tr("教师工作台"),
+        desc: tr("跨班统计、风险与预警概览"),
+        icon: Activity,
+        badge: null as string | number | null,
+        badgeTone: "neutral" as const,
+      },
+      {
+        href: "/teacher/courses",
+        title: tr("我的班级"),
+        desc: tr("班级管理、邀请码与组队广场"),
+        icon: BookOpen,
+        badge: data ? data.course_count : null,
+        badgeTone: "blue" as const,
+      },
+      {
+        href: "/notifications",
+        title: tr("通知"),
+        desc: tr("接收学生消息与动态通知"),
+        icon: Bell,
+        badge: data ? (data.unread_notifications ?? tr("暂不可用")) : null,
+        badgeTone:
+          typeof data?.unread_notifications === "number" && data.unread_notifications > 0
+            ? ("danger" as const)
+            : ("neutral" as const),
+      },
+      {
+        href: "/action-items",
+        title: tr("待处理事项"),
+        desc: tr("待审批与需要处理事项"),
+        icon: CheckSquare,
+        badge: data ? (data.pending_action_items ?? tr("暂不可用")) : null,
+        badgeTone:
+          typeof data?.pending_action_items === "number" && data.pending_action_items > 0
+            ? ("warning" as const)
+            : ("neutral" as const),
+      },
+    ];
+
+    return (
+      <div className="min-w-0 max-w-full space-y-6">
+        <AnnouncementBanner />
+
+        <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-4")}>
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-[var(--gp-ink,#1f2329)]">
+              <Home size={20} className="shrink-0 text-[var(--gp-action,#3370ff)]" aria-hidden="true" />
+              <span className="truncate">{t("title")}</span>
+            </h1>
+            <p className="mt-1 text-xs text-[var(--gp-muted,#646a73)]">
+              {tr("根据你当前的课程、项目和任务计算。")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/teacher/courses"
+              data-variant="default"
+              className={buttonVariants({ variant: "default", size: "sm", pill: true })}
+            >
+              <Plus size={15} aria-hidden="true" />
+              {tr("我的班级 / 创建班级")}
+            </Link>
+            <Link
+              href="/teacher/dashboard"
+              data-variant="outline"
+              className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+            >
+              <Activity size={15} aria-hidden="true" />
+              {tr("教师工作台")}
+            </Link>
+            <Link
+              href="/projects/new"
+              data-variant="outline"
+              className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+            >
+              <Folder size={15} aria-hidden="true" />
+              {t("createProject")}
+            </Link>
+            <Link
+              href="/courses/join"
+              data-variant="outline"
+              className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+            >
+              <BookOpen size={15} aria-hidden="true" />
+              {t("joinCourse")}
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              pill
+              disabled={result.isFetching}
+              onClick={() => void result.refetch()}
+            >
+              <RefreshCw size={14} className={cn(result.isFetching && "animate-spin")} aria-hidden="true" />
+              {tr("刷新统计")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {quickCards.map((card) => {
+            const CardIcon = card.icon;
+            return (
+              <Link
+                key={card.href}
+                href={card.href}
+                className="gp-card-interactive flex min-w-0 flex-col justify-between gap-2.5 rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-4 shadow-[var(--gp-shadow-card)] hover:border-[var(--gp-action,#3370ff)]/50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--gp-action-soft,#e8f0fe)] text-[var(--gp-action,#3370ff)]">
+                      <CardIcon size={16} aria-hidden="true" />
+                    </span>
+                    <span className="truncate text-sm font-semibold text-[var(--gp-ink,#1f2329)]">
+                      {card.title}
+                    </span>
+                  </div>
+                  {card.badge !== null ? (
+                    <span
+                      className={cn(
+                        "gp-tabular shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                        card.badgeTone === "danger"
+                          ? "bg-[#fef2f2] text-[#d93025]"
+                          : card.badgeTone === "warning"
+                            ? "bg-[#fffbeb] text-[#b45309]"
+                            : card.badgeTone === "blue"
+                              ? "bg-[var(--gp-action-soft,#e8f0fe)] text-[var(--gp-action-on-soft,#1d4ed8)]"
+                              : "bg-[var(--gp-surface-hover,#eff0f1)] text-[var(--gp-muted,#646a73)]",
+                      )}
+                    >
+                      {card.badge}
+                    </span>
+                  ) : (
+                    <ArrowRight size={14} className="shrink-0 text-[var(--gp-subtle,#8f959e)]" aria-hidden="true" />
+                  )}
+                </div>
+                <p className="text-xs text-[var(--gp-muted,#646a73)]">{card.desc}</p>
+              </Link>
+            );
+          })}
+        </div>
+
+        {result.isFetching && (
+          <div role="status" className="space-y-5">
+            <span className="sr-only">{tr("正在读取首页…")}</span>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((idx) => (
+                <div key={idx} className={cn(feishuCard, "animate-pulse space-y-3")}>
+                  <div className="h-3 w-24 rounded bg-[var(--gp-surface-hover,#eff0f1)]" />
+                  <div className="h-7 w-16 rounded bg-[var(--gp-surface-hover,#eff0f1)]" />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              {[0, 1].map((idx) => (
+                <div key={idx} className={cn(feishuCard, "animate-pulse space-y-3")}>
+                  <div className="h-4 w-32 rounded bg-[var(--gp-surface-hover,#eff0f1)]" />
+                  <div className="h-24 rounded-[12px] bg-[var(--gp-surface-subtle,#f8f9fa)]" />
+                  <div className="h-24 rounded-[12px] bg-[var(--gp-surface-subtle,#f8f9fa)]" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
+
+        {data && (
+          <>
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <Stat label={t("myCourses")} value={data.course_count} icon={BookOpen} />
+                <Stat label={t("myProjects")} value={data.project_count} icon={Folder} />
+                <Stat
+                  label={tr("我的已完成任务")}
+                  value={data.my_completed_tasks}
+                  icon={CheckSquare}
+                  accent="var(--gp-success,#008a5c)"
+                />
+                <Stat
+                  label={t("pending")}
+                  value={data.pending_action_items ?? "—"}
+                  icon={Bell}
+                  accent="var(--gp-warning,#d97706)"
+                />
+              </div>
+              <p className="text-xs text-[var(--gp-muted,#646a73)]">
+                {tr("包含仍可访问的已结束课程及归档项目；已完成任务按验收后的任务状态统计。")}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div className={cn(feishuCard, "min-w-0 space-y-4")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="flex items-center gap-2 text-base font-semibold text-[var(--gp-ink,#1f2329)]">
+                      <Folder size={17} className="shrink-0 text-[var(--gp-action,#3370ff)]" aria-hidden="true" />
+                      <span>{t("myProjects")}</span>
+                    </h2>
+                    <p className="mt-0.5 text-xs text-[var(--gp-muted,#646a73)]">
+                      {tr("最近更新的最多 10 个项目")}
+                    </p>
+                  </div>
+                </div>
+
+                {data.projects.length > 0 ? (
+                  <div className="space-y-3">
+                    {data.projects.map((project) => (
+                      <div
+                        key={project.id}
+                        className="gp-card-interactive min-w-0 rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-4 shadow-[var(--gp-shadow-card)] hover:border-[var(--gp-action,#3370ff)]/50"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="min-w-0 truncate text-sm font-semibold text-[var(--gp-ink,#1f2329)]">
+                            {project.name}
+                          </strong>
+                          <StatusBadge status={project.lifecycle} />
+                        </div>
+                        <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-[var(--gp-muted,#646a73)]">
+                          <span>{tr("任务进度")}</span>
+                          <span className="gp-tabular font-medium text-[var(--gp-ink-soft,#4e5969)]">
+                            {project.progress === null ? tr("暂不可计算") : `${project.progress}%`}
+                          </span>
+                        </div>
+                        {project.progress !== null && <ProgressBar value={project.progress} className="mt-1.5" />}
+                        <ProjectIntegrationStatus projectId={project.id} userId={userId} />
+                        <div className="mt-3 flex items-center justify-end border-t border-[var(--gp-border-subtle,#ebedf0)] pt-3">
+                          <Link
+                            data-variant="tonal"
+                            className={buttonVariants({ variant: "tonal", size: "sm", pill: true })}
+                            href={`/projects/${encodeURIComponent(project.id)}`}
+                          >
+                            {t("enterProject")}
+                            <ArrowRight size={13} aria-hidden="true" />
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title={t("emptyProjects")}
+                    description={t("emptyProjectHint")}
+                    action={
+                      <Link
+                        href="/projects/new"
+                        data-variant="default"
+                        className={buttonVariants({ variant: "default", size: "sm", pill: true })}
+                      >
+                        <Plus size={15} aria-hidden="true" />
+                        {t("createProject")}
+                      </Link>
+                    }
+                  />
+                )}
+              </div>
+
+              <div className={cn(feishuCard, "min-w-0 space-y-4")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="flex items-center gap-2 text-base font-semibold text-[var(--gp-ink,#1f2329)]">
+                      <BookOpen size={17} className="shrink-0 text-[var(--gp-action,#3370ff)]" aria-hidden="true" />
+                      <span>{t("myCourses")}</span>
+                    </h2>
+                    <p className="mt-0.5 text-xs text-[var(--gp-muted,#646a73)]">
+                      {tr("最近更新的最多 10 门课程")}
+                    </p>
+                  </div>
+                  <Link
+                    href="/teacher/courses"
+                    data-variant="outline"
+                    className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+                  >
+                    {tr("管理我的班级与学生组队广场")}
+                  </Link>
+                </div>
+
+                {data.courses.length > 0 ? (
+                  <div className="space-y-3">
+                    {data.courses.map((course) => (
+                      <div
+                        key={course.id}
+                        className="gp-card-interactive flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-4 shadow-[var(--gp-shadow-card)] hover:border-[var(--gp-action,#3370ff)]/50"
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <strong className="truncate text-sm font-semibold text-[var(--gp-ink,#1f2329)]">
+                            {course.name}
+                          </strong>
+                          <StatusBadge status={course.status} />
+                        </div>
+                        <Link
+                          data-variant="tonal"
+                          className={buttonVariants({ variant: "tonal", size: "sm", pill: true })}
+                          href={course.href}
+                        >
+                          {tr("查看课程")}
+                          <ArrowRight size={13} aria-hidden="true" />
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title={t("emptyCourses")}
+                    description={t("emptyCourseHint")}
+                    action={
+                      <Link
+                        href="/courses/join"
+                        data-variant="outline"
+                        className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+                      >
+                        <BookOpen size={15} aria-hidden="true" />
+                        {t("joinCourse")}
+                      </Link>
+                    }
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Link
+                href="/activity"
+                data-variant="outline"
+                className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+              >
+                <Activity size={14} aria-hidden="true" />
+                {tr("查看个人动态")}
+                <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </div>
+          </>
+        )}
+
+        <MyAccessRequests key={userId} userId={userId} />
+      </div>
+    );
+  }
 
   const activeProjects = data ? data.projects.filter((project) => project.lifecycle === "active").length : 0;
   const activeCourses = data ? data.courses.filter((course) => course.status === "active").length : 0;
@@ -575,6 +953,7 @@ export function HomeApiPage() {
 
 export function ActivityApiPage() {
   const { userId } = useWorkspace();
+  const scope = useGpThemeScope();
   const { query, updateQuery } = useUrlQuery();
   const t = useTranslations("core.activity");
   const githubText = useTranslations("account.githubIdentity");
@@ -592,6 +971,197 @@ export function ActivityApiPage() {
   };
   const result = useQuery({ queryKey: ["c-personal-activity", userId, filters], queryFn: () => client.personalActivity(filters), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
+
+  if (scope === "teacher") {
+    return (
+      <div className="min-w-0 max-w-full space-y-5">
+        <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-4")}>
+          <div className="min-w-0 flex-1">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-[var(--gp-ink,#1f2329)]">
+              <Activity size={20} className="shrink-0 text-[var(--gp-action,#3370ff)]" aria-hidden="true" />
+              <span className="truncate">{t("title")}</span>
+            </h1>
+            <p className="mt-1 text-xs text-[var(--gp-muted,#646a73)]">
+              {tr("查看自己的任务、文件版本、证据、讨论，以及项目中已同步并归属本人的 GitHub 活动。")}
+            </p>
+            <p className="mt-1 text-xs text-[var(--gp-subtle,#8f959e)]">
+              {tr("日期按 UTC 自然日筛选。个人飞书记录仍待发送者身份匹配。")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {data && (
+              <Link
+                href="/account/security#github-identity"
+                data-variant="outline"
+                className={buttonVariants({ variant: "outline", size: "sm", pill: true })}
+              >
+                {githubText("manage")}
+              </Link>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              pill
+              disabled={result.isFetching}
+              onClick={() => void result.refetch()}
+            >
+              <RefreshCw size={14} className={cn(result.isFetching && "animate-spin")} aria-hidden="true" />
+              {tr("刷新动态")}
+            </Button>
+          </div>
+        </div>
+
+        <div className={cn(feishuCard, "space-y-4")}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <TeacherSegmentedTabs
+              variant="segmented"
+              size="sm"
+              ariaLabel={tr("动态分类")}
+              activeId={category}
+              onChange={(value) => updateQuery({ category: value === "all" ? null : value, page: null })}
+              items={Object.entries(categoryLabels).map(([value, label]) => ({
+                id: value as keyof typeof categoryLabels,
+                label: tr(label),
+              }))}
+            />
+          </div>
+
+          <form
+            key={query.toString()}
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const input = new FormData(event.currentTarget);
+              updateQuery({
+                date_from: String(input.get("date_from") ?? "") || null,
+                date_to: String(input.get("date_to") ?? "") || null,
+                page: null,
+              });
+            }}
+          >
+            <label className="flex flex-col gap-1 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)]">
+              {tr("开始日期")}
+              <input className={feishuInput} type="date" name="date_from" defaultValue={query.get("date_from") ?? ""} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)]">
+              {tr("结束日期")}
+              <input className={feishuInput} type="date" name="date_to" defaultValue={query.get("date_to") ?? ""} />
+            </label>
+            <Button type="submit" variant="default" size="sm" pill>
+              {tr("查询")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              pill
+              onClick={() => updateQuery({ category: null, project_id: null, date_from: null, date_to: null, page: null })}
+            >
+              {tr("重置")}
+            </Button>
+          </form>
+
+          {filters.project_id && (
+            <TeacherFeedbackPill
+              tone="info"
+              message={tr("当前仅显示指定项目；重置可查看全部可访问项目。")}
+            />
+          )}
+        </div>
+
+        {result.isFetching && (
+          <div role="status" className={cn(feishuCard, "animate-pulse space-y-3")}>
+            <span className="sr-only">{tr("正在读取个人动态…")}</span>
+            {[0, 1, 2].map((idx) => (
+              <div key={idx} className="h-16 rounded-[10px] bg-[var(--gp-surface-subtle,#f8f9fa)]" />
+            ))}
+          </div>
+        )}
+
+        {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
+
+        {data && (
+          <div className={cn(feishuCard, "space-y-4")}>
+            {data.items.length > 0 ? (
+              <div className="space-y-3">
+                {data.items.map((item) => {
+                  const prefix = `/projects/${item.project_id}/`;
+                  const href = item.href.startsWith(prefix) && !/[\\\u0000-\u001f]/.test(item.href) ? item.href : null;
+                  return (
+                    <article
+                      key={item.id}
+                      className="gp-card-interactive rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-4 shadow-[var(--gp-shadow-card)] hover:border-[var(--gp-action,#3370ff)]/50"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full bg-[var(--gp-action-soft,#e8f0fe)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--gp-action-on-soft,#1d4ed8)]">
+                          {tr(activityLabels[item.event_type] ?? categoryLabels[item.category])}
+                        </span>
+                        <span className="font-medium text-[var(--gp-muted,#646a73)]">{item.project_name}</span>
+                        <time
+                          className="gp-tabular ml-auto text-[var(--gp-subtle,#8f959e)]"
+                          dateTime={item.occurred_at}
+                        >
+                          {formatDate(item.occurred_at, {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </time>
+                      </div>
+                      <div className="mt-2">
+                        {href ? (
+                          <Link
+                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--gp-ink,#1f2329)] transition-colors hover:text-[var(--gp-action,#3370ff)]"
+                            href={href}
+                          >
+                            <span>{item.title}</span>
+                            <ArrowRight size={13} aria-hidden="true" />
+                          </Link>
+                        ) : (
+                          <span className="text-sm font-semibold text-[var(--gp-ink,#1f2329)]">{item.title}</span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState title={tr("没有符合条件的个人动态")} />
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--gp-border-subtle,#ebedf0)] pt-4 text-xs text-[var(--gp-muted,#646a73)]">
+              <span className="gp-tabular">{tr("共 {0} 条 · 第 {1} 页", { 0: data.total, 1: data.page })}</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  pill
+                  disabled={page <= 1}
+                  onClick={() => updateQuery({ page: String(page - 1) })}
+                >
+                  {tr("上一页")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  pill
+                  disabled={data.page * data.page_size >= data.total}
+                  onClick={() => updateQuery({ page: String(page + 1) })}
+                >
+                  {tr("下一页")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">

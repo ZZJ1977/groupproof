@@ -4,13 +4,27 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { ArrowRight, Bell, Check, CheckSquare, RefreshCw } from "lucide-react";
+import { ArrowRight, Bell, Check, CheckCheck, CheckSquare, Clock, RefreshCw } from "lucide-react";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/common";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { useGpThemeScope } from "@/components/ui/theme-scope";
 import { CApiError } from "@/lib/api/c-client";
 import { inboxApi, inboxTargetHref, type ActionItemQuery, type NotificationQuery } from "@/lib/api/c-inbox-client";
+import { tr } from "@/lib/i18n/tr";
 import { useWorkspace } from "@/lib/workspace";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import type { components } from "@/packages/domain/api.generated";
+import { TeacherFeedbackPill } from "@/features/teacher/components/TeacherFeedbackPill";
+import { TeacherSegmentedTabs } from "@/features/teacher/components/TeacherSegmentedTabs";
+import {
+  FEISHU_INBOX_CARD,
+  resolveInboxErrorText,
+  TeacherInboxCategoryChips,
+  TeacherInboxEmptyState,
+  TeacherInboxPager,
+  TeacherInboxSkeleton,
+  TeacherNotificationsApiPage,
+} from "@/features/teacher/pages/TeacherNotificationsApiPage";
 import { useUrlQuery } from "./use-url-query";
 import { accessFailure, ApiPager, pageNumber, queryPolicy, useCommandKey, versionFailure } from "./c-project-api";
 
@@ -20,6 +34,18 @@ const states = { all: "all", unread: "unread", read: "read" } as const;
 const categories = { all: "all", project: "project", course: "course", system: "system" } as const;
 const actionStatuses = { pending: "pending", completed: "completed", rejected: "rejected", all: "all" } as const;
 const actionCategories = { all: "all", task: "task", verification: "verification", evidence: "evidence", rule: "rule", appeal: "appeal", member: "member", course: "course" } as const;
+
+const priorityBadge: Record<Schema["ActionItemDTO"]["priority"], { label: string; className: string }> = {
+  high: { label: "高优先级", className: "bg-[#fef2f2] text-[#d93025]" },
+  medium: { label: "中优先级", className: "bg-amber-50 text-amber-800" },
+  low: { label: "低优先级", className: "bg-[var(--gp-surface-hover,#eff0f1)] text-[var(--gp-ink-soft,#4e5969)]" },
+};
+
+const actionStatusTone: Record<Schema["ActionItemDTO"]["status"], string> = {
+  pending: "bg-amber-50 text-amber-800",
+  completed: "bg-[#ecfdf5] text-[#008a5c]",
+  rejected: "bg-[#fef2f2] text-[#d93025]",
+};
 
 const compactBtn = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 const compactSelect = "h-9 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
@@ -65,7 +91,10 @@ function InboxModeTabs({ active }: { active: "notifications" | "actions" }) {
 }
 
 export function NotificationsApiPage() {
-  const { userId } = useWorkspace();
+  const { userId, role } = useWorkspace();
+  if (role === "teacher" || role === "ta") {
+    return <TeacherNotificationsApiPage key={userId} />;
+  }
   return <Notifications key={userId} userId={userId} />;
 }
 
@@ -326,7 +355,9 @@ export function ActionItemsApiPage() {
 }
 
 function ActionItems({ userId }: { userId: string }) {
+  const isTeacherScope = useGpThemeScope() === "teacher";
   const t = useTranslations("pages.inbox");
+  const ts = useTranslations("pages.shared");
   const { query, updateQuery } = useUrlQuery();
   const rawStatus = query.get("status") ?? "pending", rawCategory = query.get("category") ?? "all";
   const filters: ActionItemQuery = {
@@ -337,6 +368,200 @@ function ActionItems({ userId }: { userId: string }) {
   };
   const list = useQuery({ queryKey: ["c-inbox-actions", userId, filters], queryFn: () => inboxApi.actionItems(filters), ...queryPolicy });
   const data = list.isSuccess && !list.isFetching ? list.data : undefined;
+
+  if (isTeacherScope) {
+    const activeStatus = filters.status ?? "pending";
+    const activeCategory = filters.category ?? "all";
+
+    return (
+      <div className="min-w-0 max-w-full space-y-4">
+        <div className={cn(FEISHU_INBOX_CARD, "flex flex-wrap items-center justify-between gap-3")}>
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-[var(--gp-ink,#1f2329)]">
+              <CheckSquare size={20} className="shrink-0 text-[var(--gp-action,#3370ff)]" />
+              <span className="truncate">{t("actionsTitle")}</span>
+            </h1>
+            <p className="mt-1 text-xs text-[var(--gp-muted,#646a73)]">{t("actionsDesc")}</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            pill
+            disabled={list.isFetching}
+            onClick={() => void list.refetch()}
+          >
+            <RefreshCw size={14} className={cn(list.isFetching && "animate-spin")} />
+            {t("refreshActions")}
+          </Button>
+        </div>
+
+        <div className={cn(FEISHU_INBOX_CARD, "flex flex-wrap items-center justify-between gap-3 p-4")}>
+          <TeacherSegmentedTabs
+            variant="segmented"
+            size="sm"
+            ariaLabel={t("actionStatus")}
+            activeId={activeStatus}
+            onChange={(nextStatus) => updateQuery({ status: nextStatus, page: null })}
+            items={Object.entries(actionStatuses).map(([value, label]) => ({
+              id: value,
+              label: t(`actionStatuses.${label}`),
+            }))}
+          />
+
+          <TeacherInboxCategoryChips
+            items={Object.entries(actionCategories).map(([value, label]) => ({
+              id: value,
+              label: t(`actionCategories.${label}`),
+            }))}
+            activeId={activeCategory}
+            ariaLabel={t("actionType")}
+            onSelect={(nextCat) =>
+              updateQuery({ category: nextCat === "all" ? null : nextCat, page: null })
+            }
+          />
+        </div>
+
+        {list.isFetching && <TeacherInboxSkeleton label={t("loadingActions")} />}
+
+        {list.isError && (
+          <div className={cn(FEISHU_INBOX_CARD, "flex flex-wrap items-center justify-between gap-3")}>
+            <TeacherFeedbackPill tone="error" message={resolveInboxErrorText(list.error, t)} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              pill
+              onClick={() => void list.refetch()}
+            >
+              {ts("retry")}
+            </Button>
+          </div>
+        )}
+
+        {data && (
+          <div className="space-y-3">
+            {!data.items.length ? (
+              <TeacherInboxEmptyState
+                icon={
+                  activeStatus === "pending" && activeCategory === "all" ? (
+                    <CheckCheck size={22} aria-hidden="true" />
+                  ) : (
+                    <CheckSquare size={22} aria-hidden="true" />
+                  )
+                }
+                iconTone={
+                  activeStatus === "pending" && activeCategory === "all" ? "success" : "default"
+                }
+                title={t("emptyActions")}
+                description={
+                  activeStatus === "pending" && activeCategory === "all"
+                    ? tr("可切换上方状态筛选查看已完成或全部历史事项。")
+                    : tr("当前筛选条件下暂无需要处理的事项。")
+                }
+                action={
+                  activeStatus !== "pending" || activeCategory !== "all" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      pill
+                      onClick={() =>
+                        updateQuery({ status: "pending", category: null, page: null })
+                      }
+                    >
+                      {tr("重置筛选")}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <div className="space-y-2.5" aria-label={t("actionListLabel")}>
+                {data.items.map((item) => {
+                  const href = inboxTargetHref(item.target);
+                  const prio = priorityBadge[item.priority];
+                  return (
+                    <article
+                      key={item.id}
+                      className={cn(
+                        FEISHU_INBOX_CARD,
+                        "gp-card-interactive flex flex-wrap items-start justify-between gap-4 p-4 hover:border-[var(--gp-action,#3370ff)]/50",
+                      )}
+                    >
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                              prio.className,
+                            )}
+                          >
+                            {tr(prio.label)}
+                          </span>
+                          <strong className="break-words text-sm font-semibold text-[var(--gp-ink,#1f2329)]">
+                            {item.title}
+                          </strong>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              actionStatusTone[item.status],
+                            )}
+                          >
+                            {t(`actionStatuses.${actionStatuses[item.status]}`)}
+                          </span>
+                        </div>
+                        <p className="break-words text-xs leading-relaxed text-[var(--gp-ink-soft,#4e5969)]">
+                          {item.description}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2.5 pt-0.5 text-[11px] text-[var(--gp-muted,#646a73)]">
+                          <span className="rounded bg-[var(--gp-surface-subtle,#f8f9fa)] px-1.5 py-0.5 font-medium text-[var(--gp-ink-soft,#4e5969)]">
+                            {t(`actionCategories.${actionCategories[item.category]}`)}
+                          </span>
+                          <span className="gp-tabular inline-flex items-center gap-1">
+                            <Clock size={12} aria-hidden="true" />
+                            {item.due_at ? t("due", { date: formatDate(item.due_at) }) : t("noDue")}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center">
+                        {href ? (
+                          <Link
+                            href={href}
+                            data-variant="tonal"
+                            className={cn(
+                              buttonVariants({ variant: "tonal", size: "sm", pill: true }),
+                              "h-8 shrink-0 px-3.5 text-xs",
+                            )}
+                          >
+                            {tr("前往处理")}
+                            <ArrowRight size={13} />
+                          </Link>
+                        ) : (
+                          <span className="shrink-0 rounded-full bg-[var(--gp-surface-subtle,#f8f9fa)] px-3 py-1 text-xs text-[var(--gp-muted,#646a73)]">
+                            {t("noEntry")}
+                          </span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            {data.total > 0 && (
+              <TeacherInboxPager
+                page={data.page}
+                pageSize={data.page_size}
+                total={data.total}
+                onChange={(nextPage) => updateQuery({ page: String(nextPage) })}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
