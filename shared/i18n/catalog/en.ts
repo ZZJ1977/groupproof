@@ -4441,6 +4441,7 @@ const catalog: Record<string, string> = {
  "仅全班公开": "Class-wide only",
  "放弃未保存的候选证据": "Discard unsaved candidate evidence",
  "候选证据还有未保存的内容。放弃这些输入并进入完整性检查？": "There are unsaved changes in candidate evidence. Discard these inputs and run the integrity check?",
- "放弃并继续": "Discard & continue"
+ "放弃并继续": "Discard & continue",
+ "请检查邮箱格式，例如 name@must.edu.mo": "Check the email format, e.g. name@must.edu.mo"
 };
 export default catalog;

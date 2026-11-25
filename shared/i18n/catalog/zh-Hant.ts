@@ -4433,6 +4433,7 @@ const catalog: Record<string, string> = {
  "高": "高",
  "（已截止）": "（已截止）",
  "（空）": "（空）",
- "（第": "（第"
+ "（第": "（第",
+ "请检查邮箱格式，例如 name@must.edu.mo": "請檢查信箱格式，例如 name@must.edu.mo"
 };
 export default catalog;
