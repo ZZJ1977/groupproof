@@ -366,9 +366,21 @@ def test_student_cannot_call_admin_endpoint(db, scope):
 
 def test_direct_upload_falls_back_to_pg_lob_and_roundtrips_all_formats(db, scope, monkeypatch):
     """外部 Supabase 不可达时，同源直传自动落盘到 pg_lob，且预览/下载原样还原字节流。"""
+    from app.auth.models import SchoolEmailBinding
     from app.modules.c import external_files_sync, files_service
     from app.modules.c.files_schemas import RegisterFile
     from app.modules.c.files_storage import UnavailableStoragePort
+
+    leader = scope.users["leader"]
+    db.add(
+        SchoolEmailBinding(
+            user_id=leader.id,
+            school_email=leader.email,
+            school_email_normalized=leader.email.lower(),
+            verified_at=datetime.now(UTC),
+        )
+    )
+    db.flush()
 
     monkeypatch.setenv("APP_ORIGIN", "https://groupproof.example.com")
     monkeypatch.setenv("SESSION_SECRET", "test-secret-key-for-pg-lob-signing")

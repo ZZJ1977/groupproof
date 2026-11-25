@@ -112,7 +112,10 @@ def test_synced_activity_attribution_and_evidence_change(db, scope, changed_kind
 
     upstream.verify_account(db, actor, 101)
     upstream.sync(db, scope, network)
-    assert personal(category="development").total == 3 - int(changed_kind == "commit")
+    relinked = personal(category="development")
+    assert relinked.total == 3
+    if changed_kind == "commit":
+        assert any(item.title == "[已删除的 GitHub 记录]" for item in relinked.items)
     membership = db.scalar(
         select(ProjectMember).where(
             ProjectMember.project_id == scope.project.id, ProjectMember.user_id == actor.id
