@@ -438,3 +438,83 @@ def test_composite_port_routes_by_source_type():
     port.query(source_type="github", project_id=1)
     port.get(source_type="feishu", project_id=1)
     assert calls == [("github", "query", "github"), ("feishu", "get", "feishu")]
+
+
+def test_port_displays_real_member_names_and_filters_across_kinds_without_resync(db, scope):
+    leader, member = scope.users["leader"], scope.users["member"]
+    leader.name = "卓子杰"
+    member.name = "郑元泰"
+    member.github_username = "M0tasy"
+    db.flush()
+
+    client = FakeGithub(
+        [
+            {
+                "sha": "1" * 40,
+                "html_url": f"https://github.com/acme/demo/commit/{'1' * 40}",
+                "author": {"login": "ZZJ1977", "id": 182423636},
+                "commit": {
+                    "message": "feat: unify names",
+                    "author": {
+                        "name": "ZZJ1977",
+                        "email": "182423636+ZZJ1977@users.noreply.github.com",
+                        "date": "2026-11-11T09:00:00Z",
+                    },
+                },
+            },
+            {
+                "sha": "2" * 40,
+                "html_url": f"https://github.com/acme/demo/commit/{'2' * 40}",
+                "author": None,
+                "commit": {
+                    "message": "fix: alias commit",
+                    "author": {
+                        "name": "Motasy",
+                        "email": "motasy@local",
+                        "date": "2026-11-11T08:00:00Z",
+                    },
+                },
+            },
+        ],
+        [pull(11, "Fix names", login="ZZJ1977", github_user_id=182423636)],
+        [
+            {
+                "id": 701,
+                "name": "CI",
+                "run_number": 9,
+                "status": "completed",
+                "conclusion": "success",
+                "event": "push",
+                "head_branch": "develop",
+                "head_sha": "1" * 40,
+                "actor": {"login": "ZZJ1977", "id": 182423636},
+                "html_url": "https://github.com/acme/demo/actions/runs/701",
+                "created_at": "2026-11-11T09:05:00Z",
+            }
+        ],
+    )
+    # 同步发生在 leader 绑定 GitHub OAuth 之前，detail 已记录 _github_actor_account_id
+    sync(db, scope, client)
+    verify_account(db, leader, 182423636, "ZZJ1977")
+
+    port = github_activity.DatabaseGithubActivityPort(lambda: github_activity._Reuse(db))
+    base = dict(project_id=scope.project.id, actor_id=leader.id, source_type="github")
+
+    # 无需重新同步，按 leader.id 筛选立即命中 commit / PR / CI，且 author_name 全部展示真实姓名
+    filtered = port.query(**base, query=ActivitySourceQuery(author_id=leader.id))
+    assert filtered.total == 3
+    assert {item.kind for item in filtered.items} == {"commit", "pull_request", "ci_run"}
+    assert all(item.author_id == leader.id for item in filtered.items)
+    assert all(item.author_name == "卓子杰" for item in filtered.items)
+    assert all(item.source.content["author_login"] == "ZZJ1977" for item in filtered.items)
+
+    # 单条详情与全量列表均展示真实成员姓名（含未走 OAuth 但匹配 github_username/同形别名的成员）
+    everything = port.query(**base, query=ActivitySourceQuery())
+    by_identity = {item.source.identity: item for item in everything.items}
+    assert by_identity[f"commit:{'1' * 40}"].author_name == "卓子杰"
+    assert by_identity[f"commit:{'2' * 40}"].author_name == "郑元泰"
+    assert by_identity[f"commit:{'2' * 40}"].author_id is None
+    detail = port.get(**base, source_id=by_identity["ci_run:701"].id)
+    assert detail.author_id == leader.id
+    assert detail.author_name == "卓子杰"
+    assert detail.source.content["author_login"] == "ZZJ1977"

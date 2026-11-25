@@ -347,12 +347,40 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const kinds = [
     ...new Set([...(sourceType === "github" ? ["commit", "pull_request", "ci_run"] : []), ...(rows?.items.map((item) => item.kind) ?? [])]),
   ];
-  const authors = [
-    ...new Map([
-      ...(sourceType === "github" ? (access?.members.map((member) => [member.id, member.title] as const) ?? []) : []),
-      ...(rows?.items.flatMap((item) => (item.author_id ? [[item.author_id, item.author_name || "来源未提供作者名称"] as const] : [])) ?? []),
-    ]).entries(),
-  ];
+  const memberNameById = useMemo(
+    () =>
+      new Map(
+        (access?.members ?? [])
+          .filter((member) => Boolean(member.title?.trim()))
+          .map((member) => [member.id, member.title.trim()] as const),
+      ),
+    [access?.members],
+  );
+  const resolveAuthorName = (
+    authorId: string | null | undefined,
+    authorName: string | null | undefined,
+    fallback = "来源未提供作者名称",
+  ) => {
+    if (sourceType === "github" && authorId) {
+      const memberName = memberNameById.get(authorId);
+      if (memberName) return memberName;
+    }
+    return authorName?.trim() || fallback;
+  };
+  const authors = (() => {
+    const map = new Map<string, string>();
+    if (sourceType === "github") {
+      for (const member of access?.members ?? []) {
+        const label = member.title?.trim();
+        if (label) map.set(member.id, label);
+      }
+    }
+    for (const item of rows?.items ?? []) {
+      if (!item.author_id || map.has(item.author_id)) continue;
+      map.set(item.author_id, resolveAuthorName(item.author_id, item.author_name));
+    }
+    return [...map.entries()];
+  })();
   const record = access && detail.isSuccess && !detail.isFetching ? detail.data : undefined;
   const savedHistory = access && history.isSuccess && !history.isFetching ? history.data : undefined;
   const selectedSummary = selectedSummaryQuery.data ?? (selectedId ? summaryById.get(selectedId) : undefined);
@@ -449,7 +477,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
         });
         await refresh();
         setNotice(
-          `已同步最新仓库数据（覆盖默认及活跃分支）：文件 ${result.files} 个、新增提交 ${result.commits ?? 0} 条、PR ${result.pulls ?? 0} 个、CI ${result.ci_runs ?? 0} 次。`,
+          `已同步最新仓库数据（覆盖全部分支）：文件 ${result.files} 个、新增提交 ${result.commits ?? 0} 条、PR ${result.pulls ?? 0} 个、CI ${result.ci_runs ?? 0} 次。`,
         );
       } else {
         const result = await projectRequest<{ created?: number; seen?: number; messages?: number; chats?: number }>(
@@ -675,7 +703,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
               {syncing && (
                 <Feedback tone="info">
                   {sourceType === "github"
-                    ? "正在并发同步默认分支与活跃分支的最新提交、PR 与 CI，请稍候…"
+                    ? "正在并发同步仓库全部分支的最新提交、PR 与 CI，请稍候…"
                     : "正在同步最新飞书协作记录，请稍候…"}
                 </Feedback>
               )}
@@ -724,7 +752,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                                   {repo.owner}/{repo.repo}
                                 </a>
                                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
-                                  默认分支 {repo.default_branch} + 活跃分支
+                                  全部分支（默认 {repo.default_branch}）
                                 </span>
                                 <span className="text-slate-500">
                                   {repo.last_synced_at
@@ -1089,6 +1117,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                               summary?.status !== "ready" &&
                               (summaryBusy === item.source_id || autoAnalyzingIds.includes(item.source_id) || summary?.status === "pending");
                             const displayTitle = isCommit ? summary?.headline || item.title : item.title;
+                            const authorLabel = resolveAuthorName(item.author_id, item.author_name);
                             const cleanedPreview = formatActivityPreview(item.summary);
                             const distinctPreview = cleanedPreview && cleanedPreview !== item.title.trim() ? cleanedPreview : "";
                             const displaySummary = isCommit ? summary?.implementation || distinctPreview : cleanedPreview;
@@ -1098,13 +1127,13 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                                 <div className="flex flex-wrap items-start justify-between gap-2.5">
                                   <div className="flex min-w-0 flex-1 items-start gap-2.5">
                                     <div className="mt-0.5">
-                                      <Avatar name={item.author_name || "来"} size={26} />
+                                      <Avatar name={authorLabel} size={26} />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                         <span className="text-sm font-semibold text-slate-900">{displayTitle}</span>
                                         <span className="text-xs text-slate-500">
-                                          {item.author_name || "来源未提供作者名称"} · {kindLabels[item.kind] ?? item.kind}
+                                          {authorLabel} · {kindLabels[item.kind] ?? item.kind}
                                           {item.github_state && ` · ${item.github_state}`} · {formatDate(item.occurred_at)} ·{" "}
                                           {taskName(item.task_id)}
                                         </span>
@@ -1201,7 +1230,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                             title="没有符合条件的来源记录"
                             description={
                               sourceType === "github"
-                                ? "点击右上角“同步 GitHub”后，默认分支与活跃分支的提交、PR 和 CI 会在这里出现。"
+                                ? "点击右上角“同步 GitHub”后，仓库全部分支的提交、PR 和 CI 会在这里出现。"
                                 : "点击右上角“同步飞书记录”后，消息会在这里出现。"
                             }
                           />
@@ -1232,7 +1261,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                 title={record?.title ?? "记录详情"}
                 description={
                   record
-                    ? `${record.author_name || "来源未提供作者名称"} · ${kindLabels[record.kind] ?? record.kind} · ${formatDate(record.occurred_at)}`
+                    ? `${resolveAuthorName(record.author_id, record.author_name)} · ${kindLabels[record.kind] ?? record.kind} · ${formatDate(record.occurred_at)}`
                     : "正在读取来源快照…"
                 }
               >
@@ -1259,7 +1288,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                                 <span className="gp-pill">置信度 {Math.round(selectedSummary.confidence * 100)}%</span>
                               )}
                               <span className="text-slate-500">
-                                提交人：{record.author_name || "未知"} · {formatDate(record.occurred_at)}
+                                提交人：{resolveAuthorName(record.author_id, record.author_name, "未知")} · {formatDate(record.occurred_at)}
                               </span>
                             </div>
                             {selectedSummary.headline && <p className="text-sm font-semibold text-slate-900">{selectedSummary.headline}</p>}
@@ -1559,7 +1588,11 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                                 </p>
                                 <p className="text-[11px] text-slate-500">
                                   {formatDate(decision.created_at)} · 当时来源：{snapshotText(decision.source_snapshot, "title") || "未提供标题"} ·{" "}
-                                  {snapshotText(decision.source_snapshot, "author_name") || "未提供作者名称"}
+                                  {resolveAuthorName(
+                                    snapshotText(decision.source_snapshot, "author_id") || null,
+                                    snapshotText(decision.source_snapshot, "author_name"),
+                                    "未提供作者名称",
+                                  )}
                                 </p>
                               </div>
                             ))}

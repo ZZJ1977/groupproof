@@ -146,7 +146,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
                       </a>
                     </div>
                     <span className="inline-flex shrink-0 items-center rounded-md border border-slate-200/80 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                      默认分支 {repo.default_branch}
+                      全部分支（默认 {repo.default_branch}）
                     </span>
                   </div>
                   <p className="mt-1 pl-4 text-xs text-slate-500">
@@ -208,7 +208,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
         {entries?.length === 0 && (
           <>
             <p className="text-xs text-slate-500">
-              项目还没有绑定仓库。同步默认分支及活跃分支（含 develop）的提交、PR 与 CI 活动。
+              项目还没有绑定仓库。同步仓库全部分支的提交、PR 及 CI 活动。
             </p>
             {writable && <div className="mt-auto">{bindForm}</div>}
           </>

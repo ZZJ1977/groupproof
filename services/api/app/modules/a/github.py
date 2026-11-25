@@ -25,6 +25,7 @@ from app.api.errors import ApiError
 
 GITHUB_API = "https://api.github.com"
 TOKEN_REFRESH_MARGIN = 300
+MAX_BRANCH_PAGES = 50
 _NAME = re.compile(r"[A-Za-z0-9_.-]{1,100}")
 
 
@@ -180,12 +181,18 @@ class GithubClient:
         return items
 
     def branches(self, owner: str, repo: str, installation_id: int) -> list[dict[str, Any]]:
-        """读取仓库活跃分支（最多 30 个），用于同步非默认分支提交。"""
-        return self._list(
-            f"/repos/{owner}/{repo}/branches",
-            installation_id,
-            {"per_page": 30},
-        )
+        """分页读取仓库全部分支（每页 100 条），用于同步所有分支提交。"""
+        all_branches: list[dict[str, Any]] = []
+        for page in range(1, MAX_BRANCH_PAGES + 1):
+            batch = self._list(
+                f"/repos/{owner}/{repo}/branches",
+                installation_id,
+                {"per_page": 100, "page": page},
+            )
+            all_branches.extend(batch)
+            if len(batch) < 100:
+                break
+        return all_branches
 
     def commits(
         self,
