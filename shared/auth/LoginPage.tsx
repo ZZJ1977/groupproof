@@ -12,6 +12,9 @@ import { Feedback, ProgressBar } from "@/shared/components/common";
 import { LanguageSwitcher } from "@/shared/components/language-switcher";
 import { authClient, ApiError, type CapabilitiesDTO, type RegistrationTxDTO, type SessionDTO } from "@/shared/auth/auth-client";
 import { sanitizeReturnTo } from "@/shared/auth/return-to";
+import { ParticleWordmark } from "@/shared/auth/lux/ParticleWordmark";
+import { FloatingField } from "@/shared/components/lux/FloatingField";
+import { useUiText } from "@/shared/i18n/use-ui-text";
 
 const FEATURES = [
   { icon: Mail, titleKey: "feature1Title", subKey: "feature1Sub" },
@@ -63,6 +66,7 @@ function ErrorNote({ message, requestId, retryAfter }: { message: string; reques
 function LoginCard() {
   const t = useTranslations("auth");
   const tp = useTranslations("auth.passwordLogin");
+  const tr = useUiText();
   const search = useSearchParams();
   const router = useRouter();
   const locale = useLocale();
@@ -173,10 +177,9 @@ function LoginCard() {
   const showForgot = !capsFailed && (!caps || caps.passwordReset.enabled);
 
   return (
-    <section className="relative self-start overflow-hidden rounded-[24px] border border-white/70 bg-white/80 p-8 shadow-[0_30px_80px_-20px_rgba(36,107,250,0.30),0_8px_24px_-8px_rgba(20,33,59,0.10)] backdrop-blur-xl lg:mt-5 lg:p-10">
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#246bfa] via-[#7c5cff] to-[#22c1c3]" />
-      <h2 className="text-[30px] font-extrabold tracking-tight text-[#14213b]">{t("loginTitle")}</h2>
-      <p className="mt-2 text-[#718097]">{t("loginSubtitle")}</p>
+    <section className="gp-rainbow-ring gp-slide-in relative self-start overflow-hidden rounded-[24px] bg-white/90 p-6 shadow-[0_30px_80px_-20px_rgba(36,107,250,0.28),0_8px_24px_-8px_rgba(20,33,59,0.08)] backdrop-blur-xl sm:p-8 lg:mt-2 lg:p-8">
+      <h2 className="text-[26px] font-extrabold tracking-tight text-[#14213b]">{t("loginTitle")}</h2>
+      <p className="mt-1.5 text-[14px] text-[#718097]">{t("loginSubtitle")}</p>
 
       {error && !dismissedError && (
         <p className="mt-4 rounded-[7px] bg-[#fdecec] p-3 text-[12px] text-[#c3313f]" role="alert">
@@ -186,27 +189,48 @@ function LoginCard() {
 
       {/* 账号密码登录窗口：用户名/邮箱 + 密码 */}
       <h3 className="sr-only">{tp("title")}</h3>
-      <form className="mt-6 space-y-3 [&_input]:h-11 [&_input]:rounded-[12px] [&_input]:border-[#dbe4f1] [&_input]:bg-white/90 [&_input:focus]:border-[#246bfa] [&_input:focus]:ring-4 [&_input:focus]:ring-[#246bfa]/15 [&_button[type=submit]]:h-12 [&_button[type=submit]]:rounded-[14px] [&_button[type=submit]]:border-0 [&_button[type=submit]]:bg-gradient-to-r [&_button[type=submit]]:from-[#246bfa] [&_button[type=submit]]:to-[#6a4cff] [&_button[type=submit]]:font-semibold [&_button[type=submit]]:shadow-[0_10px_24px_-8px_rgba(36,107,250,0.65)] [&_button[type=submit]]:transition hover:[&_button[type=submit]]:-translate-y-px hover:[&_button[type=submit]]:shadow-[0_14px_28px_-8px_rgba(36,107,250,0.75)]" onSubmit={submitPasswordLogin}>
-        <label className="gp-field">
-          {tp("identifier")}
-          <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} autoComplete="username" placeholder={tp("identifierPlaceholder")} aria-label={tp("identifier")} />
-        </label>
-        <label className="gp-field">
-          {tp("password")}
-          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" aria-label={tp("password")} />
-        </label>
+      <form className="mt-5 space-y-3.5 [&_button[type=submit]]:h-12 [&_button[type=submit]]:rounded-[14px] [&_button[type=submit]]:border-0 [&_button[type=submit]]:bg-gradient-to-r [&_button[type=submit]]:from-[#246bfa] [&_button[type=submit]]:to-[#6a4cff] [&_button[type=submit]]:font-semibold [&_button[type=submit]]:shadow-[0_10px_24px_-8px_rgba(36,107,250,0.65)] [&_button[type=submit]]:transition hover:[&_button[type=submit]]:-translate-y-px hover:[&_button[type=submit]]:shadow-[0_14px_28px_-8px_rgba(36,107,250,0.75)]" onSubmit={submitPasswordLogin}>
+        <FloatingField
+          label={tp("identifier")}
+          value={identifier}
+          validation="identifier"
+          invalidHint={tr("请检查邮箱格式，例如 name@must.edu.mo")}
+        >
+          {(fieldProps) => (
+            <Input
+              {...fieldProps}
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              autoComplete="username"
+              placeholder={tp("identifierPlaceholder")}
+              aria-label={tp("identifier")}
+            />
+          )}
+        </FloatingField>
+        <FloatingField label={tp("password")} value={password}>
+          {(fieldProps) => (
+            <Input
+              {...fieldProps}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              aria-label={tp("password")}
+            />
+          )}
+        </FloatingField>
         {loginError && <ErrorNote {...loginError} retryAfter={loginError.code === "RATE_LIMITED" && loginRetryAt !== null ? loginRetrySeconds : loginError.retryAfter} />}
         <Button type="submit" className="w-full" loading={loginState === "pending"} disabled={loginRetrySeconds > 0}>{tp("submit")}</Button>
       </form>
-      <div className="mt-3 flex items-center justify-center gap-3 text-[12px] text-[#8794a7]">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-[12px] text-[#8794a7]">
         {showForgot && (
-          <button type="button" className="gp-link" onClick={() => setForgotOpen(true)}>
+          <button type="button" className="gp-link whitespace-nowrap" onClick={() => setForgotOpen(true)}>
             {tp("forgotLink")}
           </button>
         )}
         {showForgot && showSignup && <span aria-hidden>·</span>}
         {showSignup && (
-          <span>
+          <span className="whitespace-nowrap">
             {tp("noAccount")}
             <button type="button" className="gp-link ml-1" onClick={() => setRegisterOpen(true)}>
               {tp("registerLink")}
@@ -222,7 +246,7 @@ function LoginCard() {
 
       {(googleLoading || showGoogle) && (
         <>
-          <div className="my-5 flex items-center gap-3" aria-hidden="true">
+          <div className="my-4 flex items-center gap-3" aria-hidden="true">
             <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d5deec]" />
             <span className="h-1.5 w-1.5 rounded-full bg-[#b9c7dd]" />
             <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d5deec]" />
@@ -243,15 +267,15 @@ function LoginCard() {
         </>
       )}
 
-      <p className="mt-6 text-center text-[12px] text-[#8794a7]">{t("firstUse")}</p>
-      <div className="mt-6 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-4 ring-1 ring-[#e3eafb]">
+      <p className="mt-5 text-center text-[12px] text-[#8794a7]">{t("firstUse")}</p>
+      <div className="group mt-5 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-3.5 ring-1 ring-[#e3eafb] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(36,107,250,0.35)] hover:ring-[#cfe0fc]">
         <div className="flex gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm transition-transform duration-200 group-hover:scale-105 group-hover:-rotate-3">
             <Mail size={18} />
           </span>
           <div>
             <div className="font-semibold">{t("emailRuleTitle")}</div>
-            <p className="mt-2 text-[12px] leading-6 text-[#6b7a92]">
+            <p className="mt-1.5 text-[12px] leading-6 text-[#6b7a92]">
               {t("emailRuleStudent")}
               <br />
               {t("emailRuleTeacher")}
@@ -259,13 +283,13 @@ function LoginCard() {
           </div>
         </div>
       </div>
-      <div className="mt-4 flex gap-3 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-4 ring-1 ring-[#e3eafb]">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm">
+      <div className="group mt-3.5 flex gap-3 rounded-[16px] bg-gradient-to-br from-[#eef4ff] to-[#f4f0ff] p-3.5 ring-1 ring-[#e3eafb] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(36,107,250,0.35)] hover:ring-[#cfe0fc]">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-white text-[#246bfa] shadow-sm transition-transform duration-200 group-hover:scale-105 group-hover:-rotate-3">
           <ShieldCheck size={18} />
         </span>
         <div>
           <div className="font-semibold">{t("privacyTitle")}</div>
-          <p className="mt-2 text-[12px] leading-6 text-[#7b899c]">{t("privacyBody")}</p>
+          <p className="mt-1.5 text-[12px] leading-6 text-[#7b899c]">{t("privacyBody")}</p>
         </div>
       </div>
 
@@ -510,35 +534,36 @@ export function LoginPage() {
         <div className="absolute bottom-[-220px] left-1/3 h-[520px] w-[520px] rounded-full bg-[#5fe0d0]/25 blur-[120px]" />
         <div className="absolute inset-0 bg-[radial-gradient(#14213b14_1px,transparent_1px)] [background-size:26px_26px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
       </div>
-      <header className="relative z-10 flex h-[68px] items-center justify-between px-[max(24px,4vw)]">
-        <div className="flex items-center gap-2.5 text-[22px] font-extrabold tracking-tight text-[#14213b]">
+      <header className="relative z-10 flex h-[68px] items-center justify-between gap-2 px-4 sm:px-[max(24px,4vw)]">
+        <div className="flex shrink-0 items-center gap-2.5 text-[19px] font-extrabold tracking-tight text-[#14213b] sm:text-[22px]">
           <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#246bfa] to-[#7c5cff] text-white shadow-[0_8px_18px_-6px_rgba(36,107,250,0.7)]">
             <ShieldCheck size={19} />
           </span>
           GroupProof
         </div>
-        <div className="flex items-center gap-5 text-[12px] text-[#66748b]">
-          <span>{t("helpCenter")}</span>
-          <span>{t("about")}</span>
+        <div className="flex items-center gap-3 text-[12px] text-[#66748b] sm:gap-5">
+          <span className="hidden whitespace-nowrap sm:inline">{t("helpCenter")}</span>
+          <span className="hidden whitespace-nowrap sm:inline">{t("about")}</span>
           <LanguageSwitcher compact />
         </div>
       </header>
-      <main className="relative z-10 mx-auto grid max-w-[1380px] grid-cols-1 gap-12 px-[max(24px,4vw)] py-10 lg:grid-cols-[1.16fr_.84fr] lg:gap-20">
-        <section className="min-w-0 pt-6">
-          <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-[13px] font-medium text-[#4b5d7a] shadow-sm ring-1 ring-[#e3eafb] backdrop-blur">
+      <main className="relative z-10 mx-auto grid max-w-[1380px] grid-cols-1 gap-10 px-4 py-6 sm:px-[max(24px,4vw)] sm:py-8 lg:grid-cols-[1.16fr_.84fr] lg:gap-16">
+        <section className="min-w-0 pt-2 lg:pt-3">
+          <ParticleWordmark className="gp-fade-in mb-5" />
+          <p className="gp-fade-in mb-4 inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-[13px] font-medium text-[#4b5d7a] shadow-sm ring-1 ring-[#e3eafb] backdrop-blur">
             <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-[#246bfa] to-[#7c5cff]" />
             {t("tagline")}
           </p>
-          <h1 className="max-w-[620px] text-[clamp(34px,4vw,54px)] font-extrabold leading-[1.15] tracking-tight text-[#101d35]">
+          <h1 className="gp-slide-in max-w-[620px] text-[clamp(34px,4vw,54px)] font-extrabold leading-[1.15] tracking-tight text-[#101d35]">
             <span className="bg-gradient-to-r from-[#246bfa] via-[#6a4cff] to-[#1fb6c1] bg-clip-text text-transparent">{t("heroTitle1")}</span>
             <br />
             {t("heroTitle2")}
           </h1>
-          <p className="mt-6 max-w-[560px] text-[16px] leading-[1.8] text-[#62728d]">{t("heroDescription")}</p>
-          <div className="mt-10 grid grid-cols-2 gap-5 sm:grid-cols-4">
+          <p className="gp-slide-in mt-5 max-w-[560px] text-[16px] leading-[1.8] text-[#62728d]">{t("heroDescription")}</p>
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-5">
             {FEATURES.map((feature) => (
-              <div key={feature.titleKey} className="rounded-[18px] bg-white/70 p-4 shadow-[0_10px_30px_-14px_rgba(36,70,150,0.25)] ring-1 ring-white/80 backdrop-blur transition hover:-translate-y-1 hover:shadow-[0_16px_36px_-14px_rgba(36,107,250,0.35)]">
-                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#e6efff] to-[#efe9ff] text-[#246bfa]">
+              <div key={feature.titleKey} className="group gp-slide-in rounded-[18px] bg-white/75 p-4 shadow-[0_10px_30px_-14px_rgba(36,70,150,0.22)] ring-1 ring-white/85 backdrop-blur transition duration-200 hover:-translate-y-1 hover:shadow-[0_16px_36px_-14px_rgba(36,107,250,0.34)]">
+                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#e6efff] to-[#efe9ff] text-[#246bfa] transition-transform duration-200 group-hover:scale-105 group-hover:-rotate-3">
                   <feature.icon size={20} />
                 </span>
                 <div className="font-semibold text-[#17243c]">{t(feature.titleKey)}</div>
@@ -546,19 +571,19 @@ export function LoginPage() {
               </div>
             ))}
           </div>
-          <div className="mt-12 max-w-[620px] rounded-[20px] border border-white/80 bg-white/85 p-5 shadow-[0_30px_70px_-24px_rgba(36,70,150,0.35)] backdrop-blur lg:-rotate-1">
+          <div className="group gp-slide-in mt-10 max-w-[620px] rounded-[20px] border border-white/80 bg-white/85 p-5 shadow-[0_30px_70px_-24px_rgba(36,70,150,0.35)] backdrop-blur transition duration-200 hover:-translate-y-1 hover:shadow-[0_34px_75px_-22px_rgba(36,107,250,0.40)] lg:-rotate-1 lg:hover:rotate-0">
             <div className="flex items-center gap-2 border-b border-[#e6edf5] pb-3 text-[12px] font-semibold">
-              <span className="h-2 w-2 rounded-full bg-[#12a66a]" /> {t("sampleCourse")}
+              <span className="h-2 w-2 rounded-full bg-[#12a66a] transition-transform duration-200 group-hover:scale-125" /> {t("sampleCourse")}
               <span className="ml-auto text-[#246bfa]">{t("sampleOverviewTag")}</span>
             </div>
-            <div className="mt-4 grid grid-cols-[110px_1fr] gap-4">
-              <div className="space-y-2 border-r border-[#e8edf4] pr-4 text-[11px] text-[#7890ac]">
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[110px_1fr]">
+              <div className="flex flex-wrap gap-1.5 border-b border-[#e8edf4] pb-3 text-[11px] text-[#7890ac] sm:block sm:space-y-2 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
                 <div className="rounded bg-[#eaf2ff] px-2 py-1 text-[#246bfa]">{t("sampleNavOverview")}</div>
-                <div className="px-2">{t("sampleNavTasks")}</div>
-                <div className="px-2">{t("sampleNavEvidence")}</div>
-                <div className="px-2">{t("sampleNavContribution")}</div>
+                <div className="px-2 py-1 sm:py-0">{t("sampleNavTasks")}</div>
+                <div className="px-2 py-1 sm:py-0">{t("sampleNavEvidence")}</div>
+                <div className="px-2 py-1 sm:py-0">{t("sampleNavContribution")}</div>
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="text-[12px] font-semibold">{t("sampleProject")}</div>
                 <div className="mt-3 space-y-3">
                   {([
@@ -566,11 +591,11 @@ export function LoginPage() {
                     [t("sampleItem2"), 80],
                     [t("sampleItem3"), 68],
                   ] as [string, number][]).map(([label, value]) => (
-                    <div key={label} className="flex items-center gap-3 text-[11px] text-[#68778e]">
-                      <Check size={14} className="text-[#15ac70]" />
-                      <span className="w-32">{label}</span>
-                      <ProgressBar value={value} className="flex-1" />
-                      <span>{value}%</span>
+                    <div key={label} className="flex items-center gap-2.5 text-[11px] text-[#68778e] sm:gap-3">
+                      <Check size={14} className="shrink-0 text-[#15ac70] transition-transform duration-200 group-hover:scale-110" />
+                      <span className="w-24 shrink-0 truncate sm:w-32">{label}</span>
+                      <ProgressBar value={value} className="min-w-[48px] flex-1" />
+                      <span className="shrink-0 tabular-nums">{value}%</span>
                     </div>
                   ))}
                 </div>

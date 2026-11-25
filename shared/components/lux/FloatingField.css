@@ -1,0 +1,237 @@
+/* Lucian UX/UI Prompt #025 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#025 */
+
+.u025-f {
+  position: relative;
+  width: 100%;
+}
+
+.u025-box {
+  position: relative;
+  height: 62px;
+}
+
+.u025-f .u025-box .u025-in {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 18px 18px 0 18px;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 16px;
+  background: var(--ux-surface);
+  font-size: 16px;
+  font-weight: 560;
+  color: var(--ux-ink);
+  letter-spacing: -0.01em;
+}
+
+.u025-f.has-check .u025-box .u025-in {
+  padding-right: 48px;
+}
+
+.u025-f.is-up .u025-box .u025-in {
+  padding-top: 0;
+}
+
+.u025-f:not(.is-focus) .u025-box .u025-in::placeholder {
+  color: transparent;
+  opacity: 0;
+}
+
+.u025-f.is-focus .u025-box .u025-in::placeholder {
+  color: var(--ux-ink-3);
+  opacity: 0.75;
+  transition: opacity 0.2s var(--ux-ease);
+}
+
+.u025-f .u025-box .u025-in:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.u025-line {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+  border-radius: 16px;
+}
+
+.u025-line i {
+  display: block;
+  font-style: normal;
+  border: 1.5px solid var(--ux-line-2);
+  transition: border-color 0.3s var(--ux-ease);
+}
+
+.u025-line .l {
+  width: 14px;
+  border-right: 0;
+  border-radius: 16px 0 0 16px;
+}
+
+.u025-line .g {
+  width: var(--gap, 0px);
+  border-left: 0;
+  border-right: 0;
+  transition:
+    width 0.35s var(--ux-ease),
+    border-color 0.3s var(--ux-ease);
+}
+
+.u025-line .r {
+  flex: 1;
+  border-left: 0;
+  border-radius: 0 16px 16px 0;
+}
+
+.u025-f.is-focus .u025-line i {
+  border-color: var(--ux-accent);
+  border-width: 2px;
+}
+
+.u025-f.is-bad .u025-line i {
+  border-color: var(--ux-danger);
+}
+
+.u025-f.is-ok .u025-line i {
+  border-color: var(--ux-mint);
+}
+
+.u025-f.is-up .u025-line i.g {
+  border-top-color: transparent;
+}
+
+.u025-lab {
+  position: absolute;
+  left: 18px;
+  top: 21px;
+  padding: 0 4px;
+  margin-left: -4px;
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 560;
+  color: var(--ux-ink-3);
+  transform-origin: 0 0;
+  pointer-events: none;
+  white-space: nowrap;
+  transition:
+    transform 0.35s var(--ux-ease),
+    color 0.3s var(--ux-ease);
+}
+
+.u025-f.is-up .u025-lab {
+  transform: translate(0, -30px) scale(0.8);
+  color: var(--ux-ink-2);
+  font-weight: 650;
+}
+
+.u025-f.is-focus .u025-lab {
+  color: var(--ux-accent);
+}
+
+.u025-f.is-bad .u025-lab {
+  color: var(--ux-danger);
+}
+
+.u025-ok {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--ux-mint);
+  color: var(--ux-accent-ink);
+  transform: scale(0);
+  pointer-events: none;
+  transition: transform 0.45s var(--ux-spring);
+}
+
+.u025-ok svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.u025-ok path {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  transition: stroke-dashoffset 0.35s var(--ux-ease) 0.15s;
+}
+
+.u025-f.is-ok .u025-ok {
+  transform: none;
+}
+
+.u025-f.is-ok .u025-ok path {
+  stroke-dashoffset: 0;
+}
+
+.u025-f.is-shake .u025-box {
+  animation: u025-shake 0.42s var(--ux-ease);
+}
+
+@keyframes u025-shake {
+  20% {
+    transform: translateX(-7px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+.u025-help {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s var(--ux-ease);
+}
+
+.u025-help > span {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ux-danger);
+}
+
+.u025-help > span::before {
+  content: "!";
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ux-danger);
+  color: var(--ux-accent-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.u025-f.is-bad .u025-help {
+  grid-template-rows: 1fr;
+}
+
+.u025-f.is-bad .u025-help > span {
+  padding-top: 8px;
+}
