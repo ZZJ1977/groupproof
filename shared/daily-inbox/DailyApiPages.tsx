@@ -535,15 +535,24 @@ export function HomeApiPage() {
         title={t("title")}
         actions={
           <JellyActionRow ariaLabel={t("title")}>
-            {isTeacher && <Link href="/teacher/courses" className={buttonVariants({ size: "sm" })}>我的班级 / 创建班级</Link>}
-            <button
+            {isTeacher && (
+              <Link
+                href="/teacher/courses"
+                data-variant="default"
+                className={cn(buttonVariants({ size: "sm" }), "gp-rainbow-ring")}
+              >
+                我的班级 / 创建班级
+              </Link>
+            )}
+            <Button
               type="button"
-              className={buttonVariants({ size: "sm", variant: isTeacher ? "outline" : "default" })}
+              size="sm"
+              variant={isTeacher ? "outline" : "default"}
               onClick={() => setCreateOpen(true)}
             >
               <Plus size={15} />
               {t("createProject")}
-            </button>
+            </Button>
             <Link href="/courses/join" className={buttonVariants({ variant: "outline", size: "sm" })}>
               <BookOpen size={15} />
               {t("joinCourse")}

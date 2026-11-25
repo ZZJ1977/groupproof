@@ -27,30 +27,32 @@
   --ux-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
 }
 
-.ux,
-.ux *,
-.ux *::before,
-.ux *::after {
-  box-sizing: border-box;
-}
+@layer base {
+  .ux,
+  .ux *,
+  .ux *::before,
+  .ux *::after {
+    box-sizing: border-box;
+  }
 
-.ux {
-  font-family: inherit;
-  color: var(--ux-ink);
-  -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.01em;
-  -webkit-tap-highlight-color: transparent;
-  word-break: keep-all;
-  overflow-wrap: break-word;
-}
+  .ux {
+    font-family: inherit;
+    color: var(--ux-ink);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+    -webkit-tap-highlight-color: transparent;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
 
-:where(.ux) :is(button, input, textarea, select) {
-  font: inherit;
-  color: inherit;
-}
+  :where(.ux) :is(button, input, textarea, select) {
+    font: inherit;
+    color: inherit;
+  }
 
-:where(.ux) button {
-  cursor: pointer;
+  :where(.ux) button {
+    cursor: pointer;
+  }
 }
 
 .ux :focus-visible {
