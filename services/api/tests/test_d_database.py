@@ -1475,3 +1475,155 @@ def test_week7_new_course_project_binds_current_template(db, scope):
             scope.user,
         )
     assert error.value.code == "GROUP_PROJECT_EXISTS"
+
+
+def test_contribution_includes_all_active_members_with_zero_formal_outcomes(db, scope, monkeypatch):
+    extra_users = []
+    for label in ("成员甲", "成员乙", "成员丙", "已退出成员"):
+        uid = uuid4()
+        u = User(
+            id=uid,
+            name=label,
+            username=f"contrib-{uid}",
+            email=f"{uid}@example.test",
+            college="Test",
+            global_role="student",
+            status="active",
+        )
+        db.add(u)
+        extra_users.append(u)
+    db.flush()
+
+    db.add(
+        ProjectMember(
+            id=uuid4(),
+            project_id=scope.project.id,
+            user_id=scope.user.id,
+            role="leader",
+        )
+    )
+    for active_u in extra_users[:3]:
+        db.add(
+            ProjectMember(
+                id=uuid4(),
+                project_id=scope.project.id,
+                user_id=active_u.id,
+                role="member",
+            )
+        )
+    db.add(
+        ProjectMember(
+            id=uuid4(),
+            project_id=scope.project.id,
+            user_id=extra_users[3].id,
+            role="member",
+            left_at=datetime.now(UTC),
+        )
+    )
+    initial_task_version = scope.task.lock_version
+    scope.task.weight = 12
+    scope.task.status = "completed"
+    scope.task.lock_version += 1
+    evidence = Evidence(
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        author_id=scope.user.id,
+        title="Formal evidence",
+        description="Recorded source",
+        source_type="manual",
+        status="formal",
+        source_changed=False,
+    )
+    db.add(evidence)
+    db.flush()
+    db.add(EvidenceCriterion(evidence_id=evidence.id, criterion_id=scope.criterion.id))
+    db.add(
+        EvidenceSourceSnapshot(
+            evidence_id=evidence.id,
+            version_no=1,
+            source_identity="manual-record",
+            source_revision="v1",
+            content_hash="a" * 64,
+            content_json={"availability": "available", "source": {}},
+            captured_by=scope.user.id,
+        )
+    )
+    db.flush()
+    check = IntegrityCheck(
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        checked_by=scope.user.id,
+        rule_version="effective-formal-v1",
+        status="passed",
+        total_criteria=1,
+        covered_criteria=1,
+        coverage_rate=100,
+        missing_criteria_json=[],
+        pending_sources=0,
+        details_json=[
+            {
+                "criterion_id": str(scope.criterion.id),
+                "criterion_version": scope.criterion.lock_version,
+                "evidence": [{"id": str(evidence.id), "version": evidence.lock_version}],
+            }
+        ],
+    )
+    db.add(check)
+    db.flush()
+    run = VerificationRun(
+        integrity_check_id=check.id,
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        triggered_by=scope.user.id,
+        task_version=initial_task_version,
+        result="uncertain",
+        status="completed",
+        engine_version="deterministic-v1",
+    )
+    db.add(run)
+    db.flush()
+    outcome = FormalOutcome(
+        project_id=scope.project.id,
+        task_id=scope.task.id,
+        verification_run_id=run.id,
+        basis_json={
+            "task_weight": "12",
+            "responsibility_shares": {str(scope.user.id): "100.0000"},
+        },
+    )
+    db.add(outcome)
+    db.flush()
+
+    monkeypatch.setattr(
+        contribution,
+        "get_project_access",
+        lambda *a, **k: SimpleNamespace(leader=True, teacher=False, staff=False),
+    )
+    result = contribution.calculate(db, scope.project.id, scope.user)
+    by_id = {row["user_id"]: row for row in result["members"]}
+    assert len(result["members"]) == 4
+    assert str(extra_users[3].id) not in by_id
+    assert by_id[str(scope.user.id)]["share"] == 100.0
+    assert by_id[str(scope.user.id)]["task_credit"] == 12.0
+    assert len(by_id[str(scope.user.id)]["tasks"]) == 1
+    for zero_user in extra_users[:3]:
+        row = by_id[str(zero_user.id)]
+        assert row["share"] == 0.0
+        assert row["task_credit"] == 0.0
+        assert row["tasks"] == []
+    assert sum(row["share"] for row in result["members"]) == 100.0
+
+    # Even if an earlier snapshot only persisted items for formal-outcome members,
+    # latest_snapshot still returns all active ProjectMember rows.
+    for zero_user in extra_users[:3]:
+        item = db.scalar(
+            select(ContributionItem).where(
+                ContributionItem.snapshot_id == UUID(result["id"]),
+                ContributionItem.user_id == zero_user.id,
+            )
+        )
+        db.delete(item)
+    db.flush()
+    padded = contribution.latest_snapshot(db, scope.project.id, scope.user)
+    assert len(padded["members"]) == 4
+    assert sum(row["share"] for row in padded["members"]) == 100.0
