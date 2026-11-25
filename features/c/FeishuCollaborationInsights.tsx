@@ -310,7 +310,9 @@ export function FeishuCollaborationInsightsPanel({
                 );
               })}
             </div>
-            <span className="text-[11px] text-slate-400">AI 判断仅供参考</span>
+            <span className="text-[11px] text-slate-400">
+              {data.needs_human_review === false ? "AI 协作结论已确认" : "AI 判断仅供参考"}
+            </span>
           </div>
 
           <div className="divide-y divide-slate-100">

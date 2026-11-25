@@ -81,6 +81,7 @@ const summaryStatusLabels: Record<ActivitySummary["status"], string> = {
   failed: "生成失败，可重试",
   unsupported: "暂不支持摘要",
 };
+const SUMMARY_READY_CONFIRMED_LABEL = "AI 已分析 · 已确认";
 
 const compactBtn =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -95,11 +96,22 @@ function snapshotText(snapshot: Record<string, unknown>, key: string) {
   return typeof snapshot[key] === "string" ? (snapshot[key] as string) : "";
 }
 
-function summaryTone(status: ActivitySummary["status"]): "blue" | "green" | "amber" | "red" | "gray" {
-  if (status === "ready") return "green";
-  if (status === "pending" || status === "not_generated") return "blue";
-  if (status === "failed") return "red";
-  if (status === "unsupported") return "gray";
+export function summaryStatusLabel(summary: Pick<ActivitySummary, "status" | "needs_human_review">): string {
+  if (summary.status === "ready" && summary.needs_human_review === false) {
+    return SUMMARY_READY_CONFIRMED_LABEL;
+  }
+  return summaryStatusLabels[summary.status];
+}
+
+export function summaryTone(
+  summary: Pick<ActivitySummary, "status" | "needs_human_review">,
+): "blue" | "green" | "amber" | "red" | "gray" {
+  if (summary.status === "ready") {
+    return summary.needs_human_review === false ? "green" : "amber";
+  }
+  if (summary.status === "pending" || summary.status === "not_generated") return "blue";
+  if (summary.status === "failed") return "red";
+  if (summary.status === "unsupported") return "gray";
   return "gray";
 }
 
@@ -457,7 +469,9 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       );
       await feishuInsightsQuery.refetch();
       setFeishuTabOverride("insights");
-      setNotice(`AI 已完成群聊协作分析：共分析 ${result.analyzed_messages} 条有效消息，提炼 ${result.items.length} 条协作结论（需人工确认）。`);
+      setNotice(
+        `AI 已完成群聊协作分析：共分析 ${result.analyzed_messages} 条有效消息，提炼 ${result.items.length} 条协作结论${result.needs_human_review === false ? "" : "（需人工确认）"}。`,
+      );
     } catch (error) {
       fail(error);
     } finally {
@@ -503,7 +517,13 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     try {
       const result = await projectApi.generateGithubActivitySummary(projectId, id);
       await Promise.all([summaries.refetch(), ...(selectedId === id ? [selectedSummaryQuery.refetch()] : [])]);
-      setNotice(result.status === "ready" ? "摘要已生成，内容仍需人工确认。" : "摘要暂未生成，请查看状态后重试。");
+      setNotice(
+        result.status === "ready"
+          ? result.needs_human_review === false
+            ? "摘要已生成并确认。"
+            : "摘要已生成，内容仍需人工确认。"
+          : "摘要暂未生成，请查看状态后重试。",
+      );
     } catch (error) {
       fail(error);
     } finally {
@@ -521,7 +541,13 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       const results = await projectApi.generateGithubActivitySummaries(projectId, targetIds);
       await Promise.all([summaries.refetch(), ...(selectedId ? [selectedSummaryQuery.refetch()] : [])]);
       const failed = results.filter((result) => result.status === "failed").length;
-      setNotice(failed ? `${failed} 条摘要生成失败，其余结果仍可查看。` : "本页摘要已生成，内容仍需人工确认。");
+      setNotice(
+        failed
+          ? `${failed} 条摘要生成失败，其余结果仍可查看。`
+          : results.some((result) => result.status === "ready" && result.needs_human_review !== false)
+            ? "本页摘要已生成，内容仍需人工确认。"
+            : "本页摘要已生成并确认。",
+      );
     } catch (error) {
       fail(error);
     } finally {
@@ -1201,7 +1227,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                                       (isAnalyzing ? (
                                         <StatusBadge label="AI 分析中…" tone="blue" />
                                       ) : (
-                                        summary && <StatusBadge label={summaryStatusLabels[summary.status]} tone={summaryTone(summary.status)} />
+                                        summary && <StatusBadge label={summaryStatusLabel(summary)} tone={summaryTone(summary)} />
                                       ))}
                                     {isCommit && !isAnalyzing && summary?.status === "failed" && (
                                       <button
@@ -1281,7 +1307,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                         {selectedSummary && (
                           <div className="space-y-2.5 text-xs">
                             <div className="flex flex-wrap items-center gap-2">
-                              <StatusBadge label={summaryStatusLabels[selectedSummary.status]} tone={summaryTone(selectedSummary.status)} />
+                              <StatusBadge label={summaryStatusLabel(selectedSummary)} tone={summaryTone(selectedSummary)} />
                               {selectedSummary.confidence !== null && selectedSummary.confidence !== undefined && (
                                 <span className="gp-pill">置信度 {Math.round(selectedSummary.confidence * 100)}%</span>
                               )}
