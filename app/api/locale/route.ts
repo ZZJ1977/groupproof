@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { normalizeLocale } from "@/i18n/config";
+import { normalizeLocale } from "@/shared/i18n/config";
 
 /** 服务端写入显式语言 Cookie（gp_locale）：仅白名单值、Path=/、SameSite=Lax、生产 Secure；不是身份凭证。 */
 export async function POST(request: NextRequest) {

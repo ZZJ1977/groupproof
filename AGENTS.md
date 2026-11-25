@@ -199,8 +199,8 @@ Responsive / A11y / UX Review ────────────┘
 
 - 当前工程统一以原工作区 `/Users/zhuozijie/Desktop/项目/groupproof`（`develop` 分支，迁移头 `0047`）为准，采用 Next.js App Router、React、TypeScript、Tailwind CSS 前端与 `services/api` 统一 FastAPI 认证及业务后端。当前交付范围和限制见 `README.md`、`docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md`、`FRONTEND_STATUS.md`。
 - `docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md` 包含现有 56 页路由映射（另含 `/admin` 管理工作台入口 `screen=62` 及教师扩展页 `57–61`）。修改页面或导航时同步相关映射；记录实际实现状态时更新 `FRONTEND_STATUS.md`。
-- 目录职责：`app/` 放路由与全局样式，`components/` 放布局和通用组件，`features/` 放业务页面，`types/` 放领域类型，`mocks/` 放关联数据，`lib/api/` 放服务适配，`scripts/` 放工程检查。
-- 修改 Tokens 时先检查 `app/globals.css`；新增基础控件时先检查 `components/ui/`。保持现有角色工作区、路由和业务实体关联一致。
+- 目录职责：`app/` 放 Next.js App Router 路由、全局样式与同源 API 代理；`student/` 放学生端课程、项目、执行、评审页面与 API 客户端；`teacher/` 放教师 5-Hub 工作台页面、组件、图表、权限 Hook 与 API 客户端；`admin/` 放管理员治理工作台页面、环境切换器与客户端；`shared/` 放通用基础组件与壳层（`shared/components/`、`shared/components/ui/`）、认证与账户中心（`shared/auth/`）、首页/动态/通知收件箱（`shared/daily-inbox/`）、国际化词条与目录（`shared/i18n/`）、共享工具与路由表（`shared/lib/`）、领域类型（`shared/types/`）及兼容 Mock 视图（`shared/legacy-mock/`）；`services/` 放统一 FastAPI 后端（`services/api`）与异步 Worker（`services/worker`）；`packages/domain/` 放 OpenAPI 快照与生成类型；`scripts/` 放工程检查与部署脚本。
+- 修改 Tokens 时先检查 `app/globals.css`；新增基础控件时先检查 `shared/components/ui/`。保持现有角色工作区、路由和业务实体关联一致。
 - 已有前端 Mock、浏览器存储及模拟第三方交互的范围以状态文档为准。接入真实服务时明确更新相关边界和验证结果。
 - 保留现有业务约束：任务树、看板和列表共享 Task 数据；AI 验收通过仍需人工确认；100% 进度不自动提交任务；正式证据按现有规则撤回或作废。
 - 运行环境和启动方式以 `README.md` 为准。当前工程检查包括 `npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:routes`；开发服务器运行后可使用 `CHECK_HTTP=1 npm run check:routes` 检查页面响应。按改动范围执行必要检查，纯文档改动核对内容、链接和变更范围即可。

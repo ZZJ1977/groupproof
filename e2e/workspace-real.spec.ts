@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { components } from "../packages/domain/api.generated";
-import { seedData } from "../mocks/seed";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
 
 type Schema = components["schemas"];
 const userId = "c-url-fixture";

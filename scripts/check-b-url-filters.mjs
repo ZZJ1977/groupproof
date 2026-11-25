@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { clearUrlFilters, patchUrlFilters, readUrlFilters } from "../lib/url-filters.ts";
+import { clearUrlFilters, patchUrlFilters, readUrlFilters } from "../shared/lib/url-filters.ts";
 
 let passed = 0;
 function check(description, actual, expected) {

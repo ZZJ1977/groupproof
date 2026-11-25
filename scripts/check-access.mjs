@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { can, isCourseStaff, projectSummary } from "../lib/access/policy.ts";
-import { seedData } from "../mocks/seed.ts";
+import { can, isCourseStaff, projectSummary } from "../shared/legacy-mock/access/policy.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
 
 const base = structuredClone(seedData);
 let passed = 0;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { apiFeatures, parseFeatureOverrides, resolveApiEnvironment, resolveApiMode } from "../lib/api/config";
+import { apiFeatures, parseFeatureOverrides, resolveApiEnvironment, resolveApiMode } from "../shared/lib/api-config";
 
 assert.deepEqual(parseFeatureOverrides("workspace=real,tasks:mock,ignored=real"), {
   workspace: "real",

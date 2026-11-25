@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { canMarkDiscussionImportant, canWriteDiscussion, createDiscussion, discussionAsEvidence, discussionMentionTargets, markDiscussionImportant, replyDiscussion } from "../features/c/discussions.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { canMarkDiscussionImportant, canWriteDiscussion, createDiscussion, discussionAsEvidence, discussionMentionTargets, markDiscussionImportant, replyDiscussion } from "../shared/legacy-mock/features/c/discussions.ts";
 
 let passed = 0;
 function check(message, actual, expected) { assert.deepEqual(actual, expected, message); passed += 1; }

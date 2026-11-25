@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { resolveRoute } from "../lib/routes.ts";
+import { resolveRoute } from "../shared/lib/routes.ts";
 
 const plan = readFileSync(new URL("../docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md", import.meta.url), "utf8");
 const origin = process.env.CHECK_ORIGIN ?? "http://localhost:3000";

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ADMIN_ENVIRONMENT_COOKIE, normalizeAdminEnvironment } from "@/lib/admin-environment";
+import { ADMIN_ENVIRONMENT_COOKIE, normalizeAdminEnvironment } from "@/admin/lib/admin-environment";
 
 export const dynamic = "force-dynamic";
 

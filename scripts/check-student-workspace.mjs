@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildSetupCards, projectNavGroups } from "../lib/ux/student-workspace.ts";
+import { buildSetupCards, projectNavGroups } from "../student/ux/student-workspace.ts";
 
 const projectId = "00000000-0000-0000-0000-000000000123";
 const base = `/projects/${projectId}`;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
 import { launchChrome, closeChrome, openTab, injectWorkspace, writeWorkspace, readWorkspace, armStorageFailure, ensureSignedIn, sleep } from "./browser-check.mjs";
 
 /**

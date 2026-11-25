@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { migrateWorkspace } from "../lib/versioning.ts";
-import { canManageEvidence, decideEvidence, evidenceDecisionBlockReason, evidenceSourceChanged } from "../features/c/evidence-decisions.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { migrateWorkspace } from "../shared/legacy-mock/versioning.ts";
+import { canManageEvidence, decideEvidence, evidenceDecisionBlockReason, evidenceSourceChanged } from "../shared/legacy-mock/features/c/evidence-decisions.ts";
 
 let passed = 0;
 function check(message, actual, expected) { assert.deepEqual(actual, expected, message); passed += 1; }
