@@ -79,7 +79,8 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
             if snapshot is not None:
                 snapshot.status = "failed"
                 report = session.get(Report, snapshot.report_id)
-                report.status = "failed"
+                if report is not None:
+                    report.status = "failed"
                 session.commit()
         raise
 

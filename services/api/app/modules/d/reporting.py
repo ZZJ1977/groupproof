@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -107,9 +108,9 @@ from app.modules.d.skills import SKILL_REPORT_VISUAL, SKILL_REPORT_WRITING, load
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["d-reports"])
 
-STALE_GENERATING_SECONDS = 180
+STALE_GENERATING_SECONDS = 240
 AI_REPORT_TIMEOUT_SECONDS = 90.0
-AI_REWRITE_TIMEOUT_SECONDS = 60.0
+AI_REWRITE_TIMEOUT_SECONDS = 25.0
 AI_REPORT_BATCH_MAX_TOKENS = 6400
 AI_VISUALS_MAX_TOKENS = 9600
 AI_REWRITE_MAX_TOKENS = 3600
@@ -2175,19 +2176,7 @@ def refresh_report(
         from app.modules.d.report_tasks import generate_preview
 
         if _should_run_inline(generate_preview, "app.modules.d.report_tasks.generate_preview"):
-            _complete_preview_inline_safe(
-                session,
-                version=version,
-                report=report,
-                project=access.project,
-                appendix=payload.includes_appendix,
-                actor_id=user.id,
-            )
-            return success(serialize(version), request)
-        try:
-            generate_preview.delay(str(version.id), payload.includes_appendix)
-        except Exception:
-            if _allow_inline_worker_fallback():
+            if _should_run_inline_sync():
                 _complete_preview_inline_safe(
                     session,
                     version=version,
@@ -2196,6 +2185,24 @@ def refresh_report(
                     appendix=payload.includes_appendix,
                     actor_id=user.id,
                 )
+                return success(serialize(version), request)
+            _run_preview_in_background_thread(str(version.id), payload.includes_appendix)
+            return success(serialize(version), request)
+        try:
+            generate_preview.delay(str(version.id), payload.includes_appendix)
+        except Exception:
+            if _allow_inline_worker_fallback():
+                if _should_run_inline_sync():
+                    _complete_preview_inline_safe(
+                        session,
+                        version=version,
+                        report=report,
+                        project=access.project,
+                        appendix=payload.includes_appendix,
+                        actor_id=user.id,
+                    )
+                    return success(serialize(version), request)
+                _run_preview_in_background_thread(str(version.id), payload.includes_appendix)
                 return success(serialize(version), request)
             version.status = "failed"
             report.status = "failed"
@@ -2542,6 +2549,59 @@ def _should_run_inline(task_obj, task_name: str) -> bool:
     if not _is_default_celery_delay(task_obj):
         return False
     return not _has_registered_report_worker(task_name)
+
+
+def _should_run_inline_sync() -> bool:
+    """Keep deterministic synchronous execution inside pytest or when REPORT_INLINE_SYNC=1."""
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return True
+    return os.getenv("REPORT_INLINE_SYNC", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _run_preview_in_background_thread(snapshot_id: str, appendix: bool) -> threading.Thread:
+    """Run report preview generation on a daemon thread so HTTP /refresh returns immediately."""
+
+    def _worker() -> None:
+        from app.modules.d.report_tasks import generate_preview
+
+        try:
+            generate_preview(snapshot_id, appendix)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Background report preview generation failed for snapshot %s",
+                snapshot_id,
+            )
+
+    thread = threading.Thread(
+        target=_worker,
+        name=f"report-preview-{snapshot_id[:8]}",
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def _run_export_in_background_thread(artifact_id: str) -> threading.Thread:
+    """Run PDF/DOCX export on a daemon thread so HTTP /exports returns immediately."""
+
+    def _worker() -> None:
+        from app.modules.d.report_tasks import generate_export
+
+        try:
+            generate_export(artifact_id)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Background report export failed for artifact %s",
+                artifact_id,
+            )
+
+    thread = threading.Thread(
+        target=_worker,
+        name=f"report-export-{artifact_id[:8]}",
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def _recover_stale_generating(report: Report, previous: list[ReportSnapshot]) -> bool:
@@ -3460,13 +3520,19 @@ def request_export(
     from app.modules.d.report_tasks import generate_export
 
     if _should_run_inline(generate_export, "app.modules.d.report_tasks.generate_export"):
-        _render_export_inline_safe(session, artifact, version.data_snapshot)
+        if _should_run_inline_sync():
+            _render_export_inline_safe(session, artifact, version.data_snapshot)
+            return success({"id": str(artifact.id), "status": artifact.status}, request)
+        _run_export_in_background_thread(str(artifact.id))
         return success({"id": str(artifact.id), "status": artifact.status}, request)
     try:
         generate_export.delay(str(artifact.id))
     except Exception:
         if _allow_inline_worker_fallback():
-            _render_export_inline_safe(session, artifact, version.data_snapshot)
+            if _should_run_inline_sync():
+                _render_export_inline_safe(session, artifact, version.data_snapshot)
+                return success({"id": str(artifact.id), "status": artifact.status}, request)
+            _run_export_in_background_thread(str(artifact.id))
             return success({"id": str(artifact.id), "status": artifact.status}, request)
         artifact.status = "failed"
         artifact.error = "Report worker is unavailable; retry the export."
