@@ -37,16 +37,46 @@ function Fallback({ openUrl, downloadUrl, reason }: { openUrl: string; downloadU
   </div>;
 }
 
+function isSameOriginApiContent(url: string) {
+  if (typeof window === "undefined") return false;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return parsed.origin === window.location.origin && parsed.pathname.startsWith("/api/v1/");
+  } catch {
+    return false;
+  }
+}
+
+async function probePdfContentType(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { method: "HEAD", credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store" });
+    if (!response.ok) return null;
+    return (response.headers.get("content-type") ?? "").split(";", 1)[0].trim().toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function FilePreviewContent({ version, url, downloadUrl }: { version: FileVersion; url: string; downloadUrl?: string }) {
   const kind = previewKind(version);
-  const textual = kind === "markdown" || kind === "text";
+  const probePdf = kind === "pdf" && isSameOriginApiContent(url);
+  const pdfHead = useQuery({
+    queryKey: ["c-project-file-pdf-head", url],
+    queryFn: () => probePdfContentType(url),
+    enabled: probePdf,
+    ...queryPolicy,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const pdfTextFallback = kind === "pdf" && pdfHead.data === "text/plain";
+  const textual = kind === "markdown" || kind === "text" || pdfTextFallback;
   const content = useQuery({ queryKey: ["c-project-file-text", url], queryFn: () => fetchPreviewText(url), enabled: textual, ...queryPolicy, refetchOnWindowFocus: false, refetchOnReconnect: false });
 
   if (kind === "image") {
     // eslint-disable-next-line @next/next/no-img-element -- short-lived signed storage URL, not optimisable by next/image
     return <div className="flex justify-center rounded-md border border-slate-200 bg-slate-50 p-3"><img src={url} alt={version.original_name} referrerPolicy="no-referrer" className="max-h-[70vh] max-w-full object-contain" /></div>;
   }
-  if (kind === "pdf") {
+  if (kind === "pdf" && !pdfTextFallback) {
     return <div className="space-y-2">
       <iframe src={url} title={`${version.original_name} PDF 预览`} referrerPolicy="no-referrer" className="h-[70vh] w-full rounded-md border border-slate-200 bg-white" />
       <p className="text-xs text-slate-500">若浏览器未显示 PDF，请<a className="gp-link mx-1" href={url} target="_blank" rel="noopener noreferrer">在新窗口打开</a>{downloadUrl && <>或<a className="gp-link ml-1" href={downloadUrl} target="_blank" rel="noopener noreferrer" download>直接下载</a></>}。</p>
@@ -57,6 +87,7 @@ export function FilePreviewContent({ version, url, downloadUrl }: { version: Fil
     if (content.isError) return <Fallback openUrl={url} downloadUrl={downloadUrl} reason="无法在此处显示文件内容（可能是链接已过期或存储服务限制了页面读取）。可在新窗口打开或下载查看。" />;
     const { text, truncated } = content.data;
     return <div className="space-y-2">
+      {pdfTextFallback && <p role="status" className="rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">该文件当前仅保留了初始化阶段提取的文字快照（未保存原始 PDF 二进制），以下展示提取正文。</p>}
       {truncated && <p role="status" className="text-xs text-amber-800">文件较大，仅显示前 {formatBytes(PREVIEW_TEXT_LIMIT)}，完整内容请下载查看。</p>}
       {!text.trim() ? <Notice>文件内容为空。</Notice> : kind === "markdown"
         ? <div className="rounded-md border border-slate-200 bg-white px-5 py-3"><MarkdownPreview source={text} /></div>

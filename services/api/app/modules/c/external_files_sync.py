@@ -45,6 +45,9 @@ from app.modules.c.integration_events import emit_event
 
 INTERNAL_FILE_PROVIDERS = frozenset({"github", "inline", "feishu_doc", "feishu_att"})
 INTERNAL_LINK_TTL_SECONDS = 600
+_FEISHU_MEDIA_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{6,120}$")
+_SAFE_MEDIA_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+_INLINE_TEXT_EXTS = frozenset({"md", "txt"})
 
 _INVALID_NAME_CHARS = re.compile(r'[/\\:*?"<>|\x00-\x1f\x7f]+')
 _IMAGE_EXTS = {"png", "jpg", "jpeg"}
@@ -221,6 +224,17 @@ def _create_fallback_receipt(
         )
     now_ts = datetime.now(UTC)
     digest = hashlib.sha256(data).hexdigest()
+    resolved_object_id = object_id[:255]
+    if session.scalar(
+        select(UploadReceiptRow.id).where(UploadReceiptRow.object_id == resolved_object_id)
+    ):
+        suffix = f"#{digest[:12]}"
+        resolved_object_id = f"{object_id[: 255 - len(suffix)]}{suffix}"
+        if session.scalar(
+            select(UploadReceiptRow.id).where(UploadReceiptRow.object_id == resolved_object_id)
+        ):
+            suffix = f"#{uuid4().hex[:12]}"
+            resolved_object_id = f"{object_id[: 255 - len(suffix)]}{suffix}"
     receipt = UploadReceiptRow(
         id=uuid4(),
         scope="project",
@@ -228,7 +242,7 @@ def _create_fallback_receipt(
         actor_id=user.id,
         provider=provider,
         bucket=bucket,
-        object_id=object_id[:255],
+        object_id=resolved_object_id,
         filename=filename,
         declared_mime=mime_type,
         declared_size=len(data),
@@ -445,6 +459,22 @@ def _sync_project_materials(
             continue
         logical_name = _clean_filename(receipt.filename or mat.title, fallback="material.pdf")
         ext = PurePosixPath(logical_name).suffix.removeprefix(".").lower()
+        # 仅含提取文本的 inline 非文本文件（如未落盘的 PDF）若项目中已存在同哈希的真实二进制副本，
+        # 不再重复登记仅文本副本，避免列表出现重复假 PDF。
+        if receipt.provider == "inline" and ext not in _INLINE_TEXT_EXTS and receipt.content_hash:
+            has_binary_twin = session.scalar(
+                select(FileVersion.id)
+                .join(LogicalFile, LogicalFile.id == FileVersion.file_id)
+                .where(
+                    LogicalFile.project_id == project_id,
+                    FileVersion.content_hash == receipt.content_hash,
+                    FileVersion.storage_provider.in_(("supabase", "feishu_att")),
+                )
+                .limit(1)
+            )
+            if has_binary_twin is not None:
+                skipped += 1
+                continue
         category = "images" if ext in _IMAGE_EXTS else "documents"
         wrote = _register_from_receipt(
             session,
@@ -622,8 +652,11 @@ def _sync_feishu_documents(
 
         # 3) 同步群消息/标签页里出现的飞书云文档（docx / wiki）
         get_docx = getattr(reader, "get_docx_document", None)
+        get_docx_blocks = getattr(reader, "get_docx_document_with_blocks", None)
+        download_media = getattr(reader, "download_drive_media", None)
         get_wiki = getattr(reader, "get_wiki_node_obj", None)
-        if callable(get_docx):
+        media_scope_denied = False
+        if callable(get_docx) or callable(get_docx_blocks):
             for kind, token, url in discovered_doc_links:
                 doc_token = token
                 fallback_title = token
@@ -643,7 +676,63 @@ def _sync_feishu_documents(
                 elif kind != "docx":
                     continue
                 try:
-                    title, content = get_docx(doc_token)
+                    title = ""
+                    content = ""
+                    if callable(get_docx_blocks):
+                        title, blocks = get_docx_blocks(doc_token)
+                        if blocks:
+
+                            def _render_doc_image(
+                                block: dict,
+                                *,
+                                _doc_url: str = url,
+                            ) -> str | None:
+                                nonlocal media_scope_denied
+                                img_obj = block.get("image") or {}
+                                media_token = str(img_obj.get("token") or "").strip()
+                                caption_obj = img_obj.get("caption")
+                                alt_raw = (
+                                    caption_obj.get("content")
+                                    if isinstance(caption_obj, dict)
+                                    else ""
+                                )
+                                alt = str(alt_raw or "文档图片").strip() or "文档图片"
+                                if not _FEISHU_MEDIA_TOKEN_RE.fullmatch(media_token):
+                                    return f"> 🖼 **{alt}**（[在飞书云文档中查看原图]({_doc_url})）"
+                                if not media_scope_denied and callable(download_media):
+                                    try:
+                                        download_media(media_token)
+                                        return (
+                                            f"![{alt}]("
+                                            f"/api/v1/projects/{project_id}/files/feishu-media/{media_token}"
+                                            ")"
+                                        )
+                                    except feishu.FeishuScopeDeniedError as exc:
+                                        media_scope_denied = True
+                                        _add_missing_scopes(
+                                            exc, missing_scopes, warnings, auth_urls
+                                        )
+                                        return (
+                                            f"> 🖼 **{alt}**（当前飞书应用尚未开通图片只读权限，"
+                                            "暂无法直接显示 · "
+                                            f"[在飞书云文档中查看原图]({_doc_url})）"
+                                        )
+                                    except ApiError:
+                                        return (
+                                            f"> 🖼 **{alt}**（图片暂无法拉取 · "
+                                            f"[在飞书云文档中查看原图]({_doc_url})）"
+                                        )
+                                return (
+                                    f"> 🖼 **{alt}**（开通飞书云盘只读权限后可在线显示 · "
+                                    f"[在飞书云文档中查看原图]({_doc_url})）"
+                                )
+
+                            content = feishu.docx_blocks_to_markdown(
+                                blocks, image_renderer=_render_doc_image
+                            )
+                    if not content.strip() and callable(get_docx):
+                        fallback_doc_title, content = get_docx(doc_token)
+                        title = title or fallback_doc_title
                 except feishu.FeishuScopeDeniedError as exc:
                     _add_missing_scopes(exc, missing_scopes, warnings, auth_urls)
                     break
@@ -708,8 +797,6 @@ def sync_external_project_files(
     missing_scopes: list[str] = []
     auth_urls: list[str] = []
 
-    mat_synced, mat_skipped = _sync_project_materials(session, user, project_id)
-
     gh_repos = 0
     gh_synced = 0
     gh_skipped = 0
@@ -735,6 +822,7 @@ def sync_external_project_files(
         warnings=warnings,
         auth_urls=auth_urls,
     )
+    mat_synced, mat_skipped = _sync_project_materials(session, user, project_id)
 
     session.flush()
     return ExternalFilesSyncDTO(
@@ -790,7 +878,7 @@ def sign_internal_file_link(
     }
 
 
-def read_internal_file_content(
+def _resolve_signed_internal_version(
     session: Session,
     project_id: UUID,
     file_id: UUID,
@@ -799,8 +887,7 @@ def read_internal_file_content(
     purpose: str,
     exp: int,
     sig: str,
-) -> tuple[bytes, str, str]:
-    """校验短时 HMAC 签名并直接返回同步资料（GitHub README / 飞书文档 / 初始化资料）内容。"""
+) -> tuple[LogicalFile, FileVersion]:
     if purpose not in {"preview", "download"}:
         raise ApiError(400, "INVALID_PURPOSE", "无效的访问方式。")
     if exp < int(datetime.now(UTC).timestamp()):
@@ -819,10 +906,118 @@ def read_internal_file_content(
     )
     if version is None or version.storage_provider not in INTERNAL_FILE_PROVIDERS:
         raise ApiError(404, "FILE_VERSION_NOT_FOUND", "文件版本不存在。")
+    return row, version
+
+
+def _find_binary_twin_version(
+    session: Session, project_id: UUID, version: FileVersion
+) -> FileVersion | None:
+    """为仅保存提取文本的 inline 版本查找同项目内同哈希的二进制副本（supabase / feishu_att）。"""
+    if not version.content_hash:
+        return None
+    candidates = list(
+        session.scalars(
+            select(FileVersion)
+            .join(LogicalFile, LogicalFile.id == FileVersion.file_id)
+            .where(
+                LogicalFile.project_id == project_id,
+                FileVersion.content_hash == version.content_hash,
+                FileVersion.storage_provider.in_(("supabase", "feishu_att")),
+            )
+            .order_by(FileVersion.created_at.desc())
+        )
+    )
+    for provider in ("supabase", "feishu_att"):
+        for cand in candidates:
+            if cand.storage_provider == provider:
+                return cand
+    return None
+
+
+def _read_binary_version_bytes(
+    version: FileVersion,
+    *,
+    storage_client: storage.StorageClient | None = None,
+    feishu_reader: feishu.FeishuReader | None = None,
+) -> bytes | None:
+    if version.storage_provider == "supabase":
+        client = storage_client if storage_client is not None else storage.get_storage_client()
+        if client is None:
+            return None
+        try:
+            return client.download(version.storage_object_id, max_bytes=MAX_FILE_BYTES)
+        except Exception:  # noqa: BLE001
+            return None
+    if version.storage_provider == "feishu_att":
+        base_obj_id = (version.storage_object_id or "").split("#", 1)[0]
+        parts = base_obj_id.split("/", 2)
+        if len(parts) == 3 and parts[0] == "feishu-att":
+            created: feishu.FeishuClient | None = None
+            reader = feishu_reader
+            if reader is None:
+                created = feishu.get_feishu_reader()  # type: ignore[assignment]
+                reader = created
+            if reader is None:
+                return None
+            try:
+                return reader.download_resource(parts[1], parts[2], "file")
+            finally:
+                if isinstance(created, feishu.FeishuClient):
+                    created.close()
+    return None
+
+
+def probe_internal_file_media_type(
+    session: Session,
+    project_id: UUID,
+    file_id: UUID,
+    version_id: UUID,
+    *,
+    purpose: str,
+    exp: int,
+    sig: str,
+) -> tuple[str, str]:
+    """轻量检查内部文件的真实响应媒体类型（用于 HEAD 探测，不下载外部二进制）。"""
+    row, version = _resolve_signed_internal_version(
+        session, project_id, file_id, version_id, purpose=purpose, exp=exp, sig=sig
+    )
+    filename = version.original_name or row.name
+    if version.storage_provider in {"github", "feishu_doc"}:
+        return "text/markdown; charset=utf-8", filename
+    if version.storage_provider == "feishu_att":
+        return version.mime_type or "application/octet-stream", filename
+    if version.storage_provider == "inline":
+        if version.extension == "md":
+            return "text/markdown; charset=utf-8", filename
+        if version.extension == "txt":
+            return "text/plain; charset=utf-8", filename
+        if _find_binary_twin_version(session, project_id, version) is not None:
+            return version.mime_type or "application/octet-stream", filename
+        return "text/plain; charset=utf-8", f"{PurePosixPath(filename).stem}.txt"
+    return version.mime_type or "application/octet-stream", filename
+
+
+def read_internal_file_content(
+    session: Session,
+    project_id: UUID,
+    file_id: UUID,
+    version_id: UUID,
+    *,
+    purpose: str,
+    exp: int,
+    sig: str,
+    storage_client: storage.StorageClient | None = None,
+    feishu_reader: feishu.FeishuReader | None = None,
+) -> tuple[bytes, str, str]:
+    """校验短时 HMAC 签名并直接返回同步资料（GitHub README / 飞书文档 / 初始化资料）内容。"""
+    row, version = _resolve_signed_internal_version(
+        session, project_id, file_id, version_id, purpose=purpose, exp=exp, sig=sig
+    )
 
     filename = version.original_name or row.name
     if version.storage_provider == "github":
-        parts = (version.storage_object_id or "").split("/", 2)
+        base_obj_id = (version.storage_object_id or "").split("#", 1)[0]
+        parts = base_obj_id.split("/", 2)
         if len(parts) == 3 and parts[0] == "github":
             gh_file = session.scalar(
                 select(GithubFile).where(
@@ -836,6 +1031,15 @@ def read_internal_file_content(
                     filename,
                 )
         raise ApiError(404, "FILE_NOT_FOUND", "GitHub 仓库文档快照不存在。")
+
+    if version.storage_provider == "inline" and version.extension not in _INLINE_TEXT_EXTS:
+        twin = _find_binary_twin_version(session, project_id, version)
+        if twin is not None:
+            binary = _read_binary_version_bytes(
+                twin, storage_client=storage_client, feishu_reader=feishu_reader
+            )
+            if binary:
+                return binary, version.mime_type or "application/octet-stream", filename
 
     if version.storage_provider in {"inline", "feishu_doc"}:
         mat = session.scalar(
@@ -852,15 +1056,66 @@ def read_internal_file_content(
         raise ApiError(404, "FILE_NOT_FOUND", "资料正文快照暂不可用。")
 
     if version.storage_provider == "feishu_att":
-        parts = (version.storage_object_id or "").split("/", 2)
+        base_obj_id = (version.storage_object_id or "").split("#", 1)[0]
+        parts = base_obj_id.split("/", 2)
         if len(parts) == 3 and parts[0] == "feishu-att":
-            reader = feishu.get_feishu_reader()
+            created_reader: feishu.FeishuClient | None = None
+            reader = feishu_reader
+            if reader is None:
+                created_reader = feishu.get_feishu_reader()  # type: ignore[assignment]
+                reader = created_reader
             if reader is None:
                 raise ApiError(503, "FEISHU_UNAVAILABLE", "飞书暂时不可用。")
             try:
                 data = reader.download_resource(parts[1], parts[2], "file")
                 return data, version.mime_type or "application/octet-stream", filename
             finally:
-                if isinstance(reader, feishu.FeishuClient):
-                    reader.close()
+                if isinstance(created_reader, feishu.FeishuClient):
+                    created_reader.close()
     raise ApiError(404, "FILE_NOT_FOUND", "文件内容暂不可用。")
+
+
+def _sniff_safe_image_mime(data: bytes, declared: str) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    cleaned = (declared or "").split(";", 1)[0].strip().lower()
+    if cleaned in _SAFE_MEDIA_IMAGE_TYPES:
+        return cleaned
+    raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "仅支持安全的图片格式预览。")
+
+
+def read_feishu_media(
+    session: Session,
+    user: User,
+    project_id: UUID,
+    token: str,
+    *,
+    feishu_reader: feishu.FeishuReader | None = None,
+) -> tuple[bytes, str]:
+    """代理读取飞书云文档内嵌图片（需项目访问权限，仅放行安全位图格式）。"""
+    file_access(session, user, project_id)
+    if not _FEISHU_MEDIA_TOKEN_RE.fullmatch(token or ""):
+        raise ApiError(400, "INVALID_MEDIA_TOKEN", "无效的飞书图片标识。")
+    created_reader: feishu.FeishuClient | None = None
+    reader = feishu_reader
+    if reader is None:
+        created_reader = feishu.get_feishu_reader()  # type: ignore[assignment]
+        reader = created_reader
+    if reader is None:
+        raise ApiError(503, "FEISHU_UNAVAILABLE", "飞书暂时不可用。")
+    download_media = getattr(reader, "download_drive_media", None)
+    if not callable(download_media):
+        raise ApiError(503, "FEISHU_UNAVAILABLE", "当前飞书客户端不支持读取云文档图片。")
+    try:
+        data, declared_mime = download_media(token)
+        safe_mime = _sniff_safe_image_mime(data, declared_mime)
+        return data, safe_mime
+    finally:
+        if isinstance(created_reader, feishu.FeishuClient):
+            created_reader.close()
