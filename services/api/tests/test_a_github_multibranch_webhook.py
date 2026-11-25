@@ -436,3 +436,167 @@ def test_github_auto_sync_run_once_syncs_new_commit_and_generates_summary(github
     assert result["repos_synced"] == 1
     assert result["summaries_generated"] == 1
     assert activity_summary.recent_unanalyzed_commit_ids(github_db, project.id) == []
+
+
+def test_github_activity_stats_merges_homoglyph_and_typo_git_aliases(github_db):
+    from datetime import UTC, datetime
+
+    from app.auth.models import VerifiedGithubIdentity
+    from app.modules.a import github_activity
+
+    now = datetime.now(UTC)
+    leader, project = _seed_project(github_db)
+    leader.name = "郑元泰"
+
+    teammate = _user(github_db, tag="ykj", role="student", index=2, now=now)
+    teammate.name = "队友乙"
+    ambig_a = _user(github_db, tag="amga", role="student", index=3, now=now)
+    ambig_a.name = "成员A"
+    ambig_b = _user(github_db, tag="amgb", role="student", index=4, now=now)
+    ambig_b.name = "成员B"
+    github_db.flush()
+
+    github_db.add_all(
+        [
+            ProjectMember(id=uuid4(), project_id=project.id, user_id=teammate.id, role="member"),
+            ProjectMember(id=uuid4(), project_id=project.id, user_id=ambig_a.id, role="member"),
+            ProjectMember(id=uuid4(), project_id=project.id, user_id=ambig_b.id, role="member"),
+            VerifiedGithubIdentity(
+                user_id=leader.id,
+                github_user_id=3001,
+                login="M0tasy",
+                verified_at=now,
+            ),
+            VerifiedGithubIdentity(
+                user_id=teammate.id,
+                github_user_id=3002,
+                login="ProgramingGod-ykj",
+                verified_at=now,
+            ),
+            VerifiedGithubIdentity(
+                user_id=ambig_a.id,
+                github_user_id=3003,
+                login="alex01",
+                verified_at=now,
+            ),
+            VerifiedGithubIdentity(
+                user_id=ambig_b.id,
+                github_user_id=3004,
+                login="alex02",
+                verified_at=now,
+            ),
+        ]
+    )
+    github_db.flush()
+
+    class AliasStatsGithub(MultiBranchFakeGithub):
+        def commit_detail(self, owner: str, repo: str, sha: str, installation_id: int) -> dict:
+            stats_map = {
+                "m0tasy01": (100, 20),
+                "motasy02": (50, 10),
+                "ykj00001": (40, 5),
+                "ykj00002": (15, 3),
+                "ambig001": (7, 1),
+            }
+            adds, dels = stats_map[sha]
+            return {
+                "sha": sha,
+                "stats": {"additions": adds, "deletions": dels, "total": adds + dels},
+                "files": [],
+            }
+
+    commits = [
+        {
+            "sha": "m0tasy01",
+            "html_url": "https://github.com/acme/demo/commit/m0tasy01",
+            "commit": {
+                "message": "feat: verified commit",
+                "author": {
+                    "name": "M0tasy",
+                    "email": "1240025428@student.must.edu.mo",
+                    "date": "2026-11-22T09:00:00Z",
+                },
+            },
+            "author": {"id": 3001, "login": "M0tasy"},
+        },
+        {
+            "sha": "motasy02",
+            "html_url": "https://github.com/acme/demo/commit/motasy02",
+            "commit": {
+                "message": "fix: local commit with homoglyph name",
+                "author": {
+                    "name": "Motasy",
+                    "email": "motasy_delay@MotasydeMacBook-Pro.local",
+                    "date": "2026-11-22T10:00:00Z",
+                },
+            },
+            "author": None,
+        },
+        {
+            "sha": "ykj00001",
+            "html_url": "https://github.com/acme/demo/commit/ykj00001",
+            "commit": {
+                "message": "feat: verified teammate commit",
+                "author": {
+                    "name": "ProgramingGod-ykj",
+                    "email": "ykj@example.com",
+                    "date": "2026-11-22T11:00:00Z",
+                },
+            },
+            "author": {"id": 3002, "login": "ProgramingGod-ykj"},
+        },
+        {
+            "sha": "ykj00002",
+            "html_url": "https://github.com/acme/demo/commit/ykj00002",
+            "commit": {
+                "message": "fix: typo local name commit",
+                "author": {
+                    "name": "ProgrammingGod-ykj",
+                    "email": "ykj-local@mac.local",
+                    "date": "2026-11-22T12:00:00Z",
+                },
+            },
+            "author": None,
+        },
+        {
+            "sha": "ambig001",
+            "html_url": "https://github.com/acme/demo/commit/ambig001",
+            "commit": {
+                "message": "chore: ambiguous handle should not merge",
+                "author": {
+                    "name": "alex03",
+                    "email": "alex03@example.com",
+                    "date": "2026-11-22T13:00:00Z",
+                },
+            },
+            "author": None,
+        },
+    ]
+
+    client = AliasStatsGithub({"main": commits})
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    github_sync.sync_project_repos(github_db, leader, project.id, client)
+
+    stats = github_activity.get_activity_stats(github_db, leader, project.id, range_key="all")
+    assert stats["total_commits"] == 5
+
+    by_name = {c["author_name"]: c for c in stats["contributors"]}
+    assert "Motasy" not in by_name
+    assert "ProgrammingGod-ykj" not in by_name
+
+    zheng = by_name["郑元泰"]
+    assert zheng["author_login"] == "M0tasy"
+    assert zheng["commits"] == 2
+    assert zheng["additions"] == 150
+    assert zheng["deletions"] == 30
+
+    ykj = by_name["队友乙"]
+    assert ykj["author_login"] == "ProgramingGod-ykj"
+    assert ykj["commits"] == 2
+    assert ykj["additions"] == 55
+    assert ykj["deletions"] == 8
+
+    # alex03 与 alex01、alex02 编辑距离均为 1，存在歧义时必须保持独立不误合并
+    assert by_name["alex03"]["author_user_id"] is None
+    assert by_name["alex03"]["commits"] == 1
+    assert len(stats["contributors"]) == 3
