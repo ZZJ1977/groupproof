@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
+  ArrowRight,
+  Check,
   CheckCircle2,
   ChevronDown,
   Download,
   FileDown,
   FileText,
   History,
+  Loader2,
   Pencil,
   Printer,
   RefreshCw,
@@ -180,6 +184,11 @@ function resolveOrderedSections(data: Version["data"] | undefined): [string, str
   return [...canonical, ...rest, ...extras].map((key) => [key, sections[key] ?? ""]);
 }
 
+function hasReadableSections(data: Version["data"] | undefined): boolean {
+  const entries = resolveOrderedSections(data);
+  return entries.length > 0 && entries.some(([, body]) => body.trim().length > 0);
+}
+
 function countDocumentChars(entries: [string, string][]): number {
   return entries.reduce((sum, [, body]) => sum + body.replace(/\s+/g, "").length, 0);
 }
@@ -188,6 +197,288 @@ function authoringLabel(meta?: VersionMeta): string {
   if (meta?.authoring_mode === "ai") return "AI 深度撰写";
   if (meta?.last_rewritten_section) return "AI 辅助修订";
   return "结构化汇编";
+}
+
+function compactAuthoringLabel(meta?: VersionMeta): string {
+  if (meta?.authoring_mode === "ai") return "AI 撰写";
+  if (meta?.last_rewritten_section) return "AI 修订";
+  return "结构化";
+}
+
+const GENERATION_STEPS = [
+  {
+    key: "facts",
+    label: "采集项目真实事实包（任务、里程碑、GitHub、飞书、证据、贡献）",
+    shortLabel: "采集真实事实包",
+    startAt: 0,
+    doneAt: 5,
+  },
+  {
+    key: "chapters_1_4",
+    label: "AI 撰写第 1–4 章（项目概述、流程机制、里程碑复盘、团队协作）",
+    shortLabel: "撰写第 1–4 章",
+    startAt: 5,
+    doneAt: 18,
+  },
+  {
+    key: "chapters_5_7",
+    label: "AI 撰写第 5–7 章（证据链验收、成员贡献画像、风险与展望）",
+    shortLabel: "撰写第 5–7 章",
+    startAt: 18,
+    doneAt: 33,
+  },
+  {
+    key: "finalize",
+    label: "文档排版校验与报告快照保存",
+    shortLabel: "排版校验与保存",
+    startAt: 33,
+    doneAt: Number.POSITIVE_INFINITY,
+  },
+] as const;
+
+function computeGenerationProgress(elapsedSeconds: number, completed: boolean): number {
+  if (completed) return 100;
+  // Asymptotic curve: 12% (0s) -> ~38% (5s) -> ~62% (12s) -> ~84% (26s) -> ~93% (45s), capped at 95%
+  const t = Math.max(0, elapsedSeconds);
+  const raw = 12 + 84 * (1 - Math.exp(-t / 13.5));
+  return Math.min(95, Math.max(12, Math.round(raw)));
+}
+
+function ReportGenerationProgress({
+  variant,
+  elapsedSeconds,
+  completed,
+  versionNo,
+  previousVersionNo,
+  onViewPreviousVersion,
+}: {
+  variant: "full" | "compact";
+  elapsedSeconds: number;
+  completed: boolean;
+  versionNo?: number | null;
+  previousVersionNo?: number | null;
+  onViewPreviousVersion?: () => void;
+}) {
+  const progress = computeGenerationProgress(elapsedSeconds, completed);
+  const versionTag = versionNo ? `v${versionNo}` : "";
+  const activeStepIndex = completed
+    ? GENERATION_STEPS.length
+    : Math.max(
+        0,
+        GENERATION_STEPS.findIndex(
+          (step) => elapsedSeconds >= step.startAt && elapsedSeconds < step.doneAt,
+        ),
+      );
+  const currentStep = GENERATION_STEPS[Math.min(activeStepIndex, GENERATION_STEPS.length - 1)];
+
+  if (variant === "compact") {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className={`mb-7 rounded-xl border px-4 py-3.5 transition-colors print:hidden ${
+          completed
+            ? "border-emerald-200/90 bg-emerald-50/70"
+            : "border-sky-200/85 bg-sky-50/60"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            {completed ? (
+              <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+            ) : (
+              <Sparkles size={15} className="shrink-0 animate-pulse text-sky-600 motion-reduce:animate-none" />
+            )}
+            <p className={`text-xs font-semibold ${completed ? "text-emerald-900" : "text-slate-900"}`}>
+              {completed
+                ? `新版结项报告${versionTag ? ` ${versionTag}` : ""} 已生成完成，已自动更新正文`
+                : `AI 正在后台撰写新版结项报告${versionTag ? `（${versionTag}）` : ""} · ${currentStep.shortLabel}`}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
+            <span className={completed ? "text-emerald-700" : "text-slate-500"}>
+              {completed ? `用时 ${elapsedSeconds}s` : `已用时 ${elapsedSeconds}s · 预计 20–45 秒`}
+            </span>
+            <span className={`font-semibold ${completed ? "text-emerald-700" : "text-sky-700"}`}>
+              {progress}%
+            </span>
+          </div>
+        </div>
+
+        <div
+          role="progressbar"
+          aria-label="AI 报告生成进度"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+          className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/90 ring-1 ring-slate-200/70"
+        >
+          <div
+            className={`h-full rounded-full transition-all duration-700 ease-out ${
+              completed
+                ? "bg-emerald-500"
+                : "bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-500"
+            }`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          {GENERATION_STEPS.map((step, index) => {
+            const isDone = completed || index < activeStepIndex;
+            const isActive = !completed && index === activeStepIndex;
+            return (
+              <div
+                key={step.key}
+                title={step.label}
+                className={`flex items-center gap-1.5 truncate text-[11px] ${
+                  isDone
+                    ? "text-emerald-700"
+                    : isActive
+                      ? "font-medium text-sky-900"
+                      : "text-slate-400"
+                }`}
+              >
+                {isDone ? (
+                  <Check size={12} className="shrink-0 text-emerald-600" />
+                ) : isActive ? (
+                  <Loader2 size={12} className="shrink-0 animate-spin text-sky-600 motion-reduce:animate-none" />
+                ) : (
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
+                )}
+                <span className="truncate">{step.shortLabel}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {!completed && (
+          <p className="mt-2 text-[11px] text-slate-500">
+            您可继续阅读当前版本内容，新版撰写完成后将自动刷新并切换。
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mx-auto max-w-xl rounded-2xl border border-slate-200/90 bg-gradient-to-b from-sky-50/55 via-white to-white p-6 shadow-2xs print:hidden"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div
+            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+              completed
+                ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                : "border-sky-200/90 bg-sky-50 text-sky-600"
+            }`}
+          >
+            {completed ? (
+              <CheckCircle2 size={18} />
+            ) : (
+              <Sparkles size={18} className="animate-pulse motion-reduce:animate-none" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-900">
+              {completed
+                ? `结项报告${versionTag ? ` ${versionTag}` : ""} 已生成完成`
+                : `AI 正在撰写 7 章结项报告${versionTag ? `（${versionTag}）` : ""}`}
+            </h2>
+            <p className="mt-1 text-xs tabular-nums text-slate-500">
+              {completed
+                ? `已完成全部章节撰写与校验 · 用时 ${elapsedSeconds}s`
+                : `已用时 ${elapsedSeconds}s · 预计 20–45 秒`}
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <span
+            className={`text-xl font-bold tracking-tight tabular-nums ${
+              completed ? "text-emerald-600" : "text-sky-700"
+            }`}
+          >
+            {progress}%
+          </span>
+        </div>
+      </div>
+
+      {/* Smooth Asymptotic Progress Bar */}
+      <div
+        role="progressbar"
+        aria-label="AI 报告生成进度"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+        className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/70"
+      >
+        <div
+          className={`h-full rounded-full transition-all duration-700 ease-out ${
+            completed
+              ? "bg-emerald-500"
+              : "bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-500"
+          }`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* 4-Step Live Checklist */}
+      <ol className="mt-5 space-y-2.5">
+        {GENERATION_STEPS.map((step, index) => {
+          const isDone = completed || index < activeStepIndex;
+          const isActive = !completed && index === activeStepIndex;
+          return (
+            <li
+              key={step.key}
+              className={`flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
+                isActive ? "bg-sky-50/80 text-slate-900" : isDone ? "text-slate-600" : "text-slate-400"
+              }`}
+            >
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                {isDone ? (
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <Check size={11} strokeWidth={2.5} />
+                  </span>
+                ) : isActive ? (
+                  <Loader2 size={14} className="animate-spin text-sky-600 motion-reduce:animate-none" />
+                ) : (
+                  <span className="h-2 w-2 rounded-full border border-slate-300 bg-white" />
+                )}
+              </span>
+              <span className={`min-w-0 flex-1 leading-5 ${isActive ? "font-medium" : ""}`}>
+                {step.label}
+              </span>
+              {isActive && (
+                <span className="mt-0.5 shrink-0 rounded-full bg-sky-100/90 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                  进行中
+                </span>
+              )}
+              {isDone && (
+                <span className="mt-0.5 shrink-0 text-[10px] font-medium text-emerald-600">完成</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3.5 text-[11px] text-slate-500">
+        <span>后台完成后将自动刷新完整正文，无需手动刷新页面。</span>
+        {previousVersionNo && onViewPreviousVersion && (
+          <button
+            type="button"
+            onClick={onViewPreviousVersion}
+            className="inline-flex shrink-0 items-center gap-1 font-medium text-sky-700 transition-colors hover:text-sky-900 hover:underline"
+          >
+            先查看上一版（v{previousVersionNo}）
+            <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
@@ -251,23 +542,104 @@ export function ReportApiPage({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(exportView);
   const [drawerTab, setDrawerTab] = useState<"versions" | "exports">(exportView ? "exports" : "versions");
+  const [genElapsedSeconds, setGenElapsedSeconds] = useState(0);
+  const [completionState, setCompletionState] = useState<{ version: number; elapsed: number } | null>(null);
 
   const canvasScrollRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const genStartedAtRef = useRef<number | null>(null);
+  const wasGeneratingRef = useRef(false);
+  const refreshFailedRef = useRef(false);
   const busy = busyAction !== null;
 
-  const refresh = useCallback(async () => setListing(await request<Listing>(base)), [base]);
+  const applyListing = useCallback((next: Listing) => {
+    const nextGenerating =
+      next.status === "generating" || next.versions.some((version) => version.status === "generating");
+    if (!nextGenerating && wasGeneratingRef.current) {
+      const nextLatest = next.versions[0];
+      const nextHasChapters = Boolean(nextLatest && hasReadableSections(nextLatest.data));
+      const failed = refreshFailedRef.current || next.status === "failed" || nextLatest?.status === "failed";
+      const finishedElapsed =
+        genStartedAtRef.current !== null
+          ? Math.max(1, Math.floor((Date.now() - genStartedAtRef.current) / 1000))
+          : 1;
+      wasGeneratingRef.current = false;
+      genStartedAtRef.current = null;
+      refreshFailedRef.current = false;
+
+      if (!failed && nextLatest && nextHasChapters) {
+        setSelected(null);
+        setCompletionState({ version: nextLatest.version, elapsed: finishedElapsed });
+        const aiTag = nextLatest.data?.meta?.authoring_mode === "ai" ? "（AI 深度撰写）" : "";
+        setNotice((prev) =>
+          !prev || prev.includes("正在后台")
+            ? `结项报告 v${nextLatest.version} 已撰写完成${aiTag}，已自动刷新正文。`
+            : prev,
+        );
+      } else {
+        setGenElapsedSeconds(0);
+      }
+    }
+    setListing(next);
+  }, []);
+
+  const refresh = useCallback(async () => applyListing(await request<Listing>(base)), [applyListing, base]);
   useEffect(() => {
     void refresh().catch((failure) => setError((failure as Error).message));
   }, [refresh]);
 
+  const latest = listing.versions[0];
+  const viewed = listing.versions.find((version) => version.version === selected) ?? latest;
+  const generatingVersion = useMemo(
+    () => listing.versions.find((version) => version.status === "generating") ?? null,
+    [listing.versions],
+  );
+  const hasPendingArtifacts = useMemo(
+    () => listing.artifacts.some((item) => item.status === "pending" || item.status === "generating"),
+    [listing.artifacts],
+  );
+  const isRefreshing = busyAction === "refresh";
+  const isServerGenerating = listing.status === "generating" || generatingVersion !== null;
+  const isGenerating = isRefreshing || isServerGenerating;
+
   useEffect(() => {
-    if (listing.status !== "generating" && !listing.artifacts.some((item) => item.status === "pending" || item.status === "generating")) return;
-    const timer = setInterval(() => {
+    if (!isServerGenerating && !hasPendingArtifacts) return;
+    const timer = window.setInterval(() => {
       void refresh().catch((failure) => setError((failure as Error).message));
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [listing.artifacts, listing.status, refresh]);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [hasPendingArtifacts, isServerGenerating, refresh]);
+
+  const generatingCreatedAt = generatingVersion?.created_at ?? null;
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    wasGeneratingRef.current = true;
+    if (genStartedAtRef.current === null) {
+      const createdMs = generatingCreatedAt ? Date.parse(generatingCreatedAt) : Number.NaN;
+      const diffSec = Number.isFinite(createdMs) ? Math.floor((Date.now() - createdMs) / 1000) : -1;
+      genStartedAtRef.current = !isRefreshing && diffSec >= 0 && diffSec <= 120 ? createdMs : Date.now();
+    }
+    const startedAt = genStartedAtRef.current;
+    const syncElapsed = () => {
+      setGenElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    };
+    const initialTick = window.setTimeout(syncElapsed, 0);
+    const interval = window.setInterval(syncElapsed, 1000);
+    return () => {
+      window.clearTimeout(initialTick);
+      window.clearInterval(interval);
+    };
+  }, [generatingCreatedAt, isGenerating, isRefreshing]);
+
+  useEffect(() => {
+    if (!completionState) return;
+    const timer = window.setTimeout(() => {
+      setCompletionState(null);
+      setGenElapsedSeconds(0);
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [completionState]);
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -289,15 +661,34 @@ export function ReportApiPage({
     };
   }, []);
 
-  const latest = listing.versions[0];
-  const viewed = listing.versions.find((version) => version.version === selected) ?? latest;
   const st = statusMeta[listing.status] ?? { label: listing.status, tone: "gray" as const };
-  const canRefresh = !busy && !["generating", "submitted", "finalized"].includes(listing.status);
+  const canRefresh = !busy && !isServerGenerating && !["generating", "submitted", "finalized"].includes(listing.status);
   const canExport = Boolean(viewed && !busy && ["generated", "finalized"].includes(viewed.status));
   const canSubmit = Boolean(latest && ["generated", "returned"].includes(listing.status));
   const canEditChapter = Boolean(viewed && !["submitted", "finalized"].includes(listing.status) && viewed.version === latest?.version);
 
   const sectionEntries = useMemo(() => resolveOrderedSections(viewed?.data), [viewed?.data]);
+  const viewedHasContent = useMemo(
+    () => sectionEntries.length > 0 && sectionEntries.some(([, body]) => body.trim().length > 0),
+    [sectionEntries],
+  );
+  const previousReadableVersion = useMemo(
+    () =>
+      listing.versions.find(
+        (version) =>
+          version.version !== viewed?.version &&
+          version.status !== "generating" &&
+          hasReadableSections(version.data),
+      ) ?? null,
+    [listing.versions, viewed?.version],
+  );
+  const isGeneratingEmptyPaper =
+    (!viewed && isGenerating) ||
+    (Boolean(viewed) &&
+      !viewedHasContent &&
+      (viewed?.status === "generating" || (isGenerating && viewed?.version === latest?.version)));
+  const activeTargetVersionNo =
+    generatingVersion?.version ?? (isRefreshing ? (latest ? latest.version + 1 : 1) : latest?.version ?? null);
   const resolvedActiveChapter = useMemo(() => {
     if (sectionEntries.length === 0) return "";
     if (activeChapter && sectionEntries.some(([key]) => key === activeChapter)) return activeChapter;
@@ -305,7 +696,6 @@ export function ReportApiPage({
   }, [activeChapter, sectionEntries]);
 
   const totalChars = useMemo(() => countDocumentChars(sectionEntries), [sectionEntries]);
-  const isRefreshing = busyAction === "refresh";
   const isExporting = busyAction === "export" || busyAction === "download";
 
   const counts = viewed?.data?.counts;
@@ -367,6 +757,11 @@ export function ReportApiPage({
   }
 
   async function refreshPreview(initial: boolean) {
+    genStartedAtRef.current = Date.now();
+    wasGeneratingRef.current = true;
+    refreshFailedRef.current = false;
+    setGenElapsedSeconds(0);
+    setCompletionState(null);
     setBusyAction("refresh");
     setError("");
     setNotice("");
@@ -379,9 +774,7 @@ export function ReportApiPage({
       await refresh();
       setEditing("");
       setSelected(null);
-      if (created.status === "generating") {
-        setNotice(`已提交 v${created.version} 结项报告生成任务，正在后台深度撰写…`);
-      } else {
+      if (created.status !== "generating") {
         const aiTag = created.data?.meta?.authoring_mode === "ai" ? "（AI 深度撰写）" : "";
         setNotice(
           initial
@@ -390,6 +783,10 @@ export function ReportApiPage({
         );
       }
     } catch (failure) {
+      refreshFailedRef.current = true;
+      wasGeneratingRef.current = false;
+      genStartedAtRef.current = null;
+      setGenElapsedSeconds(0);
       setError((failure as Error).message);
     } finally {
       setBusyAction(null);
@@ -522,7 +919,13 @@ export function ReportApiPage({
             {listing.versions.length === 0 && <option value="">尚未生成报告版本</option>}
             {listing.versions.map((version) => (
               <option key={version.id} value={version.version}>
-                v{version.version} · {authoringLabel(version.data?.meta)} · {version.created_at?.slice(0, 10) ?? ""}
+                v{version.version} ·{" "}
+                {version.status === "generating"
+                  ? "AI 撰写中…"
+                  : version.status === "failed"
+                    ? "生成失败"
+                    : authoringLabel(version.data?.meta)}{" "}
+                · {version.created_at?.slice(0, 10) ?? ""}
               </option>
             ))}
           </select>
@@ -554,12 +957,12 @@ export function ReportApiPage({
             onClick={() => void refreshPreview(!latest)}
             className={toolbarBtn}
           >
-            {isRefreshing ? (
-              <RefreshCw size={13} className="animate-spin text-sky-600" />
+            {isGenerating ? (
+              <RefreshCw size={13} className="animate-spin text-sky-600 motion-reduce:animate-none" />
             ) : (
               <Sparkles size={13} className="text-sky-600" />
             )}
-            {isRefreshing ? "AI 深度撰写中…" : latest ? "AI 生成新版报告" : "AI 生成首版报告"}
+            {isGenerating ? "AI 深度撰写中…" : latest ? "AI 生成新版报告" : "AI 生成首版报告"}
           </button>
 
           {viewed && (
@@ -655,12 +1058,6 @@ export function ReportApiPage({
       </header>
 
       {/* Progress / Status / Feedback Banners */}
-      {isRefreshing && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800 print:hidden">
-          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
-          <span>AI 正在结合需求基线、任务与里程碑、GitHub 提交、飞书结论、正式证据与成员贡献深度撰写 7 章结项报告，请稍候…</span>
-        </div>
-      )}
       {rewritingSection && (
         <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800 print:hidden">
           <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
@@ -702,7 +1099,22 @@ export function ReportApiPage({
         >
           <p className="mb-3 px-2 text-[11px] font-semibold tracking-wider text-slate-400">文档目录</p>
           {sectionEntries.length === 0 ? (
-            <p className="px-2 text-xs text-slate-400">生成报告后显示章节目录</p>
+            isGeneratingEmptyPaper ? (
+              <div className="space-y-2 px-2">
+                <p className="text-[11px] font-medium text-sky-700">正在生成 7 章目录…</p>
+                <div className="space-y-2 pt-1" aria-hidden="true">
+                  {CHAPTER_ORDER.map((key) => (
+                    <div
+                      key={key}
+                      className="h-3.5 animate-pulse rounded bg-slate-100 motion-reduce:animate-none"
+                      style={{ width: key === "overview" || key === "reflection" ? "82%" : "92%" }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="px-2 text-xs text-slate-400">生成报告后显示章节目录</p>
+            )
           ) : (
             <nav className="flex-1 space-y-0.5">
               {sectionEntries.map(([section]) => {
@@ -739,12 +1151,102 @@ export function ReportApiPage({
           onScroll={handleCanvasScroll}
           className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 print:overflow-visible print:p-0"
         >
-          {viewed ? (
+          {isGeneratingEmptyPaper ? (
             <article className="mx-auto max-w-[840px] rounded-xl border border-slate-200/90 bg-white px-8 py-9 shadow-xs sm:px-12 sm:py-11 print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none">
-              {viewed.status === "generating" && (
-                <p role="status" className="mb-6 rounded-lg bg-sky-50 px-3.5 py-2.5 text-xs text-sky-700 print:hidden">
-                  AI 正在后台汇编完整 7 章结项报告，完成后将自动刷新正文…
-                </p>
+              <ReportGenerationProgress
+                variant="full"
+                elapsedSeconds={genElapsedSeconds}
+                completed={false}
+                versionNo={activeTargetVersionNo}
+                previousVersionNo={previousReadableVersion?.version ?? null}
+                onViewPreviousVersion={
+                  previousReadableVersion
+                    ? () => {
+                        setSelected(previousReadableVersion.version);
+                        setEditing("");
+                      }
+                    : undefined
+                }
+              />
+
+              {/* Subtle A4 Document Skeleton — avoids misleading 0 stats while generating */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none mt-9 select-none border-t border-slate-100 pt-8 opacity-65 print:hidden"
+              >
+                <div className="h-3 w-44 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
+                <div className="mt-3 h-7 w-72 max-w-[78%] animate-pulse rounded-md bg-slate-100 motion-reduce:animate-none" />
+
+                <div className="my-6 grid grid-cols-2 gap-4 border-y border-slate-100 py-4 sm:grid-cols-4">
+                  {[0, 1, 2, 3].map((item) => (
+                    <div key={item} className="space-y-2">
+                      <div className="h-2.5 w-14 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" />
+                      <div className="h-3.5 w-24 animate-pulse rounded bg-slate-100/90 motion-reduce:animate-none" />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-6">
+                  {[
+                    { heading: "w-48", lines: ["w-full", "w-[94%]", "w-[82%]"] },
+                    { heading: "w-56", lines: ["w-[96%]", "w-[88%]", "w-[70%]"] },
+                  ].map((block, blockIdx) => (
+                    <div key={blockIdx} className="space-y-2.5">
+                      <div
+                        className={`h-4 ${block.heading} animate-pulse rounded bg-slate-100 motion-reduce:animate-none`}
+                      />
+                      {block.lines.map((widthClass, lineIdx) => (
+                        <div
+                          key={lineIdx}
+                          className={`h-3 ${widthClass} animate-pulse rounded bg-slate-100/80 motion-reduce:animate-none`}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+          ) : viewed && viewed.status === "failed" && !viewedHasContent ? (
+            <div className="mx-auto flex max-w-[840px] min-h-[420px] flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-white px-8 py-14 text-center shadow-xs">
+              <AlertCircle size={28} className="mb-3 text-rose-400" />
+              <h2 className="text-base font-semibold text-slate-900">v{viewed.version} 结项报告生成失败</h2>
+              <p className="mt-2 max-w-md text-xs leading-6 text-slate-500">
+                后台生成任务未能完成，当前快照未写入正文。您可以点击下方按钮重新生成新版报告
+                {previousReadableVersion ? `，或先切换回上一版（v${previousReadableVersion.version}）查看。` : "。"}
+              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={!canRefresh}
+                  onClick={() => void refreshPreview(false)}
+                  className={toolbarPrimaryBtn}
+                >
+                  <Sparkles size={13} />
+                  重新生成报告
+                </button>
+                {previousReadableVersion && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelected(previousReadableVersion.version);
+                      setEditing("");
+                    }}
+                    className={toolbarBtn}
+                  >
+                    查看 v{previousReadableVersion.version}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : viewed ? (
+            <article className="mx-auto max-w-[840px] rounded-xl border border-slate-200/90 bg-white px-8 py-9 shadow-xs sm:px-12 sm:py-11 print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none">
+              {(isGenerating || completionState !== null) && (
+                <ReportGenerationProgress
+                  variant="compact"
+                  elapsedSeconds={completionState && !isGenerating ? completionState.elapsed : genElapsedSeconds}
+                  completed={!isGenerating && completionState !== null}
+                  versionNo={completionState && !isGenerating ? completionState.version : activeTargetVersionNo}
+                />
               )}
               {viewed.status === "failed" && (
                 <p role="alert" className="mb-6 rounded-lg bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700 print:hidden">
@@ -763,25 +1265,25 @@ export function ReportApiPage({
                   {viewed.data.project_name || "项目"} 小组项目合作结项报告
                 </h1>
 
-                <dl className="my-5 grid grid-cols-2 gap-x-6 gap-y-2.5 border-y border-slate-200 py-3.5 text-xs sm:grid-cols-4">
+                <dl className="my-5 grid grid-cols-2 gap-x-5 gap-y-2.5 border-y border-slate-200 py-3.5 text-xs sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,1.35fr)]">
                   <div className="min-w-0">
                     <dt className="text-slate-400">团队成员</dt>
                     <dd className="mt-0.5 font-medium text-slate-800">{teamMembersDisplay}</dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-slate-400">任务完成情况</dt>
-                    <dd className="mt-0.5 font-medium text-slate-800">
+                    <dd className="mt-0.5 whitespace-nowrap font-medium text-slate-800">
                       {counts?.completed_tasks ?? 0} / {counts?.tasks ?? 0} 项（{completionRate}%）
                     </dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-slate-400">有效正式证据</dt>
-                    <dd className="mt-0.5 font-medium text-slate-800">{counts?.evidence ?? 0} 条</dd>
+                    <dd className="mt-0.5 whitespace-nowrap font-medium text-slate-800">{counts?.evidence ?? 0} 条</dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-slate-400">版本与编制时间</dt>
-                    <dd className="mt-0.5 font-medium text-slate-800">
-                      v{viewed.version} · {viewed.created_at?.slice(0, 10) ?? "—"}（{authoringLabel(meta)}）
+                    <dd className="mt-0.5 whitespace-nowrap font-medium text-slate-800">
+                      v{viewed.version} · {viewed.created_at?.slice(0, 10) ?? "—"} · {compactAuthoringLabel(meta)}
                     </dd>
                   </div>
                 </dl>
@@ -1023,7 +1525,13 @@ export function ReportApiPage({
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono font-semibold">v{version.version}</span>
                                   <StatusBadge tone={vMeta.tone} label={vMeta.label} />
-                                  <span className="text-[11px] text-slate-500">{authoringLabel(version.data?.meta)}</span>
+                                  <span className="text-[11px] text-slate-500">
+                                    {version.status === "generating"
+                                      ? "AI 撰写中…"
+                                      : version.status === "failed"
+                                        ? "生成失败"
+                                        : authoringLabel(version.data?.meta)}
+                                  </span>
                                 </div>
                                 <p className="mt-0.5 truncate text-[11px] text-slate-400">
                                   {version.created_by_name ?? version.created_by ?? "系统"} ·{" "}
