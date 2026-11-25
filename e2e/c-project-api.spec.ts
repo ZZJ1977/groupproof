@@ -603,12 +603,16 @@ test("C5 inline preview renders markdown safely, image, code, and binary metadat
   const jsonDetail = makeDetail(jsonId, "00000000-0000-0000-0000-000000000323", "config.json", "config.json", "json", "application/json");
   const binDetail = makeDetail(binId, "00000000-0000-0000-0000-000000000324", "打包产物", "bundle.zip", "zip", "application/zip");
   const details = new Map([[mdId, mdDetail], [imgId, imgDetail], [jsonId, jsonDetail], [binId, binDetail]]);
-  const mdBody = "# 周报标题\n\n包含 **加粗** 与 `inline_code` 和 [安全链接](https://example.com) 及 [危险脚本](javascript:alert(1))\n\n<script>window.__xss=1</script>\n\n- 列表项一\n\n| 列A | 列B |\n| --- | --- |\n| 值1 | 值2 |\n";
+  const mdBody = "# 周报标题\n\n包含 **加粗** 与 `inline_code` 和 [安全链接](https://example.com) 及 [危险脚本](javascript:alert(1))\n\n![安全图片](https://preview.example.test/embedded.png)\n\n![危险图片](javascript:alert(1))\n\n![危险SVG](data:image/svg+xml;base64,PHN2Zy8+)\n\n<script>window.__xss=1</script>\n\n- 列表项一\n\n| 列A | 列B |\n| --- | --- |\n| 值1 | 值2 |\n";
+  const downloadRequests: string[] = [];
   await page.route(`https://preview.example.test/**`, (route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    if (pathname.endsWith("/md")) return route.fulfill({ status: 200, contentType: "text/markdown; charset=utf-8", body: mdBody });
-    if (pathname.endsWith("/json")) return route.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" });
-    return route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
+    const reqUrl = new URL(route.request().url());
+    const pathname = reqUrl.pathname;
+    const isDownload = reqUrl.searchParams.get("purpose") === "download";
+    const headers = isDownload ? { "content-disposition": 'attachment; filename="README.md"' } : undefined;
+    if (pathname.endsWith("/md")) return route.fulfill({ status: 200, contentType: "text/markdown; charset=utf-8", headers, body: mdBody });
+    if (pathname.endsWith("/json")) return route.fulfill({ status: 200, contentType: "application/json", headers, body: "{\"ok\":true}" });
+    return route.fulfill({ status: 200, contentType: "image/png", headers, body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
   });
   await page.route(`**${base}/files**`, (route) => {
     const pathname = new URL(route.request().url()).pathname;
@@ -617,6 +621,7 @@ test("C5 inline preview renders markdown safely, image, code, and binary metadat
       const targetFileId = segments.at(-4) ?? "";
       const versionId = segments.at(-2) ?? "";
       const purpose = new URL(route.request().url()).searchParams.get("purpose") ?? "preview";
+      if (purpose === "download") downloadRequests.push(`${targetFileId}:${versionId}`);
       const suffix = targetFileId === mdId ? "md" : targetFileId === jsonId ? "json" : targetFileId === imgId ? "png" : "zip";
       return success(route, { version_id: versionId, purpose, url: `https://preview.example.test/${suffix}?purpose=${purpose}`, expires_at: new Date(Date.now() + 60_000).toISOString() });
     }
@@ -626,11 +631,20 @@ test("C5 inline preview renders markdown safely, image, code, and binary metadat
   });
   await page.goto(`/projects/${projectId}/files`);
   await expect(page.locator("tbody tr").first().getByText("README.md", { exact: true })).toHaveCount(1);
+  // Direct row-level download button triggers signed download without opening the preview drawer
+  await page.locator("tbody tr").first().getByRole("button", { name: "下载", exact: true }).click();
+  await expect.poll(() => downloadRequests).toContain(`${mdId}:00000000-0000-0000-0000-000000000321`);
+  await expect(page.getByTestId("markdown-preview")).toHaveCount(0);
+
   await page.getByRole("button", { name: "README.md", exact: true }).click();
   const mdPreview = page.getByTestId("markdown-preview");
   await expect(mdPreview.getByRole("heading", { name: "周报标题" })).toBeVisible();
   await expect(mdPreview.getByRole("link", { name: "安全链接" })).toHaveAttribute("href", "https://example.com/");
   await expect(mdPreview.getByRole("link", { name: "危险脚本" })).toHaveCount(0);
+  await expect(mdPreview.getByRole("img", { name: "安全图片" })).toHaveAttribute("src", "https://preview.example.test/embedded.png");
+  await expect(mdPreview.getByRole("img", { name: "危险图片" })).toHaveCount(0);
+  await expect(mdPreview.getByRole("img", { name: "危险SVG" })).toHaveCount(0);
+  await expect(mdPreview.locator("table th", { hasText: "列A" })).toBeVisible();
   await expect(mdPreview.locator("script")).toHaveCount(0);
   await expect(mdPreview.getByText("<script>window.__xss=1</script>")).toBeVisible();
   await page.getByRole("button", { name: "关闭" }).click();

@@ -15,6 +15,8 @@ from app.modules.c.evidence_router import (
     private_response,
 )
 from app.modules.c.external_files_sync import (
+    probe_internal_file_media_type,
+    read_feishu_media,
     read_internal_file_content,
     sync_external_project_files,
 )
@@ -196,6 +198,51 @@ def link(
 ):
     return success(
         get_signed_link(session, user, project_id, file_id, version_id, purpose, storage), request
+    )
+
+
+@router.head("/projects/{project_id}/files/{file_id}/versions/{version_id}/content")
+def content_head(
+    project_id: UUID,
+    file_id: UUID,
+    version_id: UUID,
+    session: Database,
+    purpose: FilePurpose = "preview",
+    exp: int = Query(ge=0),
+    sig: str = Query(min_length=16, max_length=128),
+):
+    media_type, filename = probe_internal_file_media_type(
+        session,
+        project_id,
+        file_id,
+        version_id,
+        purpose=purpose,
+        exp=exp,
+        sig=sig,
+    )
+    return Response(
+        content=b"",
+        media_type=media_type,
+        headers=internal_content_headers(purpose, media_type, filename),
+    )
+
+
+@router.get("/projects/{project_id}/files/feishu-media/{token}")
+def feishu_media(
+    project_id: UUID,
+    token: str,
+    session: Database,
+    user: CurrentUser,
+):
+    data, media_type = read_feishu_media(session, user, project_id, token)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=300",
+        },
     )
 
 

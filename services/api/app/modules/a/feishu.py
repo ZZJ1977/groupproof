@@ -14,9 +14,11 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
+from urllib.parse import unquote
 from uuid import UUID, uuid4
 
 import httpx
@@ -110,6 +112,389 @@ def extract_feishu_doc_links(text: str) -> list[tuple[str, str, str]]:
         seen.add((kind, token))
         found.append((kind, token, match.group(0)))
     return found
+
+
+_DOCX_CODE_LANGS: dict[int, str] = {
+    1: "text",
+    7: "bash",
+    8: "csharp",
+    9: "cpp",
+    10: "c",
+    12: "css",
+    18: "dockerfile",
+    22: "go",
+    24: "html",
+    28: "json",
+    29: "java",
+    30: "javascript",
+    32: "kotlin",
+    39: "markdown",
+    49: "python",
+    52: "ruby",
+    53: "rust",
+    56: "sql",
+    60: "sh",
+    61: "swift",
+    63: "typescript",
+    66: "xml",
+    67: "yaml",
+    72: "graphql",
+}
+
+_DOCX_HEADING_KEYS: dict[int, tuple[int, str]] = {
+    3: (1, "heading1"),
+    4: (2, "heading2"),
+    5: (3, "heading3"),
+    6: (4, "heading4"),
+    7: (5, "heading5"),
+    8: (6, "heading6"),
+    9: (6, "heading7"),
+    10: (6, "heading8"),
+    11: (6, "heading9"),
+}
+
+
+def _wrap_inline_style(text: str, prefix: str, suffix: str | None = None) -> str:
+    """Wrap non-whitespace core of text with markdown markers, keeping outer spaces outside."""
+    end = suffix if suffix is not None else prefix
+    stripped = text.strip()
+    if not stripped:
+        return text
+    lead = len(text) - len(text.lstrip())
+    trail = len(text) - len(text.rstrip())
+    return f"{text[:lead]}{prefix}{stripped}{end}{text[len(text) - trail :] if trail else ''}"
+
+
+def _render_docx_elements(elements: list[dict[str, Any]] | None, *, plain: bool = False) -> str:
+    """将飞书 Docx 的 inline elements 渲染为 GFM 行内 Markdown（plain=True 时返回原始文本）。"""
+    parts: list[str] = []
+    for elem in elements or []:
+        if not isinstance(elem, dict):
+            continue
+        if "text_run" in elem and isinstance(elem["text_run"], dict):
+            run = elem["text_run"]
+            content = str(run.get("content") or "")
+            if not content:
+                continue
+            if plain:
+                parts.append(content)
+                continue
+            style = run.get("text_element_style") or {}
+            text = content
+            if style.get("inline_code"):
+                ticks = "``" if "`" in text else "`"
+                padded = f" {text} " if text.startswith("`") or text.endswith("`") else text
+                text = f"{ticks}{padded}{ticks}"
+            else:
+                if style.get("bold"):
+                    text = _wrap_inline_style(text, "**")
+                if style.get("italic"):
+                    text = _wrap_inline_style(text, "*")
+                if style.get("strikethrough"):
+                    text = _wrap_inline_style(text, "~~")
+            link = style.get("link")
+            if isinstance(link, dict) and link.get("url"):
+                raw_url = unquote(str(link["url"]).strip())
+                if raw_url.startswith(("http://", "https://")):
+                    core = text.strip()
+                    if core:
+                        lead = len(text) - len(text.lstrip())
+                        trail = len(text) - len(text.rstrip())
+                        tail = text[len(text) - trail :] if trail else ""
+                        text = f"{text[:lead]}[{core}]({raw_url}){tail}"
+            parts.append(text)
+        elif "mention_doc" in elem and isinstance(elem["mention_doc"], dict):
+            mdoc = elem["mention_doc"]
+            title = str(mdoc.get("title") or mdoc.get("token") or "飞书文档").strip()
+            url = unquote(str(mdoc.get("url") or "").strip())
+            if not plain and url.startswith(("http://", "https://")):
+                parts.append(f"[{title}]({url})")
+            else:
+                parts.append(title)
+        elif "mention_user" in elem and isinstance(elem["mention_user"], dict):
+            muser = elem["mention_user"]
+            name = str(muser.get("name") or "").strip()
+            parts.append(f"@{name}" if name else "@成员")
+        elif "equation" in elem and isinstance(elem["equation"], dict):
+            expr = str(elem["equation"].get("content") or "").strip()
+            if expr:
+                parts.append(expr if plain else f"`{expr}`")
+        elif "file" in elem and isinstance(elem["file"], dict):
+            fname = str(elem["file"].get("name") or "").strip()
+            if fname:
+                parts.append(fname)
+    return "".join(parts)
+
+
+def _docx_block_elements(block: dict[str, Any]) -> list[dict[str, Any]]:
+    bt = block.get("block_type")
+    if bt in _DOCX_HEADING_KEYS:
+        key = _DOCX_HEADING_KEYS[bt][1]
+        return list((block.get(key) or {}).get("elements") or [])
+    for key in ("text", "bullet", "ordered", "code", "quote", "todo"):
+        if key in block and isinstance(block[key], dict):
+            return list(block[key].get("elements") or [])
+    return []
+
+
+def _escape_table_cell(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\r\n", "\n").replace("\n", " ")
+
+
+def docx_blocks_to_markdown(
+    blocks: list[dict[str, Any]],
+    *,
+    image_renderer: Callable[[dict[str, Any]], str | None] | None = None,
+) -> str:
+    """将飞书 Docx Block 树转换为标准 GFM Markdown（保留标题、列表、表格、代码、引用与图片）。"""
+    if not blocks:
+        return ""
+    by_id: dict[str, dict[str, Any]] = {}
+    for block in blocks:
+        bid = block.get("block_id")
+        if isinstance(bid, str) and bid:
+            by_id[bid] = block
+
+    visited: set[str] = set()
+
+    def _cell_text(cell_id: str) -> str:
+        cell = by_id.get(cell_id)
+        if not cell or cell_id in visited:
+            return ""
+        visited.add(cell_id)
+        fragments: list[str] = []
+        for child_id in cell.get("children") or []:
+            child = by_id.get(child_id)
+            if not child or child_id in visited:
+                continue
+            visited.add(child_id)
+            cbt = child.get("block_type")
+            if cbt == 27:
+                rendered = image_renderer(child) if image_renderer else None
+                if rendered:
+                    fragments.append(rendered.strip())
+                continue
+            text = _render_docx_elements(_docx_block_elements(child)).strip()
+            if cbt == 12 and text:
+                fragments.append(f"• {text}")
+            elif cbt == 17 and text:
+                done = bool(((child.get("todo") or {}).get("style") or {}).get("done"))
+                fragments.append(f"{'☑' if done else '☐'} {text}")
+            elif text:
+                fragments.append(text)
+            for grand_id in child.get("children") or []:
+                grand = by_id.get(grand_id)
+                if grand and grand_id not in visited:
+                    visited.add(grand_id)
+                    gtext = _render_docx_elements(_docx_block_elements(grand)).strip()
+                    if gtext:
+                        fragments.append(gtext)
+        joined = "；".join(frag for frag in fragments if frag)
+        return _escape_table_cell(joined)
+
+    def _render_table(block: dict[str, Any]) -> str:
+        table = block.get("table") or {}
+        prop = table.get("property") or {}
+        cell_ids = list(table.get("cells") or block.get("children") or [])
+        col_size = int(prop.get("column_size") or 0)
+        row_size = int(prop.get("row_size") or 0)
+        if col_size <= 0:
+            if not cell_ids:
+                return ""
+            col_size = len(cell_ids)
+        if row_size <= 0:
+            row_size = (len(cell_ids) + col_size - 1) // col_size
+        grid: list[list[str]] = []
+        for r in range(row_size):
+            row_cells: list[str] = []
+            for c in range(col_size):
+                idx = r * col_size + c
+                row_cells.append(_cell_text(cell_ids[idx]) if idx < len(cell_ids) else "")
+            grid.append(row_cells)
+        if not grid:
+            return ""
+        header = "| " + " | ".join(grid[0]) + " |"
+        sep = "| " + " | ".join("---" for _ in range(col_size)) + " |"
+        body = ["| " + " | ".join(row) + " |" for row in grid[1:]]
+        return "\n".join([header, sep, *body])
+
+    def _render_children(child_ids: list[str], *, indent: int = 0) -> list[str]:
+        out: list[str] = []
+        ordered_counter = 0
+        prev_was_list = False
+        for cid in child_ids:
+            block = by_id.get(cid)
+            if not block or cid in visited:
+                continue
+            visited.add(cid)
+            bt = block.get("block_type")
+            prefix = "  " * indent
+            is_list = bt in (12, 13, 17)
+            if bt != 13:
+                ordered_counter = 0
+
+            if bt in _DOCX_HEADING_KEYS:
+                level, _ = _DOCX_HEADING_KEYS[bt]
+                text = _render_docx_elements(_docx_block_elements(block)).strip()
+                if text:
+                    if out and prev_was_list:
+                        out.append("")
+                    out.append(f"{'#' * level} {text}")
+                    out.append("")
+                nested = _render_children(list(block.get("children") or []), indent=indent)
+                if nested:
+                    out.extend(nested)
+                    out.append("")
+                prev_was_list = False
+            elif bt == 2:
+                text = _render_docx_elements(_docx_block_elements(block)).rstrip()
+                if text.strip():
+                    if out and prev_was_list:
+                        out.append("")
+                    out.append(f"{prefix}{text}")
+                    out.append("")
+                nested = _render_children(list(block.get("children") or []), indent=indent)
+                if nested:
+                    out.extend(nested)
+                    out.append("")
+                prev_was_list = False
+            elif bt == 12:
+                text = _render_docx_elements(_docx_block_elements(block)).strip()
+                out.append(f"{prefix}- {text}")
+                nested = _render_children(list(block.get("children") or []), indent=indent + 1)
+                if nested:
+                    out.extend(nested)
+                prev_was_list = True
+            elif bt == 13:
+                ordered_counter += 1
+                text = _render_docx_elements(_docx_block_elements(block)).strip()
+                out.append(f"{prefix}{ordered_counter}. {text}")
+                nested = _render_children(list(block.get("children") or []), indent=indent + 1)
+                if nested:
+                    out.extend(nested)
+                prev_was_list = True
+            elif bt == 17:
+                done = bool(((block.get("todo") or {}).get("style") or {}).get("done"))
+                text = _render_docx_elements(_docx_block_elements(block)).strip()
+                out.append(f"{prefix}- [{'x' if done else ' '}] {text}")
+                nested = _render_children(list(block.get("children") or []), indent=indent + 1)
+                if nested:
+                    out.extend(nested)
+                prev_was_list = True
+            elif bt == 14:
+                code_obj = block.get("code") or {}
+                lang_id = (code_obj.get("style") or {}).get("language")
+                lang = _DOCX_CODE_LANGS.get(int(lang_id), "") if isinstance(lang_id, int) else ""
+                code_text = _render_docx_elements(
+                    list(code_obj.get("elements") or []), plain=True
+                ).rstrip("\n")
+                fence_str = "````" if "```" in code_text else "```"
+                if out and prev_was_list:
+                    out.append("")
+                out.append(f"{prefix}{fence_str}{lang}")
+                for line in code_text.splitlines() or [""]:
+                    out.append(f"{prefix}{line}")
+                out.append(f"{prefix}{fence_str}")
+                out.append("")
+                prev_was_list = False
+            elif bt == 15:
+                text = _render_docx_elements(_docx_block_elements(block)).strip()
+                if out and prev_was_list:
+                    out.append("")
+                if text:
+                    for line in text.splitlines():
+                        out.append(f"{prefix}> {line}")
+                nested = _render_children(list(block.get("children") or []), indent=0)
+                for line in nested:
+                    out.append(f"{prefix}> {line}" if line else f"{prefix}>")
+                out.append("")
+                prev_was_list = False
+            elif bt in (19, 34):
+                nested = _render_children(list(block.get("children") or []), indent=0)
+                if nested:
+                    if out and prev_was_list:
+                        out.append("")
+                    # Trim leading/trailing blank lines inside quote/callout
+                    while nested and not nested[0].strip():
+                        nested.pop(0)
+                    while nested and not nested[-1].strip():
+                        nested.pop()
+                    for line in nested:
+                        out.append(f"{prefix}> {line}" if line else f"{prefix}>")
+                    out.append("")
+                prev_was_list = False
+            elif bt == 22:
+                if out and prev_was_list:
+                    out.append("")
+                out.append(f"{prefix}---")
+                out.append("")
+                prev_was_list = False
+            elif bt == 27:
+                if out and prev_was_list:
+                    out.append("")
+                rendered_img = image_renderer(block) if image_renderer else None
+                if rendered_img:
+                    out.append(f"{prefix}{rendered_img}")
+                    out.append("")
+                else:
+                    token = str((block.get("image") or {}).get("token") or "").strip()
+                    if token:
+                        out.append(f"{prefix}> 🖼 **文档图片**（`{token}`）")
+                        out.append("")
+                prev_was_list = False
+            elif bt == 31:
+                if out and prev_was_list:
+                    out.append("")
+                table_md = _render_table(block)
+                if table_md:
+                    for line in table_md.splitlines():
+                        out.append(f"{prefix}{line}")
+                    out.append("")
+                prev_was_list = False
+            elif bt == 32:
+                # Orphan table cell outside table
+                nested = _render_children(list(block.get("children") or []), indent=indent)
+                if nested:
+                    out.extend(nested)
+            else:
+                # Container blocks (grid=24, grid_column=25, source_synced=49, etc.)
+                text = _render_docx_elements(_docx_block_elements(block)).strip()
+                if text:
+                    if out and prev_was_list:
+                        out.append("")
+                    out.append(f"{prefix}{text}")
+                    out.append("")
+                nested = _render_children(list(block.get("children") or []), indent=indent)
+                if nested:
+                    if out and prev_was_list and not text:
+                        out.append("")
+                    out.extend(nested)
+                    out.append("")
+                prev_was_list = is_list
+        return out
+
+    root = next((b for b in blocks if b.get("block_type") == 1), None)
+    if root is not None:
+        if isinstance(root.get("block_id"), str):
+            visited.add(root["block_id"])
+        lines = _render_children(list(root.get("children") or []))
+    else:
+        top_ids = [
+            str(b["block_id"])
+            for b in blocks
+            if isinstance(b.get("block_id"), str) and b.get("parent_id") not in by_id
+        ]
+        lines = _render_children(top_ids)
+
+    # Collapse consecutive blank lines to at most one
+    cleaned: list[str] = []
+    for line in lines:
+        if not line.strip():
+            if cleaned and cleaned[-1] != "":
+                cleaned.append("")
+        else:
+            cleaned.append(line.rstrip())
+    return "\n".join(cleaned).strip()
 
 
 # ------------------------------------------------------------------ 配置与客户端
@@ -274,7 +659,31 @@ class FeishuClient:
         return list((body.get("data") or {}).get("chat_tabs") or [])
 
     def get_docx_document(self, doc_token: str) -> tuple[str, str]:
-        """读取飞书云文档（docx）的标题与纯文本正文（只读）。"""
+        """读取飞书云文档标题与 Markdown 正文（只读，结构化块优先，空时回退 raw_content）。"""
+        title, blocks = self.get_docx_document_with_blocks(doc_token)
+        if blocks:
+            rendered = docx_blocks_to_markdown(blocks)
+            if rendered.strip():
+                return title, rendered
+        headers = {"Authorization": f"Bearer {self._access_token()}"}
+        try:
+            raw_resp = self._http.get(
+                f"/open-apis/docx/v1/documents/{doc_token}/raw_content",
+                headers=headers,
+            )
+            raw_body = raw_resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise _unavailable() from exc
+        if raw_resp.status_code != 200 or raw_body.get("code") != 0:
+            _raise_feishu_error(
+                raw_body if isinstance(raw_body, dict) else {},
+                "无法读取该飞书云文档正文。",
+            )
+        content = str((raw_body.get("data") or {}).get("content") or "")
+        return title, content
+
+    def get_docx_document_with_blocks(self, doc_token: str) -> tuple[str, list[dict[str, Any]]]:
+        """读取飞书云文档（docx）标题与完整结构化块列表（自动分页，只读）。"""
         headers = {"Authorization": f"Bearer {self._access_token()}"}
         try:
             meta_resp = self._http.get(
@@ -292,21 +701,76 @@ class FeishuClient:
         title = str(
             ((meta_body.get("data") or {}).get("document") or {}).get("title") or ""
         ).strip()
+        blocks = self.list_docx_blocks(doc_token)
+        return title or doc_token, blocks
+
+    def list_docx_blocks(self, doc_token: str) -> list[dict[str, Any]]:
+        """分页拉取飞书云文档所有 Block（只读，最多 40 页 / 20000 块）。"""
+        headers = {"Authorization": f"Bearer {self._access_token()}"}
+        items: list[dict[str, Any]] = []
+        page_token: str | None = None
+        for _ in range(40):
+            params: dict[str, Any] = {"page_size": 500}
+            if page_token:
+                params["page_token"] = page_token
+            try:
+                resp = self._http.get(
+                    f"/open-apis/docx/v1/documents/{doc_token}/blocks",
+                    params=params,
+                    headers=headers,
+                )
+                body = resp.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise _unavailable() from exc
+            if resp.status_code != 200 or body.get("code") != 0:
+                _raise_feishu_error(
+                    body if isinstance(body, dict) else {},
+                    "无法读取该飞书云文档结构化内容。",
+                )
+            data = body.get("data") or {}
+            page_items = data.get("items") or []
+            for block in page_items:
+                if isinstance(block, dict):
+                    items.append(block)
+            if not data.get("has_more"):
+                break
+            next_token = data.get("page_token")
+            if not next_token or next_token == page_token:
+                break
+            page_token = str(next_token)
+        return items
+
+    def download_drive_media(self, file_token: str) -> tuple[bytes, str]:
+        """下载飞书云文档内嵌图片/素材（只读，不超过 20MB）。"""
         try:
-            raw_resp = self._http.get(
-                f"/open-apis/docx/v1/documents/{doc_token}/raw_content",
-                headers=headers,
-            )
-            raw_body = raw_resp.json()
-        except (httpx.HTTPError, ValueError) as exc:
+            with self._http.stream(
+                "GET",
+                f"/open-apis/drive/v1/medias/{file_token}/download",
+                headers={"Authorization": f"Bearer {self._access_token()}"},
+            ) as response:
+                if response.status_code != 200:
+                    try:
+                        err_body = json.loads(response.read().decode("utf-8", errors="ignore"))
+                    except ValueError:
+                        err_body = {}
+                    _raise_feishu_error(
+                        err_body if isinstance(err_body, dict) else {},
+                        "无法读取飞书文档内嵌图片，可能缺少云盘只读权限。",
+                    )
+                content_type = (
+                    response.headers.get("content-type", "application/octet-stream")
+                    .split(";", 1)[0]
+                    .strip()
+                    .lower()
+                )
+                data = bytearray()
+                for chunk in response.iter_bytes():
+                    data.extend(chunk)
+                    if len(data) > MAX_VERIFY_BYTES:
+                        raise _unavailable("飞书图片超过 20MB，暂不支持预览。")
+        except httpx.HTTPError as exc:
             raise _unavailable() from exc
-        if raw_resp.status_code != 200 or raw_body.get("code") != 0:
-            _raise_feishu_error(
-                raw_body if isinstance(raw_body, dict) else {},
-                "无法读取该飞书云文档正文。",
-            )
-        content = str((raw_body.get("data") or {}).get("content") or "")
-        return title or doc_token, content
+        return bytes(data), content_type
 
     def get_wiki_node_obj(self, node_token: str) -> tuple[str, str, str] | None:
         """解析知识库节点，返回 (obj_type, obj_token, title)。"""

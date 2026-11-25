@@ -3,7 +3,7 @@ import { Fragment, type ReactNode } from "react";
 /**
  * Small, dependency-free Markdown renderer.
  * Output is built exclusively from React elements (no dangerouslySetInnerHTML), raw HTML in the source
- * is shown as plain text, images are rendered as links, and only http(s) link targets are kept.
+ * is shown as plain text, safe images render as responsive <img> elements, and only safe URLs are kept.
  */
 
 type Block =
@@ -23,6 +23,8 @@ const rule = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const listMarker = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 const tableSeparator = /^\s*\|?\s*:?-{1,}:?\s*(?:\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
+const safeDataImage = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i;
+
 export function safeLinkHref(value: string): string | null {
   try {
     const url = new URL(value.trim());
@@ -30,6 +32,19 @@ export function safeLinkHref(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function safeImageSrc(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || /[\x00-\x1f\x7f]/.test(trimmed)) return null;
+  if (trimmed.startsWith("/api/v1/")) {
+    if (trimmed.startsWith("//") || /\s/.test(trimmed)) return null;
+    const pathPart = trimmed.split(/[?#]/, 1)[0];
+    if (pathPart.split("/").includes("..")) return null;
+    return trimmed;
+  }
+  if (safeDataImage.test(trimmed)) return trimmed.replace(/\s+/g, "");
+  return safeLinkHref(trimmed);
 }
 
 function splitRow(line: string) {
@@ -147,10 +162,29 @@ function renderInline(text: string, depth = 0, keyPrefix = "i"): ReactNode[] {
       nodes.push(<code key={key} className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.9em] text-slate-800">{match[2].trim()}</code>);
     } else if (match[4] !== undefined) {
       const isImage = match[0].startsWith("!");
-      const href = safeLinkHref(match[4]);
       const label = match[3] || match[4];
-      if (!href) nodes.push(<Fragment key={key}>{isImage ? `[图片：${label}]` : nested(label)}</Fragment>);
-      else nodes.push(<a key={key} className="gp-link" href={href} target="_blank" rel="noopener noreferrer nofollow">{isImage ? `[图片：${label}]` : nested(label)}</a>);
+      if (isImage) {
+        const imgSrc = safeImageSrc(match[4]);
+        if (!imgSrc) {
+          nodes.push(<Fragment key={key}>{`[图片：${label}]`}</Fragment>);
+        } else {
+          nodes.push(
+            // eslint-disable-next-line @next/next/no-img-element -- dynamic markdown/signed image URL
+            <img
+              key={key}
+              src={imgSrc}
+              alt={match[3] || "文档图片"}
+              loading="lazy"
+              referrerPolicy={imgSrc.startsWith("/api/v1/") ? "same-origin" : "no-referrer"}
+              className="my-3 block max-h-[540px] max-w-full rounded-lg border border-slate-200 bg-slate-50 object-contain"
+            />
+          );
+        }
+      } else {
+        const href = safeLinkHref(match[4]);
+        if (!href) nodes.push(<Fragment key={key}>{nested(label)}</Fragment>);
+        else nodes.push(<a key={key} className="gp-link" href={href} target="_blank" rel="noopener noreferrer nofollow">{nested(label)}</a>);
+      }
     } else if (match[5] !== undefined || match[6] !== undefined) {
       nodes.push(<strong key={key} className="font-semibold">{nested(match[5] ?? match[6])}</strong>);
     } else if (match[7] !== undefined) {
@@ -207,9 +241,9 @@ function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactN
         </Tag>;
       }
       case "table":
-        return <div key={key} className="my-3 overflow-x-auto"><table className="min-w-full border-collapse text-sm">
-          <thead><tr>{block.head.map((cell, cellIndex) => <th key={cellIndex} style={{ textAlign: block.align[cellIndex] }} className="border border-slate-200 bg-slate-50 px-3 py-1.5 font-semibold text-slate-800">{renderInline(cell, 0, `${key}-h${cellIndex}`)}</th>)}</tr></thead>
-          <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{block.head.map((_, cellIndex) => <td key={cellIndex} style={{ textAlign: block.align[cellIndex] }} className="border border-slate-200 px-3 py-1.5 text-slate-700">{renderInline(row[cellIndex] ?? "", 0, `${key}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody>
+        return <div key={key} className="my-3 overflow-x-auto rounded-md border border-slate-200"><table className="min-w-full border-collapse text-sm">
+          <thead><tr>{block.head.map((cell, cellIndex) => <th key={cellIndex} style={{ textAlign: block.align[cellIndex] }} className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-800 last:border-r-0">{renderInline(cell, 0, `${key}-h${cellIndex}`)}</th>)}</tr></thead>
+          <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex} className="even:bg-slate-50/50">{block.head.map((_, cellIndex) => <td key={cellIndex} style={{ textAlign: block.align[cellIndex] }} className="border-b border-r border-slate-200 px-3 py-2 align-top text-slate-700 last:border-r-0">{renderInline(row[cellIndex] ?? "", 0, `${key}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody>
         </table></div>;
     }
   });

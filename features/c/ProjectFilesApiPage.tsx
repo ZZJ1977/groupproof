@@ -60,6 +60,8 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
   const [uploadOpen, setUploadOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const [downloadingIds, setDownloadingIds] = useState<string[]>([]);
+  const downloadingRef = useRef<Set<string>>(new Set());
   const [syncResult, setSyncResult] = useState<ExternalSyncResult | null>(null);
   const denial = blocked || [context.error, list.error].find(accessFailure);
   const freshContext = context.isSuccess && !context.isFetching && !denial ? context.data : undefined;
@@ -76,6 +78,30 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
   }
   function openFile(fileId: string) { updateQuery({ file: fileId, version: null }); setOperationError(null); setNotice(""); }
   function closeFile() { updateQuery({ file: null, version: null }); }
+  async function downloadFile(item: { id: string; file_id: string; name: string; original_name: string }) {
+    if (downloadingRef.current.has(item.id)) return;
+    downloadingRef.current.add(item.id);
+    setDownloadingIds(Array.from(downloadingRef.current));
+    setOperationError(null);
+    try {
+      const next = await projectApi.fileLink(projectId, item.file_id, item.id, "download");
+      const signed = validatedLink(next, item.id, "download");
+      const anchor = document.createElement("a");
+      anchor.href = signed.url;
+      anchor.download = item.original_name || item.name;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch (error) {
+      fail(error);
+    } finally {
+      downloadingRef.current.delete(item.id);
+      setDownloadingIds(Array.from(downloadingRef.current));
+    }
+  }
   async function syncExternal() {
     if (!freshContext?.permissions.can_manage_files || busyRef.current) return;
     busyRef.current = true; setBusy(true); setOperationError(null); setNotice(""); setSyncResult(null);
@@ -180,7 +206,10 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
           {!freshContext.permissions.can_manage_files && <span className="ml-auto text-xs text-slate-500">当前项目资料只读。</span>}
         </form>
         {list.isFetching && <p role="status">正在读取资料…</p>}{list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
-        {rows && <Panel><div className="gp-table-wrap"><table className="gp-table"><thead><tr><th>资料</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead><tbody>{rows.items.map((item) => <tr key={item.id}><td><button type="button" className="gp-link text-left font-medium" onClick={() => openFile(item.file_id)}>{item.name}</button>{item.original_name !== item.name && <p className="text-xs text-slate-500">{item.original_name}</p>}</td><td>v{item.version_no}</td><td>{statuses[item.status]}</td><td>{formatBytes(item.size_bytes)}</td><td><button className={apiButton} type="button" onClick={() => openFile(item.file_id)}>查看内容</button></td></tr>)}</tbody></table></div>{!rows.items.length && <EmptyState title="没有符合条件的资料" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => updateQuery({ page: String(page), file: null, version: null })} /></Panel>}
+        {rows && <Panel><div className="gp-table-wrap"><table className="gp-table"><thead><tr><th>资料</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead><tbody>{rows.items.map((item) => {
+          const isDownloading = downloadingIds.includes(item.id);
+          return <tr key={item.id}><td><button type="button" className="gp-link text-left font-medium" onClick={() => openFile(item.file_id)}>{item.name}</button>{item.original_name !== item.name && <p className="text-xs text-slate-500">{item.original_name}</p>}</td><td>v{item.version_no}</td><td>{statuses[item.status]}</td><td>{formatBytes(item.size_bytes)}</td><td><div className="flex flex-wrap items-center gap-2"><button className={apiButton} type="button" onClick={() => openFile(item.file_id)}>查看内容</button><button className={apiButton} type="button" disabled={isDownloading} aria-busy={isDownloading} onClick={() => void downloadFile(item)}>{isDownloading ? "下载中…" : "下载"}</button></div></td></tr>;
+        })}</tbody></table></div>{!rows.items.length && <EmptyState title="没有符合条件的资料" />}<ApiPager page={rows.page} pageSize={rows.page_size} total={rows.total} change={(page) => updateQuery({ page: String(page), file: null, version: null })} /></Panel>}
         {!viewerOpen && operationError !== null && <ApiFailure error={operationError} />}{!viewerOpen && notice && <p role="status" className="my-3">{notice}</p>}
         {viewerOpen && selectedId && <FileViewer key={selectedId} projectId={projectId} userId={userId} fileId={selectedId} versionId={versionId}
           canManage={freshContext.permissions.can_manage_files} onSelectVersion={(nextId) => updateQuery({ version: nextId })}
