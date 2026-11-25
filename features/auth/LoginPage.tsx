@@ -178,33 +178,15 @@ function LoginCard() {
       <h2 className="text-[30px] font-extrabold tracking-tight text-[#14213b]">{t("loginTitle")}</h2>
       <p className="mt-2 text-[#718097]">{t("loginSubtitle")}</p>
 
-      {googleLoading && <div className="mt-8 h-12 w-full animate-pulse rounded-[7px] bg-[#eef2f8]" aria-hidden="true" />}
-      {showGoogle && (
-        <Button
-          variant="outline"
-          className="mt-8 h-12 w-full rounded-[14px] border-[#dadce0] bg-white text-[14px] font-medium text-[#3c4043] shadow-sm transition hover:-translate-y-px hover:bg-[#f8f9fa] hover:shadow-md"
-          onClick={startGoogleLogin}
-          loading={redirecting}
-          aria-busy={redirecting}
-        >
-          {!redirecting && <GoogleMark />}
-          {redirecting ? t("redirecting") : t("googleLogin")}
-        </Button>
-      )}
       {error && !dismissedError && (
         <p className="mt-4 rounded-[7px] bg-[#fdecec] p-3 text-[12px] text-[#c3313f]" role="alert">
           {error === "cancelled" ? t("error.cancelled") : error === "account_exists" ? t("error.accountExists") : error === "unavailable" ? t("error.unavailable") : t("error.failed")}
         </p>
       )}
 
-      {/* 已注册账户登录窗口：用户名/邮箱 + 密码 */}
-      <div className={showGoogle ? "my-6 flex items-center gap-3" : "mt-6 mb-5 flex items-center gap-3"} aria-hidden="true">
-        <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d5deec]" />
-        <span className="h-1.5 w-1.5 rounded-full bg-[#b9c7dd]" />
-        <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d5deec]" />
-      </div>
-      <h3 className="text-[14px] font-semibold text-[#14213b]">{tp("title")}</h3>
-      <form className="mt-3 space-y-3 [&_input]:h-11 [&_input]:rounded-[12px] [&_input]:border-[#dbe4f1] [&_input]:bg-white/90 [&_input:focus]:border-[#246bfa] [&_input:focus]:ring-4 [&_input:focus]:ring-[#246bfa]/15 [&_button[type=submit]]:h-12 [&_button[type=submit]]:rounded-[14px] [&_button[type=submit]]:border-0 [&_button[type=submit]]:bg-gradient-to-r [&_button[type=submit]]:from-[#246bfa] [&_button[type=submit]]:to-[#6a4cff] [&_button[type=submit]]:font-semibold [&_button[type=submit]]:shadow-[0_10px_24px_-8px_rgba(36,107,250,0.65)] [&_button[type=submit]]:transition hover:[&_button[type=submit]]:-translate-y-px hover:[&_button[type=submit]]:shadow-[0_14px_28px_-8px_rgba(36,107,250,0.75)]" onSubmit={submitPasswordLogin}>
+      {/* 账号密码登录窗口：用户名/邮箱 + 密码 */}
+      <h3 className="sr-only">{tp("title")}</h3>
+      <form className="mt-6 space-y-3 [&_input]:h-11 [&_input]:rounded-[12px] [&_input]:border-[#dbe4f1] [&_input]:bg-white/90 [&_input:focus]:border-[#246bfa] [&_input:focus]:ring-4 [&_input:focus]:ring-[#246bfa]/15 [&_button[type=submit]]:h-12 [&_button[type=submit]]:rounded-[14px] [&_button[type=submit]]:border-0 [&_button[type=submit]]:bg-gradient-to-r [&_button[type=submit]]:from-[#246bfa] [&_button[type=submit]]:to-[#6a4cff] [&_button[type=submit]]:font-semibold [&_button[type=submit]]:shadow-[0_10px_24px_-8px_rgba(36,107,250,0.65)] [&_button[type=submit]]:transition hover:[&_button[type=submit]]:-translate-y-px hover:[&_button[type=submit]]:shadow-[0_14px_28px_-8px_rgba(36,107,250,0.75)]" onSubmit={submitPasswordLogin}>
         <label className="gp-field">
           {tp("identifier")}
           <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} autoComplete="username" placeholder={tp("identifierPlaceholder")} aria-label={tp("identifier")} />
@@ -222,22 +204,43 @@ function LoginCard() {
             {tp("forgotLink")}
           </button>
         )}
+        {showForgot && showSignup && <span aria-hidden>·</span>}
         {showSignup && (
-          <>
-            <span aria-hidden>·</span>
-            <span>
-              {tp("noAccount")}
-              <button type="button" className="gp-link ml-1" onClick={() => setRegisterOpen(true)}>
-                {tp("registerLink")}
-              </button>
-            </span>
-          </>
+          <span>
+            {tp("noAccount")}
+            <button type="button" className="gp-link ml-1" onClick={() => setRegisterOpen(true)}>
+              {tp("registerLink")}
+            </button>
+          </span>
         )}
       </div>
       {capsFailed && (
         <p className="mt-3 text-center text-[11px] text-[#c3313f]" role="status">
           {tp("errors.NETWORK_ERROR")}
         </p>
+      )}
+
+      {(googleLoading || showGoogle) && (
+        <>
+          <div className="my-5 flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#d5deec]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#b9c7dd]" />
+            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#d5deec]" />
+          </div>
+          {googleLoading && <div className="h-12 w-full animate-pulse rounded-[14px] bg-[#eef2f8]" aria-hidden="true" />}
+          {showGoogle && (
+            <Button
+              variant="outline"
+              className="h-12 w-full rounded-[14px] border-[#dadce0] bg-white text-[14px] font-medium text-[#3c4043] shadow-sm transition hover:-translate-y-px hover:bg-[#f8f9fa] hover:shadow-md"
+              onClick={startGoogleLogin}
+              loading={redirecting}
+              aria-busy={redirecting}
+            >
+              {!redirecting && <GoogleMark />}
+              {redirecting ? t("redirecting") : t("googleLogin")}
+            </Button>
+          )}
+        </>
       )}
 
       <p className="mt-6 text-center text-[12px] text-[#8794a7]">{t("firstUse")}</p>
