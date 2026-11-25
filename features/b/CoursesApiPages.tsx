@@ -12,6 +12,7 @@ import { bCoursesApi, type BCoursePreview, type BJoinRequest, type BJoinResult }
 import { useUrlFilters } from "@/lib/use-url-filters";
 import { useWorkspace } from "@/lib/workspace";
 import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
+import { CreateProjectModal } from "@/features/b/CreateProjectModal";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, dateOnly, input, label, queryPolicy, secondary } from "@/features/b/ui";
 
@@ -34,6 +35,7 @@ export function MyCoursesApiPage() {
   const errorText = useBErrorMessage();
   const { filters, setFilters } = useUrlFilters(myCourseFilters);
   const [search, setSearch] = useState(filters.q);
+  const [createOpen, setCreateOpen] = useState(false);
   const list = useQuery({
     queryKey: ["b-my-courses", userId, filters],
     queryFn: () => bCoursesApi.myCourses({ tab: filters.tab, q: filters.q, page: filters.page, page_size: PAGE_SIZE }),
@@ -48,7 +50,7 @@ export function MyCoursesApiPage() {
       description={createIntent ? t("chooseProjectCourse") : t("description")}
       actions={<div className="flex flex-wrap gap-2">
         {isTeacher && !createIntent && <Link href="/teacher/courses" className={button}><Plus size={15} />我的班级 / 创建班级</Link>}
-        {!isTeacher && !createIntent && <Link href="/projects/new" className={button}><Plus size={15} />{t("createProjectTitle")}</Link>}
+        {!isTeacher && !createIntent && <button type="button" className={button} onClick={() => setCreateOpen(true)}><Plus size={15} />{t("createProjectTitle")}</button>}
         <Link href="/courses/join" className={createIntent ? button : secondary}><Plus size={15} />{t("join")}</Link>
       </div>}
     />
@@ -68,6 +70,7 @@ export function MyCoursesApiPage() {
       </Panel>)}</div>
       : <Panel><EmptyState title={filters.q || filters.tab !== "all" ? t("emptyFiltered") : t("empty")} description={createIntent ? t("joinBeforeCreate") : undefined} action={isTeacher ? <Link href="/teacher/courses" className={button}>前往我的班级创建课程</Link> : <Link href="/courses/join" className={button}>{t("joinWithCode")}</Link>} /></Panel>}
     {data && pages > 1 && <nav aria-label={ts("pagination")} className="mt-4 flex items-center justify-end gap-2 text-sm"><button type="button" className={secondary} disabled={filters.page <= 1} onClick={() => setFilters({ page: filters.page - 1 })}>{ts("prev")}</button><span>{ts("pagerOf", { page: filters.page, pages })}</span><button type="button" className={secondary} disabled={filters.page >= pages} onClick={() => setFilters({ page: filters.page + 1 })}>{ts("next")}</button></nav>}
+    <CreateProjectModal open={createOpen} onOpenChange={setCreateOpen} />
   </div>;
 }
 

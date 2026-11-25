@@ -76,6 +76,8 @@ export const bProjectsApi = {
   draft: (groupId: string) => bRequest<BProjectDraft>({ path: `/api/v1/groups/${id(groupId)}/project-draft` }),
   saveDraft: (groupId: string, draft: Pick<BProjectDraft, "payload" | "step" | "lock_version">) =>
     bRequest<BProjectDraft>({ method: "PUT", path: `/api/v1/groups/${id(groupId)}/project-draft`, body: { payload: draft.payload, step: draft.step, expected_version: draft.lock_version } }),
+  createPersonal: (body: { name: string; description?: string | null }, idempotencyKey?: string) =>
+    bRequest<{ project_id: string; name: string; kind: "personal" }>({ method: "POST", path: "/api/v1/a/projects", body, idempotencyKey }),
   create: (groupId: string, body: { name: string; project_type?: string; description?: string; expected_group_version?: number; expected_course_rule_version_id?: string }, idempotencyKey?: string) =>
     bRequest<{ project_id: string; href: string }>({ method: "POST", path: `/api/v1/groups/${id(groupId)}/projects`, body, idempotencyKey }),
   overview: (projectId: string) => bRequest<BProjectOverview>({ path: `/api/v1/projects/${id(projectId)}/overview` }),

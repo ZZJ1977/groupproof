@@ -42,6 +42,7 @@ const ActionItemsApiPage = dynamic(() => import("@/features/c/InboxApiPages").th
 const HomeApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.HomeApiPage));
 const PersonalActivityApiPage = dynamic(() => import("@/features/c/DailyApiPages").then((module) => module.ActivityApiPage));
 const BNotConnectedPage = dynamic(() => import("@/features/b/BNotConnectedPage").then((module) => module.BNotConnectedPage));
+const MyProjectsApiPage = dynamic(() => import("@/features/b/MyProjectsApiPage").then((module) => module.MyProjectsApiPage));
 const MyCoursesApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.MyCoursesApiPage));
 const JoinCourseApiPage = dynamic(() => import("@/features/b/CoursesApiPages").then((module) => module.JoinCourseApiPage));
 const GroupsApiPage = dynamic(() => import("@/features/b/GroupsApiPages").then((module) => module.GroupsApiPage));
@@ -92,7 +93,7 @@ export function RouteDispatcher() {
   const canonicalProject = resolveCanonicalRouteContext(pathname).projectId;
 
   // 布局按路由选择；访问资格单独判断（阶段 01），最终授权由 FastAPI 在数据接口执行
-  const kind = screen === 50 && pathname.startsWith("/courses/")
+  const kind = screen === 63 || (screen === 50 && pathname.startsWith("/courses/"))
     ? "student"
     : isTeacherScreen(screen)
       ? "teacher"
@@ -123,6 +124,7 @@ export function RouteDispatcher() {
     if (screen === 37 && courseId && groupId) realContent = <LeaveGroupApiPage courseId={courseId} groupId={groupId} />;
     if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
   }
+  if (screen === 63 && (bReal || apiMode("projects") === "real" || apiMode("daily") === "real")) realContent = <MyProjectsApiPage />;
   if (bReal || apiMode("projects") === "real") {
     if (screen === 35 && !courseId) realContent = <IndependentProjectPage />;
     if (screen === 35 && courseId) realContent = <NewProjectApiPage courseId={courseId} />;
@@ -195,7 +197,7 @@ export function RouteDispatcher() {
   else if (screen >= 7 && screen <= 20) content = <ProjectCoreView screen={screen} projectId={projectId ?? "project-1"} taskId={taskId} milestoneId={milestoneId} />;
   else if (screen >= 21 && screen <= 29) content = <ProjectSupportView screen={screen} projectId={projectId ?? "project-1"} memberId={memberId} />;
   else if (screen >= 31 && screen <= 40) content = <CourseView screen={screen} courseId={courseId} groupId={groupId} />;
-  else if (screen === 57 || screen === 58) content = <BNotConnectedPage screen={screen} />;
+  else if (screen === 57 || screen === 58 || screen === 63) content = <BNotConnectedPage screen={screen} />;
   else if (screen >= 41) content = <GovernanceView screen={screen} courseId={courseId} groupId={groupId} />;
   else content = <div className="gp-empty">{tc("loading")}</div>;
 

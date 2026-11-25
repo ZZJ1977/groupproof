@@ -13,6 +13,9 @@ assert.equal(cases.length, 56, "计划中应列出全部 56 个设计页");
 const adminHome = resolveRoute("/admin");
 assert.equal(adminHome?.screen, 62, "/admin 应映射到 Admin 工作台页面 62");
 
+const myProjects = resolveRoute("/projects");
+assert.equal(myProjects?.screen, 63, "/projects 应映射到我的项目页面 63");
+
 for (const item of cases) {
   const url = new URL(item.path, "http://localhost:3000");
   const actual = resolveRoute(url.pathname, url.searchParams.get("view"));
@@ -38,6 +41,11 @@ if (process.env.CHECK_HTTP === "1") {
   const adminTarget = adminResponse.headers.get("location") ?? "";
   assert([301, 302, 303, 307, 308].includes(adminResponse.status), `/admin 匿名应重定向，实际 ${adminResponse.status}`);
   assert(adminTarget.startsWith("/login"), `/admin 匿名应跳登录，实际 ${adminTarget}`);
+
+  const projectsResponse = await fetch(`${origin}/projects`, { redirect: "manual" });
+  const projectsTarget = projectsResponse.headers.get("location") ?? "";
+  assert([301, 302, 303, 307, 308].includes(projectsResponse.status), `/projects 匿名应重定向，实际 ${projectsResponse.status}`);
+  assert(projectsTarget.startsWith("/login"), `/projects 匿名应跳登录，实际 ${projectsTarget}`);
 }
 
-console.log(`已核对 ${cases.length} 个设计页与 Admin 工作台入口 /admin${process.env.CHECK_HTTP === "1" ? "，匿名访问行为符合鉴权语义（登录页 200 / 其余重定向）" : ""}。`);
+console.log(`已核对 ${cases.length} 个设计页与 /projects、/admin 入口${process.env.CHECK_HTTP === "1" ? "，匿名访问行为符合鉴权语义（登录页 200 / 其余重定向）" : ""}。`);
