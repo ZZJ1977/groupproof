@@ -1,0 +1,786 @@
+/* Lucian UX/UI Prompt #412 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#412 */
+
+/* Unified light-only Workspace Shell, Sidebar, Topbar & Mobile Drawer motion (#412 motion language) */
+
+@keyframes lux-drop-opacity {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lux-drop-transform {
+  from {
+    transform: translateY(-10px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes lux-bell-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.72;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes lux-backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Unified white sidebar template across Student, Teacher, and Admin */
+.gp-shell .gp-sidebar,
+.gp-shell.gp-teacher-shell .gp-sidebar,
+.gp-shell.gp-student-workspace .gp-sidebar,
+.gp-shell.gp-shell-admin .gp-sidebar.admin {
+  background: var(--ux-surface, #ffffff);
+  color: var(--gp-ink-soft, #475569);
+  border-right: 1px solid var(--ux-line, #e2e8f0);
+  transition:
+    width 0.24s cubic-bezier(0.2, 0, 0, 1),
+    flex-basis 0.24s cubic-bezier(0.2, 0, 0, 1),
+    transform 0.36s cubic-bezier(0.25, 1, 0.35, 1),
+    box-shadow 0.24s var(--ux-ease);
+}
+
+.gp-shell .gp-sidebar-header,
+.gp-shell.gp-teacher-shell .gp-sidebar-header,
+.gp-shell.gp-student-workspace .gp-sidebar-header,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-sidebar-header {
+  background: var(--ux-surface, #ffffff);
+  border-bottom: 1px solid var(--gp-border-subtle, #edf2f7);
+}
+
+.gp-shell .gp-sidebar .gp-brand,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-brand {
+  color: var(--gp-ink, #0f172a);
+}
+
+.gp-shell .gp-sidebar .gp-brand-mark,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-brand-mark {
+  border-color: var(--gp-action, #246bfa);
+}
+
+.gp-shell .gp-sidebar .gp-nav {
+  position: relative;
+}
+
+.gp-shell .gp-sidebar .gp-nav > :not(.gp-nav-active-pill),
+.gp-shell .gp-sidebar .gp-nav-drop {
+  position: relative;
+  z-index: 1;
+}
+
+/* Two-bar-to-X animated glyph (#412 exact geometry & spring curve) */
+.gp-shell .lux-burger-btn {
+  position: relative;
+  border-radius: 10px;
+  color: var(--gp-ink-soft, #475569);
+  transition:
+    background-color 0.2s var(--ux-ease),
+    color 0.2s var(--ux-ease),
+    transform 0.3s var(--ux-spring);
+}
+
+.gp-shell .lux-burger-btn:hover {
+  background: var(--ux-surface-2, #f4f8fc);
+  color: var(--gp-ink, #0f172a);
+}
+
+.gp-shell .lux-burger-btn:active {
+  transform: scale(0.9);
+}
+
+.gp-shell .lux-burger-bars {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.gp-shell .lux-burger-bars i {
+  position: absolute;
+  left: 0;
+  width: 16px;
+  height: 1.75px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform 0.55s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.gp-shell .lux-burger-bars i:first-child {
+  transform: translateY(-3.5px);
+}
+
+.gp-shell .lux-burger-bars i:last-child {
+  transform: translateY(3.5px);
+}
+
+.gp-shell .lux-burger-btn.is-open .lux-burger-bars i:first-child {
+  transform: rotate(45deg);
+}
+
+.gp-shell .lux-burger-btn.is-open .lux-burger-bars i:last-child {
+  transform: rotate(-45deg);
+}
+
+/* Sliding active indicator pill (pale blue fill + left blue vertical bar) */
+.gp-shell .gp-nav-active-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 8px;
+  background: var(--gp-action-soft, #e0f2fe);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1.15, 0.36, 1),
+    width 0.24s var(--ux-ease),
+    height 0.24s var(--ux-ease),
+    opacity 0.18s var(--ux-ease);
+}
+
+.gp-shell.gp-teacher-shell .gp-nav-active-pill {
+  background: var(--gp-action-soft, #e8f0fe);
+}
+
+.gp-shell.gp-shell-admin .gp-nav-active-pill {
+  background: #dbeafe;
+}
+
+.gp-shell .gp-nav-active-pill.is-visible {
+  opacity: 1;
+}
+
+.gp-shell .gp-nav-active-pill.is-instant {
+  transition: opacity 0.18s var(--ux-ease);
+}
+
+.gp-shell .gp-nav-active-pill::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gp-action, #0369a1);
+  transform: translateY(-50%);
+}
+
+.gp-shell.gp-shell-admin .gp-nav-active-pill::before {
+  background: var(--gp-admin-action, #2563eb);
+}
+
+/* Unified sidebar nav links + subtle right shift & color tint on hover */
+.gp-shell .gp-sidebar .gp-nav-link,
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-link,
+.gp-shell.gp-student-workspace .gp-sidebar .gp-nav-link,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav-link {
+  position: relative;
+  z-index: 1;
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 5px 10px;
+  gap: 10px;
+  color: var(--gp-ink-soft, #475569);
+  font-size: 13px;
+  font-weight: 540;
+  background: transparent;
+  transition:
+    background-color 0.2s var(--ux-ease),
+    color 0.2s var(--ux-ease),
+    padding 0.24s cubic-bezier(0.2, 0, 0, 1),
+    gap 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gp-shell .gp-sidebar .gp-nav-group-items .gp-nav-link,
+.gp-shell.gp-student-workspace .gp-sidebar .gp-nav-group-items .gp-nav-link {
+  min-height: 31px;
+  padding: 4px 10px 4px 18px;
+}
+
+.gp-shell .gp-sidebar .gp-nav-link:hover,
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-link:hover,
+.gp-shell.gp-student-workspace .gp-sidebar .gp-nav-link:hover,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav-link:hover {
+  background: rgba(224, 242, 254, 0.45);
+  color: var(--gp-action, #0369a1);
+}
+
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-link:hover {
+  background: rgba(232, 240, 254, 0.65);
+  color: var(--gp-action, #3370ff);
+}
+
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav-link:hover {
+  background: rgba(219, 234, 254, 0.55);
+  color: var(--gp-admin-action-hover, #1d4ed8);
+}
+
+.gp-shell .gp-sidebar .gp-nav-link-icon,
+.gp-shell .gp-sidebar .gp-nav-link-label {
+  transition: transform 0.35s var(--ux-spring);
+}
+
+.gp-shell .gp-sidebar .gp-nav-link:hover .gp-nav-link-icon,
+.gp-shell .gp-sidebar .gp-nav-link:hover .gp-nav-link-label {
+  transform: translateX(3px);
+}
+
+/* Pre-measurement SSR fallback for active link before sliding pill hydrates */
+.gp-shell .gp-sidebar .gp-nav-link.active,
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-link.active,
+.gp-shell.gp-student-workspace .gp-sidebar .gp-nav-link.active,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav-link.active {
+  background: var(--gp-action-soft, #e0f2fe);
+  color: var(--gp-action, #0369a1);
+  font-weight: 650;
+}
+
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-link.active {
+  background: var(--gp-action-soft, #e8f0fe);
+  color: var(--gp-action, #3370ff);
+}
+
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav-link.active {
+  background: #dbeafe;
+  color: var(--gp-admin-action-hover, #1d4ed8);
+}
+
+.gp-shell .gp-sidebar .gp-nav:not([data-pill-ready="true"]) .gp-nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gp-action, #0369a1);
+  transform: translateY(-50%);
+}
+
+.gp-shell.gp-shell-admin .gp-sidebar .gp-nav:not([data-pill-ready="true"]) .gp-nav-link.active::before {
+  background: var(--gp-admin-action, #2563eb);
+}
+
+/* When the sliding pill is active, let the pill render background & accent bar */
+.gp-shell .gp-sidebar .gp-nav[data-pill-ready="true"] .gp-nav-link.active,
+.gp-shell .gp-sidebar .gp-nav[data-pill-ready="true"] .gp-nav-link.active:hover,
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav[data-pill-ready="true"] .gp-nav-link.active,
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav[data-pill-ready="true"] .gp-nav-link.active:hover,
+.gp-shell.gp-student-workspace .gp-sidebar .gp-nav[data-pill-ready="true"] .gp-nav-link.active,
+.gp-shell.gp-student-workspace .gp-sidebar .gp-nav[data-pill-ready="true"] .gp-nav-link.active:hover,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav[data-pill-ready="true"] .gp-nav-link.active,
+.gp-shell.gp-shell-admin .gp-sidebar.admin .gp-nav[data-pill-ready="true"] .gp-nav-link.active:hover {
+  background: transparent;
+}
+
+.gp-shell .gp-sidebar .gp-nav-link.active:hover .gp-nav-link-icon,
+.gp-shell .gp-sidebar .gp-nav-link.active:hover .gp-nav-link-label {
+  transform: translateX(2px);
+}
+
+/* Desktop staggered drop-in entrance (#412 opacity .35s ease + transform .6s spring, 90ms + i*55ms) */
+@media (min-width: 721px) {
+  .gp-shell .gp-sidebar[data-nav-enter="true"] .gp-nav-drop {
+    animation:
+      lux-drop-opacity 0.35s var(--ux-ease) calc(90ms + var(--i, 0) * 55ms) both,
+      lux-drop-transform 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) calc(90ms + var(--i, 0) * 55ms) both;
+  }
+}
+
+/* Student project collapsible groups (#412 grid-rows 0fr->1fr + chevron spring + staggered items) */
+.gp-shell .gp-nav-group-toggle {
+  border-radius: 8px;
+  transition: background-color 0.2s var(--ux-ease), color 0.2s var(--ux-ease);
+}
+
+.gp-shell .gp-nav-group-toggle .gp-nav-group-chevron {
+  transition: transform 0.45s cubic-bezier(0.3, 1.5, 0.5, 1), color 0.2s var(--ux-ease);
+  transform: rotate(0deg);
+}
+
+.gp-shell .gp-nav-group-toggle .gp-nav-group-chevron.open {
+  transform: rotate(180deg);
+}
+
+.gp-shell .gp-nav-group-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.5s cubic-bezier(0.25, 1, 0.35, 1);
+}
+
+.gp-shell .gp-nav-group[data-open="true"] .gp-nav-group-shell {
+  grid-template-rows: 1fr;
+}
+
+.gp-shell .gp-nav-group-shell > .gp-nav-group-items {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gp-shell .gp-nav-group .gp-nav-group-item {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.15s var(--ux-ease), transform 0.2s var(--ux-ease);
+}
+
+.gp-shell .gp-nav-group[data-open="true"] .gp-nav-group-item {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.35s var(--ux-ease) calc(90ms + var(--group-i, 0) * 55ms),
+    transform 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) calc(90ms + var(--group-i, 0) * 55ms);
+}
+
+/* Teacher sidebar rail collapse: smooth width, padding & label fade */
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-brand-label,
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-label {
+  display: inline-block;
+  max-width: 170px;
+  opacity: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition:
+    opacity 0.18s var(--ux-ease) 40ms,
+    max-width 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-section {
+  max-height: 36px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    opacity 0.18s var(--ux-ease) 30ms,
+    max-height 0.22s cubic-bezier(0.2, 0, 0, 1),
+    padding 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-badge {
+  opacity: 1;
+  max-width: 48px;
+  overflow: hidden;
+  transform: scale(1);
+  transition:
+    opacity 0.15s var(--ux-ease),
+    max-width 0.22s cubic-bezier(0.2, 0, 0, 1),
+    padding 0.22s cubic-bezier(0.2, 0, 0, 1),
+    transform 0.2s var(--ux-ease);
+}
+
+.gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-collapsed-dot {
+  opacity: 0;
+  transform: scale(0.5);
+  pointer-events: none;
+  transition: opacity 0.18s var(--ux-ease), transform 0.25s var(--ux-spring);
+}
+
+@media (min-width: 721px) {
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed {
+    width: 64px;
+    flex: 0 0 64px;
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-teacher-rail-head {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 0 8px;
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-brand {
+    min-height: 32px;
+    width: 100%;
+    justify-content: center;
+    gap: 0;
+    padding: 4px 0;
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-brand-label,
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav-label {
+    display: inline-block;
+    max-width: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 0.12s var(--ux-ease),
+      max-width 0.22s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav {
+    padding: 10px;
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav-section {
+    display: block;
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    pointer-events: none;
+    transition:
+      opacity 0.12s var(--ux-ease),
+      max-height 0.22s cubic-bezier(0.2, 0, 0, 1),
+      padding 0.22s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav-link {
+    justify-content: flex-start;
+    padding: 0 14.5px;
+    gap: 0;
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav-link:hover .gp-nav-link-icon {
+    transform: scale(1.08);
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav-badge {
+    opacity: 0;
+    max-width: 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    transform: scale(0.75);
+    pointer-events: none;
+  }
+
+  .gp-shell.gp-teacher-shell .gp-sidebar.is-collapsed .gp-nav-collapsed-dot.is-visible {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Mobile off-canvas sidebar drawer (<= 720px) */
+.gp-shell .lux-mobile-backdrop {
+  animation: lux-backdrop-fade 0.22s var(--ux-ease) both;
+}
+
+@media (max-width: 720px) {
+  .gp-shell .gp-sidebar,
+  .gp-shell.gp-teacher-shell .gp-sidebar,
+  .gp-shell.gp-student-workspace .gp-sidebar,
+  .gp-shell.gp-shell-admin .gp-sidebar.admin {
+    position: fixed;
+    left: 0;
+    top: 0;
+    visibility: hidden;
+    transform: translateX(-100%);
+    box-shadow: 12px 0 36px -16px rgba(15, 23, 42, 0.22);
+    transition:
+      transform 0.36s cubic-bezier(0.25, 1, 0.35, 1),
+      visibility 0s linear 0.36s;
+  }
+
+  .gp-shell .gp-sidebar.open,
+  .gp-shell.gp-teacher-shell .gp-sidebar.open,
+  .gp-shell.gp-student-workspace .gp-sidebar.open,
+  .gp-shell.gp-shell-admin .gp-sidebar.admin.open {
+    visibility: visible;
+    transform: translateX(0);
+    transition:
+      transform 0.36s cubic-bezier(0.25, 1, 0.35, 1),
+      visibility 0s linear 0s;
+  }
+
+  .gp-shell .gp-sidebar .gp-nav-drop {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.15s var(--ux-ease), transform 0.2s var(--ux-ease);
+  }
+
+  .gp-shell .gp-sidebar.open .gp-nav-drop {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.35s var(--ux-ease) calc(90ms + var(--i, 0) * 55ms),
+      transform 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) calc(90ms + var(--i, 0) * 55ms);
+  }
+}
+
+/* Topbar icon buttons hover tint + spring press scale + unread bell pulse */
+.gp-shell .gp-topbar .gp-icon-button {
+  position: relative;
+  border-radius: 10px;
+  color: var(--gp-ink-soft, #475569);
+  transition:
+    background-color 0.2s var(--ux-ease),
+    color 0.2s var(--ux-ease),
+    transform 0.3s var(--ux-spring);
+}
+
+.gp-shell .gp-topbar .gp-icon-button:hover {
+  background: var(--ux-surface-2, #f4f8fc);
+  color: var(--gp-action, #0369a1);
+}
+
+.gp-shell.gp-teacher-shell .gp-topbar .gp-icon-button:hover {
+  color: var(--gp-action, #3370ff);
+}
+
+.gp-shell .gp-topbar .gp-icon-button:active {
+  transform: scale(0.9);
+}
+
+.gp-shell .gp-topbar .gp-mobile-menu {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .gp-shell .gp-topbar .gp-mobile-menu {
+    display: inline-flex;
+  }
+}
+
+.gp-shell .lux-unread-dot {
+  position: absolute;
+}
+
+.gp-shell .lux-unread-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #ec4d5d;
+  animation: lux-bell-pulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+.gp-shell .lux-bell-unread svg {
+  transition: transform 0.35s var(--ux-spring);
+}
+
+.gp-shell .lux-bell-unread:hover svg {
+  transform: rotate(-10deg) scale(1.06);
+}
+
+/* Student global top-nav links + hover/active sliding underline indicator */
+.gp-shell .gp-topbar .gp-topnav-links {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .gp-shell .gp-topbar .gp-topnav-links {
+    display: none;
+  }
+}
+
+.gp-shell .gp-topbar .gp-topnav-link {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--gp-ink-soft, #475569);
+  font-size: 13px;
+  font-weight: 560;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s var(--ux-ease),
+    color 0.2s var(--ux-ease),
+    transform 0.25s var(--ux-spring);
+}
+
+.gp-shell .gp-topbar .gp-topnav-link:hover {
+  background: rgba(241, 245, 249, 0.85);
+  color: var(--gp-ink, #0f172a);
+}
+
+.gp-shell .gp-topbar .gp-topnav-link:active {
+  transform: scale(0.97);
+}
+
+.gp-shell .gp-topbar .gp-topnav-link.active {
+  background: rgba(224, 242, 254, 0.65);
+  color: var(--gp-action, #0369a1);
+  font-weight: 660;
+}
+
+.gp-shell .gp-topbar .gp-topnav-links:not([data-indicator-ready="true"]) .gp-topnav-link.active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 2px;
+  height: 2.5px;
+  border-radius: 999px;
+  background: var(--gp-action, #0369a1);
+}
+
+.gp-shell .gp-topbar .gp-topnav-indicator {
+  position: absolute;
+  left: 0;
+  bottom: 2px;
+  height: 2.5px;
+  border-radius: 999px;
+  background: var(--gp-action, #0369a1);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition:
+    transform 0.36s cubic-bezier(0.3, 1.35, 0.5, 1),
+    width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.18s var(--ux-ease);
+}
+
+.gp-shell .gp-topbar .gp-topnav-indicator.is-visible {
+  opacity: 1;
+}
+
+.gp-shell .gp-topbar .gp-topnav-indicator.is-instant {
+  transition: opacity 0.18s var(--ux-ease);
+}
+
+/* Student global top-nav mobile drawer (#412 downward grid expansion + staggered drop-in) */
+.gp-shell .gp-topnav-mobile-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  border-bottom: 0 solid rgba(15, 23, 42, 0.08);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    grid-template-rows 0.5s cubic-bezier(0.25, 1, 0.35, 1),
+    border-bottom-width 0.2s var(--ux-ease),
+    visibility 0s linear 0.5s;
+}
+
+.gp-shell .gp-topnav-mobile-drawer.is-open {
+  grid-template-rows: 1fr;
+  border-bottom-width: 1px;
+  pointer-events: auto;
+  visibility: visible;
+  transition:
+    grid-template-rows 0.5s cubic-bezier(0.25, 1, 0.35, 1),
+    border-bottom-width 0.2s var(--ux-ease),
+    visibility 0s linear 0s;
+}
+
+.gp-shell .gp-topnav-mobile-drawer > .gp-topnav-mobile-drawer-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gp-shell .gp-topnav-mobile-drawer .gp-topnav-drawer-item {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.15s var(--ux-ease), transform 0.2s var(--ux-ease);
+}
+
+.gp-shell .gp-topnav-mobile-drawer.is-open .gp-topnav-drawer-item {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.35s var(--ux-ease) calc(90ms + var(--i, 0) * 55ms),
+    transform 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) calc(90ms + var(--i, 0) * 55ms);
+}
+
+.gp-shell .gp-topnav-mobile-drawer .gp-nav-link {
+  position: relative;
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 6px 12px;
+  transition: background-color 0.2s var(--ux-ease), color 0.2s var(--ux-ease);
+}
+
+.gp-shell .gp-topnav-mobile-drawer .gp-nav-link.active {
+  background: var(--gp-action-soft, #e0f2fe);
+  color: var(--gp-action, #0369a1);
+  font-weight: 650;
+}
+
+.gp-shell .gp-topnav-mobile-drawer .gp-nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gp-action, #0369a1);
+  transform: translateY(-50%);
+}
+
+@media (min-width: 721px) {
+  .gp-shell .gp-topnav-mobile-drawer {
+    display: none;
+  }
+}
+
+/* Visible blue keyboard focus ring across all shell controls (Student, Teacher, Admin) */
+.gp-shell .gp-sidebar :is(a, button):focus-visible,
+.gp-shell .gp-topbar :is(a, button, select):focus-visible,
+.gp-shell .gp-topnav-mobile-drawer :is(a, button):focus-visible {
+  outline: 2px solid var(--gp-action, #246bfa);
+  outline-offset: 2px;
+}
+
+.gp-shell .gp-topbar .gp-search input:focus-visible {
+  outline: none;
+}
+
+.gp-shell .gp-topbar .gp-search:focus-within {
+  border-color: rgba(3, 105, 161, 0.48);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.14);
+}
+
+/* Reduced motion support: preserve final states immediately without animation */
+@media (prefers-reduced-motion: reduce) {
+  .gp-shell .gp-sidebar,
+  .gp-shell.gp-teacher-shell .gp-sidebar,
+  .gp-shell .gp-sidebar .gp-nav-drop,
+  .gp-shell .gp-sidebar .gp-nav-link,
+  .gp-shell .gp-sidebar .gp-nav-link-icon,
+  .gp-shell .gp-sidebar .gp-nav-link-label,
+  .gp-shell .gp-nav-active-pill,
+  .gp-shell .gp-nav-group-toggle,
+  .gp-shell .gp-nav-group-toggle .gp-nav-group-chevron,
+  .gp-shell .gp-nav-group-shell,
+  .gp-shell .gp-nav-group .gp-nav-group-item,
+  .gp-shell.gp-teacher-shell .gp-sidebar .gp-brand-label,
+  .gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-label,
+  .gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-section,
+  .gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-badge,
+  .gp-shell.gp-teacher-shell .gp-sidebar .gp-nav-collapsed-dot,
+  .gp-shell .lux-burger-btn,
+  .gp-shell .lux-burger-bars i,
+  .gp-shell .gp-topbar .gp-icon-button,
+  .gp-shell .gp-topbar .gp-topnav-link,
+  .gp-shell .gp-topbar .gp-topnav-indicator,
+  .gp-shell .gp-topnav-mobile-drawer,
+  .gp-shell .gp-topnav-mobile-drawer .gp-topnav-drawer-item,
+  .gp-shell .lux-mobile-backdrop,
+  .gp-shell .lux-bell-unread svg {
+    animation: none;
+    transition: none;
+  }
+
+  .gp-shell .lux-unread-dot::after {
+    animation: none;
+    opacity: 0;
+  }
+}
