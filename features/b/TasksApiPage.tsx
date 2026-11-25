@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type DragEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, GitCommitHorizontal, Lock, RefreshCw, Search } from "lucide-react";
 import { Avatar, EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/components/common";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { bTasksApi, type BTaskRow, type BTaskView, type BTransition } from "@/lib/api/b-tasks";
@@ -415,7 +415,7 @@ function Assignees({ row, withAvatar = false }: { row: BTaskRow; withAvatar?: bo
   if (row.assignees.length === 0) return <span className="text-amber-700">{tr("未分配")}</span>;
   const first = row.assignees[0].name ?? tr("组员");
   const names = row.assignees.map((a) => a.name ?? tr("组员")).join("、");
-  return <span className="inline-flex items-center gap-1.5">
+  return <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
     {withAvatar && <Avatar name={first} size={18} />}
     <span className="truncate">{names}</span>
   </span>;
@@ -638,70 +638,296 @@ function UnifiedTaskTable({
   </div>;
 }
 
+const statusDot: Record<string, string> = {
+  not_started: "bg-slate-400",
+  in_progress: "bg-sky-500",
+  pending_submission: "bg-indigo-500",
+  pending_verification: "bg-amber-500",
+  completed: "bg-emerald-500",
+};
+const WORKFLOW_LOCKED_STATUSES = new Set(["pending_submission", "pending_verification", "completed"]);
+
 function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { status: string; label: string; count: number }[] }; onMove: (row: BTaskRow, transition: BTransition) => void }) {
   const tr = useUiText();
   const [dragged, setDragged] = useState<BTaskRow>();
+  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const [expandedEmpty, setExpandedEmpty] = useState<string[]>([]);
+
   const target = (status: string) => dragged?.transitions.find((t) => t.to === status);
-  return <div className="grid gap-3 overflow-x-auto md:grid-cols-5">
-    {page.columns.map((col) => (
-      <section
-        key={col.status}
-        aria-label={col.label}
-        data-testid={`column-${col.status}`}
-        className={`min-h-40 rounded-2xl border p-2.5 transition-colors ${dragged && target(col.status) ? "border-sky-400 bg-sky-50/40" : "border-slate-200/80 bg-slate-50/75"}`}
-        onDragOver={(e) => { if (target(col.status)) e.preventDefault(); }}
-        onDrop={(e) => { e.preventDefault(); const t = target(col.status); if (dragged && t) onMove(dragged, t); setDragged(undefined); }}
-      >
-        <h2 className="mb-2 flex items-center justify-between px-0.5 text-xs font-semibold text-slate-600">
-          <span>{col.label}</span>
-          <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 shadow-2xs">{col.count}</span>
-        </h2>
-        <div className="space-y-2">
-          {page.items.filter((r) => r.status === col.status).map((row) => (
-            <article
-              key={row.id}
-              data-testid="board-card"
-              draggable={row.transitions.length > 0}
-              data-movable={row.transitions.length > 0 ? "true" : "false"}
-              title={row.blocked_reason ?? tr("拖到下一列")}
-              onDragStart={() => setDragged(row)}
-              onDragEnd={() => setDragged(undefined)}
-              className={`rounded-xl border border-slate-200/85 bg-white p-3 text-xs shadow-2xs transition-shadow hover:shadow-sm ${row.transitions.length ? "cursor-grab" : "cursor-not-allowed opacity-90"}`}
+  const hasNonEmpty = page.columns.some((col) => col.count > 0);
+  const toggleEmpty = (status: string) =>
+    setExpandedEmpty((prev) => (prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]));
+
+  return (
+    <div className="flex flex-col gap-3 overflow-x-auto pb-1 lg:flex-row lg:items-start">
+      {page.columns.map((col) => {
+        const colRows = page.items.filter((r) => r.status === col.status);
+        const isEmpty = col.count === 0 && colRows.length === 0;
+        const isCollapsed = hasNonEmpty && isEmpty && !expandedEmpty.includes(col.status);
+        const canDrop = Boolean(dragged && target(col.status));
+        const isOver = canDrop && dragOverStatus === col.status;
+        const columnLockedReason =
+          colRows.length > 0 &&
+          WORKFLOW_LOCKED_STATUSES.has(col.status) &&
+          colRows.every((r) => r.blocked_reason && r.blocked_reason === colRows[0].blocked_reason && r.transitions.length === 0)
+            ? colRows[0].blocked_reason
+            : null;
+        const dotClass = statusDot[col.status] ?? "bg-slate-400";
+
+        const dropHandlers = {
+          onDragOver: (e: DragEvent) => {
+            if (target(col.status)) {
+              e.preventDefault();
+              if (dragOverStatus !== col.status) setDragOverStatus(col.status);
+            }
+          },
+          onDragLeave: (e: DragEvent) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null) && dragOverStatus === col.status) {
+              setDragOverStatus(null);
+            }
+          },
+          onDrop: (e: DragEvent) => {
+            e.preventDefault();
+            const t = target(col.status);
+            if (dragged && t) onMove(dragged, t);
+            setDragged(undefined);
+            setDragOverStatus(null);
+          },
+        };
+
+        if (isCollapsed) {
+          return (
+            <section
+              key={col.status}
+              aria-label={col.label}
+              data-testid={`column-${col.status}`}
+              data-collapsed="true"
+              className={`rounded-2xl border p-2 transition-colors lg:flex lg:min-h-[280px] lg:w-[88px] lg:shrink-0 lg:flex-col ${
+                isOver
+                  ? "border-sky-500 bg-sky-50/80 ring-2 ring-sky-400/30"
+                  : canDrop
+                    ? "border-sky-400 bg-sky-50/45"
+                    : "border-slate-200/80 bg-slate-50/70"
+              }`}
+              {...dropHandlers}
             >
-              <div className="flex items-center justify-between gap-1.5">
-                <span className="font-mono text-[11px] text-slate-500">{row.code}</span>
-                <div className="flex items-center gap-1.5">
-                  {(row.evidence_count ?? 0) > 0 && (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-sky-50 px-1 py-0.5 text-[10px] font-medium text-sky-700">
-                      <GitCommitHorizontal size={10} />{row.evidence_count}
-                    </span>
-                  )}
-                  {(row.criteria_total ?? 0) > 0 && <span className="text-[10px] text-slate-400">{row.criteria_confirmed ?? 0}/{row.criteria_total}</span>}
+              <h2 className="flex items-center justify-between gap-1.5 px-1 py-0.5 text-xs font-semibold text-slate-600 lg:flex-col lg:items-center lg:gap-1.5 lg:px-0 lg:pt-1">
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden="true" />
+                  <span>{col.label}</span>
+                </span>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-400 shadow-2xs ring-1 ring-slate-200/70">
+                  {col.count}
+                </span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => toggleEmpty(col.status)}
+                aria-label={tr("展开 {0}", { 0: col.label })}
+                title={tr("展开 {0}", { 0: col.label })}
+                className={`mt-1.5 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed px-2 py-1.5 text-[11px] transition-colors lg:mt-2 lg:flex-1 lg:flex-col lg:px-1 lg:py-4 ${
+                  isOver
+                    ? "border-sky-400 bg-sky-100/60 text-sky-700"
+                    : canDrop
+                      ? "border-sky-300 bg-sky-50/70 text-sky-600"
+                      : "border-slate-200/90 bg-white/50 text-slate-400 hover:border-slate-300 hover:bg-white hover:text-slate-600"
+                }`}
+              >
+                <ChevronRight size={14} className="shrink-0" />
+                <span className="lg:sr-only">{tr("暂无任务")}</span>
+              </button>
+            </section>
+          );
+        }
+
+        const widthClass = !hasNonEmpty
+          ? "lg:flex-1 lg:min-w-[190px]"
+          : isEmpty
+            ? "lg:w-[220px] lg:shrink-0 lg:min-h-[280px]"
+            : "lg:flex-1 lg:min-w-[260px] lg:max-h-[calc(100vh-270px)]";
+
+        return (
+          <section
+            key={col.status}
+            aria-label={col.label}
+            data-testid={`column-${col.status}`}
+            data-collapsed="false"
+            className={`flex min-h-40 flex-col rounded-2xl border p-3 transition-colors ${widthClass} ${
+              isOver
+                ? "border-sky-500 bg-sky-50/75 ring-2 ring-sky-400/30"
+                : canDrop
+                  ? "border-sky-400 bg-sky-50/40"
+                  : "border-slate-200/80 bg-slate-50/75"
+            }`}
+            {...dropHandlers}
+          >
+            <div className="mb-2.5 shrink-0 px-0.5">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden="true" />
+                  <span>{col.label}</span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 shadow-2xs ring-1 ring-slate-200/70">
+                    {col.count}
+                  </span>
+                </h2>
+                {hasNonEmpty && isEmpty && (
+                  <button
+                    type="button"
+                    onClick={() => toggleEmpty(col.status)}
+                    aria-label={tr("收起 {0}", { 0: col.label })}
+                    title={tr("收起 {0}", { 0: col.label })}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-white hover:text-slate-600"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                )}
+              </div>
+              {columnLockedReason && (
+                <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-slate-400" title={columnLockedReason}>
+                  <Lock size={10} className="shrink-0" aria-hidden="true" />
+                  <span className="truncate">{columnLockedReason}</span>
+                </p>
+              )}
+            </div>
+
+            {colRows.length === 0 ? (
+              <div
+                className={`flex min-h-24 flex-1 items-center justify-center rounded-xl border border-dashed px-3 py-6 text-center text-xs ${
+                  isOver
+                    ? "border-sky-400 bg-sky-100/50 text-sky-700"
+                    : canDrop
+                      ? "border-sky-300 bg-sky-50/50 text-sky-600"
+                      : "border-slate-200/90 bg-white/50 text-slate-400"
+                }`}
+              >
+                {tr("暂无任务")}
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
+                  {colRows.map((row) => {
+                    const cardBlockedReason = row.blocked_reason && row.blocked_reason !== columnLockedReason ? row.blocked_reason : null;
+                    const movable = row.transitions.length > 0;
+                    const allConfirmed = (row.criteria_total ?? 0) > 0 && (row.criteria_confirmed ?? 0) >= (row.criteria_total ?? 0);
+                    return (
+                      <article
+                        key={row.id}
+                        data-testid="board-card"
+                        draggable={movable}
+                        data-movable={movable ? "true" : "false"}
+                        title={row.blocked_reason ?? tr("拖到下一列")}
+                        onDragStart={() => setDragged(row)}
+                        onDragEnd={() => {
+                          setDragged(undefined);
+                          setDragOverStatus(null);
+                        }}
+                        className={`flex flex-col justify-between rounded-xl border border-slate-200/85 bg-white p-3 text-xs shadow-2xs transition-all hover:border-slate-300 hover:shadow-sm ${
+                          movable ? "cursor-grab active:cursor-grabbing" : "cursor-default"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="font-mono text-[11px] font-medium text-slate-400">{row.code}</span>
+                            <div className="flex items-center gap-1.5">
+                              {(row.evidence_count ?? 0) > 0 && (
+                                <span className="inline-flex items-center gap-0.5 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
+                                  <GitCommitHorizontal size={10} />
+                                  {row.evidence_count}
+                                </span>
+                              )}
+                              {(row.criteria_total ?? 0) > 0 && (
+                                <span
+                                  className={`inline-flex items-center gap-0.5 text-[10px] tabular-nums ${
+                                    allConfirmed ? "font-medium text-emerald-600" : "text-slate-400"
+                                  }`}
+                                >
+                                  {allConfirmed && <CheckCircle2 size={10} />}
+                                  {row.criteria_confirmed ?? 0}/{row.criteria_total}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Link
+                            className="mt-1 line-clamp-2 block text-[13px] font-semibold leading-snug text-slate-900 hover:text-sky-700 hover:underline"
+                            draggable={false}
+                            href={row.links.detail}
+                            title={row.title}
+                          >
+                            {row.title}
+                          </Link>
+                        </div>
+
+                        <div className="mt-2.5">
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                            <div className="min-w-0 flex-1">
+                              <Assignees row={row} withAvatar />
+                            </div>
+                            <span className="shrink-0 font-semibold tabular-nums text-slate-700">{row.progress_percent}%</span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-1.5 rounded-full transition-all ${row.status === "completed" ? "bg-emerald-600" : "bg-[var(--gp-action)]"}`}
+                              style={{ width: `${Math.max(0, Math.min(100, row.progress_percent))}%` }}
+                            />
+                          </div>
+                          {cardBlockedReason && (
+                            <div className="mt-2 rounded-md bg-amber-50/85 px-2 py-1 text-[11px] leading-snug text-amber-800">
+                              {cardBlockedReason}
+                            </div>
+                          )}
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-slate-100 pt-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {row.transitions.length > 0 ? (
+                                row.transitions.map((t) => (
+                                  <button
+                                    key={t.to}
+                                    type="button"
+                                    className="text-[11px] font-medium text-sky-700 hover:underline"
+                                    onClick={() => onMove(row, t)}
+                                  >
+                                    {tr("移到“{0}”", { 0: tr(statusLabel[t.to]) })}
+                                  </button>
+                                ))
+                              ) : ["pending_verification", "completed"].includes(row.status) ? (
+                                <Link
+                                  className="text-[11px] font-medium text-slate-500 hover:text-sky-700 hover:underline"
+                                  draggable={false}
+                                  href={row.links.verification}
+                                >
+                                  {tr("查看验收")}
+                                </Link>
+                              ) : row.status === "pending_submission" ? (
+                                <Link
+                                  className="text-[11px] font-medium text-sky-700 hover:underline"
+                                  draggable={false}
+                                  href={row.links.submit}
+                                >
+                                  {tr("提交验收")}
+                                </Link>
+                              ) : (
+                                <Link
+                                  className="text-[11px] text-slate-400 hover:text-sky-700 hover:underline"
+                                  draggable={false}
+                                  href={row.links.detail}
+                                >
+                                  {tr("详情")}
+                                </Link>
+                              )}
+                            </div>
+                            <Link className="text-[11px] text-slate-400 hover:text-sky-700 hover:underline" draggable={false} href={row.links.evidence}>
+                              {tr("证据")}
+                            </Link>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </div>
-              <Link className="mt-1 block text-xs font-semibold leading-snug text-slate-900 hover:text-sky-700 hover:underline" draggable={false} href={row.links.detail}>{row.title}</Link>
-              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                <Assignees row={row} withAvatar />
-                <span className="shrink-0 font-semibold tabular-nums text-slate-700">{row.progress_percent}%</span>
-              </div>
-              <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100">
-                <div className={`h-1.5 rounded-full ${row.status === "completed" ? "bg-emerald-600" : "bg-[var(--gp-action)]"}`} style={{ width: `${row.progress_percent}%` }} />
-              </div>
-              {row.blocked_reason && <div className="mt-1.5 text-[11px] text-amber-700">{row.blocked_reason}</div>}
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t border-slate-100 pt-1.5">
-                <div className="flex flex-wrap gap-2">
-                  {row.transitions.map((t) => (
-                    <button key={t.to} type="button" className="text-[11px] font-medium text-sky-700 hover:underline" onClick={() => onMove(row, t)}>
-                      {tr("移到“{0}”", { 0: tr(statusLabel[t.to]) })}
-                    </button>
-                  ))}
-                </div>
-                <Link className="text-[11px] text-slate-400 hover:text-sky-700 hover:underline" draggable={false} href={row.links.evidence}>{tr("证据")}</Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    ))}
-  </div>;
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
 }
