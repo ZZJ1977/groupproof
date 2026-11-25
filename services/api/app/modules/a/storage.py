@@ -32,7 +32,9 @@ from urllib.parse import quote, urlsplit
 from uuid import UUID, uuid4
 
 import httpx
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
@@ -44,6 +46,9 @@ from app.modules.c.files_storage import ALLOWED_MIME, MAX_FILE_BYTES, StorageLin
 
 Scope = Literal["project", "course"]
 PROVIDER = "supabase"
+PG_LOB_PROVIDER = "pg_lob"
+PG_LOB_BUCKET = "postgres-lob"
+_SQLITE_LOB_STORE: dict[str, bytes] = {}
 UPLOAD_URL_TTL = timedelta(hours=2)  # Supabase 签名上传链接固定 2 小时有效
 RECEIPT_TTL = timedelta(hours=24)  # 上传完成后 24 小时内要交给业务接口
 DOWNLOAD_URL_TTL_SECONDS = 600  # 限时下载链接 10 分钟（C 要求不超过 15 分钟）
@@ -201,7 +206,7 @@ class BasicContentScanner:
     def scan(self, data: bytes, *, extension: str) -> str | None:
         if any(data.startswith(header) for header in _EXECUTABLE_HEADERS):
             return "executable_content"
-        if extension in {"md", "txt"}:
+        if extension in {"md", "txt", "csv"}:
             if b"\x00" in data:
                 return "binary_text_file"
             try:
@@ -447,6 +452,150 @@ def store_system_bytes(
     session.add(row)
     session.flush()
     return row
+
+
+def write_pg_lob_bytes(session: Session, receipt_id: UUID, safe_name: str, data: bytes) -> str:
+    """将真实二进制文件持久化到 PostgreSQL Large Object（零迁移、跨容器重启持久保存）。"""
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        oid = session.execute(
+            sa_text("SELECT lo_from_bytea(0, :data)"), {"data": data}
+        ).scalar_one()
+        return f"pg_lob/{int(oid)}/{receipt_id}/{safe_name}"
+    # 仅用于 SQLite 单元测试环境，生产与 staging 均走 PostgreSQL Large Object。
+    key = f"sqlite-{receipt_id}"
+    _SQLITE_LOB_STORE[key] = data
+    return f"pg_lob/{key}/{receipt_id}/{safe_name}"
+
+
+def read_pg_lob_bytes(session: Session, object_id: str) -> bytes | None:
+    """读取持久化在 PostgreSQL Large Object 中的真实文件字节流。"""
+    parts = (object_id or "").split("/", 3)
+    if len(parts) < 2 or parts[0] != PG_LOB_PROVIDER:
+        return None
+    token = parts[1]
+    if token.startswith("sqlite-"):
+        return _SQLITE_LOB_STORE.get(token)
+    if not token.isdigit():
+        return None
+    try:
+        raw = session.execute(
+            sa_text("SELECT lo_get(:oid)"), {"oid": int(token)}
+        ).scalar_one_or_none()
+    except Exception:  # noqa: BLE001
+        return None
+    return bytes(raw) if raw is not None else None
+
+
+def upload_direct(
+    session: Session,
+    user: User,
+    *,
+    scope: Scope,
+    scope_id: UUID,
+    filename: str,
+    mime_type: str,
+    data: bytes,
+    client: StorageClient | None = None,
+    scanner: ContentScanner | None = None,
+) -> UploadReceiptRow:
+    """同源直传文件：优先落盘到 Supabase Storage；外部存储不可达时持久化到 PostgreSQL LOB。"""
+    permissions.require_active(user)
+    extension = validate_file(filename, mime_type, len(data))
+    _authorize_upload(session, user, scope, scope_id)
+    reason = (scanner or BasicContentScanner()).scan(data, extension=extension)
+    if reason:
+        raise ApiError(422, "UPLOAD_REJECTED", "文件未通过检查。", details={"reason": reason})
+
+    resolved_client = client if client is not None else get_storage_client()
+    if resolved_client is not None:
+        try:
+            return store_system_bytes(
+                session,
+                user,
+                scope=scope,
+                scope_id=scope_id,
+                filename=filename,
+                mime_type=mime_type,
+                data=data,
+                client=resolved_client,
+                scanner=scanner,
+            )
+        except ApiError as exc:
+            if exc.code != "FILE_STORAGE_UNAVAILABLE":
+                raise
+
+    receipt_id = uuid4()
+    safe_name = _FILENAME_SAFE.sub("_", filename)[-120:] or f"file.{extension}"
+    object_id = write_pg_lob_bytes(session, receipt_id, safe_name, data)
+    now = datetime.now(UTC)
+    digest = hashlib.sha256(data).hexdigest()
+    row = UploadReceiptRow(
+        id=receipt_id,
+        scope=scope,
+        scope_id=scope_id,
+        actor_id=user.id,
+        provider=PG_LOB_PROVIDER,
+        bucket=PG_LOB_BUCKET,
+        object_id=object_id,
+        filename=filename,
+        declared_mime=mime_type,
+        declared_size=len(data),
+        status="completed",
+        scan_status="clean",
+        content_hash=digest,
+        size_bytes=len(data),
+        mime_type=mime_type,
+        revision=f"sha256:{digest}",
+        created_at=now,
+        upload_expires_at=now + UPLOAD_URL_TTL,
+        completed_at=now,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def resolve_pg_lob_project_receipt(
+    session: Session, *, project_id: UUID, actor_id: UUID, receipt_id: UUID
+) -> UploadReceipt | None:
+    """在外部对象存储未配置时，仅放行已通过直传校验并落盘到 pg_lob 的项目上传凭证。"""
+    bind = session.get_bind()
+    if bind is None or not sa_inspect(bind).has_table(UploadReceiptRow.__tablename__):
+        return None
+    row = session.scalar(
+        select(UploadReceiptRow).where(
+            UploadReceiptRow.id == receipt_id,
+            UploadReceiptRow.scope == "project",
+            UploadReceiptRow.scope_id == project_id,
+            UploadReceiptRow.actor_id == actor_id,
+            UploadReceiptRow.provider == PG_LOB_PROVIDER,
+            UploadReceiptRow.status == "completed",
+        )
+    )
+    if row is None or row.completed_at is None:
+        return None
+    completed_at = (
+        row.completed_at if row.completed_at.tzinfo else row.completed_at.replace(tzinfo=UTC)
+    )
+    expires_at = completed_at + RECEIPT_TTL
+    if expires_at <= datetime.now(UTC):
+        raise ApiError(409, "UPLOAD_RECEIPT_EXPIRED", "上传凭证已过期，请重新上传。")
+    return UploadReceipt(
+        receipt_id=row.id,
+        project_id=project_id,
+        actor_id=actor_id,
+        provider=row.provider,
+        object_id=row.object_id,
+        revision=row.revision,
+        filename=row.filename,
+        content_hash=row.content_hash,
+        size_bytes=row.size_bytes,
+        mime_type=row.mime_type,
+        status="completed",
+        scan_status="clean",
+        expires_at=expires_at,
+    )
 
 
 def signed_download_url(

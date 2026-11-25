@@ -133,8 +133,13 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
       actions={
         <div className="flex flex-wrap gap-2">
           {freshContext?.permissions.can_manage_files && (
-            <button className="gp-btn gp-btn-primary" type="button" onClick={() => { setUploadOpen(true); setNotice(""); setOperationError(null); }}>
-              <Upload aria-hidden="true" size={15} />上传文件
+            <button
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 text-sm font-medium text-white shadow-2xs transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={() => { setUploadOpen(true); setNotice(""); setOperationError(null); }}
+            >
+              <Upload aria-hidden="true" className="h-4 w-4" />
+              上传文件
             </button>
           )}
           {freshContext?.permissions.can_manage_files && (
@@ -185,12 +190,19 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
       {freshContext && <>
         {freshContext.permissions.can_manage_files && (
           <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-            <DialogContent className="w-[min(92vw,520px)]">
+            <DialogContent className="w-[min(92vw,540px)]">
               <DialogTitle>上传文件</DialogTitle>
-              <DialogDescription>选择文件并填写版本说明，保存后作为草稿版本登记，可在查看内容中设为正式。</DialogDescription>
+              <DialogDescription>从本地选择或拖拽资料上传，保存后作为草稿版本登记，可在查看内容中设为正式。</DialogDescription>
               <div className="mt-4">
-                <FileUploadForm scope="project" scopeId={projectId} bare hideLegend denied={fail}
-                  saved={() => { setUploadOpen(false); setNotice("文件草稿版本已保存。"); void refresh(); }} />
+                <FileUploadForm
+                  scope="project"
+                  scopeId={projectId}
+                  bare
+                  hideLegend
+                  denied={fail}
+                  onCancel={() => setUploadOpen(false)}
+                  saved={() => { setUploadOpen(false); setNotice("文件草稿版本已保存。"); void refresh(); }}
+                />
               </div>
             </DialogContent>
           </Dialog>
@@ -301,8 +313,8 @@ function FileViewer({ projectId, userId, fileId, versionId, canManage, onSelectV
   const downloadUrl = active && downloadLink.data?.version_id === active.id ? downloadLink.data.url : undefined;
   const previewUrl = active && previewLink.data?.version_id === active.id ? previewLink.data.url : undefined;
   const downloadAction = downloadUrl
-    ? <a className="gp-btn gp-btn-primary" href={downloadUrl} target="_blank" rel="noopener noreferrer" download>下载</a>
-    : <button className="gp-btn gp-btn-primary" type="button" disabled aria-busy={downloadLink.isFetching}>下载</button>;
+    ? <a className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-sky-600 px-3 text-sm font-medium text-white shadow-2xs transition hover:bg-sky-700" href={downloadUrl} target="_blank" rel="noopener noreferrer" download>下载</a>
+    : <button className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-sky-600 px-3 text-sm font-medium text-white shadow-2xs transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50" type="button" disabled aria-busy={downloadLink.isFetching}>下载</button>;
 
   return <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
     <SheetContent onOpenAutoFocus={(event) => {

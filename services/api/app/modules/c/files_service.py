@@ -222,6 +222,31 @@ def _cas(session: Session, row: LogicalFile, expected: int, **values) -> None:
     session.refresh(row)
 
 
+def _resolve_upload_receipt(
+    session: Session,
+    storage: StoragePort,
+    *,
+    project_id: UUID,
+    actor_id: UUID,
+    receipt_id: UUID,
+) -> UploadReceipt:
+    try:
+        return resolve_receipt(
+            storage, project_id=project_id, actor_id=actor_id, receipt_id=receipt_id
+        )
+    except ApiError as exc:
+        if exc.code != "FILE_STORAGE_UNAVAILABLE":
+            raise
+        from app.modules.a.storage import resolve_pg_lob_project_receipt
+
+        fallback = resolve_pg_lob_project_receipt(
+            session, project_id=project_id, actor_id=actor_id, receipt_id=receipt_id
+        )
+        if fallback is None:
+            raise
+        return fallback
+
+
 def register_file(
     session: Session,
     user: User,
@@ -241,8 +266,8 @@ def register_file(
     )
     if replay is not None:
         return file_data(session, file_in_project(session, project_id, UUID(replay["id"])))
-    receipt = resolve_receipt(
-        storage, project_id=project_id, actor_id=user.id, receipt_id=command.receipt_id
+    receipt = _resolve_upload_receipt(
+        session, storage, project_id=project_id, actor_id=user.id, receipt_id=command.receipt_id
     )
     name_key = receipt.filename.casefold()
     if session.scalar(
@@ -296,8 +321,8 @@ def append_version(
             "File changed; reload and retry.",
             {"latest_version": row.lock_version},
         )
-    receipt = resolve_receipt(
-        storage, project_id=project_id, actor_id=user.id, receipt_id=command.receipt_id
+    receipt = _resolve_upload_receipt(
+        session, storage, project_id=project_id, actor_id=user.id, receipt_id=command.receipt_id
     )
     previous = row.official_version_no
     _cas(session, row, command.expected_version, latest_version_no=row.latest_version_no + 1)
