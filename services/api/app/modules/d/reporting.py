@@ -111,12 +111,14 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["d-repo
 STALE_GENERATING_SECONDS = 240
 AI_REPORT_TIMEOUT_SECONDS = 90.0
 AI_REWRITE_TIMEOUT_SECONDS = 25.0
-AI_REPORT_BATCH_MAX_TOKENS = 6400
+AI_REPORT_BATCH_MAX_TOKENS = 16384
+AI_SINGLE_CHAPTER_MAX_TOKENS = 6400
 AI_VISUALS_MAX_TOKENS = 9600
-AI_REWRITE_MAX_TOKENS = 3600
+AI_REWRITE_MAX_TOKENS = 6400
 _MIN_AI_CHAPTER_CHARS = 80
-CHAPTER_BATCH_1: tuple[str, ...] = ("overview", "workflow", "progress", "collaboration")
-CHAPTER_BATCH_2: tuple[str, ...] = ("evidence", "contribution", "reflection")
+CHAPTER_BATCH_1: tuple[str, ...] = ("overview", "workflow", "progress")
+CHAPTER_BATCH_2: tuple[str, ...] = ("collaboration", "evidence")
+CHAPTER_BATCH_3: tuple[str, ...] = ("contribution", "reflection")
 _WORKER_INSPECT_TTL_SECONDS = 15.0
 _worker_inspect_cache: dict[str, tuple[float, bool]] = {}
 _XML_ILLEGAL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -1451,13 +1453,16 @@ def _call_openrouter_json_single(
         call_meta["usage"] = OpenRouterProvider._read_usage(payload_json)
         choice = payload_json["choices"][0]
         if choice.get("finish_reason") == "length":
+            error_code = "OutputTruncated"
             logger.warning(
-                "OpenRouter %s hit max_tokens=%s for project %s (model=%s)",
+                "OpenRouter %s hit max_tokens=%s (finish_reason=length) for project %s (model=%s); "
+                "rejecting truncated output",
                 feature,
                 max_tokens,
                 project_id,
                 model,
             )
+            return None, model
         content = choice["message"]["content"]
         parsed = _extract_json_object(content)
         ok = True
@@ -1749,44 +1754,123 @@ def _plan_report_visuals_with_ai(
     return None, model
 
 
+_CHAPTER_PROMPT_SPECS: dict[str, str] = {
+    "overview": (
+        "overview（一、项目概述与目标范围）：阐明项目解决的具体工程问题、系统定位、需求基线与计划基线治理，"
+        "自然呼应图 1 架构分工，给出「### 核心交付指标总览」表与「### 功能模块与职责边界」表"
+        "（列出每个真实模块、负责人、需求数、任务完成与权重）。"
+    ),
+    "workflow": (
+        "workflow（二、开发流程与团队协作机制）：阐述团队端到端研发协作与质量门禁机制"
+        "（需求冻结→任务拆解→GitHub 分支/PR/CI→飞书协作→验收确认→贡献核算），自然呼应图 2，"
+        "引用真实仓库、提交数、PR 合并数、代码增删与飞书消息统计，并给出「### 代表性工程提交与变更记录」表（精选 6–8 条）。"
+    ),
+    "progress": (
+        "progress（三、项目进度与里程碑复盘）：按时间顺序论证项目在整个学期持续稳健推进（非期末突击），"
+        "自然呼应图 3，给出「### 阶段里程碑与交付物核验表」（列：里程碑阶段 | 截止日期 | 状态 | 进度 | 交付物 | 关联任务）"
+        "与「### 分模块任务完成汇总」表及复盘分析。"
+    ),
+    "collaboration": (
+        "collaboration（四、团队沟通协作与关键技术决策）：基于飞书群聊消息量、时间跨度与真实协作结论，"
+        "给出「### 协作结论分类分布」表，并精炼提炼 5–6 条真实分工确认、规范同步、技术决策与阻塞排查案例"
+        "（引用真实标题、确认人数或关联任务编号）。"
+    ),
+    "evidence": (
+        "evidence（五、证据链沉淀与质量验收成果）：阐明团队如何以可复核工程证据支撑完成宣称，自然呼应图 4，"
+        "给出「### 正式证据来源分布」表（列：证据来源类型 | 正式证据数 | 占比 | 核验价值）"
+        "与「### 代表性正式证据与验收成果摘录」，结合验收标准数、核验次数与人工确认正式成果评价质量控制效果。"
+    ),
+    "contribution": (
+        "contribution（六、成员个人贡献与分工画像）：**严禁在章首输出“尚未冻结正式贡献快照”等内部告警语！**"
+        "直接面向评阅教师阐述团队分工格局与交叉核验依据，自然呼应图 5；给出「### 成员分工与多维贡献对比表」"
+        "（列：成员 | 角色 | 正式贡献权重 | 积分 | 完成/指派任务 | GitHub 提交 / PR | 代码增删 | 负责模块）；"
+        "随后在「### 成员个人交付画像与协作评述」中为**每一位成员各写一段凝练评述**；"
+        "若贡献快照为草稿，仅在章节最末行用斜体脚注注明："
+        "`*（注：当前基于最新贡献快照 vN 编制，正式归档前将完成团队冻结确认。）*`。"
+    ),
+    "reflection": (
+        "reflection（七、风险复盘与后续改进建议）：保持高度客观冷静，如实汇报当前活跃风险与已关闭历史风险；"
+        "结合飞书 blocker 结论与已关闭风险复盘团队真实遇到的工程难题与排查取舍；"
+        "最后客观指出当前系统已知局限并给出 4–5 条具体可执行的后续优化与答辩准备建议。"
+    ),
+}
+
+_PAIRED_DELIMITERS: tuple[tuple[str, str], ...] = (
+    ("「", "」"),
+    ("『", "』"),
+    ("《", "》"),
+    ("（", "）"),
+    ("“", "”"),
+)
+_TERMINAL_PUNCT = frozenset("。！？.!?;；…—")
+_TRAILING_WRAP_CHARS = "*_`）)》」』”\"']"
+
+
+def _is_chapter_complete(text: str, *, min_chars: int = _MIN_AI_CHAPTER_CHARS) -> bool:
+    """Validate that an AI-authored chapter is not truncated mid-sentence, mid-quote, or mid-table."""
+    cleaned = (text or "").strip()
+    if len(cleaned) < min_chars:
+        return False
+    # Reject unclosed fenced code blocks
+    if cleaned.count("```") % 2 != 0:
+        return False
+    # Strip fenced/inline code spans before checking paired Chinese/typographic delimiters
+    prose = re.sub(r"```[\s\S]*?```", "", cleaned)
+    prose = re.sub(r"`[^`\n]+`", "", prose)
+    for opener, closer in _PAIRED_DELIMITERS:
+        if prose.count(opener) != prose.count(closer):
+            return False
+
+    non_empty_lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+    if not non_empty_lines:
+        return False
+    last_line = non_empty_lines[-1]
+    # Reject trailing bare heading (e.g. truncated right after "### 小节")
+    if re.match(r"^#{1,6}\s+", last_line):
+        return False
+    # Standalone Markdown image line is complete
+    if _MD_IMAGE_LINE_RE.match(last_line):
+        return True
+    # Markdown table row must be properly closed with trailing pipe
+    if last_line.startswith("|"):
+        return last_line.endswith("|") and last_line.count("|") >= 2
+    # Normal prose/list/quote/footnote must end with proper terminal punctuation
+    stripped_tail = last_line.rstrip(_TRAILING_WRAP_CHARS).rstrip()
+    if not stripped_tail:
+        return False
+    return stripped_tail[-1] in _TERMINAL_PUNCT
+
+
+def _build_batch_writing_prompt(writing_skill: str, keys: tuple[str, ...]) -> str:
+    key_list = ", ".join(keys)
+    specs_text = "\n".join(
+        f"{idx}. {_CHAPTER_PROMPT_SPECS[key]}" for idx, key in enumerate(keys, start=1)
+    )
+    return (
+        f"{writing_skill}\n\n"
+        f"本次请只输出一个合法 JSON 对象，必须且只能包含这 {len(keys)} 个字符串键：{key_list}。\n"
+        "请严格遵守每章 700–1,200 中文字符篇幅上限与禁用套话黑名单（严禁出现「显著提升」「全链路闭环」「赋能」「抓手」「矩阵」「降本增效」「完美收官」），"
+        "确保每一章结尾句式与标点完整闭合。\n"
+        "各章撰写任务：\n"
+        f"{specs_text}"
+    )
+
+
 def _author_report_with_ai(
     facts: dict[str, Any], *, actor_id: UUID | None, project_id: UUID
 ) -> tuple[dict[str, str] | None, str | None]:
-    """Author all 7 publication-grade chapters via 2 focused parallel OpenRouter calls."""
+    """Author all 7 publication-grade chapters via 3 parallel batches + per-chapter completion retry."""
     compact_facts = _compact_facts_for_llm(facts)
     writing_skill = load_skill(SKILL_REPORT_WRITING)
 
-    prompt_batch_1 = (
-        f"{writing_skill}\n\n"
-        "本次请只输出一个合法 JSON 对象，必须且只能包含这 4 个字符串键：overview, workflow, progress, collaboration。\n"
-        "各章撰写任务（严格遵守上述 Skill 的章首核心结论、禁用套话黑名单与四步论证节奏）：\n"
-        "1. overview（一、项目概述与目标范围）：阐明项目解决的具体工程问题、系统定位、需求基线与计划基线治理，自然呼应图 1 架构分工，"
-        "给出「### 核心交付指标总览」表与「### 功能模块与职责边界」表（列出每个真实模块、负责人、需求数、任务完成与权重）。\n"
-        "2. workflow（二、开发流程与团队协作机制）：阐述团队端到端研发协作与质量门禁机制（需求冻结→任务拆解→GitHub 分支/PR/CI→飞书协作→验收确认→贡献核算），自然呼应图 2，"
-        "引用真实仓库、提交数、PR 合并数、代码增删与飞书消息统计，并给出「### 代表性工程提交与变更记录」表。\n"
-        "3. progress（三、项目进度与里程碑复盘）：按时间顺序论证项目在整个学期持续稳健推进（非期末突击），自然呼应图 3，"
-        "给出「### 阶段里程碑与交付物核验表」（列：里程碑阶段 | 截止日期 | 状态 | 进度 | 交付物 | 关联任务）与「### 分模块任务完成汇总」表及复盘分析。\n"
-        "4. collaboration（四、团队沟通协作与关键技术决策）：基于飞书群聊消息量、时间跨度与真实协作结论，给出「### 协作结论分类分布」表，"
-        "并提炼 5–8 条真实分工确认、规范同步、技术决策与阻塞排查案例（引用真实标题、确认人数或关联任务编号）。"
+    batches: tuple[tuple[tuple[str, ...], str], ...] = (
+        (CHAPTER_BATCH_1, "generate_project_report_part1"),
+        (CHAPTER_BATCH_2, "generate_project_report_part2"),
+        (CHAPTER_BATCH_3, "generate_project_report_part3"),
     )
 
-    prompt_batch_2 = (
-        f"{writing_skill}\n\n"
-        "本次请只输出一个合法 JSON 对象，必须且只能包含这 3 个字符串键：evidence, contribution, reflection。\n"
-        "各章撰写任务（严格遵守上述 Skill 的章首核心结论、禁用套话黑名单与四步论证节奏）：\n"
-        "1. evidence（五、证据链沉淀与质量验收成果）：阐明团队如何以可复核工程证据支撑完成宣称，自然呼应图 4，"
-        "给出「### 正式证据来源分布」表（列：证据来源类型 | 正式证据数 | 占比 | 核验价值）与「### 代表性正式证据与验收成果摘录」，结合验收标准数、核验次数与人工确认正式成果评价质量控制效果。\n"
-        "2. contribution（六、成员个人贡献与分工画像）：**严禁在章首输出“尚未冻结正式贡献快照”等内部告警语！**"
-        "直接面向评阅教师阐述团队分工格局与交叉核验依据，自然呼应图 5；给出「### 成员分工与多维贡献对比表」（列：成员 | 角色 | 正式贡献权重 | 积分 | 完成/指派任务 | GitHub 提交 / PR | 代码增删 | 负责模块）；"
-        "随后在「### 成员个人交付画像与协作评述」中为**每一位成员各写一段实质性评述**；"
-        "若贡献快照为草稿，仅在章节最末尾用一句简短斜体脚注注明：`*（注：当前基于最新贡献快照 vN 编制，正式归档前将完成团队冻结确认。）*`。\n"
-        "3. reflection（七、风险复盘与后续改进建议）：保持高度客观冷静，如实汇报当前活跃风险与已关闭历史风险；"
-        "结合飞书 blocker 结论与已关闭风险复盘团队真实遇到的工程难题与排查取舍；最后客观指出当前系统已知局限并给出 4–5 条具体可执行的后续优化与答辩准备建议。"
-    )
-
-    def _run_batch(
-        prompt: str, keys: tuple[str, ...], feature: str
-    ) -> tuple[dict[str, str], str | None]:
+    def _run_batch(keys: tuple[str, ...], feature: str) -> tuple[dict[str, str], str | None]:
+        prompt = _build_batch_writing_prompt(writing_skill, keys)
         parsed, used_model = _call_openrouter_json(
             system_prompt=prompt,
             user_payload=compact_facts,
@@ -1803,24 +1887,65 @@ def _author_report_with_ai(
                 val = parsed.get(key)
                 if isinstance(val, str):
                     cleaned = _strip_leading_chapter_heading(val, key)
-                    if len(cleaned) >= _MIN_AI_CHAPTER_CHARS:
+                    if _is_chapter_complete(cleaned):
                         chapters_out[key] = cleaned
+                    else:
+                        logger.warning(
+                            "Rejecting incomplete AI chapter %s in %s for project %s (len=%d)",
+                            key,
+                            feature,
+                            project_id,
+                            len(cleaned),
+                        )
         return chapters_out, used_model
+
+    def _retry_single_chapter(key: str) -> tuple[str, str | None, str | None]:
+        prompt = _build_batch_writing_prompt(writing_skill, (key,))
+        parsed, used_model = _call_openrouter_json(
+            system_prompt=prompt,
+            user_payload=compact_facts,
+            timeout=AI_REPORT_TIMEOUT_SECONDS,
+            feature=f"generate_project_report_retry_{key}",
+            actor_id=actor_id,
+            project_id=project_id,
+            max_tokens=AI_SINGLE_CHAPTER_MAX_TOKENS,
+            model_role="writing",
+        )
+        if isinstance(parsed, dict):
+            val = parsed.get(key) or parsed.get("content")
+            if isinstance(val, str):
+                cleaned = _strip_leading_chapter_heading(val, key)
+                if _is_chapter_complete(cleaned):
+                    return key, cleaned, used_model
+                logger.warning(
+                    "Retry for AI chapter %s still incomplete for project %s (len=%d); will use fallback",
+                    key,
+                    project_id,
+                    len(cleaned),
+                )
+        return key, None, used_model
 
     authored: dict[str, str] = {}
     model_used: str | None = None
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        fut1 = pool.submit(
-            _run_batch, prompt_batch_1, CHAPTER_BATCH_1, "generate_project_report_part1"
-        )
-        fut2 = pool.submit(
-            _run_batch, prompt_batch_2, CHAPTER_BATCH_2, "generate_project_report_part2"
-        )
-        part1, model1 = fut1.result()
-        part2, model2 = fut2.result()
-        authored.update(part1)
-        authored.update(part2)
-        model_used = model1 or model2
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_run_batch, keys, feature) for keys, feature in batches]
+        for fut in futs:
+            part, used_m = fut.result()
+            authored.update(part)
+            if not model_used and used_m:
+                model_used = used_m
+
+    # Retry any missing or incomplete chapter individually once (when OpenRouter is active)
+    missing_keys = [key for key in CHAPTER_ORDER if key not in authored]
+    if missing_keys and model_used is not None:
+        with ThreadPoolExecutor(max_workers=min(3, len(missing_keys))) as retry_pool:
+            retry_futs = [retry_pool.submit(_retry_single_chapter, key) for key in missing_keys]
+            for rf in retry_futs:
+                r_key, r_text, r_model = rf.result()
+                if r_text:
+                    authored[r_key] = r_text
+                if not model_used and r_model:
+                    model_used = r_model
 
     if not authored:
         return None, model_used
@@ -1843,9 +1968,10 @@ def _rewrite_section_with_ai(
         f"请严格基于上述写作规范与项目真实工程事实 JSON，深度润色并重写报告章节「{chapter_title}」（键名 {section_key}）。\n"
         "补充要求：\n"
         '1. 只输出一个合法 JSON 对象：`{"content": "<Markdown 正文>"}`。\n'
-        "2. 正文以 `> **本章核心结论**：...` 开头，包含多个实质性自然段、### 子标题、必要时包含 GFM 表格与结构化条目，不要重复写章级大标题。\n"
-        "3. 若原文中包含 Markdown 配图行（如 `![图 ...](/api/v1/projects/.../charts/....svg)` 或 `.png`），请原样保留该配图行并使正文与之自然呼应。\n"
-        "4. 充分响应用户的改写要求（若提供）。"
+        "2. 正文以 `> **本章核心结论**：...` 开头，包含 2–3 个实质性自然段、### 子标题、必要时包含精炼 GFM 表格与结构化条目，不要重复写章级大标题。\n"
+        "3. 篇幅控制在 700–1,200 中文字符，结尾句式与标点必须完整闭合。\n"
+        "4. 若原文中包含 Markdown 配图行（如 `![图 ...](/api/v1/projects/.../charts/....svg)` 或 `.png`），请原样保留该配图行并使正文与之自然呼应。\n"
+        "5. 充分响应用户的改写要求（若提供）。"
     )
     payload = {
         "target_section": section_key,
@@ -1869,7 +1995,7 @@ def _rewrite_section_with_ai(
         content = parsed.get("content") or parsed.get(section_key)
         if isinstance(content, str):
             cleaned = _strip_leading_chapter_heading(content, section_key)
-            if len(cleaned) >= 30:
+            if _is_chapter_complete(cleaned, min_chars=30):
                 return cleaned, model
     return None, model
 

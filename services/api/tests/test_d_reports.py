@@ -220,7 +220,7 @@ def test_seven_ordered_chapters_and_rich_fallback_markdown_tables():
     assert "CI 环境依赖版本冲突排查" in chapters["reflection"]
 
 
-def test_extract_json_object_and_two_batch_ai_authoring_partial_resilience(monkeypatch):
+def test_extract_json_object_and_three_batch_ai_authoring_with_single_chapter_retry(monkeypatch):
     parsed = reporting._extract_json_object(
         '以下是结果：\n```json\n{"overview": "完整正文内容"}\n```\n请查收'
     )
@@ -234,36 +234,70 @@ def test_extract_json_object_and_two_batch_ai_authoring_partial_resilience(monke
 
     facts = _sample_facts()
     seen_features: list[str] = []
-    seen_max_tokens: list[int] = []
+    seen_batch_max_tokens: list[int] = []
+    long_body = (
+        "> **本章核心结论**：项目按周完成全部核心交付。\n\n"
+        "### 真实核验\n\n" + "项目按周持续推进，完成全部核心模块交付并沉淀可核验工程证据。" * 4
+    )
 
     def fake_openrouter(**kwargs):
-        seen_features.append(kwargs["feature"])
-        seen_max_tokens.append(kwargs["max_tokens"])
-        if kwargs["feature"] == "generate_project_report_part1":
-            long_body = (
-                "### 真实核验\n\n"
-                + "项目按周持续推进，完成全部核心模块交付并沉淀可核验工程证据。" * 4
-            )
+        feature = kwargs["feature"]
+        seen_features.append(feature)
+        if feature.startswith("generate_project_report_part"):
+            seen_batch_max_tokens.append(kwargs["max_tokens"])
+        if feature == "generate_project_report_part1":
             return (
                 {
                     "overview": f"## 一、项目概述与目标范围\n\n{long_body}",
                     "workflow": long_body,
                     "progress": long_body,
-                    "collaboration": "太短",  # should be skipped so fallback fills it
                 },
-                "deepseek/deepseek-v3.2",
+                "anthropic/claude-sonnet-4.5",
             )
-        # Simulate batch 2 partial failure (returns None) — batch 1 chapters must still survive!
-        return None, "deepseek/deepseek-v3.2"
+        if feature == "generate_project_report_part2":
+            return (
+                {
+                    "collaboration": "太短",  # rejected -> triggers retry_collaboration
+                    "evidence": long_body,
+                },
+                "anthropic/claude-sonnet-4.5",
+            )
+        if feature == "generate_project_report_part3":
+            # Simulate truncated reflection (unclosed quote & mid-sentence) -> rejected -> retry
+            return (
+                {
+                    "contribution": long_body,
+                    "reflection": long_body + "\n\n并在飞书协作结论「并发编辑任务触发乐",
+                },
+                "anthropic/claude-sonnet-4.5",
+            )
+        if feature == "generate_project_report_retry_reflection":
+            return {"reflection": long_body}, "anthropic/claude-sonnet-4.5"
+        # Simulate retry failure for collaboration -> fallback will fill it
+        return None, "anthropic/claude-sonnet-4.5"
 
     monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
     authored, model = reporting._author_report_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
-    assert model == "deepseek/deepseek-v3.2"
-    assert set(seen_features) == {"generate_project_report_part1", "generate_project_report_part2"}
-    assert all(mt >= 4000 for mt in seen_max_tokens)
+    assert model == "anthropic/claude-sonnet-4.5"
+    assert {
+        "generate_project_report_part1",
+        "generate_project_report_part2",
+        "generate_project_report_part3",
+        "generate_project_report_retry_collaboration",
+        "generate_project_report_retry_reflection",
+    }.issubset(set(seen_features))
+    assert all(mt == 16384 for mt in seen_batch_max_tokens)
     assert authored is not None
-    assert set(authored.keys()) == {"overview", "workflow", "progress"}
+    assert set(authored.keys()) == {
+        "overview",
+        "workflow",
+        "progress",
+        "evidence",
+        "contribution",
+        "reflection",
+    }
     assert not authored["overview"].startswith("## 一、")
+    assert "并发编辑任务触发乐" not in authored["reflection"]
 
 
 def test_ordered_section_entries_preserves_chapter_order_against_jsonb_shuffle():
@@ -1236,3 +1270,93 @@ def test_run_preview_in_background_thread_runs_and_catches_errors(monkeypatch):
     t2 = reporting._run_preview_in_background_thread("snap-err12345", False)
     assert err_done.wait(timeout=3.0)
     t2.join(timeout=3.0)
+
+
+def test_openrouter_rejects_finish_reason_length_truncation(monkeypatch):
+    """finish_reason='length' must be rejected as truncated and never parsed as valid chapters."""
+
+    class _FakeResp:
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {
+                            "content": '{"reflection": "并在飞书协作结论「并发编辑任务触发乐"}'
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 2000, "completion_tokens": 16384},
+            }
+
+    class _FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return None
+
+        def post(self, *_a, **_k):
+            return _FakeResp()
+
+    recorded: list[dict] = []
+    monkeypatch.setattr(reporting.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(
+        reporting,
+        "record_usage",
+        lambda _ctx, **kwargs: recorded.append(kwargs),
+    )
+
+    parsed, model = reporting._call_openrouter_json_single(
+        api_key="sk-test",
+        model="anthropic/claude-sonnet-4.5",
+        system_prompt="sys",
+        user_payload={"k": 1},
+        timeout=10.0,
+        feature="generate_project_report_part3",
+        actor_id=uuid4(),
+        project_id=uuid4(),
+        max_tokens=16384,
+    )
+    assert parsed is None
+    assert model == "anthropic/claude-sonnet-4.5"
+    assert recorded and recorded[0]["success"] is False
+    assert recorded[0]["error_code"] == "OutputTruncated"
+
+
+def test_chapter_completeness_validator_catches_unclosed_quotes_and_mid_sentence_truncation():
+    base = (
+        "> **本章核心结论**：项目完成全部 28 项任务与 123 条正式证据，8 个阶段里程碑全部达成。\n\n"
+        "团队在全周期按周推进，围绕四个核心功能模块完成架构设计、PR 评审与人工验收确认，"
+        "所有交付均保留可追溯记录。"
+    )
+    assert reporting._is_chapter_complete(base)
+    assert reporting._is_chapter_complete(
+        base + "\n\n*（注：当前基于最新贡献快照 v6 编制，正式归档前将完成团队冻结确认。）*"
+    )
+    assert reporting._is_chapter_complete(
+        base + "\n\n| 指标 | 数值 |\n| --- | ---: |\n| 正式证据 | 123 |"
+    )
+    # Exact Staging v8 truncation symptom: unclosed 「 + ends mid-word
+    assert not reporting._is_chapter_complete(base + "\n\n并在飞书协作结论「并发编辑任务触发乐")
+    # Unclosed Chinese quote even with trailing period
+    assert not reporting._is_chapter_complete(base + "\n\n在「未闭合引号中结束了。")
+    # Truncated mid-table row (missing trailing pipe)
+    assert not reporting._is_chapter_complete(
+        base + "\n\n| 成员 | 贡献 |\n| --- | --- |\n| 卓子杰 | 30.0%"
+    )
+    # Truncated right after heading
+    assert not reporting._is_chapter_complete(base + "\n\n### 七、后续改进建议")
+    # Unclosed fenced code block
+    assert not reporting._is_chapter_complete(base + "\n\n```python\nprint('hi')")
+    # Mid-sentence ending without punctuation
+    assert not reporting._is_chapter_complete(base + "\n\n团队针对接口异常进行了深入排查并")
