@@ -574,7 +574,6 @@ export function ContributionApiPage({
               {/* Visual Section 3: All-members pure-data breakdown table (no redundant progress bars) */}
               <Section
                 title="全员贡献明细"
-                description="全部在组项目成员的精确指标汇总（含正式占比 0% 成员）；图表对比见上方，点击右侧可查看个人任务与证据。"
                 surface
               >
                 {analytics.members.length > 0 ? (

@@ -133,7 +133,6 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
   return <div className="space-y-3.5">
     <PageHeader
       title={tr("需求工作区")}
-      description={tr("上传资料由 AI 生成需求基线与分工闭环，团队确认后冻结版本。")}
       actions={<div className="flex flex-wrap items-center gap-2">
         {board.data && editableDraft && draftReqCount > 0 && (
           <button
@@ -220,7 +219,6 @@ export function RequirementsApiPage({ projectId }: { projectId: string }) {
                   <h2 className="text-sm font-semibold tracking-tight text-slate-900">{tr("需求清单")}</h2>
                   {list.data && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-600">{list.data.total}</span>}
                 </div>
-                <p className="text-[11px] text-slate-400">{tr("筛选、编辑并追踪需求的版本变更与证据链。")}</p>
               </div>
               <form
                 className="flex flex-wrap items-center gap-2"

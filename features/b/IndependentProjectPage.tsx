@@ -36,7 +36,6 @@ export function IndependentProjectPage() {
           </span>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">{t("title")}</h1>
-            <p className="mt-0.5 text-xs text-slate-500">{t("description")}</p>
           </div>
         </div>
         <Link href="/home" className={`${secondary} !min-h-8 !px-3 !py-1.5 !text-xs`}>{t("back")}</Link>

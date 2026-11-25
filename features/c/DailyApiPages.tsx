@@ -127,7 +127,6 @@ export function HomeApiPage() {
       <AnnouncementBanner />
       <PageHeader
         title={t("title")}
-        description="聚焦当前课程、项目进度与待办通知，快速进入协作。"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {isTeacher && <Link href="/teacher/courses" className={buttonVariants({ size: "sm" })}>我的班级 / 创建班级</Link>}
@@ -598,7 +597,6 @@ export function ActivityApiPage() {
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
       <PageHeader
         title={t("title")}
-        description="查看自己的任务、文件版本、证据、讨论，以及项目中已同步并归属本人的 GitHub 活动。"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {data && (

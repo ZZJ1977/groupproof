@@ -645,7 +645,6 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {sourceType === "github" ? "GitHub 开发活动" : "飞书协作记录"}
           </h1>
-          <p className="mt-0.5 text-xs text-slate-500">{access?.project.name ?? "正在验证项目权限…"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canSyncExternal && (
@@ -1272,7 +1271,6 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                     {sourceType === "github" && record.kind === "commit" && (
                       <Section
                         title="AI 代码功能分析"
-                        description="由统一代码分析系统提示词基于真实代码差异与提交信息生成；结果仅供人工确认。"
                         surface
                       >
                         {selectedSummaryQuery.isFetching && (
@@ -1376,7 +1374,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                       </Section>
                     )}
 
-                    <Section title="来源详情" description="原始内容是事实来源，AI 摘要不会替代它。">
+                    <Section title="来源详情">
                       <p className="text-sm leading-6 text-slate-700">{record.summary}</p>
                       <p className="mt-2 text-xs text-slate-500">
                         {statuses[record.status]} · {taskName(record.task_id)}
@@ -1460,7 +1458,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                     </Section>
 
                     {canChange && (
-                      <Section title="下一步操作" description="操作会写入来源历史；正式证据仍需要人工确认。">
+                      <Section title="下一步操作">
                         <div className="flex flex-wrap gap-2">
                           {record.status === "candidate" && (
                             <>

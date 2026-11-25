@@ -67,18 +67,10 @@ export function ContributionDistributionBar({
       data-testid="contribution-distribution-bar"
     >
       <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <div>
-          <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900">
-            <BarChart3 size={16} className="text-[var(--gp-action)]" />
-            团队全员贡献占比分布
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            覆盖全部 {members.length} 位在组项目成员；
-            {effectiveMode === "formal"
-              ? "按已确认正式验收成果的责任比例展示（未确认成员显示 0%）。"
-              : "按正式成果、任务进度、GitHub 代码提交与飞书协作关联综合展示参考占比。"}
-          </p>
-        </div>
+        <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900">
+          <BarChart3 size={16} className="text-[var(--gp-action)]" />
+          团队全员贡献占比分布
+        </h2>
 
         <div className="gp-segmented" role="tablist" aria-label="贡献占比口径切换">
           <button
@@ -204,12 +196,7 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
       data-testid="member-comparison-chart"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-[15px] font-bold tracking-tight text-slate-900">成员多维贡献对比图</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            按正式权重、任务进度、代码提交与飞书协作 4 项维度横向对比全组成员
-          </p>
-        </div>
+        <h2 className="text-[15px] font-bold tracking-tight text-slate-900">成员多维贡献对比图</h2>
         <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-600">
           {metrics.map((m) => (
             <span key={m.key} className="inline-flex items-center gap-1 font-medium">
@@ -427,15 +414,10 @@ export function ProjectStatusDonutPanel({
       {/* Top: Task status SVG donut */}
       <div>
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900">
-              <PieChart size={16} className="text-[var(--gp-action)]" />
-              项目交付概览
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              项目任务状态分布与代码、飞书协作整体统计
-            </p>
-          </div>
+          <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight text-slate-900">
+            <PieChart size={16} className="text-[var(--gp-action)]" />
+            项目交付概览
+          </h2>
           <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-slate-700">
             共 {totalTasks} 项任务
           </span>

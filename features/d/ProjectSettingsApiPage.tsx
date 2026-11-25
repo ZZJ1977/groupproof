@@ -226,11 +226,6 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {reopenView
-              ? "基于归档快照创建新的迭代版本，原项目记录保持只读。"
-              : "管理项目基础信息、外部仓库与飞书群集成，以及归档与版本重开。"}
-          </p>
         </div>
         <Link className={`${secondary} h-9 px-3 text-xs`} href={`/projects/${projectId}`}>
           <ArrowLeft size={14} aria-hidden="true" />
@@ -254,9 +249,6 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
                   <SlidersHorizontal size={14} className="text-slate-500" aria-hidden="true" />
                   基本设置
                 </h2>
-                <span className="text-xs text-slate-500">
-                  {writable ? "组长可调整项目信息与可见范围" : "当前为只读视图"}
-                </span>
               </div>
               <div className="p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -384,9 +376,6 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
                 <Plug size={14} className="text-slate-500" aria-hidden="true" />
                 项目集成
               </h2>
-              <span className="text-xs text-slate-500">
-                {writable ? "同步代码提交、PR、CI 与群聊协作" : "仅组长在活跃期可绑定或同步"}
-              </span>
             </div>
             <div id="github-integration" className="min-w-0 scroll-mt-20">
               <GithubRepoBinding projectId={projectId} userId={userId} canManage={writable} />

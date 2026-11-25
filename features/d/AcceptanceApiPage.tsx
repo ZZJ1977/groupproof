@@ -495,10 +495,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
             {/* Left Column: Compact Per-Criterion Results */}
             <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-semibold text-slate-900">逐条验收结果</h2>
-                  <p className="text-[11px] text-slate-500">AI 结果仅作建议，不能替代负责人确认。</p>
-                </div>
+                <h2 className="text-sm font-semibold text-slate-900">逐条验收结果</h2>
                 <div className="flex items-center gap-2">
                   {expandableIds.length > 0 && (
                     <button
@@ -669,9 +666,6 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
                           </button>
                         )}
                       </div>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        填写实际承担比例并确认；全部确认且合计 100% 后生成正式成果并完成任务。
-                      </p>
                       <div className="mt-3 space-y-2.5">
                         <div>
                           <label className={label} htmlFor="accept-reason">

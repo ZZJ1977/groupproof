@@ -186,7 +186,6 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">里程碑与风险</h1>
-            <p className="mt-0.5 text-xs text-slate-500">追踪项目关键阻塞项与缓解进度</p>
           </div>
           {milestones.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">

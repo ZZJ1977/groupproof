@@ -86,7 +86,7 @@ export function NewProjectApiPage({ courseId }: { courseId: string }) {
 
   if (groups.isPending || (groupId && (group.isPending || draft.isPending))) return <Loading />;
   if (groups.isError) return <LoadError error={groups.error} onRetry={() => void groups.refetch()} />;
-  if (!groupId) return <div><PageHeader title={tr("创建项目")} description={tr("项目以小组为单位创建。")} /><Panel className="mt-5"><EmptyState title={tr("你还没有加入小组")} description={tr("先创建或加入一个小组，再由组长创建项目。")} action={<Link className={button} href={`/courses/${courseId}/groups`}>{tr("去组队")}</Link>} /></Panel></div>;
+  if (!groupId) return <div><PageHeader title={tr("创建项目")} /><Panel className="mt-5"><EmptyState title={tr("你还没有加入小组")} description={tr("先创建或加入一个小组，再由组长创建项目。")} action={<Link className={button} href={`/courses/${courseId}/groups`}>{tr("去组队")}</Link>} /></Panel></div>;
   if (group.isError) return <LoadError error={group.error} onRetry={() => void group.refetch()} />;
   if (draft.isError) return <LoadError error={draft.error} onRetry={() => void draft.refetch()} />;
   const existing = draft.data?.project_id ?? group.data?.project_id;
@@ -99,7 +99,7 @@ export function NewProjectApiPage({ courseId }: { courseId: string }) {
   const isLeader = group.data?.leader?.id === userId;
   const set = (key: keyof BProjectDraft["payload"]) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
   return <div>
-    <PageHeader title={tr("创建项目")} description={tr("{0} · 保存后的草稿与组员共享", { 0: group.data?.name ?? "" })} actions={<Link href={`/courses/${courseId}/groups/${groupId}`} className={secondary}>{tr("返回小组")}</Link>} />
+    <PageHeader title={tr("创建项目")} description={group.data?.name || undefined} actions={<Link href={`/courses/${courseId}/groups/${groupId}`} className={secondary}>{tr("返回小组")}</Link>} />
     <div className="mx-auto mt-5 max-w-[760px] space-y-4">
       <ol className="flex flex-wrap gap-2 text-xs" aria-label={tr("创建步骤")}>{wizardSteps.map((title, index) => <li key={title} aria-current={index === step ? "step" : undefined} className={`flex-1 rounded border px-3 py-2 ${index === step ? "border-blue-500 bg-blue-50 font-semibold text-blue-700" : index < step ? "border-green-200 text-green-700" : "border-slate-200 text-slate-500"}`}>{index + 1}. {tr(title)}</li>)}</ol>
       {notice && <Feedback tone={notice.tone}>{notice.text}</Feedback>}

@@ -169,7 +169,6 @@ export function RequirementsStep({ projectId }: { projectId: string }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="gp-eyebrow">AI 辅助分析</span>
           <h2 className="text-sm font-semibold text-slate-900">{tr("需求分析")}</h2>
-          {board.latest_run && board.editable && <span className="text-[11px] text-slate-400">· {tr("重新分析仅替换未修改的 AI 草案，人工条目原样保留。")}</span>}
         </div>
         <RunStatus board={board} />
       </div>
@@ -228,7 +227,6 @@ export function RequirementsStep({ projectId }: { projectId: string }) {
       <div className={`${cardClass} space-y-3 p-3.5`}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-900">{tr("手动添加")}</h3>
-          <p className="text-[11px] text-slate-400">{tr("先创建功能模块，再录入具体需求条目。")}</p>
         </div>
         <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); addModule.mutate(); }}>
           <div className="min-w-[200px] max-w-sm flex-1">

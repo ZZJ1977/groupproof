@@ -89,7 +89,6 @@ export function MilestonesApiPage({ projectId }: { projectId: string }) {
   return <div className="space-y-3">
     <PageHeader
       title={tr("里程碑")}
-      description={tr("进度按关联任务权重与代码推进实时汇总，与任务视图保持同一口径。")}
     />
 
     {items.length > 0 && (

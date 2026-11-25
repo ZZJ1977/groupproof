@@ -129,7 +129,6 @@ function FilesPage({ projectId, userId, query, updateQuery, selectedId, versionI
   return <>
     <PageHeader
       title="项目资料"
-      description={freshContext?.project.name ?? "正在验证项目权限…"}
       actions={
         <div className="flex flex-wrap gap-2">
           {freshContext?.permissions.can_manage_files && (

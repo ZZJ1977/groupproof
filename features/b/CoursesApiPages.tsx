@@ -48,7 +48,6 @@ export function MyCoursesApiPage() {
       <AnnouncementBanner />
       <PageHeader
         title={createIntent ? t("createCourseProjectTitle") : t("title")}
-        description={createIntent ? t("chooseProjectCourse") : t("description")}
         actions={
           <div className="flex flex-wrap gap-2">
             {isTeacher && !createIntent && (
@@ -312,7 +311,7 @@ export function JoinCourseApiPage() {
 
   return (
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
-      <PageHeader title={t("joinTitle")} description={t("joinDesc")} />
+      <PageHeader title={t("joinTitle")} />
       <div className="mx-auto max-w-2xl space-y-3.5">
         <ol aria-label={t("steps")} className="flex flex-wrap justify-center gap-3 text-xs">
           {[t("stepCode"), t("stepConfirm"), t("stepDone")].map((item, index) => (

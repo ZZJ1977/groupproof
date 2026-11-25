@@ -330,7 +330,6 @@ export function MyProjectsApiPage() {
       <AnnouncementBanner />
       <PageHeader
         title={tr("我的项目")}
-        description={tr("集中管理你的独立项目与课程项目，快速查看进度、成员与 GitHub / 飞书集成状态。")}
         icon={FolderKanban}
         actions={
           <div className="flex flex-wrap items-center gap-2">
