@@ -2,7 +2,7 @@
 
 import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, CircleAlert, Coins, Gauge, Layers3, ListFilter, RefreshCw, Zap } from "lucide-react";
+import { Activity, BarChart3, ChevronDown, CircleAlert, Coins, Gauge, KeyRound, Layers3, ListFilter, RefreshCw, Zap } from "lucide-react";
 import { CApiError, createCClient } from "@/lib/api/c-client";
 import { createGovernanceClient, type AccessQuery, type AuditQuery, type AuthAuditQuery, type CourseQuery, type SharedAuditQuery, type UsageQuery } from "@/lib/api/c-governance-client";
 import { useWorkspace } from "@/lib/workspace";
@@ -432,16 +432,42 @@ function SharedLogsPage() {
   </>;
 }
 
-export function MyAccessRequests() {
+export function MyAccessRequests({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
-  return <section className="my-4">
-    <button className={styles.button} type="button" aria-expanded={open} onClick={() => setOpen(!open)}>我的访问申请</button>
-    {open && <ApplicantPanel />}
-  </section>;
+  return (
+    <section aria-label="我的访问申请" className="overflow-hidden rounded-xl border border-border bg-white shadow-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="hidden size-8 shrink-0 place-items-center rounded-lg bg-[var(--gp-action-soft)] text-primary sm:grid">
+            <KeyRound size={15} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[var(--gp-ink)]">跨项目只读访问申请</h2>
+            <p className="mt-0.5 text-[11px] leading-4 text-[var(--gp-ink-soft)]">
+              申请临时只读查看其他项目任务或证据，并追踪审批状态。
+            </p>
+          </div>
+        </div>
+        <button
+          className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-[var(--gp-ink)] shadow-2xs transition hover:bg-slate-50"
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          我的访问申请
+          <ChevronDown size={13} aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-border bg-slate-50/40 p-4">
+          <ApplicantPanel userId={userId} />
+        </div>
+      )}
+    </section>
+  );
 }
 
-function ApplicantPanel() {
-  const { userId } = useWorkspace();
+function ApplicantPanel({ userId }: { userId: string }) {
   const [page, setPage] = useState(1);
   const [kind, setKind] = useState<"task" | "evidence" | "project">("task");
   const [denied, setDenied] = useState<CApiError | null>(null);

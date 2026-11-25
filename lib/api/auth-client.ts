@@ -162,6 +162,7 @@ export interface MeDTO {
     studentId?: string | null;
     college?: string | null;
     githubUsername?: string | null;
+    githubLogin?: string | null;
     feishuAccount?: string | null;
     requestedIdentity?: string | null;
     roles: string[];

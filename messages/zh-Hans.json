@@ -238,11 +238,29 @@
       "reauth": "请重新登录 GroupProof，再管理 GitHub 绑定。"
     },
     "backToLogin": "返回登录",
+    "backToHome": "返回首页",
+    "collaboration": {
+      "title": "外部协作账号",
+      "subtitle": "关联 GitHub 与飞书账号后，可自动匹配代码提交、群聊实名与贡献统计。",
+      "githubNotBound": "未绑定",
+      "githubDeclared": "已填写（未 OAuth 验证）",
+      "githubManage": "管理绑定",
+      "githubBind": "前往绑定",
+      "feishuTitle": "飞书账号",
+      "feishuLinked": "已关联",
+      "feishuNotLinked": "未关联",
+      "feishuPlaceholder": "输入飞书 Open ID（如 ou_...）或飞书账号",
+      "feishuHint": "用于自动关联飞书群聊实名与贡献统计",
+      "feishuSave": "保存飞书",
+      "feishuSaved": "飞书账号已保存。",
+      "feishuCleared": "已清除飞书账号关联。"
+    },
     "steps": {
       "title": "注册进度",
       "profile": "基本资料",
       "email": "学校邮箱",
       "review": "身份确认（学生/教师）",
+      "reviewShort": "身份确认",
       "security": "账号安全"
     },
     "menuAccount": "个人中心",
@@ -416,6 +434,7 @@
       "code": "验证码",
       "verify": "验证",
       "googleTitle": "Google 账号",
+      "linkedAccountsTitle": "第三方与协作账号关联",
       "googleLinked": "已绑定",
       "googleBoundEmail": "已绑定 Google 邮箱：{email}",
       "googleUnboundNote": "尚未关联 Google 账号。关联后可用 Google 登录进入本账号。",
