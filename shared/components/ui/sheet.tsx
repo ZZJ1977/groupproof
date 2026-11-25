@@ -30,8 +30,7 @@ export const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimi
         <DialogPrimitive.Overlay
           data-radix-dialog-overlay
           className={cn(
-            "fixed inset-0 z-50 bg-[#14233d]/35",
-            isTeacher && "gp-overlay-anim",
+            "fixed inset-0 z-50 bg-[#14233d]/35 gp-overlay-anim",
             portalClass,
             overlayClassName,
           )}
@@ -41,8 +40,8 @@ export const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimi
           className={cn(
             "fixed inset-y-0 z-50 w-[min(100vw,520px)] overflow-y-auto bg-white p-6 shadow-xl outline-none",
             side === "left"
-              ? cn("left-0 border-r border-[var(--gp-border,#dfe6ee)]", isTeacher && "gp-sheet-left")
-              : cn("right-0 border-l border-[var(--gp-border,#dfe6ee)]", isTeacher && "gp-sheet-right"),
+              ? "left-0 border-r border-[var(--gp-border,#dfe6ee)] gp-sheet-left"
+              : "right-0 border-l border-[var(--gp-border,#dfe6ee)] gp-sheet-right",
             portalClass,
             className,
           )}
@@ -50,7 +49,7 @@ export const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimi
         >
           {children}
           <DialogPrimitive.Close
-            className="absolute right-4 top-4 rounded-full p-1.5 text-[#718097] transition-colors hover:bg-[#f2f5fa] hover:text-[#1f2329]"
+            className="absolute right-4 top-4 rounded-full p-1.5 text-[#718097] transition-colors duration-150 hover:bg-[#f2f5fa] hover:text-[#1f2329] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#246bfa]/40"
             aria-label={t("close")}
             title={t("close")}
           >

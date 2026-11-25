@@ -1,0 +1,312 @@
+/* Student Workspace UX/UI polish · consumes light-only tokens from shared/styles/lux-tokens.css */
+
+@keyframes gp-empty-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes gp-student-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Interactive stat & card hover lift (respects utility overrides such as !transform-none) */
+.gp-student-workspace .gp-stat {
+  transition:
+    transform 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    border-color 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    box-shadow 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.gp-student-workspace .gp-stat:hover,
+.gp-student-workspace a:hover > .gp-stat,
+.gp-student-workspace a:focus-visible > .gp-stat {
+  border-color: rgba(36, 107, 250, 0.24);
+  box-shadow:
+    0 10px 26px -14px rgba(15, 23, 42, 0.16),
+    0 2px 6px -2px rgba(36, 107, 250, 0.08);
+  transform: translateY(-2px);
+}
+
+.gp-student-workspace a:active > .gp-stat,
+.gp-student-workspace .gp-stat[role="button"]:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.gp-student-workspace .gp-surface-card,
+.gp-student-workspace .gp-section[data-surface="true"],
+.gp-student-workspace .gp-setup-card,
+.gp-student-workspace .gp-card-interactive {
+  transition:
+    transform 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    border-color 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    box-shadow 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.gp-student-workspace .gp-surface-card:hover,
+.gp-student-workspace .gp-setup-card:hover,
+.gp-student-workspace .gp-card-interactive:hover {
+  border-color: rgba(36, 107, 250, 0.2);
+  box-shadow:
+    0 12px 28px -18px rgba(15, 23, 42, 0.16),
+    0 2px 8px -4px rgba(36, 107, 250, 0.08);
+  transform: translateY(-1px);
+}
+
+.gp-student-workspace .gp-section[data-surface="true"]:hover {
+  border-color: rgba(36, 107, 250, 0.16);
+  box-shadow: 0 12px 28px -18px rgba(15, 23, 42, 0.14);
+}
+
+.gp-student-workspace .gp-card-interactive:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* Segmented control pill & sliding active indicator */
+.gp-student-workspace .gp-segmented {
+  position: relative;
+  background: rgba(241, 245, 249, 0.94);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.gp-student-workspace .gp-segmented-item {
+  position: relative;
+  transition:
+    background-color 180ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    color 180ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    box-shadow 200ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    transform 140ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.gp-student-workspace .gp-segmented-item::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--ux-accent, #246bfa);
+  opacity: 0;
+  transform: scaleX(0.35);
+  transition:
+    transform 220ms var(--ux-spring, cubic-bezier(0.34, 1.45, 0.64, 1)),
+    opacity 160ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+  pointer-events: none;
+}
+
+.gp-student-workspace .gp-segmented-item:hover:not(:disabled) {
+  color: var(--ux-ink, #0f172a);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.gp-student-workspace .gp-segmented-item:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.gp-student-workspace
+  .gp-segmented-item:is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    [aria-current="page"],
+    [data-active="true"]
+  ) {
+  background: var(--ux-surface, #ffffff);
+  color: var(--gp-action, #0369a1);
+  font-weight: 650;
+  box-shadow:
+    0 2px 6px -1px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(36, 107, 250, 0.14);
+}
+
+.gp-student-workspace
+  .gp-segmented-item:is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    [aria-current="page"],
+    [data-active="true"]
+  )::after {
+  opacity: 0.9;
+  transform: scaleX(1);
+}
+
+/* Table row subtle hover highlight */
+.gp-student-workspace .gp-table tbody tr {
+  transition:
+    background-color 160ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    box-shadow 160ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+.gp-student-workspace .gp-table tbody tr:hover {
+  background: #f4f8ff;
+}
+
+.gp-student-workspace .gp-table tbody tr:hover td:first-child {
+  box-shadow: inset 2px 0 0 rgba(36, 107, 250, 0.45);
+}
+
+/* Staggered list entrance */
+.gp-student-workspace .gp-list-row,
+.gp-student-workspace .gp-list > *,
+.gp-student-workspace .gp-stagger-list > *,
+.gp-student-workspace ul.divide-y > li {
+  animation: gp-student-row-in 240ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+}
+
+.gp-student-workspace .gp-list-row:nth-child(1),
+.gp-student-workspace .gp-list > *:nth-child(1),
+.gp-student-workspace .gp-stagger-list > *:nth-child(1),
+.gp-student-workspace ul.divide-y > li:nth-child(1) {
+  animation-delay: 20ms;
+}
+
+.gp-student-workspace .gp-list-row:nth-child(2),
+.gp-student-workspace .gp-list > *:nth-child(2),
+.gp-student-workspace .gp-stagger-list > *:nth-child(2),
+.gp-student-workspace ul.divide-y > li:nth-child(2) {
+  animation-delay: 50ms;
+}
+
+.gp-student-workspace .gp-list-row:nth-child(3),
+.gp-student-workspace .gp-list > *:nth-child(3),
+.gp-student-workspace .gp-stagger-list > *:nth-child(3),
+.gp-student-workspace ul.divide-y > li:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.gp-student-workspace .gp-list-row:nth-child(4),
+.gp-student-workspace .gp-list > *:nth-child(4),
+.gp-student-workspace .gp-stagger-list > *:nth-child(4),
+.gp-student-workspace ul.divide-y > li:nth-child(4) {
+  animation-delay: 110ms;
+}
+
+.gp-student-workspace .gp-list-row:nth-child(5),
+.gp-student-workspace .gp-list > *:nth-child(5),
+.gp-student-workspace .gp-stagger-list > *:nth-child(5),
+.gp-student-workspace ul.divide-y > li:nth-child(5) {
+  animation-delay: 140ms;
+}
+
+.gp-student-workspace .gp-list-row:nth-child(n + 6),
+.gp-student-workspace .gp-list > *:nth-child(n + 6),
+.gp-student-workspace .gp-stagger-list > *:nth-child(n + 6),
+.gp-student-workspace ul.divide-y > li:nth-child(n + 6) {
+  animation-delay: 165ms;
+}
+
+.gp-student-workspace .gp-list-row:hover {
+  background: rgba(244, 248, 255, 0.92);
+}
+
+/* EmptyState gentle icon float & ProgressBar smooth transition */
+.gp-student-workspace .gp-empty-icon {
+  animation: gp-empty-float 3.4s ease-in-out infinite;
+}
+
+.gp-student-workspace .gp-progress > span {
+  transition: width 320ms var(--ux-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+
+/* Unified blue focus-visible ring across Student interactive controls */
+.gp-student-workspace
+  :is(
+    button,
+    a,
+    summary,
+    [role="tab"],
+    [role="button"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  outline: 2px solid var(--ux-accent, #246bfa);
+  outline-offset: 2px;
+}
+
+.gp-student-workspace :is(input, select, textarea):not(.gp-search input):focus-visible {
+  outline: 2px solid var(--ux-accent, #246bfa);
+  outline-offset: 1px;
+  border-color: var(--ux-accent, #246bfa);
+  box-shadow: 0 0 0 3px rgba(36, 107, 250, 0.14);
+}
+
+.gp-student-workspace .gp-search:has(:focus-visible) {
+  border-color: var(--ux-accent, #246bfa);
+  box-shadow: 0 0 0 3px rgba(36, 107, 250, 0.14);
+}
+
+/* Primary button subtle rainbow hover glow matching Teacher end */
+.gp-student-workspace :is(button, a)[data-variant].gp-rainbow-ring::before {
+  opacity: 0;
+}
+
+.gp-student-workspace :is(button, a)[data-variant].gp-rainbow-ring:is(:hover, :focus-visible)::before {
+  opacity: 0.88;
+}
+
+.gp-student-workspace :is(button, a)[data-variant].gp-rainbow-ring:is(:hover, :focus-visible) {
+  box-shadow:
+    0 6px 18px -6px rgba(36, 107, 250, 0.36),
+    0 0 0 1px rgba(61, 139, 255, 0.22);
+}
+
+.gp-student-workspace
+  :is(button, a)[data-variant].gp-rainbow-ring:is(:disabled, [aria-disabled="true"], [aria-busy="true"])::before {
+  opacity: 0;
+  animation: none;
+}
+
+.gp-student-workspace
+  :is(button, a)[data-variant].gp-rainbow-ring:is(:disabled, [aria-disabled="true"], [aria-busy="true"]):hover {
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-student-workspace .gp-stat,
+  .gp-student-workspace .gp-surface-card,
+  .gp-student-workspace .gp-section[data-surface="true"],
+  .gp-student-workspace .gp-setup-card,
+  .gp-student-workspace .gp-card-interactive,
+  .gp-student-workspace .gp-segmented-item,
+  .gp-student-workspace .gp-segmented-item::after,
+  .gp-student-workspace .gp-table tbody tr,
+  .gp-student-workspace .gp-progress > span,
+  .gp-student-workspace .gp-rainbow-ring::before {
+    transition: none;
+    animation: none;
+  }
+
+  .gp-student-workspace .gp-list-row,
+  .gp-student-workspace .gp-list > *,
+  .gp-student-workspace .gp-stagger-list > *,
+  .gp-student-workspace ul.divide-y > li,
+  .gp-student-workspace .gp-empty-icon {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .gp-student-workspace .gp-stat:hover,
+  .gp-student-workspace a:hover > .gp-stat,
+  .gp-student-workspace a:focus-visible > .gp-stat,
+  .gp-student-workspace a:active > .gp-stat,
+  .gp-student-workspace .gp-stat[role="button"]:active,
+  .gp-student-workspace .gp-surface-card:hover,
+  .gp-student-workspace .gp-setup-card:hover,
+  .gp-student-workspace .gp-card-interactive:hover,
+  .gp-student-workspace .gp-card-interactive:active,
+  .gp-student-workspace .gp-segmented-item:active {
+    transform: none;
+  }
+}
