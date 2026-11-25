@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { GitBranch } from "lucide-react";
 import { Feedback, Panel, StatusBadge } from "@/shared/components/common";
+import { useConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { Button } from "@/shared/components/ui/button";
 import { ApiError, authClient } from "@/shared/auth/auth-client";
 
@@ -19,6 +20,8 @@ export function GithubIdentityPanel({
   embedded?: boolean;
 }) {
   const t = useTranslations("account.githubIdentity");
+  const tCommon = useTranslations("common");
+  const [confirm, dialogElement] = useConfirmDialog();
   const search = useSearchParams();
   const queryClient = useQueryClient();
   const queryKey = ["verified-github-identity", userId] as const;
@@ -33,7 +36,19 @@ export function GithubIdentityPanel({
 
   async function change(operation: "link" | "unlink") {
     if (!csrfToken || pending) return;
-    if (operation === "unlink" && (!identity?.login || !window.confirm(t("confirmUnlink")))) return;
+    if (
+      operation === "unlink" &&
+      (!identity?.login ||
+        !(await confirm({
+          title: t("unlink"),
+          description: t("confirmUnlink"),
+          confirmLabel: t("unlink"),
+          cancelLabel: tCommon("cancel"),
+          tone: "danger",
+        })))
+    ) {
+      return;
+    }
     setPending(true);
     setNotice(null);
     try {
@@ -102,6 +117,7 @@ export function GithubIdentityPanel({
           {t(feedback)}
         </Feedback>
       )}
+      {dialogElement}
     </div>
   );
 

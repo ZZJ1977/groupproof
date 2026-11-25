@@ -1,3 +1,4 @@
+import { apiErrorCodeText, apiErrorText } from "@/shared/i18n/api-error-text";
 import { fetchWithSession } from "@/shared/lib/api-client";
 
 export class ProjectRequestError extends Error {
@@ -45,7 +46,7 @@ export async function projectRequest<T>(path: string, options: {
   if (!response.ok || !payload || payload.data === undefined) {
     throw new ProjectRequestError(
       response.status,
-      payload?.error?.message ?? "暂时无法读取操作结果，请重试。",
+      payload?.error?.message ?? apiErrorCodeText("INTEGRATION_READ_FAILED"),
       payload?.error?.code,
       githubInstallLink(payload?.error?.details?.install_url),
     );
@@ -54,11 +55,21 @@ export async function projectRequest<T>(path: string, options: {
 }
 
 export function integrationErrorText(error: unknown, provider: string, action: "read" | "write") {
-  if (!(error instanceof ProjectRequestError)) return "网络异常，请稍后重试。";
-  if (error.status === 401) return "请重新登录后重试。";
-  if (error.code === "PROJECT_READ_ONLY") return "该项目已归档、定稿或所在课程已结束，只能查看绑定。";
-  if (error.status === 403) return action === "read" ? "当前没有查看该项目绑定的权限。" : "只有本项目组长可以管理绑定。";
-  if (error.status === 404) return "项目不存在或当前没有访问权限。";
-  if (error.status === 503) return provider + " 暂时不可用。请检查服务配置后重试。";
-  return error.message;
+  if (!(error instanceof ProjectRequestError)) return apiErrorCodeText("INTEGRATION_NETWORK_ERROR");
+  if (error.status === 401) return apiErrorCodeText("INTEGRATION_AUTH_REQUIRED");
+  if (error.code === "PROJECT_READ_ONLY") return apiErrorCodeText("INTEGRATION_READ_ONLY");
+  if (error.status === 403) {
+    return apiErrorCodeText(action === "read" ? "INTEGRATION_VIEW_DENIED" : "INTEGRATION_LEADER_REQUIRED");
+  }
+  if (error.status === 404) return apiErrorCodeText("INTEGRATION_PROJECT_NOT_FOUND");
+  if (error.status === 503) {
+    const key =
+      provider === "GitHub"
+        ? "INTEGRATION_GITHUB_UNAVAILABLE"
+        : provider === "飞书" || provider === "Feishu"
+          ? "INTEGRATION_FEISHU_UNAVAILABLE"
+          : "INTEGRATION_PROVIDER_UNAVAILABLE";
+    return apiErrorCodeText(key);
+  }
+  return apiErrorText(error);
 }

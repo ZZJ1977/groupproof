@@ -24,6 +24,8 @@ import { button, input, secondary } from "@/shared/lib/b-ui";
 import { MarkdownPreview } from "@/student/execution/MarkdownPreview";
 import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
+import { CApiError } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 
 type VersionMeta = {
   authoring_mode?: string;
@@ -138,15 +140,26 @@ const ERROR_MESSAGES: Record<string, string> = {
   AI_UNAVAILABLE: "AI 重写服务暂时不可用，请稍后重试或手动编辑。",
 };
 
-function extractErrorMessage(result: unknown, fallback = "请求失败"): string {
-  if (result && typeof result === "object") {
-    const obj = result as { error?: { code?: string; message?: string }; detail?: string };
-    const code = obj.error?.code;
-    if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
-    if (obj.error?.message) return obj.error.message;
-    if (typeof obj.detail === "string" && obj.detail) return obj.detail;
-  }
-  return fallback;
+function toReportError(
+  result: unknown,
+  status: number,
+  requestId: string | null,
+  fallback = "请求失败",
+): CApiError {
+  const obj =
+    result && typeof result === "object"
+      ? (result as { error?: { code?: unknown; message?: unknown }; detail?: unknown })
+      : null;
+  const code =
+    typeof obj?.error?.code === "string" && obj.error.code
+      ? obj.error.code
+      : "INVALID_API_RESPONSE";
+  const zhMessage =
+    (code !== "INVALID_API_RESPONSE" && ERROR_MESSAGES[code]) ||
+    (typeof obj?.error?.message === "string" && obj.error.message) ||
+    (typeof obj?.detail === "string" && obj.detail) ||
+    fallback;
+  return new CApiError(status, code, zhMessage, requestId);
 }
 
 function parseFilename(disposition: string | null, fallback: string): string {
@@ -492,7 +505,14 @@ async function request<T>(url: string, method = "GET", body?: unknown): Promise<
     }),
   );
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(extractErrorMessage(result, `请求失败（HTTP ${response.status}）`));
+  if (!response.ok) {
+    throw toReportError(
+      result,
+      response.status,
+      response.headers.get("X-Request-Id"),
+      `请求失败（HTTP ${response.status}）`,
+    );
+  }
   return result.data as T;
 }
 
@@ -505,7 +525,12 @@ async function downloadBinaryFromApi(url: string, fallbackFilename: string): Pro
   });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
-    throw new Error(extractErrorMessage(result, `文件下载失败（HTTP ${response.status}）`));
+    throw toReportError(
+      result,
+      response.status,
+      response.headers.get("X-Request-Id"),
+      `文件下载失败（HTTP ${response.status}）`,
+    );
   }
   const blob = await response.blob();
   const filename = parseFilename(response.headers.get("content-disposition"), fallbackFilename);
@@ -585,7 +610,7 @@ export function ReportApiPage({
 
   const refresh = useCallback(async () => applyListing(await request<Listing>(base)), [applyListing, base]);
   useEffect(() => {
-    void refresh().catch((failure) => setError((failure as Error).message));
+    void refresh().catch((failure) => setError(apiErrorText(failure)));
   }, [refresh]);
 
   const latest = listing.versions[0];
@@ -605,7 +630,7 @@ export function ReportApiPage({
   useEffect(() => {
     if (!isServerGenerating && !hasPendingArtifacts) return;
     const timer = window.setInterval(() => {
-      void refresh().catch((failure) => setError((failure as Error).message));
+      void refresh().catch((failure) => setError(apiErrorText(failure)));
     }, 2500);
     return () => window.clearInterval(timer);
   }, [hasPendingArtifacts, isServerGenerating, refresh]);
@@ -750,7 +775,7 @@ export function ReportApiPage({
       if (action === "review") setReviewReason("");
       if (successMsg) setNotice(successMsg);
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusyAction(null);
     }
@@ -787,7 +812,7 @@ export function ReportApiPage({
       wasGeneratingRef.current = false;
       genStartedAtRef.current = null;
       setGenElapsedSeconds(0);
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusyAction(null);
     }
@@ -815,7 +840,7 @@ export function ReportApiPage({
           : `已依据最新真实工程数据重新汇编「${label}」并保存为 v${updated.version}。`,
       );
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusyAction(null);
       setRewritingSection(null);
@@ -834,7 +859,7 @@ export function ReportApiPage({
       await refresh();
       setNotice(`已开始下载 ${(fmt ?? "pdf").toUpperCase()} 文档。`);
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusyAction(null);
     }
@@ -874,7 +899,7 @@ export function ReportApiPage({
       }
       if (status === "failed") {
         await refresh();
-        throw new Error(exportError || `导出 ${format.toUpperCase()} 文档失败，请重试。`);
+        throw new CApiError(500, "REPORT_EXPORT_FAILED", exportError || `导出 ${format.toUpperCase()} 文档失败，请重试。`, null);
       }
       if (status === "ready") {
         const link = await request<{ url: string; expires_at: string }>(
@@ -889,7 +914,7 @@ export function ReportApiPage({
         setNotice(`已提交后台导出 ${format.toUpperCase()} 文档，就绪后可在「版本历史 → 导出记录」下载。`);
       }
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusyAction(null);
     }

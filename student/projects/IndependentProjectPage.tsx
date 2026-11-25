@@ -8,10 +8,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, FolderPlus } from "lucide-react";
 import { Feedback, Panel } from "@/shared/components/common";
 import { bProjectsApi } from "@/student/api/b-projects";
+import { useBErrorMessage } from "@/student/projects/use-b-error";
 import { button, input, label, secondary } from "@/shared/lib/b-ui";
 
 export function IndependentProjectPage() {
   const t = useTranslations("pages.independentProject");
+  const errorText = useBErrorMessage();
   const router = useRouter();
   const cache = useQueryClient();
   const [name, setName] = useState("");
@@ -74,7 +76,7 @@ export function IndependentProjectPage() {
               onChange={(event) => setDescription(event.target.value)}
             />
           </div>
-          {create.isError && <div role="alert"><Feedback tone="error">{create.error.message}</Feedback></div>}
+          {create.isError && <div role="alert"><Feedback tone="error">{errorText(create.error)}</Feedback></div>}
           <div className="flex items-center justify-end gap-2 pt-1">
             <button type="submit" className={`${button} w-full sm:w-auto`} disabled={!name.trim() || create.isPending}>
               {create.isPending ? t("creating") : t("title")}

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CApiError } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
 
@@ -14,8 +16,15 @@ async function call<T>(url: string, method = "GET", body?: unknown): Promise<T> 
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   }));
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error?.message ?? "请求失败");
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CApiError(
+      response.status,
+      typeof payload?.error?.code === "string" ? payload.error.code : "INVALID_API_RESPONSE",
+      typeof payload?.error?.message === "string" ? payload.error.message : "请求失败",
+      response.headers.get("X-Request-Id"),
+    );
+  }
   return payload.data as T;
 }
 
@@ -35,11 +44,11 @@ export function ContributionWeek7Panel({ projectId, memberId, tasks }: { project
     ]);
     setNotes(nextNotes); setAppeals(nextAppeals.filter((item) => item.member_id === memberId));
   }, [base, memberId]);
-  useEffect(() => { void refresh().catch((failure) => setError(failure.message)); }, [refresh]);
+  useEffect(() => { void refresh().catch((failure) => setError(apiErrorText(failure))); }, [refresh]);
   async function save(url: string, data: unknown) {
     setBusy(true); setError("");
     try { await call(url, "POST", data); await refresh(); }
-    catch (failure) { setError((failure as Error).message); }
+    catch (failure) { setError(apiErrorText(failure)); }
     finally { setBusy(false); }
   }
   const selectedTask = tasks.find((task) => task.task_id === taskId);

@@ -18,6 +18,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Avatar, Feedback, StatusBadge } from "@/shared/components/common";
+import { useConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { FeishuChatBinding } from "@/student/review/FeishuChatBinding";
 import { GithubRepoBinding } from "@/student/review/GithubRepoBinding";
@@ -632,6 +633,7 @@ function OverviewSettingsTab({
   onSaved: () => Promise<void>;
 }) {
   const tr = useUiText();
+  const [confirm, dialogElement] = useConfirmDialog();
   const base = `/api/v1/projects/${encodeURIComponent(projectId)}`;
   const [form, setForm] = useState({
     name: settings?.name ?? project.name,
@@ -667,6 +669,21 @@ function OverviewSettingsTab({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleArchive() {
+    if (!writable || busy || !settings) return;
+    if (
+      !(await confirm({
+        title: tr("归档项目"),
+        description: tr("确认归档？报告、任务和贡献必须已定稿。"),
+        confirmLabel: tr("确认归档"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
+    await submitAction(`${base}/archive`, "POST", undefined, "项目已归档");
   }
 
   const lifecycle = settings?.lifecycle ?? project.lifecycle;
@@ -765,11 +782,7 @@ function OverviewSettingsTab({
                 type="button"
                 className={dangerButton}
                 disabled={!writable || busy || !settings}
-                onClick={() => {
-                  if (window.confirm(tr("确认归档？报告、任务和贡献必须已定稿。"))) {
-                    void submitAction(`${base}/archive`, "POST", undefined, "项目已归档");
-                  }
-                }}
+                onClick={() => void handleArchive()}
               >
                 <Archive size={14} aria-hidden="true" />
                 {tr("归档项目")}
@@ -841,6 +854,7 @@ function OverviewSettingsTab({
           )}
         </div>
       )}
+      {dialogElement}
     </div>
   );
 }
@@ -865,6 +879,7 @@ export function OverviewRightSidebar({
   onFilterVerification: () => void;
 }) {
   const tr = useUiText();
+  const [confirm, dialogElement] = useConfirmDialog();
   const cache = useQueryClient();
   const [alertOpen, setAlertOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -974,6 +989,38 @@ export function OverviewRightSidebar({
       setMemberNotice({ tone: "error", text: err instanceof Error ? err.message : tr("转让组长失败。") });
     },
   });
+
+  async function handleTransferLeader(memberId: string, memberName: string | null | undefined) {
+    if (transferLeader.isPending || removeMember.isPending) return;
+    if (
+      !(await confirm({
+        title: tr("转让组长"),
+        description: tr("确定将「{0}」设为项目组长吗？转让后你将变为普通成员。", {
+          0: memberName ?? tr("该成员"),
+        }),
+        confirmLabel: tr("设为组长"),
+        tone: "default",
+      }))
+    ) {
+      return;
+    }
+    transferLeader.mutate(memberId);
+  }
+
+  async function handleRemoveMember(memberId: string, memberName: string | null | undefined) {
+    if (removeMember.isPending || transferLeader.isPending) return;
+    if (
+      !(await confirm({
+        title: tr("移除成员"),
+        description: tr("确定将「{0}」移出本项目吗？", { 0: memberName ?? tr("该成员") }),
+        confirmLabel: tr("确认移除"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
+    removeMember.mutate(memberId);
+  }
 
   const quickJumps = [
     { href: `/projects/${projectId}/requirements`, label: tr("需求基线") },
@@ -1158,17 +1205,7 @@ export function OverviewRightSidebar({
                       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                       disabled={transferLeader.isPending || removeMember.isPending}
                       title={tr("转让组长")}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            tr("确定将「{0}」设为项目组长吗？转让后你将变为普通成员。", {
-                              0: member.name ?? tr("该成员"),
-                            }),
-                          )
-                        ) {
-                          transferLeader.mutate(member.id);
-                        }
-                      }}
+                      onClick={() => void handleTransferLeader(member.id, member.name)}
                     >
                       <Crown size={11} aria-hidden="true" />
                       {tr("设为组长")}
@@ -1178,15 +1215,7 @@ export function OverviewRightSidebar({
                       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-rose-600 transition-colors hover:bg-rose-50"
                       disabled={removeMember.isPending || transferLeader.isPending}
                       title={tr("移除成员")}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            tr("确定将「{0}」移出本项目吗？", { 0: member.name ?? tr("该成员") }),
-                          )
-                        ) {
-                          removeMember.mutate(member.id);
-                        }
-                      }}
+                      onClick={() => void handleRemoveMember(member.id, member.name)}
                     >
                       <UserMinus size={11} aria-hidden="true" />
                       {tr("移除")}
@@ -1214,6 +1243,7 @@ export function OverviewRightSidebar({
           ))}
         </div>
       </section>
+      {dialogElement}
     </aside>
   );
 }

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { CApiError } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 
 type Archived = { id: string; name: string; archived_at: string | null };
 
@@ -11,9 +13,20 @@ export function CourseReopenApiPage({ courseId }: { courseId: string }) {
   useEffect(() => {
     let active = true;
     fetch(`/api/v1/courses/${courseId}/reopenable-projects`, { credentials: "include", cache: "no-store" })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error?.message ?? "读取失败"); return result.data as Archived[]; })
+      .then(async (response) => {
+        const result = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new CApiError(
+            response.status,
+            typeof result?.error?.code === "string" ? result.error.code : "INVALID_API_RESPONSE",
+            typeof result?.error?.message === "string" ? result.error.message : "读取失败",
+            response.headers.get("X-Request-Id"),
+          );
+        }
+        return result.data as Archived[];
+      })
       .then((result) => { if (active) setItems(result); })
-      .catch((failure) => { if (active) setError(failure.message); });
+      .catch((failure) => { if (active) setError(apiErrorText(failure)); });
     return () => { active = false; };
   }, [courseId]);
   return <main className="space-y-4 p-6"><h1 className="text-2xl font-semibold">重新开启课程项目</h1>

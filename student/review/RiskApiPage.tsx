@@ -5,7 +5,8 @@ import { AlertTriangle, ChevronDown, ChevronRight, Plus, Sparkles, X } from "luc
 import { Feedback, StatusBadge } from "@/shared/components/common";
 import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
-import { createCClient } from "@/shared/daily-inbox/c-client";
+import { CApiError, createCClient } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 
 type Option = { id: string; title: string };
 type Risk = {
@@ -48,8 +49,15 @@ async function riskRequest<T>(path: string, method = "GET", body?: unknown): Pro
       cache: "no-store",
     }),
   );
-  const envelope = await response.json();
-  if (!response.ok) throw new Error(envelope.error?.message ?? "请求失败");
+  const envelope = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CApiError(
+      response.status,
+      typeof envelope?.error?.code === "string" ? envelope.error.code : "INVALID_API_RESPONSE",
+      typeof envelope?.error?.message === "string" ? envelope.error.message : "请求失败",
+      response.headers.get("X-Request-Id"),
+    );
+  }
   return envelope.data as T;
 }
 
@@ -105,7 +113,7 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
         }
       })
       .catch((failure) => {
-        if (active) setError(failure.message);
+        if (active) setError(apiErrorText(failure));
       });
     return () => {
       active = false;
@@ -131,7 +139,7 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
       setShowCreate(false);
       setNotice("风险记录已创建。");
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusy(false);
     }
@@ -153,7 +161,7 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
       setNotesById((prev) => ({ ...prev, [risk.id]: "" }));
       setNotice(action === "mitigate" ? "风险已标记为缓解。" : "风险已关闭。");
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusy(false);
     }
@@ -165,7 +173,7 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
     try {
       setExplanation(await riskRequest(`/api/v1/projects/${projectId}/risk-explanation`));
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusy(false);
     }
