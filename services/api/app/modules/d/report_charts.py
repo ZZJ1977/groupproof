@@ -1,33 +1,42 @@
 # ruff: noqa: E501
-"""High-DPI CJK publication-grade diagram & chart renderer for D4 closing reports.
+"""Pure-vector SVG & 2.5x ultra-HD PNG diagram/chart renderer for D4 closing reports.
 
-Supports declarative AI-authored visual specs stored in `ReportSnapshot.data_snapshot["visuals"]`
-across 5 general-purpose layout templates:
-  - `layered_architecture`: multi-layer architecture & module ownership diagram
-  - `process_flow`: horizontal multi-stage engineering/workflow pipeline diagram
-  - `milestone_timeline`: chronological progress bar chart with dates, status pills & deliverables
-  - `category_breakdown`: 1-panel or 2-panel ranked distribution horizontal bar chart
-  - `member_comparison`: multi-dimensional grouped horizontal bar chart across team members
+Supports hybrid AI-authored visual specs stored in `ReportSnapshot.data_snapshot["visuals"]`:
+  - `custom_svg`: AI-authored bespoke pure-vector `<svg viewBox="0 0 1200 H">...</svg>`
+    strictly validated and sanitized via XML + tag/attribute whitelist (no `<script>`,
+    `<foreignObject>`, `on*`, `javascript:`, or external URLs), with graceful degradation
+    to the corresponding vector template on validation failure.
+  - 5 native pure-vector SVG templates (zero truncation, accurate CJK `<tspan>` wrapping,
+    modern whitepaper Slate aesthetic, smooth Bézier connectors):
+      1. `layered_architecture`: multi-layer architecture & module ownership diagram
+      2. `process_flow`: horizontal or 2-row snake workflow pipeline with Bézier arrows
+      3. `milestone_timeline`: chronological progress timeline with dates, status & deliverables
+      4. `category_breakdown`: 1-panel or 2-panel ranked distribution horizontal bar chart
+      5. `member_comparison`: multi-dimensional grouped horizontal comparison across members
 
-Also synthesizes fact-grounded default visual specs whenever AI visual planning is unavailable
-or omitted, and renders crisp 2x Retina PNGs using Pillow with automatic CJK font discovery
-across Linux Docker (WenQuanYi Zen Hei / Noto Sans CJK) and macOS (Noto Sans CJK / PingFang / Heiti).
+Provides crisp 2.5x PNG rasterization (`~3000px` wide) via CairoSVG (using real `fonts-noto-cjk`
+Regular & Bold on Linux Docker) for PDF (ReportLab), Word (python-docx), and `.png` endpoints.
 """
 
 from __future__ import annotations
 
+import logging
+import math
 import os
 import re
-from functools import lru_cache
+import shutil
+import subprocess
+import unicodedata
 from io import BytesIO
-from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
+from xml.sax.saxutils import escape as xml_escape
 
-from PIL import Image, ImageDraw, ImageFont
+logger = logging.getLogger(__name__)
 
 # ── Public contracts & registries ─────────────────────────────────────────────
 
-VISUAL_TEMPLATES: frozenset[str] = frozenset(
+TEMPLATE_ONLY_VISUALS: frozenset[str] = frozenset(
     {
         "layered_architecture",
         "process_flow",
@@ -36,6 +45,8 @@ VISUAL_TEMPLATES: frozenset[str] = frozenset(
         "member_comparison",
     }
 )
+
+VISUAL_TEMPLATES: frozenset[str] = TEMPLATE_ONLY_VISUALS | {"custom_svg"}
 
 VALID_SECTION_KEYS: tuple[str, ...] = (
     "overview",
@@ -47,9 +58,18 @@ VALID_SECTION_KEYS: tuple[str, ...] = (
     "reflection",
 )
 
+SECTION_DEFAULT_TEMPLATE: dict[str, str] = {
+    "overview": "layered_architecture",
+    "workflow": "process_flow",
+    "progress": "milestone_timeline",
+    "collaboration": "category_breakdown",
+    "evidence": "category_breakdown",
+    "contribution": "member_comparison",
+    "reflection": "category_breakdown",
+}
+
 CHART_KEY_RE = re.compile(r"^[a-z0-9_-]{1,48}$")
 
-# Legacy / default fallback chart keys (also supported when rendering snapshots without visuals[])
 DEFAULT_CHART_SPECS: tuple[tuple[str, str, str, str], ...] = (
     ("architecture", "overview", "layered_architecture", "系统架构与模块分工总览图"),
     ("workflow", "workflow", "process_flow", "证据驱动的研发协作与验收流程图"),
@@ -75,30 +95,33 @@ _FEISHU_CATEGORY_ZH: dict[str, str] = {
     "blocker": "阻塞与待跟进事项",
 }
 
-# ── Academic-clean design tokens ──────────────────────────────────────────────
+# ── Modern Consulting / Technical Whitepaper Design Tokens ────────────────────
 
-CANVAS_WIDTH = 1400
-BG_WHITE = "#ffffff"
-BG_SUBTLE = "#f8fafc"
-BG_TRACK = "#f1f5f9"
-BORDER_LIGHT = "#e2e8f0"
-BORDER_MED = "#cbd5e1"
-TEXT_PRIMARY = "#0f172a"
+CANVAS_WIDTH = 1200
+PNG_RASTER_SCALE = 2.5
+SVG_FONT_STACK = "'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+
+BG_WHITE = "#FFFFFF"
+BG_SUBTLE = "#F8FAFC"
+BG_TRACK = "#F1F5F9"
+BORDER_LIGHT = "#E2E8F0"
+BORDER_MED = "#CBD5E1"
+TEXT_PRIMARY = "#0F172A"
 TEXT_SECONDARY = "#334155"
-TEXT_MUTED = "#64748b"
-TEXT_LIGHT = "#94a3b8"
+TEXT_MUTED = "#475569"
+TEXT_LIGHT = "#64748B"
 
 ACCENT_TOKENS: dict[str, dict[str, str]] = {
-    "sky": {"main": "#0284c7", "soft": "#e0f2fe", "border": "#bae6fd", "text": "#0369a1"},
-    "emerald": {"main": "#059669", "soft": "#d1fae5", "border": "#a7f3d0", "text": "#047857"},
-    "violet": {"main": "#7c3aed", "soft": "#ede9fe", "border": "#ddd6fe", "text": "#6d28d9"},
-    "amber": {"main": "#d97706", "soft": "#fef3c7", "border": "#fde68a", "text": "#b45309"},
-    "rose": {"main": "#e11d48", "soft": "#ffe4e6", "border": "#fecdd3", "text": "#be123c"},
-    "indigo": {"main": "#4f46e5", "soft": "#e0e7ff", "border": "#c7d2fe", "text": "#4338ca"},
-    "teal": {"main": "#0d9488", "soft": "#ccfbf1", "border": "#99f6e4", "text": "#0f766e"},
-    "slate": {"main": "#475569", "soft": "#f1f5f9", "border": "#cbd5e1", "text": "#334155"},
+    "sky": {"main": "#0284C7", "soft": "#E0F2FE", "border": "#BAE6FD", "text": "#0369A1"},
+    "emerald": {"main": "#059669", "soft": "#D1FAE5", "border": "#A7F3D0", "text": "#047857"},
+    "violet": {"main": "#7C3AED", "soft": "#EDE9FE", "border": "#DDD6FE", "text": "#6D28D9"},
+    "amber": {"main": "#D97706", "soft": "#FEF3C7", "border": "#FDE68A", "text": "#B45309"},
+    "rose": {"main": "#E11D48", "soft": "#FFE4E6", "border": "#FECDD3", "text": "#BE123C"},
+    "indigo": {"main": "#4F46E5", "soft": "#E0E7FF", "border": "#C7D2FE", "text": "#4338CA"},
+    "teal": {"main": "#0D9488", "soft": "#CCFBF1", "border": "#99F6E4", "text": "#0F766E"},
+    "slate": {"main": "#475569", "soft": "#F1F5F9", "border": "#CBD5E1", "text": "#334155"},
 }
-ACCENT_CYCLE: tuple[str, ...] = ("sky", "emerald", "violet", "amber", "indigo", "teal", "rose")
+ACCENT_CYCLE: tuple[str, ...] = ("sky", "emerald", "indigo", "violet", "amber", "teal", "rose")
 
 
 def _accent(name: str | None, fallback_idx: int = 0) -> dict[str, str]:
@@ -106,330 +129,6 @@ def _accent(name: str | None, fallback_idx: int = 0) -> dict[str, str]:
     if key in ACCENT_TOKENS:
         return ACCENT_TOKENS[key]
     return ACCENT_TOKENS[ACCENT_CYCLE[fallback_idx % len(ACCENT_CYCLE)]]
-
-
-# ── Automatic CJK Font Discovery ──────────────────────────────────────────────
-
-_REGULAR_FONT_CANDIDATES: tuple[tuple[str, int], ...] = (
-    # Linux Railway Docker (WenQuanYi Zen Hei & Noto Sans CJK)
-    ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 0),
-    ("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 0),
-    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 2),
-    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
-    ("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf", 0),
-    ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 0),
-    ("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", 0),
-    ("/usr/share/fonts/truetype/arphic/uming.ttc", 0),
-    # macOS local dev / CI
-    ("/Library/Fonts/NotoSansCJKsc-Regular.otf", 0),
-    ("/System/Library/Fonts/PingFang.ttc", 0),
-    ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
-    ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
-    ("/System/Library/Fonts/STHeiti Light.ttc", 0),
-    ("/System/Library/Fonts/Supplemental/Songti.ttc", 0),
-    ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
-)
-
-_BOLD_FONT_CANDIDATES: tuple[tuple[str, int], ...] = (
-    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 2),
-    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0),
-    ("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf", 0),
-    ("/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc", 0),
-    ("/Library/Fonts/NotoSansCJKsc-Bold.otf", 0),
-    ("/System/Library/Fonts/PingFang.ttc", 2),
-    ("/System/Library/Fonts/Hiragino Sans GB.ttc", 1),
-    ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
-)
-
-
-@lru_cache(maxsize=2)
-def _discover_cjk_font(bold: bool = False) -> tuple[str | None, int]:
-    env_override = os.getenv("REPORT_CJK_FONT_PATH", "").strip()
-    if env_override and Path(env_override).is_file():
-        return env_override, 0
-
-    candidates = (
-        (*_BOLD_FONT_CANDIDATES, *_REGULAR_FONT_CANDIDATES) if bold else _REGULAR_FONT_CANDIDATES
-    )
-    for path_str, index in candidates:
-        if Path(path_str).is_file():
-            try:
-                ImageFont.truetype(path_str, size=20, index=index)
-                return path_str, index
-            except OSError:
-                continue
-
-    # Dynamic fallback scan on Linux font directories
-    for root in (Path("/usr/share/fonts"), Path("/usr/local/share/fonts")):
-        if not root.is_dir():
-            continue
-        for ext in ("*.ttc", "*.otf", "*.ttf"):
-            for found in sorted(root.rglob(ext)):
-                low = found.name.lower()
-                if any(tok in low for tok in ("cjk", "wqy", "zenhei", "microhei", "han", "hei")):
-                    try:
-                        ImageFont.truetype(str(found), size=20, index=0)
-                        return str(found), 0
-                    except OSError:
-                        continue
-    return None, 0
-
-
-@lru_cache(maxsize=48)
-def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    path_str, index = _discover_cjk_font(bold=bold)
-    if path_str is not None:
-        try:
-            return ImageFont.truetype(path_str, size=size, index=index)
-        except OSError:
-            pass
-    try:
-        return ImageFont.load_default(size=size)
-    except TypeError:
-        return ImageFont.load_default()
-
-
-def _needs_fake_bold() -> bool:
-    reg = _discover_cjk_font(bold=False)
-    bld = _discover_cjk_font(bold=True)
-    return reg[0] is not None and reg == bld
-
-
-# ── Low-level drawing helpers ─────────────────────────────────────────────────
-
-
-def _text_width(font: Any, text: str) -> float:
-    try:
-        return float(font.getlength(text))
-    except Exception:
-        bbox = font.getbbox(text)
-        return float(bbox[2] - bbox[0]) if bbox else float(len(text) * 12)
-
-
-def _truncate(text: str, font: Any, max_width: float) -> str:
-    clean = " ".join(str(text or "").split())
-    if not clean or _text_width(font, clean) <= max_width:
-        return clean
-    ellipsis = "…"
-    budget = max_width - _text_width(font, ellipsis)
-    if budget <= 0:
-        return ellipsis
-    lo, hi = 0, len(clean)
-    while lo < hi:
-        mid = (lo + hi + 1) // 2
-        if _text_width(font, clean[:mid]) <= budget:
-            lo = mid
-        else:
-            hi = mid - 1
-    return clean[:lo].rstrip() + ellipsis
-
-
-def _wrap_lines(text: str, font: Any, max_width: float, max_lines: int = 2) -> list[str]:
-    clean = " ".join(str(text or "").split())
-    if not clean:
-        return []
-    lines: list[str] = []
-    remaining = clean
-    while remaining and len(lines) < max_lines:
-        if _text_width(font, remaining) <= max_width:
-            lines.append(remaining)
-            remaining = ""
-            break
-        if len(lines) == max_lines - 1:
-            lines.append(_truncate(remaining, font, max_width))
-            remaining = ""
-            break
-        lo, hi = 1, len(remaining)
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if _text_width(font, remaining[:mid]) <= max_width:
-                lo = mid
-            else:
-                hi = mid - 1
-        split_at = lo
-        # Avoid splitting an ASCII word/token right in the middle (e.g., "P" / "R")
-        if (
-            split_at < len(remaining)
-            and remaining[split_at - 1].isascii()
-            and remaining[split_at - 1].isalnum()
-            and remaining[split_at].isascii()
-            and remaining[split_at].isalnum()
-        ):
-            back = split_at
-            while back > 1 and remaining[back - 1].isascii() and remaining[back - 1].isalnum():
-                back -= 1
-            if back > 1:
-                split_at = back
-        lines.append(remaining[:split_at].rstrip())
-        remaining = remaining[split_at:].lstrip()
-    return lines
-
-
-def _draw_text(
-    draw: ImageDraw.ImageDraw,
-    xy: tuple[float, float],
-    text: str,
-    *,
-    font: Any,
-    fill: str,
-    bold: bool = False,
-    anchor: str | None = None,
-) -> None:
-    kwargs: dict[str, Any] = {"font": font, "fill": fill}
-    if anchor:
-        kwargs["anchor"] = anchor
-    if bold and _needs_fake_bold():
-        kwargs["stroke_width"] = 1
-        kwargs["stroke_fill"] = fill
-    draw.text(xy, str(text), **kwargs)
-
-
-def _draw_pill(
-    draw: ImageDraw.ImageDraw,
-    x: float,
-    y: float,
-    text: str,
-    *,
-    font: Any,
-    bg: str,
-    border: str,
-    fg: str,
-    pad_x: int = 12,
-    height: int = 28,
-    max_width: float | None = None,
-) -> float:
-    label = _truncate(text, font, (max_width - pad_x * 2) if max_width else 600)
-    w = _text_width(font, label) + pad_x * 2
-    draw.rounded_rectangle(
-        [x, y, x + w, y + height],
-        radius=height // 2,
-        fill=bg,
-        outline=border,
-        width=1,
-    )
-    _draw_text(draw, (x + w / 2, y + height / 2), label, font=font, fill=fg, anchor="mm")
-    return w
-
-
-def _draw_down_arrow(
-    draw: ImageDraw.ImageDraw, cx: float, y1: float, y2: float, color: str = "#94a3b8"
-) -> None:
-    draw.line([(cx, y1), (cx, y2 - 7)], fill=color, width=3)
-    draw.polygon([(cx - 7, y2 - 9), (cx + 7, y2 - 9), (cx, y2)], fill=color)
-
-
-def _draw_right_arrow(
-    draw: ImageDraw.ImageDraw, x1: float, x2: float, cy: float, color: str = "#64748b"
-) -> None:
-    draw.line([(x1, cy), (x2 - 8, cy)], fill=color, width=3)
-    draw.polygon([(x2 - 10, cy - 7), (x2 - 10, cy + 7), (x2, cy)], fill=color)
-
-
-def _create_canvas(
-    width: int,
-    height: int,
-    *,
-    tag: str,
-    title: str,
-    subtitle: str,
-    right_badge: str = "",
-) -> tuple[Image.Image, ImageDraw.ImageDraw, int]:
-    img = Image.new("RGB", (width, height), BG_WHITE)
-    draw = ImageDraw.ImageDraw(img)
-
-    # Outer editorial frame
-    draw.rounded_rectangle(
-        [1, 1, width - 2, height - 2],
-        radius=18,
-        fill=BG_WHITE,
-        outline=BORDER_LIGHT,
-        width=2,
-    )
-    # Top subtle accent bar
-    draw.rounded_rectangle([32, 22, 40, 74], radius=4, fill="#0284c7")
-
-    f_tag = _get_font(15, bold=True)
-    f_title = _get_font(26, bold=True)
-    f_sub = _get_font(16, bold=False)
-    f_badge = _get_font(15, bold=False)
-
-    tag_w = _draw_pill(
-        draw,
-        54,
-        22,
-        tag,
-        font=f_tag,
-        bg="#e0f2fe",
-        border="#bae6fd",
-        fg="#0369a1",
-        pad_x=11,
-        height=24,
-    )
-    if subtitle:
-        sub_x = 54 + tag_w + 12
-        max_sub_w = width - sub_x - (280 if right_badge else 44)
-        _draw_text(
-            draw,
-            (sub_x, 34),
-            _truncate(subtitle, f_sub, max(120, max_sub_w)),
-            font=f_sub,
-            fill=TEXT_MUTED,
-            anchor="lm",
-        )
-
-    title_max_w = width - 54 - (280 if right_badge else 44)
-    _draw_text(
-        draw,
-        (54, 51),
-        _truncate(title, f_title, max(240, title_max_w)),
-        font=f_title,
-        fill=TEXT_PRIMARY,
-        bold=True,
-    )
-
-    if right_badge:
-        badge_text = _truncate(right_badge, f_badge, 240)
-        bw = _text_width(f_badge, badge_text) + 24
-        _draw_pill(
-            draw,
-            width - 36 - bw,
-            34,
-            badge_text,
-            font=f_badge,
-            bg=BG_SUBTLE,
-            border=BORDER_LIGHT,
-            fg=TEXT_SECONDARY,
-            pad_x=12,
-            height=30,
-        )
-
-    draw.line([(32, 92), (width - 32, 92)], fill=BORDER_LIGHT, width=2)
-    return img, draw, 108
-
-
-def _draw_footer(
-    draw: ImageDraw.ImageDraw, width: int, height: int, text: str | None = None
-) -> None:
-    f_foot = _get_font(14, bold=False)
-    draw.line([(32, height - 42), (width - 32, height - 42)], fill=BORDER_LIGHT, width=1)
-    footer_text = (
-        text
-        or "数据来源：GroupProof 实时工程事实快照（需求基线 · 任务分工 · GitHub 仓库 · 飞书协作 · 正式证据）"
-    )
-    _draw_text(
-        draw,
-        (36, height - 22),
-        _truncate(footer_text, f_foot, width - 72),
-        font=f_foot,
-        fill=TEXT_LIGHT,
-        anchor="lm",
-    )
-
-
-def _to_png_bytes(img: Image.Image) -> bytes:
-    buf = BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
 
 
 def _safe_num(val: Any, default: float = 0.0) -> float:
@@ -446,31 +145,575 @@ def _safe_int(val: Any, default: int = 0) -> int:
         return default
 
 
-# ── Template 1: Layered Architecture ──────────────────────────────────────────
+def _esc(val: Any) -> str:
+    return xml_escape(str(val or ""), {'"': "&quot;", "'": "&apos;"})
 
 
-def _render_layered_architecture(spec: dict[str, Any], facts: dict[str, Any]) -> bytes:
+# ── Strict Custom SVG Security Sanitizer & Validator ──────────────────────────
+
+_MAX_CUSTOM_SVG_BYTES = 140_000
+_SVG_NS = "http://www.w3.org/2000/svg"
+_ALLOWED_SVG_TAGS: frozenset[str] = frozenset(
+    {
+        "svg",
+        "g",
+        "defs",
+        "title",
+        "desc",
+        "rect",
+        "circle",
+        "ellipse",
+        "line",
+        "polyline",
+        "polygon",
+        "path",
+        "text",
+        "tspan",
+        "lineargradient",
+        "radialgradient",
+        "stop",
+        "marker",
+        "clippath",
+        "filter",
+        "fedropshadow",
+        "fegaussianblur",
+        "feoffset",
+        "fecomponenttransfer",
+        "fefunca",
+        "femerge",
+        "femergenode",
+        "pattern",
+    }
+)
+_DRAWABLE_SVG_TAGS: frozenset[str] = frozenset(
+    {"rect", "circle", "ellipse", "line", "polyline", "polygon", "path", "text"}
+)
+_ALLOWED_SVG_ATTRS: frozenset[str] = frozenset(
+    {
+        "id",
+        "role",
+        "aria-label",
+        "viewbox",
+        "width",
+        "height",
+        "preserveaspectratio",
+        "x",
+        "y",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "cx",
+        "cy",
+        "r",
+        "rx",
+        "ry",
+        "dx",
+        "dy",
+        "d",
+        "points",
+        "fill",
+        "fill-opacity",
+        "fill-rule",
+        "stroke",
+        "stroke-width",
+        "stroke-dasharray",
+        "stroke-dashoffset",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "stroke-opacity",
+        "opacity",
+        "transform",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "font-style",
+        "text-anchor",
+        "dominant-baseline",
+        "alignment-baseline",
+        "letter-spacing",
+        "text-decoration",
+        "offset",
+        "stop-color",
+        "stop-opacity",
+        "gradientunits",
+        "gradienttransform",
+        "markerwidth",
+        "markerheight",
+        "markerunits",
+        "refx",
+        "refy",
+        "orient",
+        "marker-end",
+        "marker-start",
+        "marker-mid",
+        "clip-path",
+        "clip-rule",
+        "filter",
+        "stddeviation",
+        "flood-color",
+        "flood-opacity",
+        "in",
+        "in2",
+        "result",
+        "type",
+        "slope",
+        "patternunits",
+        "xml:space",
+    }
+)
+# Canonical camelCase tag names for SVG serialization
+_CANONICAL_TAG_MAP: dict[str, str] = {
+    "lineargradient": "linearGradient",
+    "radialgradient": "radialGradient",
+    "clippath": "clipPath",
+    "fedropshadow": "feDropShadow",
+    "fegaussianblur": "feGaussianBlur",
+    "feoffset": "feOffset",
+    "fecomponenttransfer": "feComponentTransfer",
+    "fefunca": "feFuncA",
+    "femerge": "feMerge",
+    "femergenode": "feMergeNode",
+}
+_CANONICAL_ATTR_MAP: dict[str, str] = {
+    "viewbox": "viewBox",
+    "preserveaspectratio": "preserveAspectRatio",
+    "gradientunits": "gradientUnits",
+    "gradienttransform": "gradientTransform",
+    "markerwidth": "markerWidth",
+    "markerheight": "markerHeight",
+    "markerunits": "markerUnits",
+    "refx": "refX",
+    "refy": "refY",
+    "stddeviation": "stdDeviation",
+    "patternunits": "patternUnits",
+}
+
+_FORBIDDEN_SVG_SUBSTR_RE = re.compile(
+    r"<!(?:doctype|entity)|javascript\s*:|vbscript\s*:|data\s*:|expression\s*\(",
+    re.IGNORECASE,
+)
+_EXTERNAL_URL_RE = re.compile(r"(?:https?:|ftp:|file:|//)", re.IGNORECASE)
+_LOCAL_URL_REF_RE = re.compile(r"^url\(\s*#[-a-zA-Z0-9_]+\s*\)$")
+_URL_CALL_RE = re.compile(r"url\s*\(", re.IGNORECASE)
+
+
+def _local_name(tag_or_attr: str) -> str:
+    if tag_or_attr.startswith("{"):
+        return tag_or_attr.split("}", 1)[1]
+    return tag_or_attr
+
+
+def _parse_viewbox(raw_vb: str) -> tuple[float, float, float, float] | None:
+    parts = re.split(r"[\s,]+", (raw_vb or "").strip())
+    if len(parts) != 4:
+        return None
+    try:
+        vals = tuple(float(p) for p in parts)
+    except ValueError:
+        return None
+    if any(not math.isfinite(v) for v in vals):
+        return None
+    _vx, _vy, vw, vh = vals
+    if not (400.0 <= vw <= 2400.0 and 200.0 <= vh <= 2400.0):
+        return None
+    return vals  # type: ignore[return-value]
+
+
+def sanitize_custom_svg(raw_svg: Any) -> str | None:
+    """Strictly validate and sanitize an AI-authored `<svg>` string.
+
+    Fail-closed security rules:
+      - Rejects DOCTYPE/ENTITY (XXE), malformed XML, non-`<svg>` root, or oversized input.
+      - Enforces strict tag whitelist (rejects `<script>`, `<foreignObject>`, `<image>`, `<a>`,
+        `<style>`, `<use>`, `<iframe>`, `<animate*>`, etc.).
+      - Rejects all `on*` event handlers, `href`/`xlink:href`, `javascript:`/`data:` URIs,
+        and any external `http(s)://` or `//` URLs (including inside `url(...)`).
+      - Requires a valid readable `viewBox` (`400..2400` x `200..2400`) and >= 3 vector shapes.
+    """
+    if not isinstance(raw_svg, str):
+        return None
+    text = raw_svg.strip()
+    if not text or len(text.encode("utf-8")) > _MAX_CUSTOM_SVG_BYTES:
+        return None
+    # Strip optional markdown code fences if the LLM wrapped the SVG
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:svg|xml)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text).strip()
+    if _FORBIDDEN_SVG_SUBSTR_RE.search(text):
+        return None
+
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+
+    if _local_name(root.tag).lower() != "svg":
+        return None
+
+    vb_raw = ""
+    for k, v in root.attrib.items():
+        if _local_name(k).lower() == "viewbox":
+            vb_raw = v
+            break
+    parsed_vb = _parse_viewbox(vb_raw)
+    if parsed_vb is None:
+        return None
+    vx, vy, vw, vh = parsed_vb
+
+    drawable_count = 0
+
+    def _clean_elem(el: ET.Element) -> ET.Element | None:
+        nonlocal drawable_count
+        lname = _local_name(el.tag).lower()
+        if lname not in _ALLOWED_SVG_TAGS:
+            return None
+        if lname in _DRAWABLE_SVG_TAGS:
+            drawable_count += 1
+
+        clean_tag = _CANONICAL_TAG_MAP.get(lname, lname)
+        clean_attrs: dict[str, str] = {}
+        for attr_k, attr_v in el.attrib.items():
+            # Preserve standard XML space attribute if present
+            if attr_k == "{http://www.w3.org/XML/1998/namespace}space":
+                alow = "xml:space"
+            else:
+                alow = _local_name(attr_k).lower()
+
+            # Reject any event handler or external reference attribute immediately
+            if alow.startswith("on") or alow in {"href", "src", "style"}:
+                return None
+            if alow not in _ALLOWED_SVG_ATTRS:
+                # Drop harmless unknown metadata attrs only if safe; reject suspicious values
+                if _FORBIDDEN_SVG_SUBSTR_RE.search(attr_v) or _EXTERNAL_URL_RE.search(attr_v):
+                    return None
+                continue
+
+            val = str(attr_v).strip()
+            if _FORBIDDEN_SVG_SUBSTR_RE.search(val):
+                return None
+            if _EXTERNAL_URL_RE.search(val):
+                return None
+            if _URL_CALL_RE.search(val) and not _LOCAL_URL_REF_RE.match(val):
+                return None
+
+            canonical_k = _CANONICAL_ATTR_MAP.get(alow, alow)
+            clean_attrs[canonical_k] = val
+
+        new_el = ET.Element(clean_tag, clean_attrs)
+        new_el.text = el.text
+        new_el.tail = el.tail
+        for child in list(el):
+            cleaned_child = _clean_elem(child)
+            if cleaned_child is None:
+                return None
+            new_el.append(cleaned_child)
+        return new_el
+
+    cleaned_root = _clean_elem(root)
+    if cleaned_root is None or drawable_count < 3:
+        return None
+
+    # Normalize root SVG attributes for reliable browser & CairoSVG rendering
+    vb_str = f"{vx:g} {vy:g} {vw:g} {vh:g}"
+    cleaned_root.set("xmlns", _SVG_NS)
+    cleaned_root.set("viewBox", vb_str)
+    cleaned_root.set("width", f"{vw:g}")
+    cleaned_root.set("height", f"{vh:g}")
+    cleaned_root.set("role", "img")
+    return ET.tostring(cleaned_root, encoding="unicode")
+
+
+# ── CJK-Aware Vector Text Measurement & Multi-Line Wrapping (Zero Truncation) ─
+
+
+def _char_width_factor(ch: str) -> float:
+    if ch.isspace():
+        return 0.30
+    if ch in "iIl1.,:;|!'`·":
+        return 0.32
+    if ch in "()-[]/\\-—–":
+        return 0.42
+    ea = unicodedata.east_asian_width(ch)
+    if ea in ("W", "F"):
+        return 1.02
+    if ch.isupper():
+        return 0.66
+    return 0.56
+
+
+def _estimate_text_width(text: str, font_size: float) -> float:
+    return sum(_char_width_factor(ch) for ch in str(text or "")) * font_size
+
+
+def _wrap_svg_lines(
+    text: str, font_size: float, max_width: float, *, max_lines: int = 8
+) -> list[str]:
+    """Wrap CJK + ASCII text into lines that fit inside `max_width` with ZERO truncation."""
+    clean = " ".join(str(text or "").split())
+    if not clean:
+        return []
+    safe_w = max(font_size * 2.2, max_width * 0.94)
+    if _estimate_text_width(clean, font_size) <= safe_w:
+        return [clean]
+
+    lines: list[str] = []
+    remaining = clean
+    while remaining:
+        if _estimate_text_width(remaining, font_size) <= safe_w or len(lines) >= max_lines - 1:
+            # Even at max_lines, keep breaking only if it would wildly overflow; never use "…"
+            if _estimate_text_width(remaining, font_size) <= safe_w:
+                lines.append(remaining)
+                break
+        acc = 0.0
+        split_at = 0
+        for idx, ch in enumerate(remaining):
+            w = _char_width_factor(ch) * font_size
+            if acc + w > safe_w and idx > 0:
+                split_at = idx
+                break
+            acc += w
+        else:
+            lines.append(remaining)
+            break
+
+        # Avoid splitting an ASCII word/number in the middle
+        if (
+            0 < split_at < len(remaining)
+            and remaining[split_at - 1].isascii()
+            and remaining[split_at - 1].isalnum()
+            and remaining[split_at].isascii()
+            and remaining[split_at].isalnum()
+        ):
+            back = split_at
+            while back > 1 and remaining[back - 1].isascii() and remaining[back - 1].isalnum():
+                back -= 1
+            if back > 1:
+                split_at = back
+
+        # Avoid starting the next line with Chinese/ASCII closing punctuation
+        if split_at < len(remaining) and remaining[split_at] in "，。、；：）)】》,.;:)]":
+            if split_at + 1 < len(remaining):
+                split_at += 1
+
+        chunk = remaining[:split_at].rstrip()
+        if not chunk:
+            chunk = remaining[:1]
+            split_at = 1
+        lines.append(chunk)
+        remaining = remaining[split_at:].lstrip()
+
+    return lines
+
+
+def _svg_multiline_text(
+    x: float,
+    y: float,
+    lines: list[str],
+    *,
+    font_size: float,
+    line_height: float,
+    fill: str,
+    weight: str = "400",
+    anchor: str = "start",
+) -> str:
+    if not lines:
+        return ""
+    tspans: list[str] = []
+    for idx, line in enumerate(lines):
+        if idx == 0:
+            tspans.append(f'<tspan x="{x:.1f}" dy="0">{_esc(line)}</tspan>')
+        else:
+            tspans.append(f'<tspan x="{x:.1f}" dy="{line_height:.1f}">{_esc(line)}</tspan>')
+    return (
+        f'<text x="{x:.1f}" y="{y:.1f}" font-family="{SVG_FONT_STACK}" '
+        f'font-size="{font_size:g}" font-weight="{weight}" fill="{fill}" '
+        f'text-anchor="{anchor}">{"".join(tspans)}</text>'
+    )
+
+
+def _svg_text(
+    x: float,
+    y: float,
+    text: str,
+    *,
+    font_size: float,
+    fill: str,
+    weight: str = "400",
+    anchor: str = "start",
+    baseline: str | None = None,
+) -> str:
+    base_attr = f' dominant-baseline="{baseline}"' if baseline else ""
+    return (
+        f'<text x="{x:.1f}" y="{y:.1f}" font-family="{SVG_FONT_STACK}" '
+        f'font-size="{font_size:g}" font-weight="{weight}" fill="{fill}" '
+        f'text-anchor="{anchor}"{base_attr}>{_esc(text)}</text>'
+    )
+
+
+def _svg_pill(
+    x: float,
+    y: float,
+    text: str,
+    *,
+    font_size: float = 13.0,
+    bg: str,
+    border: str,
+    fg: str,
+    weight: str = "600",
+    pad_x: float = 12.0,
+    height: float = 26.0,
+) -> tuple[str, float]:
+    w = max(height + 12.0, _estimate_text_width(text, font_size) + pad_x * 2)
+    r = height / 2.0
+    svg = (
+        f"<g>"
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{height:.1f}" '
+        f'rx="{r:.1f}" fill="{bg}" stroke="{border}" stroke-width="1"/>'
+        f"{_svg_text(x + w / 2.0, y + height / 2.0 + font_size * 0.35, text, font_size=font_size, fill=fg, weight=weight, anchor='middle')}"
+        f"</g>"
+    )
+    return svg, w
+
+
+def _svg_defs() -> str:
+    return (
+        "<defs>"
+        '<filter id="cardShadow" x="-4%" y="-6%" width="108%" height="118%">'
+        '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.05"/>'
+        "</filter>"
+        '<marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" '
+        'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+        '<path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#64748B"/>'
+        "</marker>"
+        '<marker id="arrowSky" viewBox="0 0 10 10" refX="8" refY="5" '
+        'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+        '<path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#0284C7"/>'
+        "</marker>"
+        "</defs>"
+    )
+
+
+def _svg_header_and_frame(
+    *,
+    width: int,
+    tag: str,
+    title: str,
+    subtitle: str,
+    right_badge: str = "",
+) -> tuple[list[str], float]:
+    """Build top editorial header block and return `(svg_parts, content_start_y)`."""
+    parts: list[str] = []
+    badge_svg = ""
+    badge_w = 0.0
+    if right_badge:
+        badge_w = _estimate_text_width(right_badge, 13.0) + 28.0
+        badge_svg, badge_w = _svg_pill(
+            width - 36.0 - badge_w,
+            34.0,
+            right_badge,
+            font_size=13.0,
+            bg=BG_SUBTLE,
+            border=BORDER_LIGHT,
+            fg=TEXT_SECONDARY,
+            weight="600",
+            pad_x=14.0,
+            height=30.0,
+        )
+
+    tag_svg, tag_w = _svg_pill(
+        52.0,
+        24.0,
+        tag,
+        font_size=13.0,
+        bg="#E0F2FE",
+        border="#BAE6FD",
+        fg="#0369A1",
+        weight="700",
+        pad_x=12.0,
+        height=24.0,
+    )
+
+    title_max_w = width - 52.0 - (badge_w + 56.0 if right_badge else 40.0)
+    title_lines = _wrap_svg_lines(title, 22.0, title_max_w, max_lines=2)
+    title_block_h = max(1, len(title_lines)) * 30.0
+
+    sub_x = 52.0 + tag_w + 12.0
+    sub_max_w = width - sub_x - (badge_w + 56.0 if right_badge else 40.0)
+    sub_lines = (
+        _wrap_svg_lines(subtitle, 13.5, max(200.0, sub_max_w), max_lines=1) if subtitle else []
+    )
+
+    header_bottom = 58.0 + title_block_h + 14.0
+    # Left vertical accent pill
+    parts.append(
+        f'<rect x="34" y="24" width="6" height="{header_bottom - 38:.1f}" rx="3" fill="#0284C7"/>'
+    )
+    parts.append(tag_svg)
+    if sub_lines:
+        parts.append(
+            _svg_text(sub_x, 40.5, sub_lines[0], font_size=13.5, fill=TEXT_MUTED, weight="400")
+        )
+    parts.append(
+        _svg_multiline_text(
+            52.0,
+            74.0,
+            title_lines,
+            font_size=22.0,
+            line_height=30.0,
+            fill=TEXT_PRIMARY,
+            weight="700",
+        )
+    )
+    if badge_svg:
+        parts.append(badge_svg)
+    parts.append(
+        f'<line x1="34" y1="{header_bottom:.1f}" x2="{width - 34}" y2="{header_bottom:.1f}" '
+        f'stroke="{BORDER_LIGHT}" stroke-width="1.5"/>'
+    )
+    return parts, header_bottom + 20.0
+
+
+def _wrap_svg_document(
+    width: int, height: float, body_parts: list[str], *, footer_text: str | None = None
+) -> str:
+    total_h = int(math.ceil(height + 48.0))
+    foot = (
+        footer_text
+        or "数据来源：GroupProof 实时工程事实快照（需求基线 · 任务分工 · GitHub 仓库 · 飞书协作 · 正式证据与成果）"
+    )
+    footer_y = total_h - 42
+    parts = [
+        f'<svg xmlns="{_SVG_NS}" viewBox="0 0 {width} {total_h}" '
+        f'width="{width}" height="{total_h}" role="img">',
+        _svg_defs(),
+        f'<rect x="1" y="1" width="{width - 2}" height="{total_h - 2}" rx="16" '
+        f'fill="{BG_WHITE}" stroke="{BORDER_LIGHT}" stroke-width="1.5"/>',
+        *body_parts,
+        f'<line x1="34" y1="{footer_y}" x2="{width - 34}" y2="{footer_y}" '
+        f'stroke="{BORDER_LIGHT}" stroke-width="1"/>',
+        _svg_text(
+            36.0,
+            footer_y + 24.0,
+            foot,
+            font_size=12.0,
+            fill=TEXT_LIGHT,
+            weight="400",
+        ),
+        "</svg>",
+    ]
+    return "".join(parts)
+
+
+# ── Template 1: Layered Architecture (Pure Vector SVG, Zero Truncation) ──────
+
+
+def _render_layered_architecture_svg(spec: dict[str, Any], facts: dict[str, Any]) -> str:
     payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
     layers = payload.get("layers") if isinstance(payload.get("layers"), list) else []
     if not layers:
         layers = _default_architecture_payload(facts)["layers"]
     layers = [ly for ly in layers if isinstance(ly, dict)][:4]
-
-    # Dynamic height based on layer count and whether any layer wraps to 2 rows of nodes
-    layer_heights: list[int] = []
-    for idx, ly in enumerate(layers):
-        nodes = [n for n in (ly.get("nodes") or []) if isinstance(n, dict)][:8]
-        has_rich = any(n.get("progress") is not None or n.get("metric") for n in nodes)
-        if len(nodes) > 5:
-            layer_heights.append(260 if has_rich else 210)
-        elif has_rich:
-            layer_heights.append(186)
-        else:
-            layer_heights.append(122 if idx == 0 else 136)
-
-    gap = 34
-    total_content_h = sum(layer_heights) + gap * max(0, len(layers) - 1)
-    height = max(560, 108 + total_content_h + 62)
 
     proj = facts.get("project") if isinstance(facts.get("project"), dict) else {}
     counts = facts.get("counts") if isinstance(facts.get("counts"), dict) else {}
@@ -479,166 +722,241 @@ def _render_layered_architecture(spec: dict[str, Any], facts: dict[str, Any]) ->
         f"{counts.get('tasks', 0)} 任务 · {counts.get('members', 0)} 成员"
     )
 
-    img, draw, cursor_y = _create_canvas(
-        CANVAS_WIDTH,
-        height,
+    body, cursor_y = _svg_header_and_frame(
+        width=CANVAS_WIDTH,
         tag=str(spec.get("badge") or "系统架构"),
         title=str(spec.get("title") or "系统架构与模块分工总览图"),
         subtitle=str(spec.get("subtitle") or proj.get("name") or ""),
         right_badge=right_badge,
     )
 
-    f_layer = _get_font(17, bold=True)
-    f_node_title = _get_font(17, bold=True)
-    f_node_sub = _get_font(14, bold=False)
-    f_metric = _get_font(14, bold=True)
-
-    pad_x = 36
+    pad_x = 34.0
     inner_w = CANVAS_WIDTH - pad_x * 2
+    layer_gap = 34.0
 
     for l_idx, ly in enumerate(layers):
-        lh = layer_heights[l_idx]
         acc = _accent(ly.get("accent"), l_idx)
-        y1 = cursor_y
-        y2 = y1 + lh
-
-        # Layer container
-        draw.rounded_rectangle(
-            [pad_x, y1, CANVAS_WIDTH - pad_x, y2],
-            radius=14,
-            fill=BG_SUBTLE if l_idx % 2 == 1 else "#ffffff",
-            outline=acc["border"] if l_idx == 0 else BORDER_MED,
-            width=2,
-        )
-        # Left vertical strip
-        draw.rounded_rectangle([pad_x, y1, pad_x + 8, y2], radius=4, fill=acc["main"])
-
-        layer_name = str(ly.get("name") or f"层级 {l_idx + 1}")
-        _draw_text(
-            draw,
-            (pad_x + 22, y1 + 14),
-            _truncate(layer_name, f_layer, inner_w - 40),
-            font=f_layer,
-            fill=acc["text"],
-            bold=True,
-        )
-
         nodes = [n for n in (ly.get("nodes") or []) if isinstance(n, dict)][:8]
         if not nodes:
-            nodes = [{"title": layer_name, "subtitle": "核心组件"}]
+            nodes = [{"title": str(ly.get("name") or "核心组件"), "subtitle": "核心服务"}]
 
-        cols = min(len(nodes), 5 if len(nodes) <= 5 else 4)
+        # Max 4 columns so long Chinese module titles breathe without truncation
+        cols = min(len(nodes), 4)
+        if len(nodes) == 5:
+            cols = 3  # 3 + 2 balanced rows instead of 5 cramped skinny boxes
         rows = (len(nodes) + cols - 1) // cols
-        card_gap_x = 14
-        card_gap_y = 12
-        grid_x = pad_x + 22
-        grid_y = y1 + 44
-        grid_w = inner_w - 40
-        grid_h = lh - 56
+
+        card_gap_x = 14.0
+        card_gap_y = 14.0
+        grid_x = pad_x + 22.0
+        grid_w = inner_w - 38.0
         card_w = (grid_w - card_gap_x * (cols - 1)) / max(1, cols)
-        card_h = (grid_h - card_gap_y * (rows - 1)) / max(1, rows)
 
+        # Pre-measure every node's wrapped lines to compute exact non-truncating row heights
+        measured_nodes: list[dict[str, Any]] = []
+        row_heights: list[float] = [0.0] * rows
         for n_idx, node in enumerate(nodes):
-            r = n_idx // cols
-            c = n_idx % cols
-            n_acc = _accent(
-                node.get("accent")
-                or (
-                    ACCENT_CYCLE[n_idx % 4]
-                    if rows == 1 and cols <= 4 and l_idx == 1
-                    else ly.get("accent")
-                ),
-                l_idx + n_idx,
+            title_lines = _wrap_svg_lines(
+                str(node.get("title") or f"模块 {n_idx + 1}"), 15.0, card_w - 28.0, max_lines=4
             )
-            cx1 = grid_x + c * (card_w + card_gap_x)
-            cy1 = grid_y + r * (card_h + card_gap_y)
-            cx2 = cx1 + card_w
-            cy2 = cy1 + card_h
-
-            draw.rounded_rectangle(
-                [cx1, cy1, cx2, cy2],
-                radius=10,
-                fill=BG_WHITE,
-                outline=BORDER_LIGHT,
-                width=2,
+            sub_str = str(node.get("subtitle") or "")
+            sub_lines = (
+                _wrap_svg_lines(sub_str, 13.0, card_w - 28.0, max_lines=4) if sub_str else []
             )
-            draw.rounded_rectangle(
-                [cx1 + 1, cy1 + 1, cx2 - 1, cy1 + 6], radius=3, fill=n_acc["main"]
-            )
-
-            ntitle = str(node.get("title") or "模块")
-            _draw_text(
-                draw,
-                (cx1 + 14, cy1 + 15),
-                _truncate(ntitle, f_node_title, card_w - 28),
-                font=f_node_title,
-                fill=TEXT_PRIMARY,
-                bold=True,
-            )
-
-            nsub = str(node.get("subtitle") or "")
-            if nsub:
-                lines = _wrap_lines(
-                    nsub, f_node_sub, card_w - 28, max_lines=2 if card_h >= 100 else 1
-                )
-                for line_i, line_txt in enumerate(lines):
-                    _draw_text(
-                        draw,
-                        (cx1 + 14, cy1 + 42 + line_i * 20),
-                        line_txt,
-                        font=f_node_sub,
-                        fill=TEXT_MUTED,
-                    )
-
-            metric = str(node.get("metric") or "")
+            metric_str = str(node.get("metric") or "")
             progress = node.get("progress")
-            if progress is not None and card_h >= 105:
-                pct = max(0, min(100, _safe_int(progress)))
-                bar_y = cy2 - 22
-                bar_x1 = cx1 + 14
-                bar_x2 = cx2 - 14
-                if metric:
-                    _draw_text(
-                        draw,
-                        (bar_x1, bar_y - 22),
-                        _truncate(metric, f_metric, card_w - 28),
-                        font=f_metric,
-                        fill=n_acc["text"],
-                        bold=True,
+
+            content_h = 18.0 + len(title_lines) * 21.0
+            if sub_lines:
+                content_h += 6.0 + len(sub_lines) * 19.0
+            if progress is not None:
+                content_h += (26.0 if metric_str else 12.0) + 18.0
+            elif metric_str:
+                content_h += 24.0
+            content_h += 14.0
+            card_h = max(92.0, content_h)
+
+            r = n_idx // cols
+            row_heights[r] = max(row_heights[r], card_h)
+            measured_nodes.append(
+                {
+                    "node": node,
+                    "title_lines": title_lines,
+                    "sub_lines": sub_lines,
+                    "metric": metric_str,
+                    "progress": progress,
+                }
+            )
+
+        layer_name = str(ly.get("name") or f"层级 {l_idx + 1}")
+        layer_h = 48.0 + sum(row_heights) + card_gap_y * max(0, rows - 1) + 18.0
+        y1 = cursor_y
+        y2 = y1 + layer_h
+
+        # Layer outer container
+        bg_fill = BG_SUBTLE if l_idx % 2 == 1 else BG_WHITE
+        stroke_col = acc["border"] if l_idx == 0 else BORDER_MED
+        body.append(
+            f'<rect x="{pad_x:.1f}" y="{y1:.1f}" width="{inner_w:.1f}" height="{layer_h:.1f}" '
+            f'rx="14" fill="{bg_fill}" stroke="{stroke_col}" stroke-width="1.5"/>'
+        )
+        # Left semantic accent strip
+        body.append(
+            f'<rect x="{pad_x:.1f}" y="{y1:.1f}" width="7" height="{layer_h:.1f}" '
+            f'rx="3.5" fill="{acc["main"]}"/>'
+        )
+        body.append(
+            _svg_text(
+                pad_x + 22.0,
+                y1 + 29.0,
+                layer_name,
+                font_size=15.5,
+                fill=acc["text"],
+                weight="700",
+            )
+        )
+
+        # Render cards per row (center last partial row cleanly)
+        row_y = y1 + 46.0
+        for r in range(rows):
+            row_items = measured_nodes[r * cols : (r + 1) * cols]
+            actual_cols = len(row_items)
+            row_card_w = (grid_w - card_gap_x * (actual_cols - 1)) / max(1, actual_cols)
+            rh = row_heights[r]
+            for c, item in enumerate(row_items):
+                n_idx = r * cols + c
+                node = item["node"]
+                n_acc = _accent(
+                    node.get("accent")
+                    or (
+                        ACCENT_CYCLE[n_idx % 4]
+                        if l_idx == 1 and len(nodes) <= 4
+                        else ly.get("accent")
+                    ),
+                    l_idx + n_idx,
+                )
+                cx1 = grid_x + c * (row_card_w + card_gap_x)
+                cy1 = row_y
+                cy2 = cy1 + rh
+
+                # Re-wrap if partial row gave wider cards
+                t_lines = (
+                    _wrap_svg_lines(
+                        str(node.get("title") or f"模块 {n_idx + 1}"),
+                        15.0,
+                        row_card_w - 28.0,
+                        max_lines=4,
                     )
-                draw.rounded_rectangle([bar_x1, bar_y, bar_x2, bar_y + 10], radius=5, fill=BG_TRACK)
-                fill_w = max(8, (bar_x2 - bar_x1) * pct / 100.0) if pct > 0 else 0
-                if fill_w > 0:
-                    draw.rounded_rectangle(
-                        [bar_x1, bar_y, bar_x1 + fill_w, bar_y + 10],
-                        radius=5,
-                        fill=n_acc["main"],
+                    if actual_cols != cols
+                    else item["title_lines"]
+                )
+                s_lines = (
+                    _wrap_svg_lines(
+                        str(node.get("subtitle") or ""),
+                        13.0,
+                        row_card_w - 28.0,
+                        max_lines=4,
                     )
-            elif metric:
-                _draw_text(
-                    draw,
-                    (cx1 + 14, cy2 - 24),
-                    _truncate(metric, f_metric, card_w - 28),
-                    font=f_metric,
-                    fill=n_acc["text"],
-                    bold=True,
+                    if (actual_cols != cols and node.get("subtitle"))
+                    else item["sub_lines"]
                 )
 
+                body.append(
+                    f'<g filter="url(#cardShadow)">'
+                    f'<rect x="{cx1:.1f}" y="{cy1:.1f}" width="{row_card_w:.1f}" height="{rh:.1f}" '
+                    f'rx="10" fill="{BG_WHITE}" stroke="{BORDER_LIGHT}" stroke-width="1.2"/>'
+                    f'<rect x="{cx1 + 1:.1f}" y="{cy1 + 1:.1f}" width="{row_card_w - 2:.1f}" height="4.5" '
+                    f'rx="2.5" fill="{n_acc["main"]}"/>'
+                    f"</g>"
+                )
+                body.append(
+                    _svg_multiline_text(
+                        cx1 + 14.0,
+                        cy1 + 29.0,
+                        t_lines,
+                        font_size=15.0,
+                        line_height=21.0,
+                        fill=TEXT_PRIMARY,
+                        weight="700",
+                    )
+                )
+                sub_start_y = cy1 + 29.0 + len(t_lines) * 21.0 + 3.0
+                if s_lines:
+                    body.append(
+                        _svg_multiline_text(
+                            cx1 + 14.0,
+                            sub_start_y,
+                            s_lines,
+                            font_size=13.0,
+                            line_height=19.0,
+                            fill=TEXT_MUTED,
+                            weight="400",
+                        )
+                    )
+
+                metric = item["metric"]
+                progress = item["progress"]
+                if progress is not None:
+                    pct = max(0, min(100, _safe_int(progress)))
+                    bar_y = cy2 - 20.0
+                    bar_w = row_card_w - 28.0
+                    if metric:
+                        body.append(
+                            _svg_text(
+                                cx1 + 14.0,
+                                bar_y - 8.0,
+                                metric,
+                                font_size=13.0,
+                                fill=n_acc["text"],
+                                weight="700",
+                            )
+                        )
+                    body.append(
+                        f'<rect x="{cx1 + 14:.1f}" y="{bar_y:.1f}" width="{bar_w:.1f}" height="8" '
+                        f'rx="4" fill="{BG_TRACK}"/>'
+                    )
+                    if pct > 0:
+                        fw = max(8.0, bar_w * pct / 100.0)
+                        body.append(
+                            f'<rect x="{cx1 + 14:.1f}" y="{bar_y:.1f}" width="{fw:.1f}" height="8" '
+                            f'rx="4" fill="{n_acc["main"]}"/>'
+                        )
+                elif metric:
+                    body.append(
+                        _svg_text(
+                            cx1 + 14.0,
+                            cy2 - 14.0,
+                            metric,
+                            font_size=13.0,
+                            fill=n_acc["text"],
+                            weight="700",
+                        )
+                    )
+            row_y += rh + card_gap_y
+
+        # Smooth Bézier downward connectors between layers
         if l_idx < len(layers) - 1:
-            # 3 subtle architectural connectors between layers
+            cy_start = y2 + 3.0
+            cy_end = y2 + layer_gap - 5.0
             for ratio in (0.25, 0.5, 0.75):
-                _draw_down_arrow(draw, pad_x + inner_w * ratio, y2 + 4, y2 + gap - 4)
+                ax = pad_x + inner_w * ratio
+                body.append(
+                    f'<path d="M {ax:.1f} {cy_start:.1f} C {ax:.1f} {(cy_start + cy_end) / 2:.1f}, '
+                    f'{ax:.1f} {(cy_start + cy_end) / 2:.1f}, {ax:.1f} {cy_end:.1f}" '
+                    f'fill="none" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrowSlate)"/>'
+                )
 
-        cursor_y = y2 + gap
+        cursor_y = y2 + layer_gap
 
-    _draw_footer(draw, CANVAS_WIDTH, height, payload.get("footer"))
-    return _to_png_bytes(img)
-
-
-# ── Template 2: Process / Workflow Pipeline ───────────────────────────────────
+    return _wrap_svg_document(
+        CANVAS_WIDTH, cursor_y - layer_gap + 16.0, body, footer_text=payload.get("footer")
+    )
 
 
-def _render_process_flow(spec: dict[str, Any], facts: dict[str, Any]) -> bytes:
+# ── Template 2: Process / Workflow Pipeline (1-Row or 2-Row Snake Bézier) ────
+
+
+def _render_process_flow_svg(spec: dict[str, Any], facts: dict[str, Any]) -> str:
     payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
     steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
     if not steps:
@@ -648,746 +966,773 @@ def _render_process_flow(spec: dict[str, Any], facts: dict[str, Any]) -> bytes:
         steps = [{"step": "01", "title": "项目实施", "metric": "进行中", "detail": ""}]
 
     kpis = [k for k in (payload.get("kpis") or []) if isinstance(k, dict)][:4]
-    footer_note = str(payload.get("footer_note") or "")
-    height = 560
+    footer_note = str(
+        payload.get("footer_note")
+        or "过程核验机制：需求基线冻结与任务验收标准绑定真实代码/文档证据，确保进度可复核、责任可追溯。"
+    )
 
     proj = facts.get("project") if isinstance(facts.get("project"), dict) else {}
-    img, draw, cursor_y = _create_canvas(
-        CANVAS_WIDTH,
-        height,
+    body, cursor_y = _svg_header_and_frame(
+        width=CANVAS_WIDTH,
         tag=str(spec.get("badge") or "研发流程"),
         title=str(spec.get("title") or "证据驱动的研发协作与验收流程图"),
         subtitle=str(spec.get("subtitle") or proj.get("name") or ""),
-        right_badge=f"全周期 {len(steps)} 阶段闭环",
+        right_badge=f"全周期 {len(steps)} 阶段协同",
     )
 
-    pad_x = 36
-    n = len(steps)
-    arrow_gap = 26
+    pad_x = 34.0
     total_w = CANVAS_WIDTH - pad_x * 2
-    card_w = (total_w - arrow_gap * (n - 1)) / n
-    card_y1 = cursor_y + 14
-    card_h = 268
-    card_y2 = card_y1 + card_h
+    n = len(steps)
+    # 2 neat rows of 3 cards when 5-6 steps -> wide 356px cards with zero cramped text!
+    cols = 3 if n >= 5 else n
+    rows = (n + cols - 1) // cols
+    arrow_gap = 32.0
+    row_gap = 36.0
+    card_w = (total_w - arrow_gap * (cols - 1)) / cols
 
-    f_step_num = _get_font(15, bold=True)
-    f_step_title = _get_font(19 if n <= 5 else 17, bold=True)
-    f_metric = _get_font(22 if n <= 5 else 19, bold=True)
-    f_detail = _get_font(14, bold=False)
-
+    # Measure card height per row
+    measured: list[dict[str, Any]] = []
+    row_heights: list[float] = [0.0] * rows
     for idx, st in enumerate(steps):
-        acc = _accent(st.get("accent"), idx)
-        x1 = pad_x + idx * (card_w + arrow_gap)
-        x2 = x1 + card_w
-
-        # Card body
-        draw.rounded_rectangle(
-            [x1, card_y1, x2, card_y2],
-            radius=14,
-            fill=BG_SUBTLE,
-            outline=BORDER_LIGHT,
-            width=2,
+        t_lines = _wrap_svg_lines(
+            str(st.get("title") or f"阶段 {idx + 1}"), 16.5, card_w - 32.0, max_lines=2
         )
-        # Top colored accent cap
-        draw.rounded_rectangle(
-            [x1 + 1, card_y1 + 1, x2 - 1, card_y1 + 8], radius=4, fill=acc["main"]
+        m_lines = _wrap_svg_lines(str(st.get("metric") or "—"), 17.0, card_w - 40.0, max_lines=2)
+        d_lines = _wrap_svg_lines(str(st.get("detail") or ""), 13.5, card_w - 32.0, max_lines=4)
+        metric_box_h = max(44.0, len(m_lines) * 23.0 + 18.0)
+        h = (
+            20.0
+            + 26.0
+            + 12.0
+            + len(t_lines) * 23.0
+            + 12.0
+            + metric_box_h
+            + 14.0
+            + len(d_lines) * 20.0
+            + 16.0
         )
-
-        step_code = str(st.get("step") or f"{idx + 1:02d}")
-        _draw_pill(
-            draw,
-            x1 + 14,
-            card_y1 + 22,
-            f"STEP {step_code}",
-            font=f_step_num,
-            bg=acc["soft"],
-            border=acc["border"],
-            fg=acc["text"],
-            pad_x=10,
-            height=24,
+        r = idx // cols
+        row_heights[r] = max(row_heights[r], max(195.0, h))
+        measured.append(
+            {
+                "st": st,
+                "t_lines": t_lines,
+                "m_lines": m_lines,
+                "d_lines": d_lines,
+                "metric_box_h": metric_box_h,
+            }
         )
 
-        # Stage title (wrap up to 2 lines)
-        title_lines = _wrap_lines(
-            str(st.get("title") or f"阶段 {idx + 1}"), f_step_title, card_w - 28, max_lines=2
-        )
-        for li, line_txt in enumerate(title_lines):
-            _draw_text(
-                draw,
-                (x1 + 14, card_y1 + 60 + li * 25),
-                line_txt,
-                font=f_step_title,
-                fill=TEXT_PRIMARY,
-                bold=True,
+    card_positions: list[tuple[float, float, float, float]] = []
+    cur_y = cursor_y + 4.0
+    for r in range(rows):
+        rh = row_heights[r]
+        row_items = measured[r * cols : (r + 1) * cols]
+        for c, item in enumerate(row_items):
+            idx = r * cols + c
+            st = item["st"]
+            acc = _accent(st.get("accent"), idx)
+            x1 = pad_x + c * (card_w + arrow_gap)
+            y1 = cur_y
+            card_positions.append((x1, y1, card_w, rh))
+
+            body.append(
+                f'<g filter="url(#cardShadow)">'
+                f'<rect x="{x1:.1f}" y="{y1:.1f}" width="{card_w:.1f}" height="{rh:.1f}" '
+                f'rx="12" fill="{BG_SUBTLE}" stroke="{BORDER_LIGHT}" stroke-width="1.3"/>'
+                f'<rect x="{x1 + 1:.1f}" y="{y1 + 1:.1f}" width="{card_w - 2:.1f}" height="5" '
+                f'rx="2.5" fill="{acc["main"]}"/>'
+                f"</g>"
             )
 
-        # Metric highlight box
-        metric_y1 = card_y1 + 122
-        metric_y2 = metric_y1 + 58
-        draw.rounded_rectangle(
-            [x1 + 12, metric_y1, x2 - 12, metric_y2],
-            radius=10,
-            fill=BG_WHITE,
-            outline=acc["border"],
-            width=1,
-        )
-        metric_str = str(st.get("metric") or "—")
-        metric_font = f_metric
-        for try_size in (19, 17, 15, 14):
-            if _text_width(metric_font, metric_str) <= card_w - 28:
-                break
-            metric_font = _get_font(try_size, bold=True)
-        _draw_text(
-            draw,
-            ((x1 + x2) / 2, (metric_y1 + metric_y2) / 2),
-            _truncate(metric_str, metric_font, card_w - 26),
-            font=metric_font,
-            fill=acc["main"],
-            bold=True,
-            anchor="mm",
-        )
+            step_code = str(st.get("step") or f"{idx + 1:02d}")
+            pill_svg, _ = _svg_pill(
+                x1 + 16.0,
+                y1 + 18.0,
+                f"STEP {step_code}",
+                font_size=12.5,
+                bg=acc["soft"],
+                border=acc["border"],
+                fg=acc["text"],
+                weight="700",
+                pad_x=10.0,
+                height=24.0,
+            )
+            body.append(pill_svg)
 
-        # Detail lines
-        detail_lines = _wrap_lines(str(st.get("detail") or ""), f_detail, card_w - 28, max_lines=3)
-        for li, line_txt in enumerate(detail_lines):
-            _draw_text(
-                draw,
-                (x1 + 14, metric_y2 + 14 + li * 21),
-                line_txt,
-                font=f_detail,
-                fill=TEXT_SECONDARY,
+            title_y = y1 + 64.0
+            body.append(
+                _svg_multiline_text(
+                    x1 + 16.0,
+                    title_y,
+                    item["t_lines"],
+                    font_size=16.5,
+                    line_height=23.0,
+                    fill=TEXT_PRIMARY,
+                    weight="700",
+                )
             )
 
-        if idx < n - 1:
-            _draw_right_arrow(
-                draw, x2 + 4, x2 + arrow_gap - 4, (card_y1 + card_y2) / 2, color="#64748b"
+            m_y1 = title_y + len(item["t_lines"]) * 23.0 - 4.0
+            m_h = item["metric_box_h"]
+            body.append(
+                f'<rect x="{x1 + 14:.1f}" y="{m_y1:.1f}" width="{card_w - 28:.1f}" height="{m_h:.1f}" '
+                f'rx="9" fill="{BG_WHITE}" stroke="{acc["border"]}" stroke-width="1.2"/>'
+            )
+            m_text_y = m_y1 + (m_h - (len(item["m_lines"]) - 1) * 22.0) / 2.0 + 6.0
+            body.append(
+                _svg_multiline_text(
+                    x1 + card_w / 2.0,
+                    m_text_y,
+                    item["m_lines"],
+                    font_size=16.5,
+                    line_height=22.0,
+                    fill=acc["main"],
+                    weight="700",
+                    anchor="middle",
+                )
             )
 
-    # Bottom governance/KPI band
-    band_y1 = card_y2 + 24
-    band_y2 = height - 56
-    draw.rounded_rectangle(
-        [pad_x, band_y1, CANVAS_WIDTH - pad_x, band_y2],
-        radius=12,
-        fill="#f0f9ff",
-        outline="#bae6fd",
-        width=1,
+            if item["d_lines"]:
+                body.append(
+                    _svg_multiline_text(
+                        x1 + 16.0,
+                        m_y1 + m_h + 22.0,
+                        item["d_lines"],
+                        font_size=13.5,
+                        line_height=20.0,
+                        fill=TEXT_SECONDARY,
+                        weight="400",
+                    )
+                )
+
+            # Horizontal arrow to next card in same row
+            if c < len(row_items) - 1:
+                ax1 = x1 + card_w + 4.0
+                ax2 = x1 + card_w + arrow_gap - 5.0
+                ay = y1 + rh / 2.0
+                body.append(
+                    f'<path d="M {ax1:.1f} {ay:.1f} L {ax2:.1f} {ay:.1f}" '
+                    f'fill="none" stroke="#64748B" stroke-width="2" marker-end="url(#arrowSlate)"/>'
+                )
+
+        # Smooth S-curve connector from end of row 0 to start of row 1
+        if r < rows - 1 and len(row_items) > 0:
+            end_x = pad_x + (len(row_items) - 1) * (card_w + arrow_gap) + card_w / 2.0
+            end_y = cur_y + rh + 2.0
+            next_x = pad_x + card_w / 2.0
+            next_y = cur_y + rh + row_gap - 5.0
+            mid_y = (end_y + next_y) / 2.0
+            body.append(
+                f'<path d="M {end_x:.1f} {end_y:.1f} C {end_x:.1f} {mid_y + 10:.1f}, '
+                f'{next_x:.1f} {mid_y - 10:.1f}, {next_x:.1f} {next_y:.1f}" '
+                f'fill="none" stroke="#0284C7" stroke-width="2" stroke-dasharray="5 4" '
+                f'marker-end="url(#arrowSky)"/>'
+            )
+
+        cur_y += rh + row_gap
+
+    # Bottom governance & KPI band
+    band_y1 = cur_y - row_gap + 22.0
+    kpi_zone_w = min(540.0, len(kpis) * 136.0) if kpis else 0.0
+    note_w = total_w - (kpi_zone_w + 40.0 if kpis else 36.0)
+    note_lines = _wrap_svg_lines(footer_note, 13.5, note_w, max_lines=3)
+    band_h = max(72.0, len(note_lines) * 21.0 + 30.0)
+
+    body.append(
+        f'<rect x="{pad_x:.1f}" y="{band_y1:.1f}" width="{total_w:.1f}" height="{band_h:.1f}" '
+        f'rx="12" fill="#F0F9FF" stroke="#BAE6FD" stroke-width="1.2"/>'
     )
-    f_note = _get_font(15, bold=False)
-    f_kpi_lbl = _get_font(13, bold=False)
-    f_kpi_val = _get_font(17, bold=True)
-
-    note_text = (
-        footer_note
-        or "闭环核验机制：需求基线冻结与任务验收标准绑定真实代码/文档证据，确保进度可核验、责任可追溯。"
+    note_start_y = band_y1 + (band_h - (len(note_lines) - 1) * 21.0) / 2.0 + 4.5
+    body.append(
+        _svg_multiline_text(
+            pad_x + 18.0,
+            note_start_y,
+            note_lines,
+            font_size=13.5,
+            line_height=21.0,
+            fill="#0C4A6E",
+            weight="500",
+        )
     )
+
     if kpis:
-        kpi_zone_w = min(560, len(kpis) * 145)
-        note_w = total_w - kpi_zone_w - 42
-        note_lines = _wrap_lines(note_text, f_note, note_w, max_lines=2)
-        for li, txt in enumerate(note_lines):
-            _draw_text(
-                draw,
-                (pad_x + 20, band_y1 + 18 + li * 24),
-                txt,
-                font=f_note,
-                fill="#0c4a6e",
-            )
-        kx = CANVAS_WIDTH - pad_x - kpi_zone_w - 10
-        kw = (kpi_zone_w - 10 * (len(kpis) - 1)) / len(kpis)
+        kx = CANVAS_WIDTH - pad_x - kpi_zone_w - 12.0
+        kw = (kpi_zone_w - 10.0 * (len(kpis) - 1)) / len(kpis)
         for ki, kpi in enumerate(kpis):
-            bx1 = kx + ki * (kw + 10)
-            bx2 = bx1 + kw
-            draw.rounded_rectangle(
-                [bx1, band_y1 + 12, bx2, band_y2 - 12],
-                radius=8,
-                fill=BG_WHITE,
-                outline="#bae6fd",
-                width=1,
+            bx1 = kx + ki * (kw + 10.0)
+            by1 = band_y1 + 10.0
+            bh = band_h - 20.0
+            body.append(
+                f'<rect x="{bx1:.1f}" y="{by1:.1f}" width="{kw:.1f}" height="{bh:.1f}" '
+                f'rx="8" fill="{BG_WHITE}" stroke="#BAE6FD" stroke-width="1"/>'
             )
-            _draw_text(
-                draw,
-                ((bx1 + bx2) / 2, band_y1 + 28),
-                _truncate(str(kpi.get("label") or ""), f_kpi_lbl, kw - 12),
-                font=f_kpi_lbl,
-                fill=TEXT_MUTED,
-                anchor="mm",
+            body.append(
+                _svg_text(
+                    bx1 + kw / 2.0,
+                    by1 + bh * 0.44,
+                    str(kpi.get("value") or "—"),
+                    font_size=16.5,
+                    fill="#0284C7",
+                    weight="700",
+                    anchor="middle",
+                )
             )
-            _draw_text(
-                draw,
-                ((bx1 + bx2) / 2, band_y2 - 28),
-                _truncate(str(kpi.get("value") or "—"), f_kpi_val, kw - 12),
-                font=f_kpi_val,
-                fill="#0284c7",
-                bold=True,
-                anchor="mm",
+            body.append(
+                _svg_text(
+                    bx1 + kw / 2.0,
+                    by1 + bh * 0.78,
+                    str(kpi.get("label") or ""),
+                    font_size=12.5,
+                    fill=TEXT_MUTED,
+                    weight="400",
+                    anchor="middle",
+                )
             )
-    else:
-        _draw_text(
-            draw,
-            (pad_x + 20, (band_y1 + band_y2) / 2),
-            _truncate(note_text, f_note, total_w - 40),
-            font=f_note,
-            fill="#0c4a6e",
-            anchor="lm",
-        )
 
-    _draw_footer(draw, CANVAS_WIDTH, height, payload.get("footer"))
-    return _to_png_bytes(img)
+    return _wrap_svg_document(
+        CANVAS_WIDTH, band_y1 + band_h + 16.0, body, footer_text=payload.get("footer")
+    )
 
 
-# ── Template 3: Milestone Timeline / Progress Chart ───────────────────────────
+# ── Template 3: Milestone / Stage Timeline ────────────────────────────────────
 
 
-def _render_milestone_timeline(spec: dict[str, Any], facts: dict[str, Any]) -> bytes:
+def _render_milestone_timeline_svg(spec: dict[str, Any], facts: dict[str, Any]) -> str:
     payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     if not items:
-        default_pl = _default_milestones_payload(facts)
-        items = default_pl["items"]
-        if not payload.get("summary_badges"):
-            payload = {**payload, "summary_badges": default_pl.get("summary_badges", [])}
-
+        payload = _default_milestones_payload(facts)
+        items = payload.get("items") or []
     items = [it for it in items if isinstance(it, dict)][:10]
     summary_badges = [b for b in (payload.get("summary_badges") or []) if isinstance(b, dict)][:4]
 
-    row_h = 56
-    summary_h = 46 if summary_badges else 0
-    height = max(460, 118 + summary_h + max(1, len(items)) * row_h + 88)
-
     proj = facts.get("project") if isinstance(facts.get("project"), dict) else {}
-    img, draw, cursor_y = _create_canvas(
-        CANVAS_WIDTH,
-        height,
-        tag=str(spec.get("badge") or "进度里程碑"),
+    body, cursor_y = _svg_header_and_frame(
+        width=CANVAS_WIDTH,
+        tag=str(spec.get("badge") or "阶段进度"),
         title=str(spec.get("title") or "阶段里程碑推进与任务完成进度图"),
         subtitle=str(spec.get("subtitle") or proj.get("name") or ""),
-        right_badge=f"共 {len(items)} 项阶段节点",
+        right_badge=f"共 {len(items)} 个关键节点",
     )
 
-    pad_x = 36
-    f_badge_val = _get_font(15, bold=True)
+    pad_x = 34.0
+    total_w = CANVAS_WIDTH - pad_x * 2
 
     if summary_badges:
-        bx = pad_x
+        bw = (total_w - 14.0 * (len(summary_badges) - 1)) / len(summary_badges)
         for bi, b in enumerate(summary_badges):
             acc = _accent(b.get("accent"), bi)
-            txt = f"{b.get('label', '')}：{b.get('value', '')}"
-            w = _draw_pill(
-                draw,
-                bx,
-                cursor_y,
-                txt,
-                font=f_badge_val,
-                bg=acc["soft"],
-                border=acc["border"],
-                fg=acc["text"],
-                pad_x=14,
-                height=32,
+            bx = pad_x + bi * (bw + 14.0)
+            body.append(
+                f'<rect x="{bx:.1f}" y="{cursor_y:.1f}" width="{bw:.1f}" height="56" '
+                f'rx="10" fill="{BG_SUBTLE}" stroke="{acc["border"]}" stroke-width="1.2"/>'
             )
-            bx += w + 12
-        cursor_y += summary_h
-
-    # Column geometry
-    label_x = pad_x
-    label_w = 340
-    bar_x = label_x + label_w + 18
-    bar_w = 540
-    right_x = bar_x + bar_w + 22
-    right_w = CANVAS_WIDTH - pad_x - right_x
-
-    # Gridlines (0%, 25%, 50%, 75%, 100%)
-    chart_top = cursor_y + 4
-    chart_bottom = chart_top + max(1, len(items)) * row_h
-    f_axis = _get_font(13, bold=False)
-    for pct in (0, 25, 50, 75, 100):
-        gx = bar_x + bar_w * (pct / 100.0)
-        draw.line([(gx, chart_top), (gx, chart_bottom + 4)], fill=BORDER_LIGHT, width=1)
-        _draw_text(
-            draw, (gx, chart_bottom + 18), f"{pct}%", font=f_axis, fill=TEXT_LIGHT, anchor="mm"
-        )
-
-    f_row_title = _get_font(16, bold=True)
-    f_row_date = _get_font(13, bold=False)
-    f_pct = _get_font(15, bold=True)
-    f_pill = _get_font(13, bold=True)
-    f_meta = _get_font(14, bold=False)
-
-    if not items:
-        _draw_text(
-            draw,
-            (CANVAS_WIDTH / 2, (chart_top + chart_bottom) / 2),
-            "暂无阶段里程碑数据",
-            font=f_row_title,
-            fill=TEXT_MUTED,
-            anchor="mm",
-        )
-    else:
-        for idx, it in enumerate(items):
-            ry = chart_top + idx * row_h
-            if idx % 2 == 0:
-                draw.rounded_rectangle(
-                    [pad_x - 6, ry + 2, CANVAS_WIDTH - pad_x + 6, ry + row_h - 4],
-                    radius=8,
-                    fill=BG_SUBTLE,
-                )
-
-            title = str(it.get("label") or f"阶段 {idx + 1}")
-            date_str = str(it.get("date") or "")
-            pct = max(0, min(100, _safe_int(it.get("progress"), 0)))
-            status_txt = str(it.get("status") or ("已完成" if pct >= 100 else "进行中"))
-            meta_txt = str(it.get("meta") or "")
-
-            tone = str(it.get("tone") or "").lower()
-            if not tone:
-                if pct >= 100 or "完成" in status_txt:
-                    tone = "emerald"
-                elif "风险" in status_txt:
-                    tone = "amber"
-                elif pct > 0:
-                    tone = "sky"
-                else:
-                    tone = "slate"
-            acc = _accent(tone, idx)
-
-            # Left: milestone title & date
-            if date_str and date_str != "—":
-                _draw_text(
-                    draw,
-                    (label_x + 6, ry + 10),
-                    _truncate(title, f_row_title, label_w - 12),
-                    font=f_row_title,
-                    fill=TEXT_PRIMARY,
-                    bold=True,
-                )
-                _draw_text(
-                    draw,
-                    (label_x + 6, ry + 33),
-                    f"截止：{date_str}",
-                    font=f_row_date,
+            body.append(
+                f'<rect x="{bx:.1f}" y="{cursor_y:.1f}" width="6" height="56" '
+                f'rx="3" fill="{acc["main"]}"/>'
+            )
+            body.append(
+                _svg_text(
+                    bx + 18.0,
+                    cursor_y + 22.0,
+                    str(b.get("label") or ""),
+                    font_size=13.0,
                     fill=TEXT_MUTED,
+                    weight="500",
                 )
-            else:
-                _draw_text(
-                    draw,
-                    (label_x + 6, ry + row_h / 2 - 2),
-                    _truncate(title, f_row_title, label_w - 12),
-                    font=f_row_title,
-                    fill=TEXT_PRIMARY,
-                    bold=True,
-                    anchor="lm",
-                )
-
-            # Center: progress bar
-            track_y1 = ry + 16
-            track_y2 = ry + 38
-            draw.rounded_rectangle(
-                [bar_x, track_y1, bar_x + bar_w, track_y2],
-                radius=11,
-                fill="#e2e8f0",
             )
-            fill_w = bar_w * pct / 100.0
-            if fill_w >= 8:
-                draw.rounded_rectangle(
-                    [bar_x, track_y1, bar_x + fill_w, track_y2],
-                    radius=11,
-                    fill=acc["main"],
-                )
-            pct_label = f"{pct}%"
-            if pct >= 18:
-                _draw_text(
-                    draw,
-                    (bar_x + fill_w - 10, (track_y1 + track_y2) / 2),
-                    pct_label,
-                    font=f_pct,
-                    fill="#ffffff",
-                    bold=True,
-                    anchor="rm",
-                )
-            else:
-                _draw_text(
-                    draw,
-                    (bar_x + fill_w + 10, (track_y1 + track_y2) / 2),
-                    pct_label,
-                    font=f_pct,
+            body.append(
+                _svg_text(
+                    bx + 18.0,
+                    cursor_y + 44.0,
+                    str(b.get("value") or "—"),
+                    font_size=18.0,
                     fill=acc["text"],
-                    bold=True,
-                    anchor="lm",
+                    weight="700",
                 )
-
-            # Right: status pill + deliverable/task meta
-            pw = _draw_pill(
-                draw,
-                right_x,
-                ry + 14,
-                status_txt,
-                font=f_pill,
-                bg=acc["soft"],
-                border=acc["border"],
-                fg=acc["text"],
-                pad_x=10,
-                height=26,
-                max_width=110,
             )
-            if meta_txt:
-                _draw_text(
-                    draw,
-                    (right_x + pw + 12, ry + 27),
-                    _truncate(meta_txt, f_meta, max(60, right_w - pw - 14)),
-                    font=f_meta,
-                    fill=TEXT_SECONDARY,
-                    anchor="lm",
+        cursor_y += 74.0
+
+    # Timeline column geometry
+    spine_x = pad_x + 14.0
+    label_x = pad_x + 38.0
+    label_w = 430.0
+    date_x = label_x + label_w + 16.0
+    bar_x = date_x + 106.0
+    bar_w = 340.0
+    pct_x = bar_x + bar_w + 14.0
+    status_x = pct_x + 56.0
+
+    # Subtle column header
+    body.append(
+        _svg_text(
+            label_x,
+            cursor_y + 12.0,
+            "里程碑阶段与交付摘要",
+            font_size=13.0,
+            fill=TEXT_LIGHT,
+            weight="600",
+        )
+    )
+    body.append(
+        _svg_text(
+            date_x, cursor_y + 12.0, "截止日期", font_size=13.0, fill=TEXT_LIGHT, weight="600"
+        )
+    )
+    body.append(
+        _svg_text(bar_x, cursor_y + 12.0, "完成进度", font_size=13.0, fill=TEXT_LIGHT, weight="600")
+    )
+    body.append(
+        _svg_text(status_x, cursor_y + 12.0, "状态", font_size=13.0, fill=TEXT_LIGHT, weight="600")
+    )
+    cursor_y += 24.0
+
+    row_centers: list[float] = []
+    row_blocks: list[str] = []
+    for idx, it in enumerate(items):
+        acc = _accent(it.get("tone"), idx)
+        title_lines = _wrap_svg_lines(
+            str(it.get("label") or f"阶段 {idx + 1}"), 14.5, label_w, max_lines=2
+        )
+        meta_str = str(it.get("meta") or "")
+        meta_lines = _wrap_svg_lines(meta_str, 13.0, label_w, max_lines=2) if meta_str else []
+        row_h = max(
+            58.0,
+            14.0
+            + len(title_lines) * 20.0
+            + (6.0 + len(meta_lines) * 18.0 if meta_lines else 0.0)
+            + 12.0,
+        )
+        y1 = cursor_y
+        cy = y1 + row_h / 2.0
+        row_centers.append(cy)
+
+        row_bg = BG_SUBTLE if idx % 2 == 0 else BG_WHITE
+        row_blocks.append(
+            f'<rect x="{pad_x + 28:.1f}" y="{y1:.1f}" width="{total_w - 28:.1f}" height="{row_h:.1f}" '
+            f'rx="10" fill="{row_bg}" stroke="{BORDER_LIGHT}" stroke-width="1"/>'
+        )
+        # Dot on spine
+        row_blocks.append(
+            f'<circle cx="{spine_x:.1f}" cy="{cy:.1f}" r="7" fill="{acc["soft"]}" '
+            f'stroke="{acc["main"]}" stroke-width="2.5"/>'
+        )
+        row_blocks.append(
+            _svg_multiline_text(
+                label_x,
+                y1 + 26.0,
+                title_lines,
+                font_size=14.5,
+                line_height=20.0,
+                fill=TEXT_PRIMARY,
+                weight="600",
+            )
+        )
+        if meta_lines:
+            row_blocks.append(
+                _svg_multiline_text(
+                    label_x,
+                    y1 + 26.0 + len(title_lines) * 20.0 + 2.0,
+                    meta_lines,
+                    font_size=13.0,
+                    line_height=18.0,
+                    fill=TEXT_MUTED,
+                    weight="400",
                 )
+            )
+        date_str = str(it.get("date") or "—")
+        row_blocks.append(
+            _svg_text(date_x, cy + 5.0, date_str, font_size=13.0, fill=TEXT_MUTED, weight="500")
+        )
 
-    _draw_footer(draw, CANVAS_WIDTH, height, payload.get("footer"))
-    return _to_png_bytes(img)
+        pct = max(0, min(100, _safe_int(it.get("progress"), 0)))
+        row_blocks.append(
+            f'<rect x="{bar_x:.1f}" y="{cy - 6:.1f}" width="{bar_w:.1f}" height="12" rx="6" fill="{BG_TRACK}"/>'
+        )
+        if pct > 0:
+            fw = max(10.0, bar_w * pct / 100.0)
+            row_blocks.append(
+                f'<rect x="{bar_x:.1f}" y="{cy - 6:.1f}" width="{fw:.1f}" height="12" rx="6" fill="{acc["main"]}"/>'
+            )
+        row_blocks.append(
+            _svg_text(
+                pct_x,
+                cy + 5.0,
+                f"{pct}%",
+                font_size=13.5,
+                fill=TEXT_PRIMARY,
+                weight="700",
+            )
+        )
+        status_pill, _ = _svg_pill(
+            status_x,
+            cy - 13.0,
+            str(it.get("status") or "进行中"),
+            font_size=12.5,
+            bg=acc["soft"],
+            border=acc["border"],
+            fg=acc["text"],
+            weight="600",
+            pad_x=10.0,
+            height=26.0,
+        )
+        row_blocks.append(status_pill)
+        cursor_y += row_h + 10.0
+
+    # Vertical timeline spine connecting dots (placed behind dots)
+    if len(row_centers) >= 2:
+        body.append(
+            f'<line x1="{spine_x:.1f}" y1="{row_centers[0]:.1f}" x2="{spine_x:.1f}" '
+            f'y2="{row_centers[-1]:.1f}" stroke="{BORDER_MED}" stroke-width="2.5"/>'
+        )
+    body.extend(row_blocks)
+    return _wrap_svg_document(CANVAS_WIDTH, cursor_y + 8.0, body, footer_text=payload.get("footer"))
 
 
-# ── Template 4: Category Breakdown (1-panel or 2-panel ranked bars) ───────────
+# ── Template 4: Category Breakdown (1 or 2 Panels, Ranked Horizontal Bars) ───
 
 
-def _render_category_breakdown(spec: dict[str, Any], facts: dict[str, Any]) -> bytes:
+def _render_category_breakdown_svg(spec: dict[str, Any], facts: dict[str, Any]) -> str:
     payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
     panels = payload.get("panels") if isinstance(payload.get("panels"), list) else []
     if not panels:
         panels = _default_evidence_payload(facts)["panels"]
     panels = [p for p in panels if isinstance(p, dict)][:2]
-    if not panels:
-        panels = [{"title": "分类分布", "items": []}]
-
-    max_rows = max((len(p.get("items") or []) for p in panels), default=1)
-    max_rows = max(3, min(7, max_rows))
-    height = max(540, 232 + max_rows * 62)
 
     proj = facts.get("project") if isinstance(facts.get("project"), dict) else {}
-    img, draw, cursor_y = _create_canvas(
-        CANVAS_WIDTH,
-        height,
-        tag=str(spec.get("badge") or "结构分析"),
+    body, cursor_y = _svg_header_and_frame(
+        width=CANVAS_WIDTH,
+        tag=str(spec.get("badge") or "统计分布"),
         title=str(spec.get("title") or "正式证据来源分布与飞书协作结论结构图"),
         subtitle=str(spec.get("subtitle") or proj.get("name") or ""),
-        right_badge=f"{len(panels)} 维统计视图",
+        right_badge=f"{len(panels)} 组分布视图",
     )
 
-    pad_x = 36
-    gap = 24
-    panel_w = (CANVAS_WIDTH - pad_x * 2 - gap * (len(panels) - 1)) / len(panels)
-    panel_y1 = cursor_y + 4
-    panel_y2 = height - 58
+    pad_x = 34.0
+    total_w = CANVAS_WIDTH - pad_x * 2
+    panel_gap = 20.0
+    panel_w = (total_w - panel_gap * (len(panels) - 1)) / max(1, len(panels))
 
-    f_ptitle = _get_font(19, bold=True)
-    f_ptotal = _get_font(14, bold=True)
-    f_label = _get_font(15, bold=False)
-    f_val = _get_font(15, bold=True)
-    f_foot = _get_font(13, bold=False)
+    # Measure required height across panels so both panels share a balanced bottom edge
+    panel_heights: list[float] = []
+    for p in panels:
+        p_items = [it for it in (p.get("items") or []) if isinstance(it, dict)][:8]
+        rows_h = max(1, len(p_items)) * 56.0 if p_items else 110.0
+        foot_lines = (
+            _wrap_svg_lines(str(p.get("footnote") or ""), 13.0, panel_w - 36.0, max_lines=2)
+            if p.get("footnote")
+            else []
+        )
+        foot_h = (len(foot_lines) * 19.0 + 24.0) if foot_lines else 16.0
+        panel_heights.append(72.0 + rows_h + foot_h + 12.0)
+
+    unified_h = max(290.0, max(panel_heights, default=290.0))
 
     for p_idx, panel in enumerate(panels):
-        px1 = pad_x + p_idx * (panel_w + gap)
-        px2 = px1 + panel_w
-        p_acc = _accent(panel.get("accent"), p_idx * 2)
-
-        draw.rounded_rectangle(
-            [px1, panel_y1, px2, panel_y2],
-            radius=14,
-            fill=BG_SUBTLE,
-            outline=BORDER_LIGHT,
-            width=2,
+        acc = _accent(panel.get("accent"), p_idx)
+        px = pad_x + p_idx * (panel_w + panel_gap)
+        py = cursor_y
+        body.append(
+            f'<g filter="url(#cardShadow)">'
+            f'<rect x="{px:.1f}" y="{py:.1f}" width="{panel_w:.1f}" height="{unified_h:.1f}" '
+            f'rx="14" fill="{BG_WHITE}" stroke="{BORDER_LIGHT}" stroke-width="1.4"/>'
+            f'<rect x="{px + 1:.1f}" y="{py + 1:.1f}" width="{panel_w - 2:.1f}" height="5" '
+            f'rx="2.5" fill="{acc["main"]}"/>'
+            f"</g>"
         )
-
-        # Panel header
-        ptitle = str(panel.get("title") or f"统计维度 {p_idx + 1}")
-        _draw_text(
-            draw,
-            (px1 + 22, panel_y1 + 20),
-            _truncate(ptitle, f_ptitle, panel_w - 220),
-            font=f_ptitle,
-            fill=TEXT_PRIMARY,
-            bold=True,
-        )
-        total_label = str(panel.get("total_label") or "")
-        if total_label:
-            tl = _truncate(total_label, f_ptotal, 220)
-            tl_w = _text_width(f_ptotal, tl) + 22
-            _draw_pill(
-                draw,
-                px2 - 20 - tl_w,
-                panel_y1 + 18,
-                tl,
-                font=f_ptotal,
-                bg=p_acc["soft"],
-                border=p_acc["border"],
-                fg=p_acc["text"],
-                pad_x=11,
-                height=26,
+        body.append(
+            _svg_text(
+                px + 20.0,
+                py + 34.0,
+                str(panel.get("title") or f"统计面板 {p_idx + 1}"),
+                font_size=16.0,
+                fill=TEXT_PRIMARY,
+                weight="700",
             )
+        )
+        total_lbl = str(panel.get("total_label") or "")
+        if total_lbl:
+            tw = _estimate_text_width(total_lbl, 12.5) + 22.0
+            pill_svg, _ = _svg_pill(
+                px + panel_w - 20.0 - tw,
+                py + 16.0,
+                total_lbl,
+                font_size=12.5,
+                bg=acc["soft"],
+                border=acc["border"],
+                fg=acc["text"],
+                weight="600",
+                pad_x=11.0,
+                height=26.0,
+            )
+            body.append(pill_svg)
 
-        draw.line(
-            [(px1 + 20, panel_y1 + 58), (px2 - 20, panel_y1 + 58)], fill=BORDER_LIGHT, width=1
+        body.append(
+            f'<line x1="{px + 20:.1f}" y1="{py + 54:.1f}" x2="{px + panel_w - 20:.1f}" '
+            f'y2="{py + 54:.1f}" stroke="{BORDER_LIGHT}" stroke-width="1"/>'
         )
 
-        raw_items = [it for it in (panel.get("items") or []) if isinstance(it, dict)][:7]
-        total_sum = sum(max(0.0, _safe_num(it.get("value"))) for it in raw_items)
-        max_val = (
-            max((max(0.0, _safe_num(it.get("value"))) for it in raw_items), default=1.0) or 1.0
-        )
-
-        content_top = panel_y1 + 74
-        content_bottom = panel_y2 - 52
-        if not raw_items or total_sum <= 0:
-            empty_msg = str(panel.get("empty_message") or "当前快照暂无该维度数据")
-            _draw_text(
-                draw,
-                ((px1 + px2) / 2, (content_top + content_bottom) / 2),
-                _truncate(empty_msg, f_label, panel_w - 60),
-                font=f_label,
-                fill=TEXT_MUTED,
-                anchor="mm",
+        p_items = [it for it in (panel.get("items") or []) if isinstance(it, dict)][:8]
+        if not p_items:
+            empty_msg = str(panel.get("empty_message") or "暂无统计数据")
+            body.append(
+                _svg_text(
+                    px + panel_w / 2.0,
+                    py + unified_h / 2.0,
+                    empty_msg,
+                    font_size=14.0,
+                    fill=TEXT_LIGHT,
+                    weight="400",
+                    anchor="middle",
+                )
             )
         else:
-            row_step = min(58, (content_bottom - content_top) / max(1, len(raw_items)))
-            bar_x1 = px1 + 22
-            bar_x2 = px2 - 22
-            bar_total_w = bar_x2 - bar_x1
-
-            for r_idx, it in enumerate(raw_items):
-                ry = content_top + r_idx * row_step
-                val = max(0.0, _safe_num(it.get("value")))
-                pct = round(val * 100.0 / total_sum, 1) if total_sum > 0 else 0.0
+            max_val = max((_safe_num(it.get("value"), 0.0) for it in p_items), default=1.0) or 1.0
+            sum_val = sum(_safe_num(it.get("value"), 0.0) for it in p_items) or 1.0
+            iy = py + 74.0
+            bar_w = panel_w - 40.0
+            for i_idx, it in enumerate(p_items):
+                i_acc = _accent(it.get("accent"), p_idx * 2 + i_idx)
+                val = _safe_num(it.get("value"), 0.0)
                 unit = str(it.get("unit") or "")
-                val_fmt = f"{int(val)}" if float(val).is_integer() else f"{val:.1f}"
-                val_text = f"{val_fmt}{unit} ({pct:.1f}%)"
-                acc = _accent(it.get("accent"), p_idx * 2 + r_idx)
+                val_txt = f"{int(val) if val == int(val) else round(val, 1)}{unit}"
+                pct = round(val * 100.0 / sum_val, 1)
+                lbl = str(it.get("label") or f"类别 {i_idx + 1}")
 
-                # Label row
-                _draw_text(
-                    draw,
-                    (bar_x1, ry + 2),
-                    _truncate(str(it.get("label") or ""), f_label, bar_total_w - 150),
-                    font=f_label,
-                    fill=TEXT_SECONDARY,
-                )
-                _draw_text(
-                    draw,
-                    (bar_x2, ry + 2),
-                    val_text,
-                    font=f_val,
-                    fill=TEXT_PRIMARY,
-                    bold=True,
-                    anchor="ra",
-                )
-
-                # Bar track + fill
-                by1 = ry + 26
-                by2 = by1 + 16
-                draw.rounded_rectangle([bar_x1, by1, bar_x2, by2], radius=8, fill="#e2e8f0")
-                fw = max(10.0, bar_total_w * (val / max_val)) if val > 0 else 0.0
-                if fw > 0:
-                    draw.rounded_rectangle(
-                        [bar_x1, by1, bar_x1 + fw, by2], radius=8, fill=acc["main"]
+                body.append(
+                    _svg_text(
+                        px + 20.0, iy + 12.0, lbl, font_size=14.0, fill=TEXT_PRIMARY, weight="600"
                     )
+                )
+                body.append(
+                    _svg_text(
+                        px + panel_w - 20.0,
+                        iy + 12.0,
+                        f"{val_txt}（{pct:.1f}%）",
+                        font_size=13.5,
+                        fill=i_acc["text"],
+                        weight="700",
+                        anchor="end",
+                    )
+                )
+                body.append(
+                    f'<rect x="{px + 20:.1f}" y="{iy + 22:.1f}" width="{bar_w:.1f}" '
+                    f'height="12" rx="6" fill="{BG_TRACK}"/>'
+                )
+                if val > 0:
+                    fw = max(12.0, bar_w * (val / max_val))
+                    body.append(
+                        f'<rect x="{px + 20:.1f}" y="{iy + 22:.1f}" width="{fw:.1f}" '
+                        f'height="12" rx="6" fill="{i_acc["main"]}"/>'
+                    )
+                iy += 54.0
 
-        # Panel footnote strip
-        pfoot = str(panel.get("footnote") or "")
-        if pfoot:
-            draw.rounded_rectangle(
-                [px1 + 18, panel_y2 - 40, px2 - 18, panel_y2 - 12],
-                radius=8,
-                fill=BG_WHITE,
-                outline=BORDER_LIGHT,
-                width=1,
+        footnote = str(panel.get("footnote") or "")
+        if footnote:
+            f_lines = _wrap_svg_lines(footnote, 13.0, panel_w - 56.0, max_lines=2)
+            fh = len(f_lines) * 19.0 + 16.0
+            fy = py + unified_h - fh - 14.0
+            body.append(
+                f'<rect x="{px + 18:.1f}" y="{fy:.1f}" width="{panel_w - 36:.1f}" '
+                f'height="{fh:.1f}" rx="8" fill="{BG_SUBTLE}" stroke="{BORDER_LIGHT}" stroke-width="1"/>'
             )
-            _draw_text(
-                draw,
-                (px1 + 30, panel_y2 - 26),
-                _truncate(pfoot, f_foot, panel_w - 60),
-                font=f_foot,
-                fill=TEXT_MUTED,
-                anchor="lm",
+            body.append(
+                _svg_multiline_text(
+                    px + 28.0,
+                    fy + 21.0,
+                    f_lines,
+                    font_size=13.0,
+                    line_height=19.0,
+                    fill=TEXT_MUTED,
+                    weight="500",
+                )
             )
 
-    _draw_footer(draw, CANVAS_WIDTH, height, payload.get("footer"))
-    return _to_png_bytes(img)
-
-
-# ── Template 5: Member Multi-Dimensional Comparison ───────────────────────────
-
-
-def _render_member_comparison(spec: dict[str, Any], facts: dict[str, Any]) -> bytes:
-    payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
-    members = payload.get("members") if isinstance(payload.get("members"), list) else []
-    series = payload.get("series") if isinstance(payload.get("series"), list) else []
-    if not members or not series:
-        default_pl = _default_contribution_payload(facts)
-        if not members:
-            members = default_pl["members"]
-        if not series:
-            series = default_pl["series"]
-
-    members = [m for m in members if isinstance(m, dict)][:8]
-    series = [s for s in series if isinstance(s, dict)][:4]
-
-    n_series = max(1, len(series))
-    group_h = max(86, n_series * 22 + 26)
-    height = max(520, 176 + max(1, len(members)) * (group_h + 12) + 64)
-
-    proj = facts.get("project") if isinstance(facts.get("project"), dict) else {}
-    img, draw, cursor_y = _create_canvas(
-        CANVAS_WIDTH,
-        height,
-        tag=str(spec.get("badge") or "贡献对比"),
-        title=str(spec.get("title") or "团队成员多维贡献与分工对比图"),
-        subtitle=str(spec.get("subtitle") or proj.get("name") or ""),
-        right_badge=f"共 {len(members)} 名活跃成员",
+    return _wrap_svg_document(
+        CANVAS_WIDTH, cursor_y + unified_h + 18.0, body, footer_text=payload.get("footer")
     )
 
-    pad_x = 36
-    f_legend = _get_font(15, bold=True)
-    f_name = _get_font(18, bold=True)
-    f_role = _get_font(13, bold=True)
-    f_sub = _get_font(13, bold=False)
-    f_val = _get_font(13, bold=True)
 
-    # Top Legend bar
-    lx = pad_x
-    ly = cursor_y + 2
-    for s_idx, s in enumerate(series):
-        acc = _accent(s.get("accent"), s_idx)
-        draw.rounded_rectangle([lx, ly + 4, lx + 16, ly + 20], radius=4, fill=acc["main"])
-        slabel = str(s.get("label") or f"维度 {s_idx + 1}")
-        _draw_text(
-            draw, (lx + 24, ly + 12), slabel, font=f_legend, fill=TEXT_SECONDARY, anchor="lm"
+# ── Template 5: Member Multi-Dimensional Comparison ──────────────────────────
+
+
+def _render_member_comparison_svg(spec: dict[str, Any], facts: dict[str, Any]) -> str:
+    payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
+    series = [s for s in (payload.get("series") or []) if isinstance(s, dict)][:4]
+    members = [m for m in (payload.get("members") or []) if isinstance(m, dict)][:8]
+    if not series or not members:
+        default_pl = _default_contribution_payload(facts)
+        series = default_pl["series"]
+        members = default_pl["members"]
+
+    proj = facts.get("project") if isinstance(facts.get("project"), dict) else {}
+    body, cursor_y = _svg_header_and_frame(
+        width=CANVAS_WIDTH,
+        tag=str(spec.get("badge") or "成员贡献"),
+        title=str(spec.get("title") or "团队成员多维贡献与分工对比图"),
+        subtitle=str(spec.get("subtitle") or proj.get("name") or ""),
+        right_badge=f"{len(members)} 名成员 · {len(series)} 维指标",
+    )
+
+    pad_x = 34.0
+    total_w = CANVAS_WIDTH - pad_x * 2
+
+    # Legend bar
+    lx = pad_x + 4.0
+    for s_idx, ser in enumerate(series):
+        s_acc = _accent(ser.get("accent"), s_idx)
+        lbl = str(ser.get("label") or ser.get("key") or f"维度 {s_idx + 1}")
+        body.append(
+            f'<rect x="{lx:.1f}" y="{cursor_y + 2:.1f}" width="14" height="14" rx="4" fill="{s_acc["main"]}"/>'
         )
-        lx += 24 + _text_width(f_legend, slabel) + 28
+        body.append(
+            _svg_text(
+                lx + 20.0, cursor_y + 14.0, lbl, font_size=13.5, fill=TEXT_SECONDARY, weight="600"
+            )
+        )
+        lx += 20.0 + _estimate_text_width(lbl, 13.5) + 26.0
+    cursor_y += 34.0
 
-    cursor_y += 42
-
-    # Compute per-series max for clean normalized bar lengths
+    # Series maxima for proportional bars
     series_max: dict[str, float] = {}
-    for s in series:
-        skey = str(s.get("key") or "")
+    for ser in series:
+        skey = str(ser.get("key") or "")
         mx = 0.0
         for m in members:
             vals = m.get("values") if isinstance(m.get("values"), dict) else {}
             entry = vals.get(skey)
-            v = _safe_num(entry.get("value") if isinstance(entry, dict) else entry, 0.0)
-            if v > mx:
-                mx = v
+            val = _safe_num(entry.get("value") if isinstance(entry, dict) else entry, 0.0)
+            mx = max(mx, val)
         series_max[skey] = mx if mx > 0 else 1.0
 
-    left_w = 270
-    bar_x1 = pad_x + left_w + 18
-    val_col_w = 155
-    bar_max_w = CANVAS_WIDTH - pad_x - val_col_w - bar_x1 - 14
+    left_col_w = 340.0
+    right_x = pad_x + left_col_w + 24.0
+    bar_label_w = 138.0
+    val_col_w = 128.0
+    bar_x = right_x + bar_label_w
+    bar_w = total_w - left_col_w - 24.0 - bar_label_w - val_col_w - 20.0
 
-    if not members:
-        _draw_text(
-            draw,
-            (CANVAS_WIDTH / 2, cursor_y + 120),
-            "暂无成员贡献数据",
-            font=f_name,
-            fill=TEXT_MUTED,
-            anchor="mm",
+    for m_idx, member in enumerate(members):
+        name = str(member.get("name") or f"成员 {m_idx + 1}")
+        role = str(member.get("role") or "成员")
+        subtitle = str(member.get("subtitle") or "")
+        sub_lines = (
+            _wrap_svg_lines(subtitle, 13.0, left_col_w - 72.0, max_lines=3) if subtitle else []
         )
-    else:
-        for m_idx, m in enumerate(members):
-            gy1 = cursor_y + m_idx * (group_h + 12)
-            gy2 = gy1 + group_h
-            draw.rounded_rectangle(
-                [pad_x, gy1, CANVAS_WIDTH - pad_x, gy2],
-                radius=12,
-                fill=BG_SUBTLE if m_idx % 2 == 0 else BG_WHITE,
-                outline=BORDER_LIGHT,
-                width=1,
+
+        left_h = 22.0 + 26.0 + len(sub_lines) * 19.0 + 18.0
+        right_h = 20.0 + len(series) * 28.0 + 12.0
+        card_h = max(108.0, left_h, right_h)
+
+        y1 = cursor_y
+        acc_m = _accent(None, m_idx)
+        body.append(
+            f'<g filter="url(#cardShadow)">'
+            f'<rect x="{pad_x:.1f}" y="{y1:.1f}" width="{total_w:.1f}" height="{card_h:.1f}" '
+            f'rx="12" fill="{BG_WHITE}" stroke="{BORDER_LIGHT}" stroke-width="1.3"/>'
+            f'<rect x="{pad_x:.1f}" y="{y1:.1f}" width="6" height="{card_h:.1f}" '
+            f'rx="3" fill="{acc_m["main"]}"/>'
+            f"</g>"
+        )
+        # Vertical divider between identity & metrics
+        body.append(
+            f'<line x1="{pad_x + left_col_w + 6:.1f}" y1="{y1 + 14:.1f}" '
+            f'x2="{pad_x + left_col_w + 6:.1f}" y2="{y1 + card_h - 14:.1f}" '
+            f'stroke="{BORDER_LIGHT}" stroke-width="1"/>'
+        )
+
+        # Avatar circle with initial
+        initial = name[:1] if name else "员"
+        body.append(
+            f'<circle cx="{pad_x + 36:.1f}" cy="{y1 + 36:.1f}" r="18" '
+            f'fill="{acc_m["soft"]}" stroke="{acc_m["border"]}" stroke-width="1.2"/>'
+        )
+        body.append(
+            _svg_text(
+                pad_x + 36.0,
+                y1 + 42.0,
+                initial,
+                font_size=15.0,
+                fill=acc_m["text"],
+                weight="700",
+                anchor="middle",
+            )
+        )
+        body.append(
+            _svg_text(
+                pad_x + 64.0, y1 + 34.0, name, font_size=16.5, fill=TEXT_PRIMARY, weight="700"
+            )
+        )
+        role_bg = "#E0F2FE" if role == "组长" else BG_TRACK
+        role_bd = "#BAE6FD" if role == "组长" else BORDER_LIGHT
+        role_fg = "#0369A1" if role == "组长" else TEXT_MUTED
+        role_pill, _ = _svg_pill(
+            pad_x + 64.0 + _estimate_text_width(name, 16.5) + 10.0,
+            y1 + 16.0,
+            role,
+            font_size=12.0,
+            bg=role_bg,
+            border=role_bd,
+            fg=role_fg,
+            weight="600",
+            pad_x=9.0,
+            height=22.0,
+        )
+        body.append(role_pill)
+        if sub_lines:
+            body.append(
+                _svg_multiline_text(
+                    pad_x + 64.0,
+                    y1 + 58.0,
+                    sub_lines,
+                    font_size=13.0,
+                    line_height=19.0,
+                    fill=TEXT_MUTED,
+                    weight="400",
+                )
             )
 
-            # Left member identity block
-            mname = str(m.get("name") or f"成员 {m_idx + 1}")
-            mrole = str(m.get("role") or "成员")
-            msub = str(m.get("subtitle") or "")
-            name_w = _text_width(f_name, _truncate(mname, f_name, left_w - 90))
-            _draw_text(
-                draw,
-                (pad_x + 18, gy1 + 18),
-                _truncate(mname, f_name, left_w - 90),
-                font=f_name,
-                fill=TEXT_PRIMARY,
-                bold=True,
-            )
-            role_acc = _accent("sky" if mrole == "组长" else "slate")
-            _draw_pill(
-                draw,
-                pad_x + 26 + name_w,
-                gy1 + 17,
-                mrole,
-                font=f_role,
-                bg=role_acc["soft"],
-                border=role_acc["border"],
-                fg=role_acc["text"],
-                pad_x=9,
-                height=22,
-            )
-            if msub:
-                sub_lines = _wrap_lines(msub, f_sub, left_w - 26, max_lines=2)
-                for li, stxt in enumerate(sub_lines):
-                    _draw_text(
-                        draw,
-                        (pad_x + 18, gy1 + 48 + li * 18),
-                        stxt,
-                        font=f_sub,
-                        fill=TEXT_MUTED,
-                    )
+        vals = member.get("values") if isinstance(member.get("values"), dict) else {}
+        sy_start = y1 + (card_h - len(series) * 28.0) / 2.0 + 8.0
+        for s_idx, ser in enumerate(series):
+            skey = str(ser.get("key") or "")
+            s_acc = _accent(ser.get("accent"), s_idx)
+            s_lbl = str(ser.get("label") or skey)
+            entry = vals.get(skey)
+            raw_v = _safe_num(entry.get("value") if isinstance(entry, dict) else entry, 0.0)
+            disp_lbl = str(entry.get("label") or raw_v) if isinstance(entry, dict) else f"{raw_v:g}"
+            sy = sy_start + s_idx * 28.0
 
-            # Vertical divider
-            draw.line(
-                [(bar_x1 - 12, gy1 + 12), (bar_x1 - 12, gy2 - 12)], fill=BORDER_LIGHT, width=1
+            body.append(
+                _svg_text(right_x, sy + 11.0, s_lbl, font_size=13.0, fill=TEXT_MUTED, weight="500")
+            )
+            body.append(
+                f'<rect x="{bar_x:.1f}" y="{sy:.1f}" width="{bar_w:.1f}" height="12" rx="6" fill="{BG_TRACK}"/>'
+            )
+            if raw_v > 0:
+                fw = max(10.0, bar_w * min(1.0, raw_v / series_max[skey]))
+                body.append(
+                    f'<rect x="{bar_x:.1f}" y="{sy:.1f}" width="{fw:.1f}" height="12" rx="6" fill="{s_acc["main"]}"/>'
+                )
+            body.append(
+                _svg_text(
+                    pad_x + total_w - 16.0,
+                    sy + 11.0,
+                    disp_lbl,
+                    font_size=13.0,
+                    fill=TEXT_PRIMARY,
+                    weight="700",
+                    anchor="end",
+                )
             )
 
-            # Grouped bars for this member
-            vals = m.get("values") if isinstance(m.get("values"), dict) else {}
-            bar_h = 14
-            row_pitch = (group_h - 20) / n_series
-            for s_idx, s in enumerate(series):
-                skey = str(s.get("key") or "")
-                acc = _accent(s.get("accent"), s_idx)
-                entry = vals.get(skey)
-                raw_v = _safe_num(entry.get("value") if isinstance(entry, dict) else entry, 0.0)
-                vlabel = (
-                    str(entry.get("label"))
-                    if isinstance(entry, dict) and entry.get("label") is not None
-                    else (f"{int(raw_v)}" if float(raw_v).is_integer() else f"{raw_v:.1f}")
-                )
+        cursor_y += card_h + 12.0
 
-                by = gy1 + 12 + s_idx * row_pitch + (row_pitch - bar_h) / 2
-                draw.rounded_rectangle(
-                    [bar_x1, by, bar_x1 + bar_max_w, by + bar_h],
-                    radius=7,
-                    fill="#e2e8f0",
-                )
-                ratio = (
-                    max(0.0, min(1.0, raw_v / series_max[skey])) if series_max[skey] > 0 else 0.0
-                )
-                if raw_v > 0:
-                    fw = max(12.0, bar_max_w * ratio)
-                    draw.rounded_rectangle(
-                        [bar_x1, by, bar_x1 + fw, by + bar_h],
-                        radius=7,
-                        fill=acc["main"],
-                    )
-                _draw_text(
-                    draw,
-                    (bar_x1 + bar_max_w + 12, by + bar_h / 2),
-                    _truncate(vlabel, f_val, val_col_w),
-                    font=f_val,
-                    fill=TEXT_SECONDARY,
-                    bold=True,
-                    anchor="lm",
-                )
-
-    _draw_footer(draw, CANVAS_WIDTH, height, payload.get("footer"))
-    return _to_png_bytes(img)
+    return _wrap_svg_document(CANVAS_WIDTH, cursor_y + 8.0, body, footer_text=payload.get("footer"))
 
 
-# ── Default Fact-Grounded Spec Builders (Fallback when AI omits visuals) ──────
+# ── Fact-Grounded Default Visual Payload Builders ────────────────────────────
 
 
 def _default_architecture_payload(facts: dict[str, Any]) -> dict[str, Any]:
@@ -1406,9 +1751,9 @@ def _default_architecture_payload(facts: dict[str, Any]) -> dict[str, Any]:
         },
         {
             "title": "AI 核验与贡献核算",
-            "subtitle": f"核验 {ev.get('verification_runs', 0)} 次 · 成果 {ev.get('formal_outcomes', 0)} 项",
+            "subtitle": f"核验 {ev.get('verification_runs', 0)} 次 · 正式成果 {ev.get('formal_outcomes', 0)} 项",
         },
-        {"title": "结项报告与导出", "subtitle": "Web 画布 · PDF · Word DOCX"},
+        {"title": "结项报告与导出", "subtitle": "Web 矢量画布 · PDF · Word DOCX"},
     ]
 
     mod_nodes: list[dict[str, Any]] = []
@@ -1460,7 +1805,7 @@ def _default_architecture_payload(facts: dict[str, Any]) -> dict[str, Any]:
         },
         {
             "title": "OpenRouter AI",
-            "subtitle": f"{ev.get('verification_runs', 0)} 次验收辅助 · 智能报告撰写",
+            "subtitle": f"{ev.get('verification_runs', 0)} 次验收辅助 · 专业报告撰写与绘图",
         },
     ]
 
@@ -1529,23 +1874,23 @@ def _default_workflow_payload(facts: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "step": "03",
-                "title": "GitHub/飞书协作",
-                "metric": f"{github.get('commits', 0)} 提交 / {feishu.get('total_messages', 0)} 讨论",
+                "title": "GitHub / 飞书协作",
+                "metric": f"{github.get('commits', 0)} 提交 / {feishu.get('total_messages', 0)} 消息",
                 "detail": f"{pr_merged} 合并 PR · {feishu.get('total_conclusions', 0)} 协作结论",
                 "accent": "violet",
             },
             {
                 "step": "04",
-                "title": "不可变证据采纳",
+                "title": "正式证据采纳",
                 "metric": f"{ev_tot} 条正式证据",
                 "detail": f"覆盖 {ev.get('tasks_with_evidence', 0)}/{t_tot} 任务 ({ev_cov}%)",
                 "accent": "amber",
             },
             {
                 "step": "05",
-                "title": "AI + 人工验收",
+                "title": "AI 核验 + 人工确认",
                 "metric": f"{ev.get('criteria_total', 0)} 条标准",
-                "detail": f"{ev.get('verification_runs', 0)} 次核验 · {ev.get('formal_outcomes', 0)} 正式成果",
+                "detail": f"{ev.get('verification_runs', 0)} 次核验 · {ev.get('formal_outcomes', 0)} 项正式成果",
                 "accent": "emerald",
             },
             {
@@ -1557,7 +1902,7 @@ def _default_workflow_payload(facts: dict[str, Any]) -> dict[str, Any]:
             },
         ],
         "kpis": kpis,
-        "footer_note": "全流程可溯源闭环：代码与交付产物变更自动触发证据校验，AI 辅助验收后由人工确认生效。",
+        "footer_note": "过程核验机制：代码与交付产物变更可触发证据追溯校验，AI 辅助验收后由责任人人工确认生效。",
     }
 
 
@@ -1726,7 +2071,7 @@ def _default_contribution_payload(facts: dict[str, Any]) -> dict[str, Any]:
     fourth_label = (
         "飞书协作参与"
         if has_feishu_member
-        else ("正式证据贡献" if has_ev_member else "GitHub PR 合并/参与")
+        else ("正式证据贡献" if has_ev_member else "GitHub PR 参与")
     )
     series = [
         {"key": "share", "label": "正式贡献权重 (%)", "accent": "sky"},
@@ -1778,10 +2123,24 @@ def _default_contribution_payload(facts: dict[str, Any]) -> dict[str, Any]:
     return {"series": series, "members": rows}
 
 
+def _default_payload_for_template(template: str, facts: dict[str, Any]) -> dict[str, Any]:
+    if template == "layered_architecture":
+        return _default_architecture_payload(facts)
+    if template == "process_flow":
+        return _default_workflow_payload(facts)
+    if template == "milestone_timeline":
+        return _default_milestones_payload(facts)
+    if template == "category_breakdown":
+        return _default_evidence_payload(facts)
+    if template == "member_comparison":
+        return _default_contribution_payload(facts)
+    return _default_architecture_payload(facts)
+
+
 def build_default_visual_specs(facts: dict[str, Any]) -> list[dict[str, Any]]:
     """Build fact-grounded fallback visual specs tailored to the available project data."""
     proj_name = str((facts.get("project") or {}).get("name") or "项目")
-    specs: list[dict[str, Any]] = [
+    return [
         {
             "id": "architecture",
             "section_key": "overview",
@@ -1798,7 +2157,7 @@ def build_default_visual_specs(facts: dict[str, Any]) -> list[dict[str, Any]]:
             "template": "process_flow",
             "badge": "研发流程",
             "title": "证据驱动的研发协作与验收流程图",
-            "subtitle": f"{proj_name} · 从需求基线到结项归档的六步闭环",
+            "subtitle": f"{proj_name} · 从需求基线到结项归档的六阶段协同",
             "caption": "图 2：证据驱动的研发协作与验收流程图",
             "payload": _default_workflow_payload(facts),
         },
@@ -1833,14 +2192,13 @@ def build_default_visual_specs(facts: dict[str, Any]) -> list[dict[str, Any]]:
             "payload": _default_contribution_payload(facts),
         },
     ]
-    return specs
 
 
 # ── Sanitization & Validation for AI-Authored Visual Specs ────────────────────
 
 
 def sanitize_visual_specs(raw_visuals: Any, facts: dict[str, Any]) -> list[dict[str, Any]]:
-    """Validate and normalize AI-proposed visual specs into safe declarative specs."""
+    """Validate and normalize AI-proposed visual specs (including `custom_svg` with safe fallback)."""
     if not isinstance(raw_visuals, list):
         return []
     section_order_rank = {k: i for i, k in enumerate(VALID_SECTION_KEYS)}
@@ -1871,10 +2229,51 @@ def sanitize_visual_specs(raw_visuals: Any, facts: dict[str, Any]) -> list[dict[
         title = str(item.get("title") or "").strip()[:80]
         if not title:
             continue
-        subtitle = str(item.get("subtitle") or "").strip()[:100]
+        subtitle = str(item.get("subtitle") or "").strip()[:120]
         badge = str(item.get("badge") or "").strip()[:16]
         raw_caption = str(item.get("caption") or title).strip()[:120]
         payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+
+        if template == "custom_svg":
+            raw_svg = payload.get("svg") or item.get("svg")
+            clean_svg = sanitize_custom_svg(raw_svg)
+            fb_tpl = str(item.get("fallback_template") or "").strip()
+            if fb_tpl not in TEMPLATE_ONLY_VISUALS:
+                fb_tpl = SECTION_DEFAULT_TEMPLATE.get(section_key, "layered_architecture")
+            if clean_svg is not None:
+                cleaned.append(
+                    {
+                        "id": candidate_id,
+                        "section_key": section_key,
+                        "template": "custom_svg",
+                        "fallback_template": fb_tpl,
+                        "badge": badge,
+                        "title": title,
+                        "subtitle": subtitle,
+                        "caption": raw_caption,
+                        "payload": {"svg": clean_svg},
+                    }
+                )
+            else:
+                logger.warning(
+                    "custom_svg visual %s failed security/XML validation; degrading to %s",
+                    candidate_id,
+                    fb_tpl,
+                )
+                cleaned.append(
+                    {
+                        "id": candidate_id,
+                        "section_key": section_key,
+                        "template": fb_tpl,
+                        "degraded_from": "custom_svg",
+                        "badge": badge,
+                        "title": title,
+                        "subtitle": subtitle,
+                        "caption": raw_caption,
+                        "payload": _default_payload_for_template(fb_tpl, facts),
+                    }
+                )
+            continue
 
         # Verify template payload has usable data (or gracefully hydrate from facts if empty)
         if template == "layered_architecture" and not (
@@ -1914,7 +2313,6 @@ def sanitize_visual_specs(raw_visuals: Any, facts: dict[str, Any]) -> list[dict[
             }
         )
 
-    # Sort by chapter order and assign clean sequential "图 N：" prefixes
     cleaned.sort(key=lambda sp: section_order_rank.get(sp["section_key"], 99))
     for fig_no, sp in enumerate(cleaned, start=1):
         cap = re.sub(r"^图\s*\d+\s*[：:]\s*", "", sp["caption"]).strip() or sp["title"]
@@ -1922,25 +2320,210 @@ def sanitize_visual_specs(raw_visuals: Any, facts: dict[str, Any]) -> list[dict[
     return cleaned
 
 
-# ── Unified Rendering Entry Points ────────────────────────────────────────────
+# ── Unified SVG Rendering & 2.5x Ultra-HD PNG Rasterization ───────────────────
 
-
-_TEMPLATE_RENDERERS = {
-    "layered_architecture": _render_layered_architecture,
-    "process_flow": _render_process_flow,
-    "milestone_timeline": _render_milestone_timeline,
-    "category_breakdown": _render_category_breakdown,
-    "member_comparison": _render_member_comparison,
+_SVG_TEMPLATE_RENDERERS = {
+    "layered_architecture": _render_layered_architecture_svg,
+    "process_flow": _render_process_flow_svg,
+    "milestone_timeline": _render_milestone_timeline_svg,
+    "category_breakdown": _render_category_breakdown_svg,
+    "member_comparison": _render_member_comparison_svg,
 }
 
 
-def render_visual_spec(spec: dict[str, Any], facts: dict[str, Any] | None = None) -> bytes:
-    """Render any single declarative visual spec into crisp high-DPI PNG bytes."""
+def render_visual_spec_svg(spec: dict[str, Any], facts: dict[str, Any] | None = None) -> str:
+    """Render any single visual spec into a clean, self-contained pure-vector SVG string."""
     template = str(spec.get("template") or "")
-    renderer = _TEMPLATE_RENDERERS.get(template)
+    if template == "custom_svg":
+        payload = spec.get("payload") if isinstance(spec.get("payload"), dict) else {}
+        clean_svg = sanitize_custom_svg(payload.get("svg"))
+        if clean_svg is not None:
+            return clean_svg
+        fb_tpl = str(spec.get("fallback_template") or "").strip()
+        if fb_tpl not in TEMPLATE_ONLY_VISUALS:
+            fb_tpl = SECTION_DEFAULT_TEMPLATE.get(
+                str(spec.get("section_key") or ""), "layered_architecture"
+            )
+        fallback_spec = {
+            **spec,
+            "template": fb_tpl,
+            "payload": _default_payload_for_template(fb_tpl, facts or {}),
+        }
+        return _SVG_TEMPLATE_RENDERERS[fb_tpl](fallback_spec, facts or {})
+
+    renderer = _SVG_TEMPLATE_RENDERERS.get(template)
     if renderer is None:
         raise ValueError(f"Unsupported visual template: {template}")
     return renderer(spec, facts or {})
+
+
+def _try_cairosvg_png(svg_bytes: bytes, scale: float) -> bytes | None:
+    try:
+        # Help macOS Homebrew libcairo discovery when DYLD_FALLBACK_LIBRARY_PATH is unset
+        if os.name == "posix" and os.path.isdir("/opt/homebrew/lib"):
+            cur = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+            if "/opt/homebrew/lib" not in cur:
+                os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = (
+                    f"/opt/homebrew/lib:{cur}" if cur else "/opt/homebrew/lib"
+                )
+        import cairosvg  # type: ignore[import-untyped]
+
+        return bytes(cairosvg.svg2png(bytestring=svg_bytes, scale=scale))
+    except Exception:
+        return None
+
+
+def _try_rsvg_convert_png(svg_bytes: bytes, scale: float) -> bytes | None:
+    exe = shutil.which("rsvg-convert")
+    if not exe:
+        return None
+    try:
+        proc = subprocess.run(
+            [exe, "-z", f"{scale:g}", "-f", "png"],
+            input=svg_bytes,
+            capture_output=True,
+            check=True,
+            timeout=15,
+        )
+        if proc.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+            return proc.stdout
+    except Exception:
+        return None
+    return None
+
+
+def _fallback_pillow_svg_png(svg_str: str, scale: float) -> bytes:
+    """Minimal pure-Python Pillow raster fallback used ONLY when libcairo/rsvg are absent locally."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    vw, vh = float(CANVAS_WIDTH), 620.0
+    try:
+        root = ET.fromstring(svg_str)
+        parsed_vb = _parse_viewbox(root.attrib.get("viewBox", ""))
+        if parsed_vb is not None:
+            _, _, vw, vh = parsed_vb
+    except ET.ParseError:
+        root = None
+
+    px_w = max(800, int(round(vw * scale)))
+    px_h = max(450, int(round(vh * scale)))
+    img = Image.new("RGB", (px_w, px_h), BG_WHITE)
+    draw = ImageDraw.Draw(img)
+
+    # Pick a crisp system CJK font if available (never use fake bold stroke_width=1)
+    font_cache: dict[int, Any] = {}
+    font_candidates = (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+    )
+    resolved_font = next((p for p in font_candidates if os.path.isfile(p)), None)
+
+    def _font(sz: float) -> Any:
+        isz = max(12, int(round(sz * scale)))
+        if isz not in font_cache:
+            if resolved_font:
+                try:
+                    font_cache[isz] = ImageFont.truetype(resolved_font, size=isz, index=0)
+                except OSError:
+                    font_cache[isz] = ImageFont.load_default()
+            else:
+                font_cache[isz] = ImageFont.load_default()
+        return font_cache[isz]
+
+    if root is not None:
+        for el in root.iter():
+            tag = _local_name(el.tag).lower()
+            if tag == "rect":
+                x = _safe_num(el.attrib.get("x"), 0.0) * scale
+                y = _safe_num(el.attrib.get("y"), 0.0) * scale
+                w = _safe_num(el.attrib.get("width"), 0.0) * scale
+                h = _safe_num(el.attrib.get("height"), 0.0) * scale
+                rx = _safe_num(el.attrib.get("rx"), 0.0) * scale
+                fill = el.attrib.get("fill")
+                stroke = el.attrib.get("stroke")
+                sw = max(1, int(round(_safe_num(el.attrib.get("stroke-width"), 1.0) * scale)))
+                if w > 0 and h > 0:
+                    draw.rounded_rectangle(
+                        [x, y, x + w, y + h],
+                        radius=min(rx, w / 2, h / 2),
+                        fill=fill if fill and fill.startswith("#") else None,
+                        outline=stroke if stroke and stroke.startswith("#") else None,
+                        width=sw if stroke and stroke.startswith("#") else 0,
+                    )
+            elif tag == "line":
+                x1 = _safe_num(el.attrib.get("x1"), 0.0) * scale
+                y1 = _safe_num(el.attrib.get("y1"), 0.0) * scale
+                x2 = _safe_num(el.attrib.get("x2"), 0.0) * scale
+                y2 = _safe_num(el.attrib.get("y2"), 0.0) * scale
+                stroke = el.attrib.get("stroke")
+                sw = max(1, int(round(_safe_num(el.attrib.get("stroke-width"), 1.0) * scale)))
+                if stroke and stroke.startswith("#"):
+                    draw.line([(x1, y1), (x2, y2)], fill=stroke, width=sw)
+            elif tag == "circle":
+                cx = _safe_num(el.attrib.get("cx"), 0.0) * scale
+                cy = _safe_num(el.attrib.get("cy"), 0.0) * scale
+                r = _safe_num(el.attrib.get("r"), 0.0) * scale
+                fill = el.attrib.get("fill")
+                stroke = el.attrib.get("stroke")
+                if r > 0:
+                    draw.ellipse(
+                        [cx - r, cy - r, cx + r, cy + r],
+                        fill=fill if fill and fill.startswith("#") else None,
+                        outline=stroke if stroke and stroke.startswith("#") else None,
+                        width=max(1, int(round(scale))),
+                    )
+            elif tag == "text":
+                tx = _safe_num(el.attrib.get("x"), 0.0) * scale
+                ty = _safe_num(el.attrib.get("y"), 0.0) * scale
+                fs = _safe_num(el.attrib.get("font-size"), 14.0)
+                fill = el.attrib.get("fill") or TEXT_PRIMARY
+                if not fill.startswith("#"):
+                    fill = TEXT_PRIMARY
+                anchor_attr = el.attrib.get("text-anchor", "start")
+                pil_anchor = {"middle": "ms", "end": "rs"}.get(anchor_attr, "ls")
+                fnt = _font(fs)
+                children = list(el)
+                if children:
+                    cur_y = ty
+                    for ch in children:
+                        if _local_name(ch.tag).lower() == "tspan" and ch.text:
+                            cx = (
+                                _safe_num(ch.attrib.get("x"), tx / scale) * scale
+                                if "x" in ch.attrib
+                                else tx
+                            )
+                            cur_y += _safe_num(ch.attrib.get("dy"), 0.0) * scale
+                            draw.text((cx, cur_y), ch.text, font=fnt, fill=fill, anchor=pil_anchor)
+                elif el.text:
+                    draw.text((tx, ty), el.text, font=fnt, fill=fill, anchor=pil_anchor)
+
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def svg_to_png(svg_str: str, *, scale: float = PNG_RASTER_SCALE) -> bytes:
+    """Rasterize a clean vector SVG into an ultra-HD PNG (default 2.5x -> ~3000px wide)."""
+    svg_bytes = svg_str.encode("utf-8")
+    png = _try_cairosvg_png(svg_bytes, scale)
+    if png is not None:
+        return png
+    png = _try_rsvg_convert_png(svg_bytes, scale)
+    if png is not None:
+        return png
+    logger.warning("CairoSVG and rsvg-convert unavailable; using Pillow vector fallback")
+    return _fallback_pillow_svg_png(svg_str, scale)
+
+
+def render_visual_spec(
+    spec: dict[str, Any], facts: dict[str, Any] | None = None, *, scale: float = PNG_RASTER_SCALE
+) -> bytes:
+    """Render any single declarative visual spec into crisp 2.5x ultra-HD PNG bytes."""
+    svg_str = render_visual_spec_svg(spec, facts)
+    return svg_to_png(svg_str, scale=scale)
 
 
 def find_visual_spec(
@@ -1967,14 +2550,30 @@ def find_visual_spec(
     return None, facts
 
 
+def render_chart_svg_from_snapshot(
+    data_snapshot: dict[str, Any],
+    chart_key: str,
+    *,
+    fallback_facts: dict[str, Any] | None = None,
+) -> str | None:
+    """Render a pure-vector SVG string from a report snapshot's `visuals` / `facts`."""
+    spec, facts = find_visual_spec(data_snapshot, chart_key, fallback_facts=fallback_facts)
+    if spec is None:
+        return None
+    return render_visual_spec_svg(spec, facts)
+
+
 def render_chart_from_snapshot(
     data_snapshot: dict[str, Any],
     chart_key: str,
     *,
     fallback_facts: dict[str, Any] | None = None,
+    scale: float = PNG_RASTER_SCALE,
 ) -> bytes | None:
-    """Render a chart PNG from a report snapshot's `visuals` / `facts`."""
-    spec, facts = find_visual_spec(data_snapshot, chart_key, fallback_facts=fallback_facts)
-    if spec is None:
+    """Render a 2.5x ultra-HD PNG from a report snapshot's `visuals` / `facts`."""
+    svg_str = render_chart_svg_from_snapshot(
+        data_snapshot, chart_key, fallback_facts=fallback_facts
+    )
+    if svg_str is None:
         return None
-    return render_visual_spec(spec, facts)
+    return svg_to_png(svg_str, scale=scale)

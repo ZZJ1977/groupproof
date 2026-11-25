@@ -1277,7 +1277,7 @@ export function ReportApiPage({
                     </dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-slate-400">有效正式证据</dt>
+                    <dt className="text-slate-400">正式证据</dt>
                     <dd className="mt-0.5 whitespace-nowrap font-medium text-slate-800">{counts?.evidence ?? 0} 条</dd>
                   </div>
                   <div className="min-w-0">
@@ -1367,7 +1367,7 @@ export function ReportApiPage({
                           </div>
                         </div>
                       ) : (
-                        <div className="text-[14.5px] leading-7 text-slate-800 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:bg-transparent [&_blockquote]:py-0.5 [&_blockquote]:pl-3.5 [&_blockquote]:text-slate-600 [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-[15.5px] [&_h3]:font-semibold [&_h3]:text-slate-900 [&_li]:leading-7 [&_p]:my-2.5 [&_p]:leading-7 [&_table]:my-3.5 [&_table]:text-[13px] [&_th]:bg-slate-50/90 [&_th]:font-semibold [&_th]:text-slate-700">
+                        <div className="text-[14.5px] leading-7 text-slate-800 [&_blockquote]:my-3.5 [&_blockquote]:rounded-r-lg [&_blockquote]:border-l-[3px] [&_blockquote]:border-sky-500/75 [&_blockquote]:bg-sky-50/45 [&_blockquote]:py-2 [&_blockquote]:pr-3.5 [&_blockquote]:pl-4 [&_blockquote]:text-slate-700 [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-[15.5px] [&_h3]:font-semibold [&_h3]:text-slate-900 [&_li]:leading-7 [&_p]:my-2.5 [&_p]:leading-7 [&_table]:my-3.5 [&_table]:text-[13px] [&_th]:bg-slate-50/90 [&_th]:font-semibold [&_th]:text-slate-700">
                           <MarkdownPreview source={body} />
                         </div>
                       )}

@@ -448,6 +448,19 @@ def test_report_editor_requires_leader_or_teacher_and_active_project():
 
 def test_all_five_default_charts_render_valid_high_dpi_cjk_pngs():
     facts = _sample_facts()
+    facts["modules"] = [
+        {
+            "name": "模块 B：课程小组、项目初始化、需求、任务规划与里程碑",
+            "owner": "杨凯景",
+            "core": True,
+            "requirements_count": 6,
+            "tasks_total": 7,
+            "tasks_completed": 7,
+            "weight_sum": 23.0,
+            "sample_tasks": ["B1 课程与小组治理", "B7 里程碑交付物"],
+        },
+        *facts["modules"],
+    ]
     specs = report_charts.build_default_visual_specs(facts)
     assert [s["id"] for s in specs] == [
         "architecture",
@@ -456,14 +469,23 @@ def test_all_five_default_charts_render_valid_high_dpi_cjk_pngs():
         "evidence",
         "contribution",
     ]
+    expected_w = int(round(report_charts.CANVAS_WIDTH * report_charts.PNG_RASTER_SCALE))
     for spec in specs:
+        svg = report_charts.render_visual_spec_svg(spec, facts)
+        assert svg.startswith("<svg ") and "</svg>" in svg
+        assert 'viewBox="0 0 1200 ' in svg
+        assert "…" not in svg, f"unexpected truncation ellipsis in {spec['id']} SVG"
+        if spec["id"] == "architecture":
+            assert "课程小组" in svg and "里程碑" in svg
+            assert "114 条" in svg and "28 项" in svg
+
         png = report_charts.render_visual_spec(spec, facts)
         assert png.startswith(b"\x89PNG\r\n\x1a\n")
         assert len(png) > 5000, f"chart {spec['id']} unexpectedly small ({len(png)} bytes)"
         with PILImage.open(io.BytesIO(png)) as img:
             w, h = img.size
-            assert w == report_charts.CANVAS_WIDTH
-            assert h >= 450
+            assert w == expected_w
+            assert h >= 800
 
 
 def test_ai_custom_visual_specs_sanitization_and_arbitrary_slug_rendering():
@@ -582,9 +604,9 @@ def test_plan_report_visuals_with_ai_and_chapter_injection_preserves_footnotes(m
     assert visuals is not None and len(visuals) == 2
 
     chapters = render_fallback_chapters(facts, project_id=project_id, version_no=2, visuals=visuals)
-    expected_arch_url = f"/api/v1/projects/{project_id}/reports/versions/2/charts/domain_arch.png"
+    expected_arch_url = f"/api/v1/projects/{project_id}/reports/versions/2/charts/domain_arch.svg"
     expected_contrib_url = (
-        f"/api/v1/projects/{project_id}/reports/versions/2/charts/member_matrix.png"
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/member_matrix.svg"
     )
     assert f"![图 1：项目领域分层架构]({expected_arch_url})" in chapters["overview"]
     assert f"![图 2：团队贡献多维矩阵]({expected_contrib_url})" in chapters["contribution"]
@@ -597,10 +619,15 @@ def test_plan_report_visuals_with_ai_and_chapter_injection_preserves_footnotes(m
     )
     assert re_injected["overview"].count(expected_arch_url) == 1
 
-    # Rewriting version URLs updates v2 -> v3 cleanly
+    # Rewriting version URLs updates v2 -> v3 cleanly (both .svg and legacy .png)
     bumped = reporting._rewrite_chart_version_urls(chapters, 3)
-    assert "/versions/3/charts/domain_arch.png" in bumped["overview"]
-    assert "/versions/2/charts/domain_arch.png" not in bumped["overview"]
+    assert "/versions/3/charts/domain_arch.svg" in bumped["overview"]
+    assert "/versions/2/charts/domain_arch.svg" not in bumped["overview"]
+    legacy_bumped = reporting._rewrite_chart_version_urls(
+        {"overview": f"![图](/api/v1/projects/{project_id}/reports/versions/2/charts/legacy.png)"},
+        3,
+    )
+    assert "/versions/3/charts/legacy.png" in legacy_bumped["overview"]
 
 
 def test_pdf_and_docx_exports_embed_real_png_charts():
@@ -648,7 +675,7 @@ def test_pdf_and_docx_exports_embed_real_png_charts():
     md_text = md_bytes.decode("utf-8")
     expected_md_img = (
         f"![图 1：系统架构与模块分工总览图]"
-        f"(/api/v1/projects/{project_id}/reports/versions/1/charts/architecture.png)"
+        f"(/api/v1/projects/{project_id}/reports/versions/1/charts/architecture.svg)"
     )
     assert expected_md_img in md_text
 
@@ -705,7 +732,18 @@ def test_report_chart_http_endpoint_returns_png_and_enforces_validation(monkeypa
 
     client = TestClient(app)
 
-    # Custom AI-authored visual slug works
+    # Custom AI-authored visual slug works as both .svg and 2.5x .png
+    res_svg = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/custom_proposal_map.svg"
+    )
+    assert res_svg.status_code == 200
+    assert res_svg.headers["content-type"].startswith("image/svg+xml")
+    assert res_svg.headers["x-content-type-options"] == "nosniff"
+    assert res_svg.headers["content-security-policy"] == "sandbox"
+    assert "max-age=300" in res_svg.headers["cache-control"]
+    svg_text = res_svg.text
+    assert svg_text.startswith("<svg ") and "</svg>" in svg_text
+
     res_custom = client.get(
         f"/api/v1/projects/{project_id}/reports/versions/2/charts/custom_proposal_map.png"
     )
@@ -725,9 +763,346 @@ def test_report_chart_http_endpoint_returns_png_and_enforces_validation(monkeypa
         f"/api/v1/projects/{project_id}/reports/versions/2/charts/does_not_exist.png"
     )
     assert res_missing.status_code == 404
+    res_missing_svg = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/does_not_exist.svg"
+    )
+    assert res_missing_svg.status_code == 404
 
     # Invalid slug returns 404
     res_bad = client.get(
         f"/api/v1/projects/{project_id}/reports/versions/2/charts/INVALID%20KEY.png"
     )
     assert res_bad.status_code == 404
+
+
+def test_modular_skills_loader_and_prompt_injection(monkeypatch):
+    from app.modules.d.skills import (
+        SKILL_REPORT_VISUAL,
+        SKILL_REPORT_WRITING,
+        clear_skill_cache,
+        load_skill,
+    )
+
+    clear_skill_cache()
+    writing = load_skill(SKILL_REPORT_WRITING)
+    visual = load_skill(SKILL_REPORT_VISUAL)
+    assert "本章核心结论" in writing
+    assert "全链路闭环" in writing and "禁用套话黑名单" in writing
+    assert "custom_svg" in visual and "Noto Sans CJK SC" in visual
+    # Second call hits cache identically
+    assert load_skill(SKILL_REPORT_WRITING) is writing
+
+    with pytest.raises(ValueError):
+        load_skill("../secrets.md")
+
+    seen_prompts: dict[str, tuple[str, str | None]] = {}
+
+    def fake_openrouter(**kwargs):
+        seen_prompts[kwargs["feature"]] = (kwargs["system_prompt"], kwargs.get("model_role"))
+        if kwargs["feature"] == "plan_report_visuals":
+            return {"visuals": []}, "anthropic/claude-sonnet-4.5"
+        if kwargs["feature"] == "rewrite_report_section":
+            return (
+                {"content": "> **本章核心结论**：重写完成。\n\n" + "内容" * 30},
+                "anthropic/claude-sonnet-4.5",
+            )
+        return (
+            {
+                k: "> **本章核心结论**：测试结论。\n\n### 小节\n\n" + "真实数据论述。" * 15
+                for k in CHAPTER_ORDER
+            },
+            "anthropic/claude-sonnet-4.5",
+        )
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
+    facts = _sample_facts()
+    reporting._author_report_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
+    reporting._plan_report_visuals_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
+    reporting._rewrite_section_with_ai(
+        facts,
+        section_key="overview",
+        current_body="旧正文",
+        instruction="",
+        actor_id=uuid4(),
+        project_id=uuid4(),
+    )
+    assert "禁用套话黑名单" in seen_prompts["generate_project_report_part1"][0]
+    assert seen_prompts["generate_project_report_part1"][1] == "writing"
+    assert "禁用套话黑名单" in seen_prompts["rewrite_report_section"][0]
+    assert seen_prompts["rewrite_report_section"][1] == "writing"
+    assert "custom_svg" in seen_prompts["plan_report_visuals"][0]
+    assert seen_prompts["plan_report_visuals"][1] == "visual"
+
+
+def test_dual_model_env_resolution_and_runtime_fallback(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "openrouter")
+    monkeypatch.setenv("AI_API_KEY", "sk-test-dummy")
+    monkeypatch.setenv("AI_MODEL", "deepseek/deepseek-v3.2")
+    monkeypatch.delenv("AI_REPORT_WRITING_MODEL", raising=False)
+    monkeypatch.delenv("AI_REPORT_VISUAL_MODEL", raising=False)
+
+    assert reporting._openrouter_config("writing") == (
+        "sk-test-dummy",
+        "deepseek/deepseek-v3.2",
+        "deepseek/deepseek-v3.2",
+    )
+    monkeypatch.setenv("AI_REPORT_WRITING_MODEL", "anthropic/claude-sonnet-4.5")
+    monkeypatch.setenv("AI_REPORT_VISUAL_MODEL", "google/gemini-2.5-flash")
+    assert reporting._openrouter_config("writing") == (
+        "sk-test-dummy",
+        "anthropic/claude-sonnet-4.5",
+        "deepseek/deepseek-v3.2",
+    )
+    assert reporting._openrouter_config("visual") == (
+        "sk-test-dummy",
+        "google/gemini-2.5-flash",
+        "deepseek/deepseek-v3.2",
+    )
+
+    attempted_models: list[str] = []
+
+    def fake_single(**kwargs):
+        attempted_models.append(kwargs["model"])
+        if kwargs["model"] == "google/gemini-2.5-flash":
+            return None, kwargs["model"]
+        return {"visuals": []}, kwargs["model"]
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json_single", fake_single)
+    parsed, used = reporting._call_openrouter_json(
+        system_prompt="sys",
+        user_payload={"k": 1},
+        timeout=10.0,
+        feature="plan_report_visuals",
+        actor_id=None,
+        project_id=uuid4(),
+        model_role="visual",
+    )
+    assert attempted_models == ["google/gemini-2.5-flash", "deepseek/deepseek-v3.2"]
+    assert parsed == {"visuals": []}
+    assert used == "deepseek/deepseek-v3.2"
+
+
+def test_custom_svg_sanitizer_rejects_xss_and_external_urls_with_graceful_fallback():
+    facts = _sample_facts()
+    valid_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480">'
+        '<rect x="0" y="0" width="1200" height="480" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>'
+        '<rect x="40" y="40" width="300" height="120" rx="10" fill="#F8FAFC" stroke="#0284C7"/>'
+        '<path d="M 340 100 C 420 100, 420 100, 500 100" '
+        'fill="none" stroke="#0284C7" stroke-width="2"/>'
+        '<text x="60" y="95" font-size="16" fill="#0F172A">GroupProof 核心架构</text>'
+        "</svg>"
+    )
+    cleaned_ok = report_charts.sanitize_custom_svg(valid_svg)
+    assert cleaned_ok is not None
+    assert 'viewBox="0 0 1200 480"' in cleaned_ok
+    assert "GroupProof 核心架构" in cleaned_ok
+
+    shapes = (
+        '<rect x="0" y="0" width="100" height="100"/>'
+        '<rect x="10" y="10" width="50" height="50"/>'
+        '<text x="20" y="20">x</text>'
+    )
+    svg_open = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480">'
+    malicious_cases = [
+        # <script> tag
+        f"{svg_open}<script>alert(1)</script>{shapes}</svg>",
+        # <foreignObject>
+        f'{svg_open}<foreignObject width="100" height="100"><body/></foreignObject>{shapes}</svg>',
+        # onload event handler
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480" onload="alert(1)">'
+        f"{shapes}</svg>",
+        # javascript: URI
+        f'{svg_open}<rect x="0" y="0" width="100" height="100" fill="javascript:alert(1)"/>'
+        f"{shapes}</svg>",
+        # External URL in fill / url()
+        f'{svg_open}<rect x="0" y="0" width="100" height="100" '
+        f'fill="url(https://evil.example/a.svg#x)"/>{shapes}</svg>',
+        # DOCTYPE / XXE
+        f'<!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>{svg_open}{shapes}</svg>',
+        # Invalid tiny viewBox
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">{shapes}</svg>',
+    ]
+    for bad_svg in malicious_cases:
+        assert report_charts.sanitize_custom_svg(bad_svg) is None
+
+    # Rejected custom_svg degrades cleanly to its fallback template instead of dropping
+    specs = report_charts.sanitize_visual_specs(
+        [
+            {
+                "id": "custom_arch_ok",
+                "section_key": "overview",
+                "template": "custom_svg",
+                "fallback_template": "layered_architecture",
+                "title": "定制系统架构图",
+                "caption": "定制系统架构图",
+                "payload": {"svg": valid_svg},
+            },
+            {
+                "id": "custom_wf_xss",
+                "section_key": "workflow",
+                "template": "custom_svg",
+                "fallback_template": "process_flow",
+                "title": "研发协同流程图",
+                "caption": "研发协同流程图",
+                "payload": {"svg": malicious_cases[0]},
+            },
+        ],
+        facts,
+    )
+    assert len(specs) == 2
+    assert specs[0]["template"] == "custom_svg"
+    assert specs[1]["template"] == "process_flow"
+    assert specs[1]["degraded_from"] == "custom_svg"
+    # Both render valid SVG and 2.5x PNG
+    for sp in specs:
+        svg_out = report_charts.render_visual_spec_svg(sp, facts)
+        assert "<script" not in svg_out.lower()
+        assert svg_out.startswith("<svg ")
+        png_out = report_charts.render_visual_spec(sp, facts)
+        assert png_out.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_collect_project_facts_counts_all_formal_evidence_and_completed_outcomes(monkeypatch):
+    """Formal evidence with source_changed=True and completed outcomes must not be undercounted."""
+    project_id = uuid4()
+    tasks = [
+        SimpleNamespace(
+            id=uuid4(),
+            project_id=project_id,
+            module_id=None,
+            title=f"T-{i}",
+            status="completed",
+            progress_percent=100,
+            weight=1.0,
+        )
+        for i in range(28)
+    ]
+    ev_rows = [
+        SimpleNamespace(
+            id=uuid4(),
+            project_id=project_id,
+            task_id=tasks[i % 28].id,
+            author_id=None,
+            status="formal",
+            source_type="github",
+            source_changed=(i >= 36),  # 36 unchanged + 87 source_changed = 123 formal evidence
+            title=f"Commit evidence #{i}",
+            created_at=datetime.now(UTC),
+        )
+        for i in range(123)
+    ]
+    # 41 FormalOutcome rows covering all 28 completed tasks, invalidated after source_changed sync
+    outcome_rows = [
+        SimpleNamespace(
+            id=uuid4(),
+            project_id=project_id,
+            task_id=tasks[i % 28].id,
+            invalidated_at=datetime.now(UTC),
+        )
+        for i in range(41)
+    ]
+
+    class _FakeScalarsResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return list(self._rows)
+
+    class _FakeSession:
+        def get(self, model, _pk):
+            if model.__name__ == "Project":
+                return SimpleNamespace(
+                    id=project_id,
+                    course_id=None,
+                    name="GroupProof",
+                    description="课程协作平台",
+                    lifecycle="active",
+                    setup_status="frozen",
+                    final_deadline=None,
+                )
+            return None
+
+        def scalar(self, _stmt):
+            return None
+
+        def scalars(self, stmt):
+            sql = str(stmt)
+            if "FROM tasks" in sql:
+                return _FakeScalarsResult(tasks)
+            if "FROM evidence" in sql:
+                # Verify WHERE clause does NOT filter out source_changed=True formal evidence
+                where_part = sql.split("WHERE", 1)[1] if "WHERE" in sql else ""
+                assert "source_changed" not in where_part
+                return _FakeScalarsResult(ev_rows)
+            if "FROM formal_outcomes" in sql:
+                where_part = sql.split("WHERE", 1)[1] if "WHERE" in sql else ""
+                assert "invalidated_at" not in where_part
+                return _FakeScalarsResult(outcome_rows)
+            return _FakeScalarsResult([])
+
+    monkeypatch.setattr(reporting, "_has_table", lambda *_a, **_k: False)
+    monkeypatch.setattr(reporting, "current_frozen_snapshot", lambda *_a, **_k: None)
+
+    facts = reporting.collect_project_facts(_FakeSession(), project_id, "GroupProof")
+    assert facts["counts"]["evidence"] == 123
+    assert facts["evidence"]["total_formal"] == 123
+    assert facts["evidence"]["effective_formal"] == 36
+    assert facts["evidence"]["source_changed_count"] == 87
+    assert facts["evidence"]["tasks_with_evidence"] == 28
+    assert facts["evidence"]["formal_outcomes"] == 28
+    assert facts["evidence"]["formal_outcomes_active"] == 0
+
+    # Verify Figure 1 & Figure 4 render the real 123 / 28 numbers (never 36 / 0)
+    specs = report_charts.build_default_visual_specs(facts)
+    arch_svg = report_charts.render_visual_spec_svg(specs[0], facts)
+    ev_svg = report_charts.render_visual_spec_svg(specs[3], facts)
+    assert "正式证据 123 条" in arch_svg
+    assert "正式成果 28 项" in arch_svg
+    assert "正式证据 36 条" not in arch_svg
+    assert "共 123 条" in ev_svg
+    assert "正式成果 28 项" in ev_svg
+
+
+def test_build_report_snapshot_records_skills_loaded_and_dual_models(monkeypatch):
+    facts = _sample_facts()
+    project_id = uuid4()
+    monkeypatch.setattr(reporting, "collect_project_facts", lambda *_a, **_k: facts)
+    monkeypatch.setattr(reporting, "_resolve_target_version_no", lambda *_a, **_k: 8)
+    monkeypatch.setattr(
+        reporting,
+        "_author_report_with_ai",
+        lambda *_a, **_k: (
+            {
+                k: f"> **本章核心结论**：第 {i} 章。\n\n" + "工程实证内容。" * 20
+                for i, k in enumerate(CHAPTER_ORDER, 1)
+            },
+            "anthropic/claude-sonnet-4.5",
+        ),
+    )
+    monkeypatch.setattr(
+        reporting,
+        "_plan_report_visuals_with_ai",
+        lambda *_a, **_k: (
+            report_charts.build_default_visual_specs(facts),
+            "google/gemini-2.5-flash",
+        ),
+    )
+
+    data = reporting.build_report_snapshot_data(
+        session=SimpleNamespace(),
+        project_id=project_id,
+        project_name="GroupProof",
+        appendix=False,
+        actor_id=uuid4(),
+        use_ai=True,
+        version_no=8,
+    )
+    meta = data["meta"]
+    assert meta["authoring_mode"] == "ai"
+    assert meta["visuals_mode"] == "ai"
+    assert meta["writing_model"] == "anthropic/claude-sonnet-4.5"
+    assert meta["visual_model"] == "google/gemini-2.5-flash"
+    assert meta["skills_loaded"] == ["report_writing_skill.md", "report_visual_skill.md"]
+    assert ".svg)" in data["sections"]["overview"]

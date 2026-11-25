@@ -1,4 +1,7 @@
-import { Fragment, type ReactNode } from "react";
+"use client";
+
+import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { Maximize2, X } from "lucide-react";
 
 /**
  * Small, dependency-free Markdown renderer.
@@ -211,7 +214,12 @@ const headingClass = [
   "mt-4 mb-1.5 text-sm font-semibold text-slate-600",
 ];
 
-function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactNode {
+function renderBlocks(
+  blocks: Block[],
+  depth: number,
+  keyPrefix: string,
+  onOpenFigure?: (fig: { src: string; alt: string }) => void,
+): ReactNode {
   return blocks.map((block, blockIndex) => {
     const key = `${keyPrefix}-${blockIndex}`;
     switch (block.type) {
@@ -225,17 +233,32 @@ function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactN
           const alt = imageOnly[1].trim();
           const imgSrc = safeImageSrc(imageOnly[2]);
           if (imgSrc) {
+            const label = alt || "文档插图";
             return (
               <figure key={key} className="my-5 flex flex-col items-center">
-                {/* eslint-disable-next-line @next/next/no-img-element -- dynamic markdown/signed image URL */}
-                <img
-                  src={imgSrc}
-                  alt={alt || "文档图片"}
-                  loading="lazy"
-                  referrerPolicy={imgSrc.startsWith("/api/v1/") ? "same-origin" : "no-referrer"}
-                  className="w-full max-w-[740px] rounded-xl border border-slate-200/85 bg-white shadow-2xs"
-                />
-                {alt ? <figcaption className="mt-2 text-center text-xs text-slate-500">{alt}</figcaption> : null}
+                <button
+                  type="button"
+                  onClick={() => onOpenFigure?.({ src: imgSrc, alt: label })}
+                  aria-label={`放大查看：${label}`}
+                  className="group/fig relative block w-full max-w-[760px] cursor-zoom-in overflow-hidden rounded-xl border border-slate-200/90 bg-white p-2 shadow-2xs transition-all hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 sm:p-3 print:cursor-default print:border-slate-200 print:p-0 print:shadow-none"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- dynamic markdown/signed vector SVG or image URL */}
+                  <img
+                    src={imgSrc}
+                    alt={label}
+                    loading="lazy"
+                    referrerPolicy={imgSrc.startsWith("/api/v1/") ? "same-origin" : "no-referrer"}
+                    className="block h-auto w-full rounded-lg bg-white"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-3.5 top-3.5 inline-flex items-center gap-1 rounded-full border border-slate-200/90 bg-white/95 px-2.5 py-1 text-[11px] font-medium text-slate-600 opacity-0 shadow-xs transition-opacity group-hover/fig:opacity-100 group-focus-visible/fig:opacity-100 print:hidden"
+                  >
+                    <Maximize2 size={11} />
+                    点击放大
+                  </span>
+                </button>
+                {alt ? <figcaption className="mt-2.5 text-center text-xs font-medium text-slate-500">{alt}</figcaption> : null}
               </figure>
             );
           }
@@ -250,7 +273,7 @@ function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactN
       case "code":
         return <pre key={key} className="my-3 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] leading-6 text-slate-800" data-lang={block.lang || undefined}><code className="font-mono">{block.text}</code></pre>;
       case "quote":
-        return <blockquote key={key} className="my-3 border-l-4 border-slate-300 bg-slate-50/70 py-1 pl-4 text-slate-600">{depth < MAX_DEPTH ? renderBlocks(parseBlocks(block.lines.join("\n")), depth + 1, key) : block.lines.join("\n")}</blockquote>;
+        return <blockquote key={key} className="my-3 border-l-4 border-slate-300 bg-slate-50/70 py-1 pl-4 text-slate-600">{depth < MAX_DEPTH ? renderBlocks(parseBlocks(block.lines.join("\n")), depth + 1, key, onOpenFigure) : block.lines.join("\n")}</blockquote>;
       case "hr":
         return <hr key={key} className="my-5 border-slate-200" />;
       case "list": {
@@ -262,7 +285,7 @@ function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactN
               {item.checked !== undefined && <span aria-hidden="true" className="mr-1.5">{item.checked ? "☑" : "☐"}</span>}
               {item.checked !== undefined && <span className="sr-only">{item.checked ? "已完成：" : "未完成："}</span>}
               {renderInline(item.text, 0, itemKey)}
-              {item.rest.length > 0 && depth < MAX_DEPTH && renderBlocks(item.rest, depth + 1, itemKey)}
+              {item.rest.length > 0 && depth < MAX_DEPTH && renderBlocks(item.rest, depth + 1, itemKey, onOpenFigure)}
             </li>;
           })}
         </Tag>;
@@ -277,5 +300,55 @@ function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactN
 }
 
 export function MarkdownPreview({ source }: { source: string }) {
-  return <div className="gp-markdown break-words text-sm" data-testid="markdown-preview">{renderBlocks(parseBlocks(source), 0, "b")}</div>;
+  const [zoomedFigure, setZoomedFigure] = useState<{ src: string; alt: string } | null>(null);
+
+  useEffect(() => {
+    if (!zoomedFigure) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setZoomedFigure(null);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [zoomedFigure]);
+
+  return (
+    <div className="gp-markdown break-words text-sm" data-testid="markdown-preview">
+      {renderBlocks(parseBlocks(source), 0, "b", setZoomedFigure)}
+      {zoomedFigure && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={zoomedFigure.alt}
+          onClick={() => setZoomedFigure(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-[2px] sm:p-8 print:hidden"
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="flex max-h-[92vh] w-full max-w-[1240px] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-3">
+              <p className="truncate text-sm font-semibold text-slate-900">{zoomedFigure.alt}</p>
+              <button
+                type="button"
+                aria-label="关闭放大预览"
+                onClick={() => setZoomedFigure(null)}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-50/70 p-4 sm:p-6">
+              {/* eslint-disable-next-line @next/next/no-img-element -- full-resolution vector SVG/image zoom view */}
+              <img
+                src={zoomedFigure.src}
+                alt={zoomedFigure.alt}
+                referrerPolicy={zoomedFigure.src.startsWith("/api/v1/") ? "same-origin" : "no-referrer"}
+                className="mx-auto block h-auto w-full max-w-[1160px] rounded-xl border border-slate-200/80 bg-white shadow-xs"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
