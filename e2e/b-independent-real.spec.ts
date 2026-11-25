@@ -22,9 +22,11 @@ test("独立项目无需课程；创建失败保留输入，成功后进入项�
   await page.getByRole("button", { name: "创建项目", exact: true }).click();
   await expect(page.getByRole("heading", { name: "我的独立项目", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "完善信息", exact: true })).toHaveAttribute("href", `/projects/${id}/setup#project-details`);
-  for (const path of ["requirements", "tasks?view=tree", "milestones", "evidence", "github", "collaboration", "files", "discussions", "contribution", "reports", "settings"]) {
+  for (const path of ["requirements", "tasks?view=tree", "milestones", "evidence", "github", "collaboration", "files", "discussions", "contribution"]) {
     await expect(page.locator(`nav a[href="/projects/${id}/${path}"]`)).toBeVisible();
   }
+  await expect(page.getByRole("button", { name: "项目设置", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "项目报告", exact: true })).toHaveAttribute("href", `/projects/${id}/contribution?tab=report`);
   expect(attempts).toBe(2);
 });
 
