@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -8,6 +9,7 @@ import { EmptyState, ListRow, PageHeader, ProgressBar, Section, Stat, StatusBadg
 import { buttonVariants } from "@/components/ui/button";
 import { projectRequest } from "@/features/github-binding/integration-request";
 import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
+import { CreateProjectModal } from "@/features/b/CreateProjectModal";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
 import { tr } from "@/lib/i18n/tr";
 import { useWorkspace } from "@/lib/workspace";
@@ -94,6 +96,7 @@ export function HomeApiPage() {
   const { userId, role } = useWorkspace();
   const isTeacher = role === "teacher" || role === "ta";
   const t = useTranslations("core.home");
+  const [createOpen, setCreateOpen] = useState(false);
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
   const recentActivity = useQuery({
@@ -118,10 +121,14 @@ export function HomeApiPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {isTeacher && <Link href="/teacher/courses" className={buttonVariants()}>我的班级 / 创建班级</Link>}
-            <Link href="/projects/new" className={buttonVariants(isTeacher ? { variant: "outline" } : undefined)}>
+            <button
+              type="button"
+              className={buttonVariants(isTeacher ? { variant: "outline" } : undefined)}
+              onClick={() => setCreateOpen(true)}
+            >
               <Plus size={16} />
               {t("createProject")}
-            </Link>
+            </button>
             <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}>
               <BookOpen size={16} />
               {t("joinCourse")}
@@ -212,9 +219,13 @@ export function HomeApiPage() {
                       <p className="text-xs text-slate-500">项目任务推进、代码与飞书协作同步</p>
                     </div>
                   </div>
-                  <Link href="/projects/new" className="text-xs font-semibold text-[var(--gp-action)] hover:underline">
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-[var(--gp-action)] hover:underline"
+                    onClick={() => setCreateOpen(true)}
+                  >
                     + {t("createProject")}
-                  </Link>
+                  </button>
                 </div>
 
                 {data.projects.length > 0 ? (
@@ -290,10 +301,10 @@ export function HomeApiPage() {
                       <div className="text-sm font-semibold text-slate-700">{t("emptyProjects")}</div>
                       <p className="mt-0.5 text-xs text-slate-500">{t("emptyProjectHint")}</p>
                     </div>
-                    <Link href="/projects/new" className={buttonVariants()}>
+                    <button type="button" className={buttonVariants()} onClick={() => setCreateOpen(true)}>
                       <Plus size={15} />
                       {t("createProject")}
-                    </Link>
+                    </button>
                   </div>
                 )}
               </section>
@@ -516,6 +527,7 @@ export function HomeApiPage() {
       )}
 
       <MyAccessRequests key={userId} />
+      <CreateProjectModal open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

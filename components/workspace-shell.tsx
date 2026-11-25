@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -107,6 +107,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
 
   const globalLinks = [
     { key: "home", href: "/home", icon: Home },
+    { key: "myProjects", href: "/projects", icon: FolderKanban },
     { key: "myCourses", href: "/courses", icon: BookOpen },
     { key: "actionItems", href: "/action-items", icon: CheckSquare },
     { key: "notifications", href: "/notifications", icon: Bell },
@@ -294,6 +295,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
           <div className="gp-nav-section">{t("global")}</div>
           <NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" />
           <NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" />
+          <NavLink item={globalNav[2]} label={globalNav[2].label} pathname={pathname} search="" />
           <div className="gp-nav-section">{t("currentProject")}</div>
           {projectGroups.map((group) => {
             const collapsible = group.id === "plan" || group.id === "collaborate" || group.id === "review";

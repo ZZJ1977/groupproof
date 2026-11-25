@@ -14,6 +14,7 @@ const staticRoutes: Record<string, number> = {
   "/onboarding/profile": 2,
   "/onboarding/email-verification": 3,
   "/home": 4,
+  "/projects": 63,
   "/projects/new": 35,
   "/notifications": 5,
   "/action-items": 6,
