@@ -46,12 +46,87 @@ from app.modules.d.models import (
 )
 
 FORMULA = "formal-task-weight-cross-task-equal-split-v2"
-DIRECT_LINK_MIN_LINES = 10
-HEURISTIC_MATCH_MIN_LINES = 20
-_HEURISTIC_MATCH_THRESHOLD = 8
+DIRECT_LINK_MIN_LINES = 20
+DIRECT_LINK_MIN_SHARE = 0.10
+HEURISTIC_MATCH_MIN_LINES = 80
+HEURISTIC_MATCH_MIN_SHARE = 0.15
+_HEURISTIC_MATCH_THRESHOLD = 16
+_HEURISTIC_NEAR_TOP_RATIO = 0.85
+_HEURISTIC_MAX_TASKS_PER_COMMIT = 2
+_HEURISTIC_BROAD_TIE_LIMIT = 3
 
 _MERGE_TITLE_RE = re.compile(r"^(?:merge\s+|merge:)", re.IGNORECASE)
 _ASCII_WORD_RE = re.compile(r"[a-z][a-z0-9_]{2,}", re.IGNORECASE)
+_TASK_TITLE_PREFIX_RE = re.compile(r"^\s*([a-d][1-9])\b", re.IGNORECASE)
+_EXPLICIT_SUBCODE_RE = re.compile(r"(?<![a-z0-9])([a-d][1-9])(?:-\d+)?(?![a-z0-9])", re.IGNORECASE)
+_CONTRIBUTION_STOPWORDS = frozenset(
+    {
+        "app",
+        "api",
+        "src",
+        "services",
+        "features",
+        "student",
+        "shared",
+        "components",
+        "tests",
+        "test",
+        "lib",
+        "utils",
+        "index",
+        "page",
+        "pages",
+        "models",
+        "schemas",
+        "router",
+        "service",
+        "fix",
+        "feat",
+        "chore",
+        "docs",
+        "refactor",
+        "style",
+        "json",
+        "tsx",
+        "ts",
+        "py",
+        "md",
+        "project",
+        "projects",
+        "task",
+        "tasks",
+        "module",
+        "modules",
+        "item",
+        "data",
+        "list",
+        "view",
+        "form",
+        "card",
+        "panel",
+        "项目",
+        "任务",
+        "页面",
+        "功能",
+        "接口",
+        "数据",
+        "前端",
+        "后端",
+        "模块",
+        "测试",
+        "修复",
+        "更新",
+        "支持",
+        "优化",
+        "管理",
+        "系统",
+        "实现",
+        "完成",
+        "开发",
+        "协作",
+        "平台",
+    }
+)
 _EXCLUDED_BASENAMES = frozenset(
     {
         "package-lock.json",
@@ -202,12 +277,15 @@ def _find_qualified_code_contributors(
 ) -> dict[UUID, set[UUID]]:
     """Find active members who contributed substantive non-merge/non-lockfile code per task.
 
-    A member qualifies for task ``t`` via either:
+    A member qualifies for task ``t`` via any of:
       1. Formal GitHub ``Evidence`` on ``task.id`` (resolved to true code author, non-merge,
-         non-lockfile-only) or direct task-linked ``GithubActivity`` totaling >= 10 effective lines;
-      2. Cross-task functional match across project ``GithubActivity`` totaling >= 20 effective
-         lines (``additions + deletions`` after excluding merge commits, lockfiles, and generated
-         files).
+         non-lockfile-only);
+      2. Direct task-linked ``GithubActivity`` or explicit task-code commit (``T-001``,
+         ``A1``..``D9``) totaling >= 20 effective lines AND >= 10% of matched lines on that task
+         (or sole contributor);
+      3. High-specificity heuristic cross-task functional match (score >= 16, top 1-2 tasks within
+         >= 85% of best score, skipping broad commits tying > 3 tasks) totaling >= 80 effective
+         lines AND >= 15% of total matched lines on that task.
     """
     if not tasks_by_id:
         return {}
@@ -385,9 +463,20 @@ def _find_qualified_code_contributors(
             seq_by_task[meta.task_id] = meta.seq
 
     task_profiles: dict[UUID, tuple[set[str], set[str], set[str]]] = {}
+    prefix_code_by_task: dict[UUID, str] = {}
     for tid, task in tasks_by_id.items():
         mod_name = modules_by_id.get(task.module_id, "")
-        task_profiles[tid] = _extract_profile(f"{mod_name} {task.title} {task.description or ''}")
+        subcodes, concept_markers, raw_tokens = _extract_profile(
+            f"{mod_name} {task.title} {task.description or ''}"
+        )
+        task_profiles[tid] = (
+            subcodes,
+            concept_markers,
+            raw_tokens - _CONTRIBUTION_STOPWORDS,
+        )
+        prefix_match = _TASK_TITLE_PREFIX_RE.match(task.title or "")
+        if prefix_match:
+            prefix_code_by_task[tid] = prefix_match.group(1).lower()
 
     for row in activities:
         if _is_merge_commit(row):
@@ -422,19 +511,43 @@ def _find_qualified_code_contributors(
 
         header_text = f"{title_str}\n{summary_str}\n{branch_text}"
         explicit_seqs = {int(m.group(1)) for m in _TASK_CODE_RE.finditer(header_text)}
+        explicit_subcodes = {
+            m.group(1).lower() for m in _EXPLICIT_SUBCODE_RE.finditer(f"{title_str}\n{branch_text}")
+        }
+
+        explicit_matched = [
+            tid
+            for tid in tasks_by_id
+            if (tid in seq_by_task and seq_by_task[tid] in explicit_seqs)
+            or (tid in prefix_code_by_task and prefix_code_by_task[tid] in explicit_subcodes)
+        ]
+        if explicit_matched:
+            split = len(explicit_matched)
+            for tid in explicit_matched:
+                bucket = direct_lines_by_task[tid]
+                bucket[author_uid] = bucket.get(author_uid, 0.0) + (eff_lines / split)
+            continue
 
         title_lower = title_str.lower()
         combined_lower = (f"{header_text}\n" + "\n".join(non_excluded_paths)).lower()
-        path_tokens = {tok for p in non_excluded_paths for tok in _ASCII_WORD_RE.findall(p)}
+        path_tokens = {
+            tok.lower()
+            for p in non_excluded_paths
+            for tok in _ASCII_WORD_RE.findall(p)
+            if tok.lower() not in _CONTRIBUTION_STOPWORDS
+        }
         commit_tokens = (
-            set(_ASCII_WORD_RE.findall(combined_lower)) | _cjk_bigrams(combined_lower) | path_tokens
+            {
+                tok
+                for tok in _ASCII_WORD_RE.findall(combined_lower)
+                if tok not in _CONTRIBUTION_STOPWORDS
+            }
+            | (_cjk_bigrams(combined_lower) - _CONTRIBUTION_STOPWORDS)
+            | path_tokens
         )
 
-        matched_tasks: list[UUID] = []
+        scored: list[tuple[UUID, int]] = []
         for tid in tasks_by_id:
-            if tid in seq_by_task and seq_by_task[tid] in explicit_seqs:
-                matched_tasks.append(tid)
-                continue
             profile = task_profiles[tid]
             score = _score_profile(
                 profile,
@@ -447,22 +560,41 @@ def _find_qualified_code_contributors(
             if path_overlap:
                 score += min(12, len(path_overlap) * 4)
             if score >= _HEURISTIC_MATCH_THRESHOLD:
-                matched_tasks.append(tid)
+                scored.append((tid, score))
 
-        if matched_tasks:
-            split = len(matched_tasks)
-            for tid in matched_tasks:
-                bucket = heuristic_lines_by_task[tid]
-                bucket[author_uid] = bucket.get(author_uid, 0.0) + (eff_lines / split)
+        if scored:
+            top_score = max(score for _, score in scored)
+            cutoff = top_score * _HEURISTIC_NEAR_TOP_RATIO
+            near_top = [(tid, score) for tid, score in scored if score >= cutoff]
+            if len(near_top) <= _HEURISTIC_BROAD_TIE_LIMIT:
+                near_top.sort(key=lambda item: (-item[1], str(item[0])))
+                chosen = [tid for tid, _ in near_top[:_HEURISTIC_MAX_TASKS_PER_COMMIT]]
+                split = len(chosen)
+                for tid in chosen:
+                    bucket = heuristic_lines_by_task[tid]
+                    bucket[author_uid] = bucket.get(author_uid, 0.0) + (eff_lines / split)
 
     qualified: dict[UUID, set[UUID]] = {}
     for tid in tasks_by_id:
         uids: set[UUID] = set(formal_gh_authors_by_task[tid])
-        candidate_uids = set(direct_lines_by_task[tid]) | set(heuristic_lines_by_task[tid])
+        direct_map = direct_lines_by_task[tid]
+        heuristic_map = heuristic_lines_by_task[tid]
+        candidate_uids = set(direct_map) | set(heuristic_map)
+        total_task_lines = sum(direct_map.values()) + sum(heuristic_map.values())
+        sole_coder = len(candidate_uids) == 1
         for uid in candidate_uids:
-            d_lines = direct_lines_by_task[tid].get(uid, 0.0)
-            h_lines = heuristic_lines_by_task[tid].get(uid, 0.0)
-            if d_lines >= DIRECT_LINK_MIN_LINES or (d_lines + h_lines) >= HEURISTIC_MATCH_MIN_LINES:
+            d_lines = direct_map.get(uid, 0.0)
+            h_lines = heuristic_map.get(uid, 0.0)
+            combined_lines = d_lines + h_lines
+            direct_qualifies = d_lines >= DIRECT_LINK_MIN_LINES and (
+                sole_coder
+                or (total_task_lines > 0 and (d_lines / total_task_lines) >= DIRECT_LINK_MIN_SHARE)
+            )
+            heuristic_qualifies = combined_lines >= HEURISTIC_MATCH_MIN_LINES and (
+                total_task_lines > 0
+                and (combined_lines / total_task_lines) >= HEURISTIC_MATCH_MIN_SHARE
+            )
+            if direct_qualifies or heuristic_qualifies:
                 uids.add(uid)
         if uids:
             qualified[tid] = uids

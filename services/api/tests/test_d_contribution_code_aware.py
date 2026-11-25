@@ -578,3 +578,161 @@ def test_verbose_5000_lines_and_concise_50_lines_yield_same_equal_split(d_engine
         assert by_uid[str(alice.id)]["share"] == pytest.approx(50.0)
         assert by_uid[str(bob.id)]["share"] == pytest.approx(25.0)
         assert by_uid[str(carol.id)]["share"] == pytest.approx(25.0)
+
+
+def test_generic_monorepo_commits_do_not_falsely_split_unrelated_tasks(d_engine):
+    """Generic shared-path commits with stopword tokens must not pull outsiders into tasks."""
+    with Session(d_engine) as session:
+        project, module, _task_a2, _o1, repo, alice, bob, carol = _seed_project_with_formal_task(
+            session,
+            task_title="A2 后端核心底座、数据库迁移与异步任务",
+            task_weight=Decimal("50"),
+            task_seq=1,
+            alice_share="100",
+        )
+        _add_formal_task(
+            session,
+            project,
+            module,
+            creator=carol,
+            title="D6 教师端工作台、课程规则模板与结课归档",
+            description="Teacher workbench course rule template and archive",
+            weight=Decimal("50"),
+            seq=2,
+            resp_shares={str(carol.id): "100"},
+        )
+        # Bob makes broad generic commits touching monorepo stopwords only.
+        _add_commit(
+            session,
+            project.id,
+            repo.id,
+            author=bob,
+            title="fix(api): refactor shared models, router, and page panel view",
+            files=[
+                {"path": "services/api/app/models.py", "additions": 180, "deletions": 40},
+                {"path": "services/api/app/router.py", "additions": 90, "deletions": 20},
+                {"path": "shared/components/panel.tsx", "additions": 110, "deletions": 15},
+            ],
+        )
+        session.commit()
+
+        snap = contribution.calculate(session, project.id, alice)
+        by_uid = {m["user_id"]: m for m in snap["members"]}
+        assert by_uid[str(alice.id)]["share"] == pytest.approx(50.0)
+        assert by_uid[str(carol.id)]["share"] == pytest.approx(50.0)
+        assert by_uid[str(bob.id)]["share"] == pytest.approx(0.0)
+
+
+def test_minor_incidental_edit_does_not_split_while_substantive_cross_task_does(d_engine):
+    """A 25-line edit on a 2000-line task does not split; >=80 lines & >=15% does split 50/50."""
+    with Session(d_engine) as session:
+        project, _module, task, _o1, repo, alice, bob, carol = _seed_project_with_formal_task(
+            session,
+            task_title="B3 支付网关结算与对账流程",
+            task_weight=Decimal("100"),
+            task_seq=1,
+            alice_share="100",
+        )
+        # Alice writes 2000 effective lines on her own task.
+        _add_commit(
+            session,
+            project.id,
+            repo.id,
+            author=alice,
+            title="feat(payment): implement gateway settlement and reconciliation engine",
+            files=[
+                {
+                    "path": "services/api/payment/gateway_settlement.py",
+                    "additions": 1950,
+                    "deletions": 50,
+                }
+            ],
+            link_task_id=task.id,
+        )
+        # Bob makes a tiny 25-line incidental edit (even directly linked: 25/2025 = 1.2% < 10%).
+        _add_commit(
+            session,
+            project.id,
+            repo.id,
+            author=bob,
+            title="fix(payment): tweak gateway timeout constant",
+            files=[
+                {
+                    "path": "services/api/payment/gateway_settlement.py",
+                    "additions": 15,
+                    "deletions": 10,
+                }
+            ],
+            link_task_id=task.id,
+        )
+        session.commit()
+
+        snap_before = contribution.calculate(session, project.id, alice)
+        by_uid_before = {m["user_id"]: m for m in snap_before["members"]}
+        assert by_uid_before[str(alice.id)]["share"] == pytest.approx(100.0)
+        assert by_uid_before[str(bob.id)]["share"] == pytest.approx(0.0)
+        assert by_uid_before[str(carol.id)]["share"] == pytest.approx(0.0)
+
+        # Carol contributes a substantive cross-task heuristic commit (450 lines, ~18.2% >= 15%).
+        _add_commit(
+            session,
+            project.id,
+            repo.id,
+            author=carol,
+            title="feat(payment): build gateway checkout refund and settlement pipeline",
+            files=[
+                {
+                    "path": "services/api/payment/gateway/checkout.py",
+                    "additions": 410,
+                    "deletions": 40,
+                }
+            ],
+        )
+        session.commit()
+
+        snap_after = contribution.calculate(session, project.id, alice)
+        by_uid_after = {m["user_id"]: m for m in snap_after["members"]}
+        assert by_uid_after[str(alice.id)]["share"] == pytest.approx(50.0)
+        assert by_uid_after[str(carol.id)]["share"] == pytest.approx(50.0)
+        assert by_uid_after[str(bob.id)]["share"] == pytest.approx(0.0)
+
+
+def test_explicit_task_prefix_code_matches_only_named_task(d_engine):
+    """A commit naming C6 in its title splits only C6 and never bleeds into other tasks."""
+    with Session(d_engine) as session:
+        project, module, _task_a2, _o1, repo, alice, bob, carol = _seed_project_with_formal_task(
+            session,
+            task_title="A2 后端核心底座",
+            task_weight=Decimal("50"),
+            task_seq=1,
+            alice_share="100",
+        )
+        _add_formal_task(
+            session,
+            project,
+            module,
+            creator=carol,
+            title="C6 项目讨论区与提及解析",
+            description="Discussion mentions and replies",
+            weight=Decimal("50"),
+            seq=2,
+            resp_shares={str(carol.id): "100"},
+        )
+        _add_commit(
+            session,
+            project.id,
+            repo.id,
+            author=bob,
+            title="feat(C6): add discussion mention parser and reply threading",
+            files=[
+                {"path": "services/api/discussions/mentions.py", "additions": 45, "deletions": 0}
+            ],
+        )
+        session.commit()
+
+        snap = contribution.calculate(session, project.id, alice)
+        by_uid = {m["user_id"]: m for m in snap["members"]}
+        # Alice keeps 100% of A2 (50 -> 50%); Carol & Bob split C6 50/50 (25 each -> 25%).
+        assert by_uid[str(alice.id)]["share"] == pytest.approx(50.0)
+        assert by_uid[str(carol.id)]["share"] == pytest.approx(25.0)
+        assert by_uid[str(bob.id)]["share"] == pytest.approx(25.0)
