@@ -4,16 +4,16 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Activity, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowRight, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useApp } from "@/components/app-providers";
 import { useWorkspace } from "@/lib/workspace";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiMode } from "@/lib/api/config";
-import { createCClient } from "@/lib/api/c-client";
-import { inboxApi } from "@/lib/api/c-inbox-client";
+import { CApiError, createCClient } from "@/lib/api/c-client";
+import { inboxApi, inboxTargetHref } from "@/lib/api/c-inbox-client";
 import { globalSearchApi, type SearchItemKind } from "@/lib/api/search-client";
 import { mockService } from "@/lib/api/mock-service";
 import { authClient } from "@/lib/api/auth-client";
@@ -21,7 +21,8 @@ import { resolveObjectContext, resolveCanonicalRouteContext, teacherNavItems } f
 import { projectNavGroups, type ProjectNavGroup } from "@/lib/ux/student-workspace";
 import { tr } from "@/lib/i18n/tr";
 import type { Role } from "@/types/domain";
-import { cn } from "@/lib/utils";
+import type { components } from "@/packages/domain/api.generated";
+import { cn, formatDate } from "@/lib/utils";
 import { AdminEnvironmentSwitcher } from "@/components/admin-environment-switcher";
 
 type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
@@ -75,6 +76,386 @@ function NavLink({ item, label, pathname, search }: { item: NavItem; label: stri
   return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={15} strokeWidth={1.9} className="shrink-0" /><span className="truncate">{label}</span></Link>;
 }
 
+type Schema = components["schemas"];
+
+function NotificationCenterPopover({
+  userId,
+  realInbox,
+  unreadCount,
+  pathname,
+}: {
+  userId: string;
+  realInbox: boolean;
+  unreadCount: number | null;
+  pathname: string;
+}) {
+  const ts = useTranslations("shell");
+  const ti = useTranslations("pages.inbox");
+  const tc = useTranslations("common");
+  const queryClient = useQueryClient();
+  const { data, update } = useWorkspace();
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"actions" | "notifications">("actions");
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [markError, setMarkError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const actionsQuery = useQuery({
+    queryKey: ["c-shell-popover-actions", userId],
+    queryFn: () => inboxApi.actionItems({ status: "pending", page: 1, page_size: 6 }),
+    enabled: open && realInbox && activeTab === "actions",
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+
+  const notificationsQuery = useQuery({
+    queryKey: ["c-shell-popover-notifications", userId],
+    queryFn: () => inboxApi.notifications({ state: "all", category: "all", page: 1, page_size: 6 }),
+    enabled: open && realInbox && activeTab === "notifications",
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+
+  const mockActions = useMemo(
+    () => (realInbox ? [] : data.actionItems.filter((item) => item.assigneeId === data.currentUserId && item.status === "pending").slice(0, 6)),
+    [data.actionItems, data.currentUserId, realInbox],
+  );
+  const mockNotifications = useMemo(
+    () => (realInbox ? [] : data.notifications.filter((item) => item.userId === data.currentUserId).slice(0, 6)),
+    [data.currentUserId, data.notifications, realInbox],
+  );
+
+  const pendingActionBadge = realInbox
+    ? (actionsQuery.isSuccess ? actionsQuery.data.total : null)
+    : data.actionItems.filter((item) => item.assigneeId === data.currentUserId && item.status === "pending").length;
+
+  const markRealNotificationRead = async (item: Schema["NotificationDTO"]) => {
+    if (!notificationsQuery.data || markingId) return;
+    setMarkingId(item.id);
+    setMarkError(null);
+    const body: Schema["MarkNotificationRead"] = {
+      expected_version: item.lock_version,
+      expected_inbox_version: notificationsQuery.data.inbox_version,
+      snapshot_id: notificationsQuery.data.snapshot_id,
+    };
+    const key = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `shell-read-${item.id}-${Date.now()}`;
+    try {
+      await inboxApi.markRead(item.id, body, key);
+      void queryClient.invalidateQueries({ queryKey: ["c-inbox-unread", userId] });
+      void queryClient.invalidateQueries({ queryKey: ["c-shell-popover-notifications", userId] });
+      void queryClient.invalidateQueries({ queryKey: ["c-inbox-notifications", userId] });
+    } catch (error) {
+      if (error instanceof CApiError && (error.status === 401 || error.status === 403)) {
+        queryClient.setQueryData(["c-inbox-blocked", userId], true);
+        setMarkError(ti("failAccess"));
+      } else if (error instanceof CApiError && error.status === 409) {
+        setMarkError(ti("failVersion"));
+      } else {
+        setMarkError(ti("failDefault"));
+      }
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Link
+        href="/notifications"
+        role="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={ts("notifications")}
+        title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}
+        className="gp-icon-button relative"
+        onClick={(event) => {
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+          event.preventDefault();
+          setMarkError(null);
+          setOpen((prev) => !prev);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === " ") {
+            event.preventDefault();
+            setMarkError(null);
+            setOpen((prev) => !prev);
+          }
+        }}
+      >
+        <Bell size={18} />
+        {unreadCount !== null && unreadCount > 0 && (
+          <span
+            data-testid="unread-notification-dot"
+            className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]"
+          />
+        )}
+      </Link>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label={ts("notifications")}
+          className="absolute right-0 top-10 z-50 w-[min(390px,92vw)] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-3 py-2">
+            <div role="tablist" className="inline-flex items-center gap-1 rounded-lg bg-slate-200/60 p-0.5">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "actions"}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  activeTab === "actions" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900",
+                )}
+                onClick={() => {
+                  setMarkError(null);
+                  setActiveTab("actions");
+                }}
+              >
+                <span>{ti("actionStatuses.pending")}</span>
+                {pendingActionBadge !== null && pendingActionBadge > 0 && (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-semibold tabular-nums text-amber-800">
+                    {pendingActionBadge}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "notifications"}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  activeTab === "notifications" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900",
+                )}
+                onClick={() => {
+                  setMarkError(null);
+                  setActiveTab("notifications");
+                }}
+              >
+                <span>{ti("notificationsTitle")}</span>
+                {unreadCount !== null && unreadCount > 0 && (
+                  <span className="rounded-full bg-sky-100 px-1.5 py-0.2 text-[10px] font-semibold tabular-nums text-sky-800">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700"
+              aria-label={tc("close")}
+              onClick={() => setOpen(false)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {markError && (
+            <div role="alert" className="border-b border-rose-100 bg-rose-50/70 px-3.5 py-2 text-[11px] text-rose-700">
+              {markError}
+            </div>
+          )}
+
+          <div className="max-h-[340px] overflow-y-auto divide-y divide-slate-100">
+            {activeTab === "actions" ? (
+              realInbox ? (
+                actionsQuery.isFetching ? (
+                  <div className="px-4 py-8 text-center text-xs text-slate-500">{ti("loadingActions")}</div>
+                ) : actionsQuery.isError ? (
+                  <div className="px-4 py-6 text-center text-xs text-rose-700">
+                    <p>{ti("failUnavailable")}</p>
+                    <button
+                      type="button"
+                      className="mt-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      onClick={() => void actionsQuery.refetch()}
+                    >
+                      {tc("retry")}
+                    </button>
+                  </div>
+                ) : (actionsQuery.data?.items.length ?? 0) > 0 ? (
+                  actionsQuery.data!.items.map((item) => {
+                    const href = inboxTargetHref(item.target) ?? "/action-items";
+                    return (
+                      <Link
+                        key={item.id}
+                        href={href}
+                        onClick={() => setOpen(false)}
+                        className="flex items-start gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-slate-50"
+                      >
+                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-semibold text-slate-900">{item.title}</span>
+                          {item.description && (
+                            <span className="mt-0.5 block line-clamp-1 text-[11px] text-slate-500">{item.description}</span>
+                          )}
+                          <span className="mt-1 block text-[10px] text-slate-400">
+                            {item.due_at ? ti("due", { date: formatDate(item.due_at) }) : ti("noDue")}
+                          </span>
+                        </span>
+                        <ArrowRight size={13} className="mt-1 shrink-0 text-slate-400" />
+                      </Link>
+                    );
+                  })
+                ) : (
+                  <div className="px-4 py-8 text-center text-xs text-slate-500">{ti("emptyActions")}</div>
+                )
+              ) : mockActions.length > 0 ? (
+                mockActions.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href || "/action-items"}
+                    onClick={() => setOpen(false)}
+                    className="flex items-start gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-slate-50"
+                  >
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold text-slate-900">{item.title}</span>
+                      <span className="mt-0.5 block line-clamp-1 text-[11px] text-slate-500">{item.description}</span>
+                    </span>
+                    <ArrowRight size={13} className="mt-1 shrink-0 text-slate-400" />
+                  </Link>
+                ))
+              ) : (
+                <div className="px-4 py-8 text-center text-xs text-slate-500">{ti("emptyActions")}</div>
+              )
+            ) : realInbox ? (
+              notificationsQuery.isFetching ? (
+                <div className="px-4 py-8 text-center text-xs text-slate-500">{ti("loadingNotifications")}</div>
+              ) : notificationsQuery.isError ? (
+                <div className="px-4 py-6 text-center text-xs text-rose-700">
+                  <p>{ti("failUnavailable")}</p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    onClick={() => void notificationsQuery.refetch()}
+                  >
+                    {tc("retry")}
+                  </button>
+                </div>
+              ) : (notificationsQuery.data?.items.length ?? 0) > 0 ? (
+                notificationsQuery.data!.items.map((item) => {
+                  const href = inboxTargetHref(item.target) ?? "/notifications";
+                  const isUnread = !item.read_at;
+                  return (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        "flex items-start gap-2.5 px-3.5 py-2.5 transition-colors",
+                        isUnread ? "bg-sky-50/35 hover:bg-sky-50/60" : "hover:bg-slate-50",
+                      )}
+                    >
+                      <span
+                        className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", isUnread ? "bg-sky-600" : "bg-slate-300")}
+                        aria-hidden="true"
+                      />
+                      <Link href={href} onClick={() => setOpen(false)} className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-slate-900">{item.title}</span>
+                        {item.description && (
+                          <span className="mt-0.5 block line-clamp-1 text-[11px] text-slate-500">{item.description}</span>
+                        )}
+                        <span className="mt-1 block text-[10px] tabular-nums text-slate-400">{formatDate(item.created_at)}</span>
+                      </Link>
+                      {isUnread && (
+                        <button
+                          type="button"
+                          disabled={markingId !== null}
+                          title={ti("markRead")}
+                          aria-label={ti("markRead")}
+                          className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-sky-200 bg-white text-sky-700 transition-colors hover:bg-sky-50 disabled:opacity-50"
+                          onClick={() => void markRealNotificationRead(item)}
+                        >
+                          <Check size={12} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="px-4 py-8 text-center text-xs text-slate-500">{ti("emptyNotifications")}</div>
+              )
+            ) : mockNotifications.length > 0 ? (
+              mockNotifications.map((item) => (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "flex items-start gap-2.5 px-3.5 py-2.5 transition-colors",
+                    !item.read ? "bg-sky-50/35 hover:bg-sky-50/60" : "hover:bg-slate-50",
+                  )}
+                >
+                  <span
+                    className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", !item.read ? "bg-sky-600" : "bg-slate-300")}
+                    aria-hidden="true"
+                  />
+                  <Link href={item.href || "/notifications"} onClick={() => setOpen(false)} className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold text-slate-900">{item.title}</span>
+                    <span className="mt-0.5 block line-clamp-1 text-[11px] text-slate-500">{item.description}</span>
+                  </Link>
+                  {!item.read && (
+                    <button
+                      type="button"
+                      title={ti("markRead")}
+                      aria-label={ti("markRead")}
+                      className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-sky-200 bg-white text-sky-700 transition-colors hover:bg-sky-50"
+                      onClick={() => update("notifications", item.id, { read: true })}
+                    >
+                      <Check size={12} />
+                    </button>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="px-4 py-8 text-center text-xs text-slate-500">{ti("emptyNotifications")}</div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-3.5 py-2 text-xs">
+            <Link
+              href="/action-items"
+              onClick={() => setOpen(false)}
+              className="font-medium text-slate-600 transition-colors hover:text-[var(--gp-action)]"
+            >
+              {tr("全部待处理")}
+            </Link>
+            <Link
+              href="/notifications"
+              onClick={() => setOpen(false)}
+              className="font-medium text-[var(--gp-action)] transition-colors hover:text-[var(--gp-action-hover)]"
+            >
+              {tr("全部通知")}
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: "student" | "teacher" | "admin" }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -110,6 +491,15 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const defaultCourse = mockShell ? data.courses.find((item) => item.teacherId === data.currentUserId) ?? data.courses[0] : undefined;
   const navCourseId = context.courseId ?? defaultCourse?.id;
   const projectMode = kind === "student" && pathname.startsWith("/projects/") && Boolean(context.projectId);
+  const isGlobalStudentTopNav = kind === "student" && !projectMode && role !== "teacher" && role !== "ta";
+  const topNavLinks = useMemo(
+    () => [
+      { href: "/home", label: t("home"), active: pathname === "/home" },
+      { href: "/projects", label: t("myProjects"), active: pathname === "/projects" || pathname === "/projects/new" },
+      { href: "/courses", label: t("myCourses"), active: pathname === "/courses" || pathname.startsWith("/courses/") },
+    ],
+    [pathname, t],
+  );
   const sidebarScopeKey = projectMode && context.projectId
     ? `project:${context.projectId}`
     : kind === "teacher" && navCourseId
@@ -301,9 +691,103 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     }
   };
 
-  return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace", kind === "admin" && "gp-shell-admin")}>
-    {mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
-    <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
+  const searchInputNode = (
+    <div ref={searchBoxRef} className="gp-search relative min-w-0 flex-1">
+      <Search size={15} className="shrink-0" />
+      <input
+        value={search}
+        onFocus={() => setSearchOpen(true)}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setSearchOpen(true);
+          setActiveIndex(-1);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setSearchOpen(false);
+            setActiveIndex(-1);
+          } else if (event.key === "ArrowDown" && searchResults.length) {
+            event.preventDefault();
+            setSearchOpen(true);
+            setActiveIndex((prev) => (prev + 1) % searchResults.length);
+          } else if (event.key === "ArrowUp" && searchResults.length) {
+            event.preventDefault();
+            setSearchOpen(true);
+            setActiveIndex((prev) => (prev <= 0 ? searchResults.length - 1 : prev - 1));
+          } else if (event.key === "Enter" && activeIndex >= 0 && searchResults[activeIndex]) {
+            event.preventDefault();
+            const chosen = searchResults[activeIndex];
+            setSearch("");
+            setSearchOpen(false);
+            setActiveIndex(-1);
+            router.push(chosen.href);
+          }
+        }}
+        placeholder={ts("searchPlaceholder")}
+        aria-label={ts("searchLabel")}
+      />
+      {search && (
+        <button
+          type="button"
+          className="rounded p-0.5 text-[#8b99aa] hover:text-[#42526e]"
+          aria-label={tc("close")}
+          onClick={() => {
+            setSearch("");
+            setDebouncedSearch("");
+            setActiveIndex(-1);
+          }}
+        >
+          <X size={13} />
+        </button>
+      )}
+      {searchOpen && search.trim() && (
+        <div
+          role="listbox"
+          aria-label={ts("searchLabel")}
+          className={cn(
+            "absolute top-10 z-40 max-h-[360px] w-[min(380px,88vw)] overflow-y-auto rounded-[8px] border border-[#dfe6ee] bg-white p-1.5 shadow-lg",
+            isGlobalStudentTopNav ? "right-0" : "left-0",
+          )}
+        >
+          {!mockShell && (debouncedSearch !== search.trim() || remoteSearch.isFetching) ? (
+            <div className="px-3 py-2 text-[12px] text-[#8b99aa]" role="status">{ts("searching")}</div>
+          ) : !mockShell && remoteSearch.isError ? (
+            <div className="px-3 py-2 text-[12px] text-[#b91c1c]" role="alert">{ts("searchError")}</div>
+          ) : searchResults.length ? (
+            searchResults.map((result, index) => (
+              <Link
+                key={result.id}
+                role="option"
+                aria-selected={index === activeIndex}
+                href={result.href}
+                onClick={() => {
+                  setSearch("");
+                  setSearchOpen(false);
+                  setActiveIndex(-1);
+                }}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-[5px] px-3 py-2 text-[12px] hover:bg-[#eef4ff]",
+                  index === activeIndex && "bg-[#eef4ff]",
+                )}
+              >
+                <span className="shrink-0 rounded bg-[#f2f5fa] px-1.5 py-0.5 text-[11px] font-medium text-[#53637d]">{result.type}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-[#17243c]">{result.label}</span>
+                  {result.subtitle && <span className="block truncate text-[11px] text-[#7b899e]">{result.subtitle}</span>}
+                </span>
+              </Link>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-[12px] text-[#8b99aa]">{ts("searchNoResult")}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace", isGlobalStudentTopNav && "gp-shell-topnav", kind === "admin" && "gp-shell-admin")}>
+    {!isGlobalStudentTopNav && mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
+    {!isGlobalStudentTopNav && <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
       <div className="gp-sidebar-header">
         <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
         {kind === "admin" && <div className="px-[20px] pb-2 text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
@@ -399,113 +883,105 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
         </> : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
       </nav>
       <div className="gp-sidebar-footer">{ts("footer")}</div>
-    </aside>
+    </aside>}
     <div className="gp-main">
       <header className="gp-topbar">
-        <div className="gp-topbar-left">
-          <button className="gp-icon-button gp-mobile-menu" onClick={() => setMobileOpen(!mobileOpen)} aria-label={ts("openMenu")}>{mobileOpen ? <X size={19} /> : <Menu size={19} />}</button>
-          <div ref={searchBoxRef} className="gp-search relative min-w-0 flex-1">
-            <Search size={15} />
-            <input
-              value={search}
-              onFocus={() => setSearchOpen(true)}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setSearchOpen(true);
-                setActiveIndex(-1);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setSearchOpen(false);
-                  setActiveIndex(-1);
-                } else if (event.key === "ArrowDown" && searchResults.length) {
-                  event.preventDefault();
-                  setSearchOpen(true);
-                  setActiveIndex((prev) => (prev + 1) % searchResults.length);
-                } else if (event.key === "ArrowUp" && searchResults.length) {
-                  event.preventDefault();
-                  setSearchOpen(true);
-                  setActiveIndex((prev) => (prev <= 0 ? searchResults.length - 1 : prev - 1));
-                } else if (event.key === "Enter" && activeIndex >= 0 && searchResults[activeIndex]) {
-                  event.preventDefault();
-                  const chosen = searchResults[activeIndex];
-                  setSearch("");
-                  setSearchOpen(false);
-                  setActiveIndex(-1);
-                  router.push(chosen.href);
-                }
-              }}
-              placeholder={ts("searchPlaceholder")}
-              aria-label={ts("searchLabel")}
-            />
-            {search && (
-              <button
-                type="button"
-                className="rounded p-0.5 text-[#8b99aa] hover:text-[#42526e]"
-                aria-label={tc("close")}
-                onClick={() => {
-                  setSearch("");
-                  setDebouncedSearch("");
-                  setActiveIndex(-1);
-                }}
-              >
-                <X size={13} />
-              </button>
-            )}
-            {searchOpen && search.trim() && (
-              <div
-                role="listbox"
-                aria-label={ts("searchLabel")}
-                className="absolute left-0 top-10 z-40 max-h-[360px] w-[min(380px,88vw)] overflow-y-auto rounded-[8px] border border-[#dfe6ee] bg-white p-1.5 shadow-lg"
-              >
-                {!mockShell && (debouncedSearch !== search.trim() || remoteSearch.isFetching) ? (
-                  <div className="px-3 py-2 text-[12px] text-[#8b99aa]" role="status">{ts("searching")}</div>
-                ) : !mockShell && remoteSearch.isError ? (
-                  <div className="px-3 py-2 text-[12px] text-[#b91c1c]" role="alert">{ts("searchError")}</div>
-                ) : searchResults.length ? (
-                  searchResults.map((result, index) => (
+        <div className={cn("gp-topbar-inner", isGlobalStudentTopNav && "gp-topbar-inner-centered")}>
+          <div className="gp-topbar-left">
+            <button
+              type="button"
+              className="gp-icon-button gp-mobile-menu"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label={mobileOpen ? ts("closeMenu") : ts("openMenu")}
+              aria-expanded={mobileOpen}
+            >
+              {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+            </button>
+            {isGlobalStudentTopNav ? (
+              <>
+                <Link href="/home" className="gp-topnav-brand" onClick={() => setMobileOpen(false)}>
+                  <span className="gp-brand-mark" />
+                  <span>{tc("appName")}</span>
+                </Link>
+                <nav aria-label={t("global")} className="gp-topnav-links">
+                  {topNavLinks.map((item) => (
                     <Link
-                      key={result.id}
-                      role="option"
-                      aria-selected={index === activeIndex}
-                      href={result.href}
-                      onClick={() => {
-                        setSearch("");
-                        setSearchOpen(false);
-                        setActiveIndex(-1);
-                      }}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-[5px] px-3 py-2 text-[12px] hover:bg-[#eef4ff]",
-                        index === activeIndex && "bg-[#eef4ff]",
-                      )}
+                      key={item.href}
+                      href={item.href}
+                      aria-current={item.active ? "page" : undefined}
+                      className={cn("gp-topnav-link", item.active && "active")}
                     >
-                      <span className="shrink-0 rounded bg-[#f2f5fa] px-1.5 py-0.5 text-[11px] font-medium text-[#53637d]">{result.type}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-[#17243c]">{result.label}</span>
-                        {result.subtitle && <span className="block truncate text-[11px] text-[#7b899e]">{result.subtitle}</span>}
-                      </span>
+                      {item.label}
                     </Link>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-[12px] text-[#8b99aa]">{ts("searchNoResult")}</div>
-                )}
-              </div>
+                  ))}
+                </nav>
+              </>
+            ) : (
+              searchInputNode
+            )}
+          </div>
+          <div className="gp-topbar-right">
+            {isGlobalStudentTopNav && searchInputNode}
+            {kind === "admin" && <AdminEnvironmentSwitcher />}
+            <LanguageSwitcher compact />
+            <span className={cn("gp-topbar-link hidden", isGlobalStudentTopNav ? "xl:inline" : "lg:inline")}>{ts("helpCenter")}</span>
+            <NotificationCenterPopover userId={userId} realInbox={realInbox} unreadCount={unreadCount} pathname={pathname} />
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex shrink-0 items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]">
+                <Avatar name={displayName} color={user?.avatarColor} size={28} />
+                <span className="hidden lg:inline">{displayName}</span>
+                <ChevronDown size={13} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => router.push("/account")}>
+                  <UserRound size={14} />{ts("accountCenter")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push("/activity")}>
+                  <Activity size={14} />{t("activity")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void logout()}>
+                  <LogOut size={14} />{ts("logout")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {demoMode && (
+              <select className="hidden max-w-[86px] rounded-[5px] border border-[#e0e6ef] bg-white px-1.5 py-1.5 text-[11px] text-[#53637d] lg:inline" aria-label={ts("switchDemoRole")} title={ts("switchDemoRole")} value={role} onChange={(event) => setRole(event.target.value as Role)}>
+                {(["student", "leader", "teacher", "ta", "admin"] as Role[]).map((value) => <option key={value} value={value}>{ts(`roles.${value}`)}</option>)}
+              </select>
             )}
           </div>
         </div>
-        <div className="gp-topbar-right">
-          {kind === "admin" && <AdminEnvironmentSwitcher />}
-          <LanguageSwitcher compact />
-          <span className="gp-topbar-link hidden lg:inline">{ts("helpCenter")}</span>
-          <Link href="/notifications" className="gp-icon-button relative" aria-label={ts("notifications")} title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}><Bell size={18} />{unreadCount !== null && unreadCount > 0 && <span data-testid="unread-notification-dot" className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]" />}</Link>
-          <DropdownMenu><DropdownMenuTrigger className="flex items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]"><Avatar name={displayName} color={user?.avatarColor} size={28} /><span className="hidden lg:inline">{displayName}</span><ChevronDown size={13} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => router.push("/account")}><UserRound size={14} />{ts("accountCenter")}</DropdownMenuItem><DropdownMenuItem onSelect={() => router.push("/activity")}>{ts("myActivity")}</DropdownMenuItem><DropdownMenuItem onSelect={() => void logout()}><LogOut size={14} />{ts("logout")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-          {demoMode && (
-            <select className="hidden max-w-[86px] rounded-[5px] border border-[#e0e6ef] bg-white px-1.5 py-1.5 text-[11px] text-[#53637d] lg:inline" aria-label={ts("switchDemoRole")} title={ts("switchDemoRole")} value={role} onChange={(event) => setRole(event.target.value as Role)}>
-              {(["student", "leader", "teacher", "ta", "admin"] as Role[]).map((value) => <option key={value} value={value}>{ts(`roles.${value}`)}</option>)}
-            </select>
-          )}
-        </div>
       </header>
+      {isGlobalStudentTopNav && mobileOpen && (
+        <nav aria-label={t("global")} className="gp-topnav-mobile-drawer">
+          <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2.5">
+            {topNavLinks.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={item.active ? "page" : undefined}
+                onClick={() => setMobileOpen(false)}
+                className={cn("gp-nav-link", item.active && "active")}
+              >
+                <span>{item.label}</span>
+              </Link>
+            ))}
+            <div className="my-1 h-px bg-slate-100" />
+            <Link href="/action-items" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/action-items" && "active")}>
+              <CheckSquare size={15} className="shrink-0" />
+              <span>{t("actionItems")}</span>
+            </Link>
+            <Link href="/notifications" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/notifications" && "active")}>
+              <Bell size={15} className="shrink-0" />
+              <span>{t("notifications")}</span>
+            </Link>
+            <Link href="/activity" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/activity" && "active")}>
+              <Activity size={15} className="shrink-0" />
+              <span>{t("activity")}</span>
+            </Link>
+          </div>
+        </nav>
+      )}
       <main className="gp-content">{children}</main>
     </div>
   </div>;

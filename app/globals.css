@@ -146,8 +146,21 @@ button { cursor: pointer; }
 .gp-sidebar-footer { flex: 0 0 auto; margin-top: auto; padding: 10px 18px 12px; border-top: 1px solid var(--gp-border-subtle); background: #fff; color: #9aa7ba; font-size: 11px; line-height: 1.45; }
 .gp-sidebar.admin .gp-sidebar-footer { background: #19283c; border-top-color: #24364f; }
 .gp-main { min-width: 0; flex: 1; }
-.gp-topbar { position: sticky; top: 0; z-index: 20; height: 66px; background: #fff; border-bottom: 1px solid var(--gp-border); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 30px; }
-.gp-topbar-left, .gp-topbar-right { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.gp-topbar { position: sticky; top: 0; z-index: 20; height: 60px; background: #fff; border-bottom: 1px solid var(--gp-border); display: flex; align-items: center; padding: 0 28px; }
+.gp-topbar-inner { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.gp-topbar-inner-centered { max-width: 1152px; margin: 0 auto; }
+.gp-topbar-left, .gp-topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gp-shell-topnav { flex-direction: column; }
+.gp-shell-topnav .gp-topbar { height: 58px; padding: 0 28px; }
+.gp-topnav-brand { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; color: #0f172a; font-size: 18px; font-weight: 750; letter-spacing: -.02em; line-height: 1; padding-right: 12px; border-right: 1px solid rgba(15, 23, 42, .08); }
+.gp-topnav-brand .gp-brand-mark { width: 20px; height: 20px; border-width: 3.5px; border-radius: 5px; }
+.gp-topnav-links { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.gp-topnav-link { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; color: #475569; font-size: 13px; font-weight: 560; white-space: nowrap; transition: background-color var(--gp-dur-fast) var(--gp-ease), color var(--gp-dur-fast) var(--gp-ease); }
+.gp-topnav-link:hover { background: rgba(241, 245, 249, .95); color: #0f172a; }
+.gp-topnav-link.active { background: rgba(224, 242, 254, .85); color: #0369a1; font-weight: 660; }
+.gp-topnav-mobile-drawer { position: sticky; top: 56px; z-index: 19; border-bottom: 1px solid rgba(15, 23, 42, .08); background: rgba(255, 255, 255, .98); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 12px 28px -18px rgba(15, 23, 42, .18); }
+.gp-shell-topnav .gp-search { width: min(240px, 24vw); flex: 0 1 240px; height: 34px; }
+.gp-shell-topnav .gp-content { width: 100%; max-width: 1152px; margin: 0 auto; padding: 28px 28px 56px; }
 .gp-search { width: min(340px, 36vw); height: 35px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--gp-border); border-radius: 6px; padding: 0 11px; color: #8793a8; background: #fbfcfe; }
 .gp-search input { border: 0; outline: 0; min-width: 0; width: 100%; background: transparent; color: var(--gp-ink); font-size: 12px; }
 .gp-topbar-link { color: #65738a; font-size: 12px; white-space: nowrap; }
@@ -290,6 +303,7 @@ button { cursor: pointer; }
   color: #64748b;
 }
 .gp-student-workspace .gp-content { max-width: 1320px; padding: 30px 36px 56px; }
+.gp-student-workspace.gp-shell-topnav .gp-content { max-width: 1152px; padding: 28px 28px 56px; }
 .gp-student-workspace .gp-page-header { margin-bottom: 26px; }
 .gp-student-workspace .gp-page-title { font-size: 26px; font-weight: 700; letter-spacing: -.025em; color: #0f172a; }
 .gp-student-workspace .gp-page-description { color: #64748b; font-size: 13px; margin-top: 6px; line-height: 1.55; }
@@ -499,10 +513,13 @@ button { cursor: pointer; }
 @media (max-width: 720px) {
   .gp-sidebar { position: fixed; left: 0; transform: translateX(-100%); transition: transform .2s; box-shadow: 10px 0 30px #14233d14; }
   .gp-sidebar.open { transform: translateX(0); }
-  .gp-topbar { height: 56px; padding: 0 14px; }
+  .gp-topbar, .gp-shell-topnav .gp-topbar { height: 56px; padding: 0 12px; }
+  .gp-topbar-left, .gp-topbar-right { gap: 8px; }
+  .gp-topnav-brand { border-right: 0; padding-right: 0; font-size: 16px; }
+  .gp-topnav-links { display: none; }
   .gp-mobile-menu { display: inline-flex; }
   .gp-search, .gp-topbar-link { display: none; }
-  .gp-content { padding: 23px 16px 40px; }
+  .gp-content, .gp-student-workspace .gp-content, .gp-student-workspace.gp-shell-topnav .gp-content { padding: 20px 16px 40px; }
   .gp-page-title { font-size: 23px; }
   .gp-grid-3, .gp-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gp-stat { min-height: 88px; padding: 13px; }
