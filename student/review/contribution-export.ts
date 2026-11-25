@@ -77,7 +77,7 @@ export function buildMarkdownReport(analytics: ProjectContributionAnalytics): st
     `- **导出时间**：${exportedAt}`,
     `- **正式贡献快照**：${snapLabel}`,
     `- **计算模型**：${analytics.snapshot?.formula_version ?? "formal-task-weight-cross-task-equal-split-v2"}`,
-    `- **数据透明度说明**：**正式验收权重**严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人贡献实质代码（任务直连 ≥10 有效行或正式 GitHub 证据，或跨任务功能匹配 ≥20 有效行，排除合并提交、锁文件与生成文件），则所有参与者按任务权重等权平分（零行数/提交次数刷分）用于结项冻结；**全过程综合活跃参考**按 85% 任务实际交付（含跨任务平分）+ 15% 全仓对数工程量兜底加权（无 GitHub 数据时归一化为 100% 任务交付），提交次数与飞书群聊仅作过程参考（0% 权重）。`,
+    `- **数据透明度说明**：**正式验收权重**严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人贡献实质代码（正式 GitHub 证据、任务直接关联/显式编号 ≥20 有效行且 ≥10%，或跨分工功能匹配 ≥80 有效行且 ≥15%，排除合并提交、锁文件与生成文件），则所有参与者按任务权重等权平分（零行数/提交次数刷分）用于结项冻结；**全过程综合活跃参考**按 85% 任务实际交付（含跨任务平分）+ 15% 全仓对数工程量兜底加权（无 GitHub 数据时归一化为 100% 任务交付），提交次数与飞书群聊仅作过程参考（0% 权重）。`,
     "",
     "## 一、项目总览指标",
     "",
@@ -197,7 +197,7 @@ export function buildWordHtmlReport(analytics: ProjectContributionAnalytics): st
     <div><strong>核心汇总：</strong>团队成员 ${analytics.members.length} 人（正式计入 ${analytics.formalParticipantCount} 人） · 任务完成 ${analytics.taskStatusCounts.completed}/${analytics.taskStatusCounts.total} · 代码提交 ${analytics.totalCommits} 次（+${analytics.totalAdditions} / -${analytics.totalDeletions}） · 飞书消息 ${analytics.feishuTotalMessages} 条</div>
   </div>
   <div class="note">
-    <strong>学术与评审口径说明：</strong>“正式权重占比”严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人贡献实质代码（直连 ≥10 有效行或正式 GitHub 证据，或跨任务功能匹配 ≥20 有效行，排除合并提交、锁文件与生成文件），则参与者按任务权重等权平分用于结项冻结；“综合活跃参考”按 85% 任务实际交付（含跨任务平分）+ 15% 全仓对数工程量兜底加权，代码提交次数与飞书群聊仅作过程参考（0% 权重）。
+    <strong>学术与评审口径说明：</strong>“正式权重占比”严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人贡献实质代码（正式 GitHub 证据、直接关联/显式编号 ≥20 有效行且 ≥10%，或跨分工功能匹配 ≥80 有效行且 ≥15%，排除合并提交、锁文件与生成文件），则参与者按任务权重等权平分用于结项冻结；“综合活跃参考”按 85% 任务实际交付（含跨任务平分）+ 15% 全仓对数工程量兜底加权，代码提交次数与飞书群聊仅作过程参考（0% 权重）。
   </div>
 
   <h2>一、全员多维贡献明细</h2>

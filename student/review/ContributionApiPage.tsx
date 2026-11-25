@@ -675,7 +675,7 @@ export function ContributionApiPage({
                   <div>
                     <strong className="font-semibold text-slate-900">学术透明性与计算口径说明：</strong>
                     <span className="ml-1">
-                      <strong>正式验收权重（用于结项冻结）</strong> 严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人在该任务贡献实质代码（任务直连 ≥10 有效行或正式 GitHub 证据，或跨任务功能匹配 ≥20 有效行，自动排除合并提交、锁文件与生成文件），则所有参与者按任务权重<strong>等权平分</strong>，不按代码行数或提交次数刷分（公式{" "}
+                      <strong>正式验收权重（用于结项冻结）</strong> 严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人在该任务贡献实质代码（正式 GitHub 证据、任务直接关联/显式编号 ≥20 有效行且 ≥10%，或跨分工功能匹配 ≥80 有效行且 ≥15%，自动排除合并提交、锁文件与生成文件），则所有参与者按任务权重<strong>等权平分</strong>，不按代码行数或提交次数刷分（公式{" "}
                       <code className="rounded bg-white/80 px-1 py-0.5 font-mono text-[11px] text-slate-800">
                         {snapshot?.formula_version ?? "formal-task-weight-cross-task-equal-split-v2"}
                       </code>
