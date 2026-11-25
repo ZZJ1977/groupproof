@@ -39,7 +39,7 @@ import { scopedWorkspaceKey, useWorkspace } from "@/lib/workspace";
 import { createCommandRunner, type Command } from "@/lib/commands/core";
 import { workspaceService } from "@/lib/api/workspace-service";
 import { apiMode } from "@/lib/api/config";
-import { canMarkDiscussionImportant, canWriteDiscussion, createDiscussion, discussionAsEvidence, discussionMentionTargets, markDiscussionImportant, replyDiscussion } from "@/features/c/discussions";
+import { ProjectDiscussionPreviewPage } from "@/features/c/ProjectDiscussionPreviewPage";
 import { useUrlQuery } from "@/features/c/use-url-query";
 import { GithubRecordPanels, FeishuRecordPanel } from "@/features/c/ActivityRecordPanels";
 import { feishuActivityFilters } from "@/features/c/activity-records";
@@ -94,7 +94,7 @@ export function ProjectSupportView({ screen, projectId, memberId }: ViewProps) {
     case 21: return <GithubPage {...context} />;
     case 22: return <FeishuPage {...context} />;
     case 23: return <FilesPage {...context} />;
-    case 24: return <DiscussionsPage {...context} />;
+    case 24: return <ProjectDiscussionPreviewPage projectId={project.id} projectName={project.name} />;
     case 25: return <ContributionOverview {...context} />;
     case 26: return <ContributionMember {...context} />;
     case 27: return <ReportPreview {...context} />;
@@ -249,130 +249,6 @@ function FilesPage({ data, project, userId }: ProjectContext) {
         {project.version !== designation.expectedProjectVersion && <button type="button" className={`${outline} mt-2`} disabled={savingDesignation} onClick={() => setDesignation({ ...designation, expectedProjectVersion: project.version, idempotencyKey: id("file-designation") })}>已核对最新项目资料，保留原因</button>}
         <div className="mt-3 flex gap-2"><button type="button" className={outline} disabled={savingDesignation} onClick={() => { if (!designationReason.trim() || window.confirm(tr("放弃尚未保存的正式版本原因？"))) { setDesignation(null); setDesignationReason(""); } }}>取消</button><button type="button" className={primary} disabled={savingDesignation || !designationReason.trim() || !canWrite || selectedFile.status !== "draft" || project.version !== designation.expectedProjectVersion} onClick={confirmDesignation}>{savingDesignation ? "保存中…" : "确认设为正式"}</button></div>
       </Panel>}</div></div>
-  </div>;
-}
-
-function DiscussionsPage({ data, project, userId }: ProjectContext) {
-  const queryClient = useQueryClient();
-  const workspaceKey = useMemo(() => scopedWorkspaceKey(userId), [userId]);
-  const runner = useMemo(() => createCommandRunner({
-    repository: {
-      read: async () => queryClient.getQueryData<Workspace["data"]>(workspaceKey) ?? await workspaceService.getWorkspace(),
-      save: workspaceService.saveWorkspace,
-    },
-    currentActorId: () => queryClient.getQueryData<Workspace["data"]>(workspaceKey)?.currentUserId ?? "",
-    onSaved: (next) => queryClient.setQueryData(workspaceKey, next),
-  }), [queryClient, workspaceKey]);
-  const { query: urlQuery, updateQuery } = useUrlQuery();
-  const threads = data.discussions.filter((item) => item.projectId === project.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const current = find(threads, urlQuery.get("discussion") ?? "") ?? threads[0];
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("最近活动");
-  const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState({ title: "", body: "", taskId: "", requirementId: "", moduleId: "", milestoneId: "" });
-  const createId = useRef("");
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, { text: string; mentionedUserIds: string[] }>>({});
-  const replyIds = useRef<Record<string, string>>({});
-  const evidenceIds = useRef<Record<string, string>>({});
-  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, { taskId: string; criterionIds: string[] }>>({});
-  const [importantReasons, setImportantReasons] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const busy = useRef(false);
-  const [notice, setNotice] = useState("");
-  const localWorkspace = apiMode("workspace") === "mock";
-  const canWrite = localWorkspace && canWriteDiscussion(data, data.currentUserId, project.id);
-  const canMark = Boolean(current && localWorkspace && canMarkDiscussionImportant(data, data.currentUserId, current));
-  const importantReason = current ? importantReasons[current.id] ?? "" : "";
-  const replyDraft = current ? replyDrafts[current.id] ?? { text: "", mentionedUserIds: [] } : { text: "", mentionedUserIds: [] };
-  const mentionTargets = discussionMentionTargets(data, project.id);
-  const visible = threads.filter((item) => `${item.title} ${item.body} ${memberName(data, item.authorId)}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "最近活动" ? b.updatedAt.localeCompare(a.updatedAt) : a.title.localeCompare(b.title));
-  const eligibleTasks = data.tasks.filter((item) => item.projectId === project.id && (item.status === "in_progress" || item.status === "pending_submission"));
-  const evidenceDraft = current ? evidenceDrafts[current.id] ?? { taskId: eligibleTasks.some((item) => item.id === current.taskId) ? current.taskId! : "", criterionIds: [] } : { taskId: "", criterionIds: [] };
-  const evidenceCriteria = data.criteria.filter((item) => item.taskId === evidenceDraft.taskId);
-
-  async function perform<I, O>(command: Command<I, O>, input: I) {
-    if (!canWrite || busy.current) return null;
-    busy.current = true; setSaving(true);
-    try {
-      const outcome = await runner(command, input);
-      if (!outcome.ok) setNotice(outcome.error.message);
-      return outcome;
-    } catch {
-      setNotice("保存失败，输入已保留，请重试。");
-      return null;
-    } finally {
-      busy.current = false; setSaving(false);
-    }
-  }
-  const openCreate = () => {
-    if (creating) return;
-    createId.current = id("discussion"); setCreating(true);
-  };
-  const cancelCreate = () => {
-    if (Object.values(draft).some(Boolean) && !window.confirm(tr("放弃尚未发布的讨论修改？"))) return;
-    setDraft({ title: "", body: "", taskId: "", requirementId: "", moduleId: "", milestoneId: "" });
-    createId.current = ""; setCreating(false);
-  };
-  const create = async () => {
-    if (!draft.title.trim() || !draft.body.trim()) { setNotice("请填写讨论标题和内容。"); return; }
-    const result = await perform(createDiscussion, { projectId: project.id, id: createId.current, title: draft.title, body: draft.body, taskId: draft.taskId || undefined, requirementId: draft.requirementId || undefined, moduleId: draft.moduleId || undefined, milestoneId: draft.milestoneId || undefined });
-    if (result?.ok) {
-      updateQuery({ discussion: result.result.id });
-      setDraft({ title: "", body: "", taskId: "", requirementId: "", moduleId: "", milestoneId: "" });
-      setCreating(false); createId.current = ""; setNotice("讨论已保存到本地演示数据；未发送真实成员通知。");
-    }
-  };
-  const send = async () => {
-    if (!current || !replyDraft.text.trim()) return;
-    const threadId = current.id;
-    const inputKey = `${threadId}:${replyDraft.text}:${[...replyDraft.mentionedUserIds].sort().join(",")}`;
-    const replyId = replyIds.current[inputKey] ?? (replyIds.current[inputKey] = id("reply"));
-    const result = await perform(replyDiscussion, { projectId: project.id, discussionId: threadId, replyId, text: replyDraft.text, mentionedUserIds: replyDraft.mentionedUserIds });
-    if (result?.ok) {
-      setReplyDrafts((old) => ({ ...old, [threadId]: { text: "", mentionedUserIds: [] } }));
-      delete replyIds.current[inputKey];
-      setNotice("回复已保存到当前讨论的本地记录；提及信息已保留，真实通知尚未接入。");
-    }
-  };
-  const markImportant = async (important: boolean) => {
-    if (!current) return;
-    const result = await perform(markDiscussionImportant, { projectId: project.id, discussionId: current.id, important, reason: importantReason });
-    if (result?.ok) { setImportantReasons((old) => ({ ...old, [current.id]: "" })); setNotice(important ? "已将此讨论标记为重要，刷新后仍保留。" : "已取消此讨论的重要标记；已有证据快照保留。"); }
-  };
-  const saveEvidence = async () => {
-    if (!current) return;
-    const captureKey = `${current.id}:${current.version ?? 0}:${evidenceDraft.taskId}:${[...evidenceDraft.criterionIds].sort().join(",")}`;
-    const evidenceId = evidenceIds.current[captureKey] ?? (evidenceIds.current[captureKey] = id("evidence"));
-    const result = await perform(discussionAsEvidence, { projectId: project.id, discussionId: current.id, evidenceId, taskId: evidenceDraft.taskId, criterionIds: evidenceDraft.criterionIds });
-    if (result?.ok) setNotice("讨论快照已保存为本地候选证据，尚未成为正式证据；真实来源服务与通知未接入。");
-  };
-  const linkedTask = current?.taskId ? data.tasks.find((item) => item.id === current.taskId && item.projectId === project.id) : undefined;
-  const linkedModule = data.modules.find((item) => item.id === (current?.moduleId ?? linkedTask?.moduleId) && item.projectId === project.id);
-  const linkedRequirement = data.requirements.find((item) => item.projectId === project.id && (current?.requirementId ? item.id === current.requirementId : linkedTask?.requirementIds.includes(item.id)));
-  const linkedMilestone = data.milestones.find((item) => item.projectId === project.id && (current?.milestoneId ? item.id === current.milestoneId : Boolean(linkedTask && item.taskIds.includes(linkedTask.id))));
-
-  return <div><Header project={project} title="讨论区" description="按主题沉淀项目讨论，并关联到任务、需求、模块与里程碑。" icon={MessageCircle} actions={<div className="flex flex-wrap gap-2"><div className="relative"><Search size={15} className="absolute left-3 top-3 text-slate-400" /><input className={`${field} min-w-48 pl-9`} placeholder="搜索讨论标题或内容" aria-label="搜索讨论" value={query} onChange={(event) => setQuery(event.target.value)} /></div><button className={primary} onClick={openCreate} disabled={!canWrite || saving || creating}><Plus size={15} />新建讨论</button></div>} />
-    <div className="mb-4"><Notice>{localWorkspace ? "讨论保存在当前账号的浏览器演示数据中；真实多人同步、成员通知与来源服务尚未接入。" : "真实讨论服务尚未接入，当前页面只读。"}</Notice></div>
-    {notice && <div className="mb-4"><Notice>{notice}</Notice></div>}
-    {creating && <Panel title="新建讨论" className="mb-4"><div className="grid gap-3 md:grid-cols-2">
-      <label><span className={label}>讨论标题</span><input className={field} value={draft.title} maxLength={240} onChange={(event) => setDraft((old) => ({ ...old, title: event.target.value }))} disabled={saving} /></label>
-      <label><span className={label}>关联任务</span><select className={field} value={draft.taskId} onChange={(event) => setDraft((old) => ({ ...old, taskId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.tasks.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label><span className={label}>关联需求</span><select className={field} value={draft.requirementId} onChange={(event) => setDraft((old) => ({ ...old, requirementId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.requirements.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label><span className={label}>关联模块</span><select className={field} value={draft.moduleId} onChange={(event) => setDraft((old) => ({ ...old, moduleId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.modules.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <label><span className={label}>关联里程碑</span><select className={field} value={draft.milestoneId} onChange={(event) => setDraft((old) => ({ ...old, milestoneId: event.target.value }))} disabled={saving}><option value="">暂不关联</option>{data.milestones.filter((item) => item.projectId === project.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-    </div><label className="mt-3 block"><span className={label}>讨论内容</span><textarea className={`${field} min-h-24`} value={draft.body} maxLength={30000} onChange={(event) => setDraft((old) => ({ ...old, body: event.target.value }))} disabled={saving} /></label><div className="mt-3 flex justify-end gap-2"><button className={outline} onClick={cancelCreate} disabled={saving}>取消</button><button className={primary} onClick={() => void create()} disabled={saving || !draft.title.trim() || !draft.body.trim()}>{saving ? "保存中…" : "发布讨论"}</button></div></Panel>}
-    <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_270px]">
-      <Panel title={tr("讨论主题（{0}）", { 0: visible.length })} action={<select className={`${field} w-auto`} value={sort} onChange={(event) => setSort(event.target.value)} aria-label="讨论排序"><option>最近活动</option><option>标题</option></select>} noPadding><div className="divide-y divide-slate-100">{visible.map((item) => <button key={item.id} className={`w-full p-4 text-left hover:bg-slate-50 ${current?.id === item.id ? "border-l-2 border-blue-600 bg-blue-50" : ""}`} aria-label={tr("打开讨论：{0}", { 0: item.title })} aria-pressed={current?.id === item.id} onClick={() => updateQuery({ discussion: item.id })}><div className="font-semibold text-slate-800">{item.title}{item.important && <span className="ml-2 text-xs text-amber-700">重要</span>}</div><p className="mt-1 line-clamp-2 text-xs text-slate-500">{item.body}</p><p className="mt-2 text-xs text-slate-400">{tr("{0} · {1} · {2} 条回复", { 0: memberName(data, item.authorId), 1: date(item.updatedAt), 2: item.replies.length })}</p></button>)}{!visible.length && <Empty title="没有匹配的讨论" />}</div></Panel>
-      <Panel title={current?.title || "选择讨论"} action={current && <button className={outline} onClick={() => void markImportant(!current.important)} disabled={!canMark || saving || !importantReason.trim()} title="请先在讨论设置填写标记或取消原因">{current.important ? "取消重要标记" : "标记重要"}</button>}>{current ? <><p className="text-xs text-slate-400">{tr("由 {0} 创建 · {1} · 最近活动 {2} · {3} 条回复", { 0: memberName(data, current.authorId), 1: current.createdAt ? tr("创建于 {0}", { 0: date(current.createdAt) }) : "历史创建时间未记录", 2: date(current.updatedAt), 3: current.replies.length })}</p><p className="my-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">{current.body}</p>{linkedTask && <Link className={linkClass} href={projectUrl(project.id, `/tasks/${linkedTask.id}`)}>{linkedTask.title} <ChevronRight size={13} className="inline" /></Link>}<div className="mt-5 divide-y divide-slate-100 border-t border-slate-100" aria-label="当前讨论回复">{current.replies.map((item) => <div key={item.id} className="flex gap-3 py-4"><Avatar name={memberName(data, item.authorId)} /><div><div className="text-xs text-slate-500">{memberName(data, item.authorId)} · {date(item.at)}</div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{item.text}</p>{Boolean(item.mentionedUserIds?.length) && <p className="text-xs text-slate-500">{tr("提及：{0}", { 0: item.mentionedUserIds?.map((userId) => memberName(data, userId)).join("、") })}</p>}</div></div>)}</div>
-        <div className="mt-4 flex gap-2"><input className={field} value={replyDraft.text} maxLength={10000} onChange={(event) => setReplyDrafts((old) => ({ ...old, [current.id]: { ...replyDraft, text: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} placeholder="发表回复" aria-label="发表回复" disabled={!canWrite || saving} /><button className={primary} onClick={() => void send()} disabled={!canWrite || saving || !replyDraft.text.trim()}>发送</button></div>
-        <div className="mt-2"><select className={field} value="" aria-label="提及成员" disabled={!canWrite || saving} onChange={(event) => { const mentioned = mentionTargets.find((item) => item.id === event.target.value); if (mentioned) setReplyDrafts((old) => ({ ...old, [current.id]: { text: `${replyDraft.text}${replyDraft.text ? " " : ""}@${mentioned.name} `, mentionedUserIds: [...new Set([...replyDraft.mentionedUserIds, mentioned.id])] } })); }}><option value="">选择要提及的项目成员</option>{mentionTargets.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select>{replyDraft.mentionedUserIds.map((userId) => <button key={userId} className="mr-2 mt-2 text-xs text-slate-500" disabled={saving} onClick={() => setReplyDrafts((old) => ({ ...old, [current.id]: { ...replyDraft, mentionedUserIds: replyDraft.mentionedUserIds.filter((value) => value !== userId) } }))}>{tr("取消提及 {0} ×", { 0: memberName(data, userId) })}</button>)}</div>
-      </> : <Empty title="选择左侧讨论主题" />}</Panel>
-      <div className="space-y-4"><Panel title="关联信息"><KV title="关联需求" value={linkedRequirement ? <Link className={linkClass} href={projectUrl(project.id, "/requirements")}>{linkedRequirement.title}</Link> : "暂无"} /><KV title="关联任务" value={linkedTask ? <Link className={linkClass} href={projectUrl(project.id, `/tasks/${linkedTask.id}`)}>{linkedTask.title}</Link> : "暂无"} /><KV title="关联模块" value={linkedModule?.name ?? "暂无"} /><KV title="关联里程碑" value={linkedMilestone ? <Link className={linkClass} href={projectUrl(project.id, `/milestones/${linkedMilestone.id}`)}>{linkedMilestone.title}</Link> : "暂无"} /></Panel>
-        <Panel title="参与者"><div className="space-y-2">{current ? [...new Set([current.authorId, ...current.replies.map((item) => item.authorId)])].map((memberId) => <div key={memberId} className="flex items-center gap-2 text-sm"><Avatar name={memberName(data, memberId)} />{memberName(data, memberId)}</div>) : <p className={muted}>暂无</p>}</div></Panel>
-        <Panel title="讨论设置"><label className="mb-3 block"><span className={label}>重要标记原因</span><textarea className={`${field} min-h-20`} value={importantReason} maxLength={2000} disabled={!current || !canMark || saving} onChange={(event) => { if (current) setImportantReasons((old) => ({ ...old, [current.id]: event.target.value })); }} placeholder="说明标记或取消的重要依据" /></label><p className="mb-3 text-xs text-slate-500">{tr("仅作者、组长及所属教师可操作，请填写原因。{0}", { 0: current?.importantReason && tr(" 上次原因：{0}", { 0: current.importantReason }) })}</p><label className="flex items-center justify-between text-sm">标记为重要<input type="checkbox" checked={Boolean(current?.important)} disabled={!current || !canMark || saving || !importantReason.trim()} onChange={(event) => void markImportant(event.target.checked)} /></label></Panel>
-        {current?.important && <Panel title="作为证据来源"><p className="mb-3 text-xs text-slate-500">保存当前讨论的本地快照作为候选。真实来源服务未接入；后续回复不会改写已保存快照。</p><label><span className={label}>证据关联任务</span><select className={field} value={evidenceDraft.taskId} disabled={!canWrite || saving} onChange={(event) => setEvidenceDrafts((old) => ({ ...old, [current.id]: { taskId: event.target.value, criterionIds: [] } }))}><option value="">选择可补充证据的任务</option>{eligibleTasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label><div className="my-3 space-y-2">{evidenceCriteria.map((criterion, index) => <label key={criterion.id} className="flex gap-2 text-xs"><input type="checkbox" checked={evidenceDraft.criterionIds.includes(criterion.id)} disabled={!canWrite || saving} onChange={(event) => setEvidenceDrafts((old) => ({ ...old, [current.id]: { ...evidenceDraft, criterionIds: event.target.checked ? [...evidenceDraft.criterionIds, criterion.id] : evidenceDraft.criterionIds.filter((value) => value !== criterion.id) } }))} /><span>AC-{index + 1} · {criterion.text}</span></label>)}</div><button className={outline} disabled={!canWrite || saving || !evidenceDraft.taskId || !evidenceDraft.criterionIds.length} onClick={() => void saveEvidence()}>保存候选证据（演示）</button><Link className={`${linkClass} mt-3 block text-xs`} href={projectUrl(project.id, "/evidence?source=discussion")}>查看讨论来源证据</Link></Panel>}
-      </div>
-    </div>
   </div>;
 }
 

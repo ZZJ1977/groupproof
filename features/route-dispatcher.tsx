@@ -32,7 +32,7 @@ const CourseReopenApiPage = dynamic(() => import("@/features/d/CourseReopenApiPa
 const AcceptanceApiPage = dynamic(() => import("@/features/d/AcceptanceApiPage").then((module) => module.AcceptanceApiPage));
 const ContributionApiPage = dynamic(() => import("@/features/d/ContributionApiPage").then((module) => module.ContributionApiPage));
 const EvidenceApiPage = dynamic(() => import("@/features/c/EvidenceApiPage").then((module) => module.EvidenceApiPage));
-const DiscussionsApiPage = dynamic(() => import("@/features/c/DiscussionsApiPage").then((module) => module.DiscussionsApiPage));
+const ProjectDiscussionPreviewPage = dynamic(() => import("@/features/c/ProjectDiscussionPreviewPage").then((module) => module.ProjectDiscussionPreviewPage));
 const IdentityAdminApiPage = dynamic(() => import("@/features/c/IdentityAdminApiPages").then((module) => module.IdentityAdminApiPage));
 const AdminDashboardPage = dynamic(() => import("@/features/c/AdminDashboardPage").then((module) => module.AdminDashboardPage));
 const GovernanceApiPage = dynamic(() => import("@/features/c/GovernanceApiPages").then((module) => module.GovernanceApiPage));
@@ -169,7 +169,7 @@ export function RouteDispatcher() {
     if ([14, 15].includes(screen) && projectId && taskId) realContent = <ExecutionApiPage projectId={projectId} taskId={taskId} submission={screen === 15} />;
     else if (screen === 20 && projectId) realContent = <EvidenceApiPage projectId={projectId} />;
     else if (screen === 23 && projectId) realContent = <ProjectFilesApiPage projectId={projectId} />;
-    else if (screen === 24 && projectId) realContent = <DiscussionsApiPage projectId={projectId} />;
+    else if (screen === 24 && projectId) realContent = <ProjectDiscussionPreviewPage projectId={projectId} />;
   }
   if (screen === 18 && projectId && (bReal || apiMode("projects") === "real")) realContent = <><MilestonesApiPage projectId={projectId} />{apiMode("cworkspace") === "real" && <div className="mt-8"><RiskApiPage projectId={projectId} embedded /></div>}</>;
   if (screen === 50 && courseId && !realContent && apiMode("coursefiles") === "real") realContent = <CourseFilesApiPage courseId={courseId} />;
