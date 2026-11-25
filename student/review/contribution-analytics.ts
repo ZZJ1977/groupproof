@@ -630,6 +630,11 @@ export function resolveFeishuMemberAttribution(params: {
   return result;
 }
 
+export function computeEffectiveCodeVolumeScore(additions: number, deletions: number): number {
+  const weightedLines = Math.max(0, additions) + 0.5 * Math.max(0, deletions);
+  return weightedLines > 0 ? Math.log1p(weightedLines) : 0;
+}
+
 export async function contributionRequest<T>(url: string, method = "GET"): Promise<T> {
   const response = await fetchWithSession(
     new Request(new URL(apiConfig.baseUrl + url, window.location.origin), {
@@ -917,37 +922,52 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
     };
   });
 
-  // Sort members: formalShare desc, then taskCredit desc, then commits desc, then weightedTaskProgress desc, then name
+  // Sort members: formalShare desc, then taskCredit desc, then effective code volume desc, then weightedTaskProgress desc, then name
+  const codeVolForRow = (r: Omit<MemberAnalyticsRow, "color" | "activityShare">) =>
+    computeEffectiveCodeVolumeScore(r.additions, r.deletions);
+
   rawRows.sort((a, b) => {
     if (b.formalShare !== a.formalShare) return b.formalShare - a.formalShare;
     if (b.taskCredit !== a.taskCredit) return b.taskCredit - a.taskCredit;
-    if (b.commits !== a.commits) return b.commits - a.commits;
+    const volDiff = codeVolForRow(b) - codeVolForRow(a);
+    if (volDiff !== 0) return volDiff;
     if (b.weightedTaskProgress !== a.weightedTaskProgress) {
       return b.weightedTaskProgress - a.weightedTaskProgress;
     }
     return a.name.localeCompare(b.name, "zh-CN");
   });
 
-  // 6. Compute normalized multi-source activity share (always sums to 100% when any activity exists)
+  // 6. Compute composite activity share:
+  //    85% actual task delivery (formalShare with cross-task equal split, or weighted task progress fallback)
+  //  + 15% repo-wide logarithmic engineering floor (Math.log1p(additions + 0.5 * deletions) for infra/refactors)
+  //    0% commit count, 0% Feishu chat (process references only).
+  //    Pure non-code projects automatically normalize to 100% task delivery share.
   const sumFormal = rawRows.reduce((acc, r) => acc + r.formalShare, 0);
-  const sumTaskWork = rawRows.reduce(
-    (acc, r) => acc + (r.assignedCount > 0 ? Math.max(1, r.assignedWeight) * (r.weightedTaskProgress / 100) : 0),
-    0,
+  const taskWorks = rawRows.map((r) =>
+    r.assignedCount > 0 ? Math.max(1, r.assignedWeight) * (r.weightedTaskProgress / 100) : 0,
   );
-  const sumCommits = rawRows.reduce((acc, r) => acc + r.commits, 0);
-  const sumCollab = rawRows.reduce((acc, r) => acc + r.collabScore, 0);
+  const sumTaskWork = taskWorks.reduce((acc, v) => acc + v, 0);
+  const taskDeliveryScores = rawRows.map((r, idx) =>
+    sumFormal > 0 ? r.formalShare / sumFormal : sumTaskWork > 0 ? taskWorks[idx] / sumTaskWork : 0,
+  );
+  const hasTaskDelivery = sumFormal > 0 || sumTaskWork > 0;
 
-  const rawActivityScores = rawRows.map((r) => {
-    const parts: number[] = [];
-    if (sumFormal > 0) parts.push(r.formalShare / sumFormal);
-    if (sumTaskWork > 0) {
-      const work = r.assignedCount > 0 ? Math.max(1, r.assignedWeight) * (r.weightedTaskProgress / 100) : 0;
-      parts.push(work / sumTaskWork);
+  const codeVolumes = rawRows.map((r) => codeVolForRow(r));
+  const sumCodeVolume = codeVolumes.reduce((acc, v) => acc + v, 0);
+  const hasCodeVolume = sumCodeVolume > 0;
+
+  const rawActivityScores = rawRows.map((_, idx) => {
+    let weightedSum = 0;
+    let weightTotal = 0;
+    if (hasTaskDelivery) {
+      weightedSum += 0.85 * taskDeliveryScores[idx];
+      weightTotal += 0.85;
     }
-    if (sumCommits > 0) parts.push(r.commits / sumCommits);
-    if (sumCollab > 0) parts.push(r.collabScore / sumCollab);
-    if (parts.length === 0) return 0;
-    return parts.reduce((acc, v) => acc + v, 0) / parts.length;
+    if (hasCodeVolume) {
+      weightedSum += 0.15 * (codeVolumes[idx] / sumCodeVolume);
+      weightTotal += 0.15;
+    }
+    return weightTotal > 0 ? weightedSum / weightTotal : 0;
   });
   const totalRawActivity = rawActivityScores.reduce((acc, v) => acc + v, 0);
 
