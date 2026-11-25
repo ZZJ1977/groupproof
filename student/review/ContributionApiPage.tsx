@@ -430,7 +430,7 @@ export function ContributionApiPage({
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <h3 className="text-sm font-semibold text-slate-900">{task.title}</h3>
                             <span className="gp-pill">
-                              权重 {task.weight} · 承担 {task.responsibility_share}%
+                              权重 {task.weight} · 有效占比 {task.responsibility_share}%
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-3 text-xs">
@@ -675,15 +675,15 @@ export function ContributionApiPage({
                   <div>
                     <strong className="font-semibold text-slate-900">学术透明性与计算口径说明：</strong>
                     <span className="ml-1">
-                      <strong>正式验收权重（用于结项冻结）</strong> 严格依据已通过人工确认的正式成果与任务责任占比计算（公式{" "}
+                      <strong>正式验收权重（用于结项冻结）</strong> 严格以已确认任务权重为锚点：无跨任务代码贡献时沿用 100% 确认责任占比；若有非任务负责人在该任务贡献实质代码（任务直连 ≥10 有效行或正式 GitHub 证据，或跨任务功能匹配 ≥20 有效行，自动排除合并提交、锁文件与生成文件），则所有参与者按任务权重<strong>等权平分</strong>，不按代码行数或提交次数刷分（公式{" "}
                       <code className="rounded bg-white/80 px-1 py-0.5 font-mono text-[11px] text-slate-800">
-                        {snapshot?.formula_version ?? "formal-task-weight-x-confirmed-responsibility-v1"}
+                        {snapshot?.formula_version ?? "formal-task-weight-cross-task-equal-split-v2"}
                       </code>
-                      ）；尚无已确认正式成果的成员会如实保留在列表中并计为 <code className="font-mono">0.0%</code>。
+                      ）；尚无计入成果的成员如实保留并计为 <code className="font-mono">0.0%</code>。
                     </span>
                   </div>
                   <div>
-                    <strong>全过程综合活跃参考</strong> 综合任务推进进度、GitHub 代码提交与飞书群聊任务关联记录，仅用于过程透明展示与团队复盘，不自动替代正式结项贡献权重。
+                    <strong>全过程综合活跃参考</strong> 按 <strong>85% 任务实际交付（含跨任务平分）+ 15% 全仓对数工程量兜底</strong> 加权（覆盖未挂单任务的基建与重构，无 GitHub 数据时自动归一化为 100% 任务交付）；<strong>代码提交次数与飞书群聊仅作过程参考（0% 权重）</strong>，不替代正式结项贡献权重。
                     {analytics.unmatchedCommits > 0 && (
                       <span className="ml-1 text-slate-500">
                         （注：另有 {analytics.unmatchedCommits} 次未关联到在组账号的 GitHub 提交未归入个人行。）

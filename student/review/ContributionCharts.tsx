@@ -25,6 +25,12 @@ function formatCompact(n: number): string {
   return n.toLocaleString("zh-CN");
 }
 
+function formatChurnCompact(n: number): string {
+  if (n >= 100_000) return `${(n / 1000).toFixed(0)}k`;
+  if (n >= 1_000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
 function formatSignedCompact(n: number): string {
   if (n > 0) return `+${formatCompact(n)}`;
   if (n < 0) return `-${formatCompact(Math.abs(n))}`;
@@ -53,7 +59,7 @@ export function ContributionDistributionBar({
         subLabel:
           effectiveMode === "formal"
             ? `正式积分 ${m.taskCredit} · ${m.formalTasks.length} 项成果`
-            : `${m.commits} 提交 · ${m.completedCount}/${m.assignedCount} 任务 · 飞书 ${m.collabRecords} 条`,
+            : `有效代码 +${formatChurnCompact(m.additions)}/-${formatChurnCompact(m.deletions)} · ${m.completedCount}/${m.assignedCount} 任务（参考：${m.commits} 提交 / 飞书 ${m.collabRecords} 条）`,
       })),
     [effectiveMode, members],
   );
@@ -170,23 +176,25 @@ export function ContributionDistributionBar({
 export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow[] }) {
   const [hoveredMember, setHoveredMember] = useState<string | null>(null);
   const maxCommits = Math.max(1, ...members.map((m) => m.commits));
+  const maxChurn = Math.max(1, ...members.map((m) => m.additions + m.deletions));
   const maxCollab = Math.max(1, ...members.map((m) => m.collabScore));
 
   // SVG layout metrics
   const labelWidth = 84;
-  const chartWidth = 310;
-  const valueWidth = 108;
+  const chartWidth = 296;
+  const valueWidth = 128;
   const totalWidth = labelWidth + chartWidth + valueWidth;
   const rowGap = 14;
-  const memberBlockHeight = 68;
+  const memberBlockHeight = 82;
   const topPad = 10;
   const totalHeight = topPad + members.length * (memberBlockHeight + rowGap);
 
   const metrics = [
     { key: "formal", label: "正式成果权重", color: "#0284c7" },
     { key: "tasks", label: "任务完成进度", color: "#059669" },
-    { key: "commits", label: "代码提交", color: "#7c3aed" },
-    { key: "collab", label: "飞书协作参与", color: "#d97706" },
+    { key: "churn", label: "有效代码量", color: "#0d9488" },
+    { key: "commits", label: "代码提交(参考)", color: "#7c3aed" },
+    { key: "collab", label: "飞书协作(参考)", color: "#d97706" },
   ] as const;
 
   return (
@@ -197,10 +205,13 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h2 className="text-[15px] font-bold tracking-tight text-slate-900">成员多维贡献对比图</h2>
-        <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-600">
+        <div
+          className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-slate-600"
+          title="代码提交次数与飞书协作仅作过程参考（0% 计分权重）"
+        >
           {metrics.map((m) => (
-            <span key={m.key} className="inline-flex items-center gap-1 font-medium">
-              <span className="h-2 w-2 rounded-xs" style={{ backgroundColor: m.color }} />
+            <span key={m.key} className="inline-flex items-center gap-1 whitespace-nowrap font-medium">
+              <span className="h-2 w-2 shrink-0 rounded-xs" style={{ backgroundColor: m.color }} />
               {m.label}
             </span>
           ))}
@@ -213,7 +224,7 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
         <div className="overflow-x-auto">
           <svg
             viewBox={`0 0 ${totalWidth} ${totalHeight}`}
-            className="w-full min-w-[440px]"
+            className="w-full min-w-[460px]"
             role="img"
             aria-label="成员多维贡献 SVG 分组条形图"
           >
@@ -236,6 +247,9 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
 
             {members.map((member, index) => {
               const y0 = topPad + index * (memberBlockHeight + rowGap);
+              const memberChurn = member.additions + member.deletions;
+              const churnPct =
+                memberChurn > 0 ? Math.max(4, Math.round((memberChurn / maxChurn) * 100)) : 0;
               const bars = [
                 {
                   key: "formal",
@@ -250,14 +264,29 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
                   color: "#059669",
                 },
                 {
+                  key: "churn",
+                  pct: churnPct,
+                  text:
+                    memberChurn > 0
+                      ? `+${formatChurnCompact(member.additions)} / -${formatChurnCompact(member.deletions)}`
+                      : "+0 / -0",
+                  color: "#0d9488",
+                },
+                {
                   key: "commits",
-                  pct: Math.round((member.commits / maxCommits) * 100),
+                  pct:
+                    member.commits > 0
+                      ? Math.max(4, Math.round((member.commits / maxCommits) * 100))
+                      : 0,
                   text: `${member.commits} 次提交`,
                   color: "#7c3aed",
                 },
                 {
                   key: "collab",
-                  pct: Math.round((member.collabScore / maxCollab) * 100),
+                  pct:
+                    member.collabScore > 0
+                      ? Math.max(4, Math.round((member.collabScore / maxCollab) * 100))
+                      : 0,
                   text: `${member.collabRecords} 条 · ${member.collabTopics} 结论`,
                   color: "#d97706",
                 },
@@ -273,21 +302,21 @@ export function MemberComparisonChart({ members }: { members: MemberAnalyticsRow
                   onMouseLeave={() => setHoveredMember(null)}
                 >
                   {/* Member badge dot + name */}
-                  <circle cx={8} cy={y0 + 26} r={4.5} fill={member.color} />
+                  <circle cx={8} cy={y0 + 33} r={4.5} fill={member.color} />
                   <text
                     x={18}
-                    y={y0 + 30}
+                    y={y0 + 37}
                     fill="#0f172a"
                     fontSize={12}
                     fontWeight={700}
                   >
                     {member.name.length > 5 ? `${member.name.slice(0, 5)}…` : member.name}
                   </text>
-                  <text x={18} y={y0 + 46} fill="#64748b" fontSize={10}>
+                  <text x={18} y={y0 + 53} fill="#64748b" fontSize={10}>
                     综合 {member.activityShare.toFixed(1)}%
                   </text>
 
-                  {/* 4 metric bars */}
+                  {/* 5 metric bars */}
                   {bars.map((bar, bIdx) => {
                     const barY = y0 + bIdx * 15;
                     const barW = bar.pct > 0 ? Math.max(4, (bar.pct / 100) * chartWidth) : 2;
