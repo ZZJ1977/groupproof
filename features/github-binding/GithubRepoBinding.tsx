@@ -90,7 +90,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
   );
 
   return (
-    <section aria-labelledby="github-binding-title" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs">
+    <section aria-labelledby="github-binding-title" className="flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
         <h3 id="github-binding-title" className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <GitBranch size={14} className="text-slate-600" aria-hidden="true" />
@@ -112,7 +112,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
         ) : null}
       </div>
 
-      <div className="min-w-0 space-y-3 p-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
         {repos.isPending && <p role="status" className="text-xs text-slate-500">正在读取仓库绑定…</p>}
         {repos.isError && (
           <Feedback tone="error">
@@ -125,22 +125,23 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
 
         {connected && entries && (
           <>
-            <ul className="space-y-2">
+            <ul className="min-w-0 space-y-2">
               {entries.map((repo) => (
                 <li
                   key={`${repo.owner}/${repo.repo}`}
-                  className="rounded-xl border border-emerald-200/75 bg-emerald-50/35 px-3 py-2.5"
+                  className="min-w-0 rounded-xl border border-emerald-200/75 bg-emerald-50/35 px-3 py-2.5"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
                       <a
                         href={`https://github.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}`}
-                        className="gp-link inline-flex min-w-0 items-center gap-1 break-all text-sm font-semibold"
+                        title={`${repo.owner}/${repo.repo}`}
+                        className="gp-link inline-flex min-w-0 items-center gap-1 text-sm font-semibold"
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        <span>{repo.owner}/{repo.repo}</span>
+                        <span className="truncate">{repo.owner}/{repo.repo}</span>
                         <ExternalLink size={12} className="shrink-0 opacity-70" aria-hidden="true" />
                       </a>
                     </div>
@@ -157,7 +158,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
               ))}
             </ul>
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 {writable && (
                   <Button
@@ -209,7 +210,7 @@ export function GithubRepoBinding({ projectId, userId, canManage }: {
             <p className="text-xs text-slate-500">
               项目还没有绑定仓库。同步默认分支及活跃分支（含 develop）的提交、PR 与 CI 活动。
             </p>
-            {writable && bindForm}
+            {writable && <div className="mt-auto">{bindForm}</div>}
           </>
         )}
 
