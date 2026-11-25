@@ -181,19 +181,83 @@ def _sample_facts() -> dict:
 
 def test_seven_ordered_chapters_and_rich_fallback_markdown_tables():
     facts = _sample_facts()
+    facts["project"]["course_name"] = "软件工程综合实践"
+    facts["project"]["semester"] = "2026 秋季"
+    facts["feishu"]["blockers"] = [
+        {
+            "title": "CI 环境依赖版本冲突排查",
+            "category": "blocker",
+            "status": "completed",
+            "summary": "排查锁定 Alembic 迁移与 Python 依赖版本，修复构建失败。",
+            "confirmed_count": 3,
+            "task_codes": ["T-008"],
+        }
+    ]
     chapters = render_fallback_chapters(facts)
     assert list(chapters.keys()) == CHAPTER_ORDER
     assert len(chapters) == 7
-    # Ensure zero raw English placeholders and rich Chinese Markdown tables
+    # Ensure substantive publication-grade prose + tables (never 1-sentence stubs)
+    total_chars = sum(len(content) for content in chapters.values())
+    assert total_chars >= 2000, f"fallback report too thin: {total_chars} chars"
     for key, content in chapters.items():
-        assert len(content) > 60, f"chapter {key} too short"
+        assert len(content) > 220, f"chapter {key} too short ({len(content)} chars)"
         assert "0 active risks" not in content
         assert "No frozen contribution snapshot" not in content
     assert "| 里程碑阶段 | 截止日期 | 状态 | 进度 | 交付物 | 关联任务 |" in chapters["progress"]
     assert "| 第 1 周：底座搭通 | 2026-10-18 | 已完成 | 100% | 2/2 | 4/4 |" in chapters["progress"]
     assert "| 卓子杰 | 组长 | 30.0%" in chapters["contribution"]
+    # Chapter 6 must NOT open with an ugly internal draft warning; footnote belongs at bottom
+    assert not chapters["contribution"].startswith("当前尚未冻结")
+    assert "当前基于最新贡献快照 v4 编制" in chapters["contribution"].splitlines()[-1]
     assert "四人分工计划已确认" in chapters["collaboration"]
     assert "无活跃未关闭风险" in chapters["reflection"]
+    assert "CI 环境依赖版本冲突排查" in chapters["reflection"]
+
+
+def test_extract_json_object_and_two_batch_ai_authoring_partial_resilience(monkeypatch):
+    parsed = reporting._extract_json_object(
+        '以下是结果：\n```json\n{"overview": "完整正文内容"}\n```\n请查收'
+    )
+    assert parsed == {"overview": "完整正文内容"}
+    assert (
+        reporting._strip_leading_chapter_heading(
+            "## 一、项目概述与目标范围\n\n正文开始", "overview"
+        )
+        == "正文开始"
+    )
+
+    facts = _sample_facts()
+    seen_features: list[str] = []
+    seen_max_tokens: list[int] = []
+
+    def fake_openrouter(**kwargs):
+        seen_features.append(kwargs["feature"])
+        seen_max_tokens.append(kwargs["max_tokens"])
+        if kwargs["feature"] == "generate_project_report_part1":
+            long_body = (
+                "### 真实核验\n\n"
+                + "项目按周持续推进，完成全部核心模块交付并沉淀可核验工程证据。" * 4
+            )
+            return (
+                {
+                    "overview": f"## 一、项目概述与目标范围\n\n{long_body}",
+                    "workflow": long_body,
+                    "progress": long_body,
+                    "collaboration": "太短",  # should be skipped so fallback fills it
+                },
+                "deepseek/deepseek-v3.2",
+            )
+        # Simulate batch 2 partial failure (returns None) — batch 1 chapters must still survive!
+        return None, "deepseek/deepseek-v3.2"
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
+    authored, model = reporting._author_report_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
+    assert model == "deepseek/deepseek-v3.2"
+    assert set(seen_features) == {"generate_project_report_part1", "generate_project_report_part2"}
+    assert all(mt >= 4000 for mt in seen_max_tokens)
+    assert authored is not None
+    assert set(authored.keys()) == {"overview", "workflow", "progress"}
+    assert not authored["overview"].startswith("## 一、")
 
 
 def test_ordered_section_entries_preserves_chapter_order_against_jsonb_shuffle():
