@@ -128,24 +128,26 @@ export function MilestonesApiPage({ projectId }: { projectId: string }) {
       ) : list.data.items.length === 0 ? (
         <div className={`${cardClass} p-6`}><EmptyState title={tr("还没有里程碑")} description={tr("里程碑在项目设置里创建后会显示在这里。")} /></div>
       ) : (
-        <div className="grid items-stretch gap-3 md:grid-cols-2">
+        <div className="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.data.items.map((m) => {
             const isExpanded = expandedId === m.id;
             return (
               <article
                 key={m.id}
                 data-testid="milestone-card"
-                className="flex flex-col justify-between gap-2.5 rounded-xl border border-slate-200/85 bg-white p-3.5 shadow-xs transition-shadow hover:shadow-sm"
+                className="flex min-w-0 flex-col justify-between gap-2.5 rounded-xl border border-slate-200/85 bg-white p-3.5 shadow-xs transition-shadow hover:shadow-sm"
               >
                 <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="min-w-0">
-                      <h2 className="truncate text-sm font-semibold text-slate-900">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-sm font-semibold text-slate-900" title={m.title}>
                         <Link className="gp-link" href={m.href}>{m.title}</Link>
                       </h2>
-                      <p className="mt-0.5 text-[11px] text-slate-400">{tr("截止 {0}", { 0: dateOnly(m.deadline, tr("未设置")) })}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-slate-400">{tr("截止 {0}", { 0: dateOnly(m.deadline, tr("未设置")) })}</p>
                     </div>
-                    <Badge m={m} />
+                    <div className="shrink-0">
+                      <Badge m={m} />
+                    </div>
                   </div>
                   <Progress value={m.progress_percent} />
                 </div>
