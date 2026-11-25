@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, BookOpen, Folder, FolderKanban, Plus, RefreshCw, Users } from "lucide-react";
-import { EmptyState, Feedback, PageHeader, Panel, ProgressBar, StatusBadge } from "@/components/common";
+import { ArrowRight, BookOpen, Folder, FolderKanban, Plus, RefreshCw, Search, Users } from "lucide-react";
+import { EmptyState, Feedback, PageHeader, ProgressBar, StatusBadge } from "@/components/common";
 import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { CreateProjectModal } from "@/features/b/CreateProjectModal";
 import { useBErrorMessage } from "@/features/b/use-b-error";
@@ -70,10 +70,10 @@ function ProjectIntegrationBadges({ projectId, userId }: { projectId: string; us
         : tr("飞书未接入");
 
   return (
-    <div className="flex flex-wrap gap-2 text-xs">
+    <div className="flex flex-wrap gap-1.5 text-[11px]">
       <Link
         href={`/projects/${encodeURIComponent(projectId)}/settings#github-integration`}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition ${
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium transition ${
           githubConnected
             ? "border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100/80"
             : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
@@ -83,7 +83,7 @@ function ProjectIntegrationBadges({ projectId, userId }: { projectId: string; us
       </Link>
       <Link
         href={`/projects/${encodeURIComponent(projectId)}/settings#feishu-integration`}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition ${
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium transition ${
           feishuConnected
             ? "border-sky-200 bg-sky-50/80 text-sky-800 hover:bg-sky-100/80"
             : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
@@ -100,97 +100,97 @@ function ProjectCard({ item, userId }: { item: ProjectItem; userId: string }) {
   const baseHref = `/projects/${encodeURIComponent(item.id)}`;
 
   return (
-    <div className="rounded-xl border border-slate-200/85 bg-white p-4 shadow-2xs transition hover:border-sky-200/90 hover:shadow-xs">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={baseHref}
-              className="truncate text-base font-semibold text-slate-900 hover:text-[var(--gp-action)] hover:underline"
-            >
-              {item.name}
-            </Link>
-            <StatusBadge status={item.lifecycle} />
-            {item.isCourseProject ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
-                <BookOpen size={12} />
-                {item.courseName ? tr("课程：{0}", { 0: item.courseName }) : tr("课程项目")}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-700">
-                <Folder size={12} />
-                {tr("独立项目")}
-              </span>
-            )}
+    <div className="flex flex-col justify-between gap-2.5 rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs transition hover:border-sky-200/90 hover:shadow-sm">
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-2.5">
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Link
+                href={baseHref}
+                className="truncate text-sm font-semibold text-slate-900 hover:text-[var(--gp-action)] hover:underline"
+              >
+                {item.name}
+              </Link>
+              <StatusBadge status={item.lifecycle} />
+              {item.isCourseProject ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700">
+                  <BookOpen size={11} />
+                  {item.courseName ? tr("课程：{0}", { 0: item.courseName }) : tr("课程项目")}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                  <Folder size={11} />
+                  {tr("独立项目")}
+                </span>
+              )}
+            </div>
+            <p className="line-clamp-1 text-xs text-slate-500">
+              {item.description?.trim() ? item.description : tr("暂无项目简介，可在项目总览或设置中完善。")}
+            </p>
           </div>
-
-          <p className="line-clamp-2 text-xs text-slate-500">
-            {item.description?.trim() ? item.description : tr("暂无项目简介，可在项目总览或设置中完善。")}
-          </p>
+          <Link href={baseHref} className={`${button} shrink-0 !min-h-7 !px-2.5 !py-1 !text-xs`}>
+            {tr("进入项目")}
+            <ArrowRight size={13} />
+          </Link>
         </div>
 
-        <Link href={baseHref} className={`${button} shrink-0 !min-h-8 !px-3 !py-1.5 !text-xs`}>
-          {tr("进入项目")}
-          <ArrowRight size={14} />
-        </Link>
-      </div>
-
-      <div className="mt-3 space-y-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <div className="flex flex-wrap items-center gap-3">
-            {item.memberCount !== null && (
-              <span className="inline-flex items-center gap-1">
-                <Users size={13} className="text-slate-400" />
-                {tr("{0} 位成员", { 0: item.memberCount })}
-              </span>
-            )}
-            {item.taskCount !== null && item.taskCount > 0 && (
-              <span>
-                {tr("已完成 {0}/{1} 项任务", { 0: item.completedCount ?? 0, 1: item.taskCount })}
-              </span>
-            )}
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {item.memberCount !== null && (
+                <span className="inline-flex items-center gap-1">
+                  <Users size={12} className="text-slate-400" />
+                  <span>{tr("{0} 位成员", { 0: item.memberCount })}</span>
+                </span>
+              )}
+              {item.taskCount !== null && item.taskCount > 0 && (
+                <span>
+                  {tr("已完成 {0}/{1} 项任务", { 0: item.completedCount ?? 0, 1: item.taskCount })}
+                </span>
+              )}
+            </div>
+            <span className="font-semibold tabular-nums text-slate-700">
+              {item.progress !== null && item.progress_status === "available"
+                ? tr("项目进度 {0}%", { 0: item.progress })
+                : tr("尚未规划任务")}
+            </span>
           </div>
-          <span className="font-medium text-slate-700">
-            {item.progress !== null && item.progress_status === "available"
-              ? tr("项目进度 {0}%", { 0: item.progress })
-              : tr("尚未规划任务")}
-          </span>
+          {item.progress !== null && item.progress_status === "available" && (
+            <ProgressBar value={item.progress} className="!h-1.5" />
+          )}
         </div>
-        {item.progress !== null && item.progress_status === "available" && (
-          <ProgressBar value={item.progress} />
-        )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5 border-t border-slate-100 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
         <ProjectIntegrationBadges projectId={item.id} userId={userId} />
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-1 text-[11px]">
           <Link
             href={`${baseHref}/tasks?view=tree`}
-            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
+            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-0.5 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
           >
             {tr("任务")}
           </Link>
           <Link
             href={`${baseHref}/github`}
-            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
+            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-0.5 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
           >
             GitHub
           </Link>
           <Link
             href={`${baseHref}/collaboration`}
-            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
+            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-0.5 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
           >
             {tr("协作记录")}
           </Link>
           <Link
             href={`${baseHref}/files`}
-            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
+            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-0.5 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
           >
             {tr("文件资料")}
           </Link>
           <Link
             href={`${baseHref}/settings`}
-            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
+            className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-0.5 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"
           >
             {tr("项目设置")}
           </Link>
@@ -207,6 +207,7 @@ export function MyProjectsApiPage() {
   const errorText = useBErrorMessage();
   const { userId } = useWorkspace();
   const [tab, setTab] = useState<ProjectFilterTab>("all");
+  const [keyword, setKeyword] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
   const homeSummary = useQuery({
@@ -291,14 +292,28 @@ export function MyProjectsApiPage() {
     });
   }, [overviewQueries, seeds]);
 
+  const normalizedTerm = keyword.trim().toLowerCase();
   const independentProjects = useMemo(
-    () => projects.filter((item) => !item.isCourseProject),
-    [projects],
+    () =>
+      projects.filter(
+        (item) =>
+          !item.isCourseProject &&
+          (!normalizedTerm || item.name.toLowerCase().includes(normalizedTerm) || (item.description ?? "").toLowerCase().includes(normalizedTerm)),
+      ),
+    [normalizedTerm, projects],
   );
   const courseProjects = useMemo(
-    () => projects.filter((item) => item.isCourseProject),
-    [projects],
+    () =>
+      projects.filter(
+        (item) =>
+          item.isCourseProject &&
+          (!normalizedTerm || item.name.toLowerCase().includes(normalizedTerm) || (item.courseName ?? "").toLowerCase().includes(normalizedTerm)),
+      ),
+    [normalizedTerm, projects],
   );
+
+  const totalIndependent = useMemo(() => projects.filter((item) => !item.isCourseProject).length, [projects]);
+  const totalCourse = useMemo(() => projects.filter((item) => item.isCourseProject).length, [projects]);
 
   const isLoading = homeSummary.isPending && myCourses.isPending;
   const isError = homeSummary.isError && !homeSummary.data && !myCourses.data;
@@ -311,7 +326,7 @@ export function MyProjectsApiPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
       <AnnouncementBanner />
       <PageHeader
         title={tr("我的项目")}
@@ -321,68 +336,84 @@ export function MyProjectsApiPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className={button}
+              className={`${button} !min-h-9 !px-3.5 !text-xs`}
               onClick={() => setCreateOpen(true)}
             >
-              <Plus size={15} />
+              <Plus size={14} />
               {tr("创建项目")}
             </button>
-            <Link href="/courses?intent=create-project" className={secondary}>
-              <BookOpen size={15} />
+            <Link href="/courses?intent=create-project" className={`${secondary} !min-h-9 !px-3 !text-xs`}>
+              <BookOpen size={14} />
               {tr("我的课程")}
             </Link>
             <button
               type="button"
-              className={secondary}
+              className={`${secondary} !min-h-9 !px-3 !text-xs`}
               disabled={isFetching}
               onClick={refreshAll}
             >
-              <RefreshCw size={14} className={isFetching ? "animate-spin" : ""} />
+              <RefreshCw size={13} className={isFetching ? "animate-spin" : ""} />
               {tr("刷新")}
             </button>
           </div>
         }
       />
 
-      <div role="tablist" aria-label={tr("项目分类筛选")} className="flex flex-wrap gap-6 border-b border-slate-200">
-        {(
-          [
-            ["all", tr("全部"), projects.length],
-            ["independent", tr("独立项目"), independentProjects.length],
-            ["course", tr("课程项目"), courseProjects.length],
-          ] as const
-        ).map(([key, text, count]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={`border-b-2 pb-3 text-sm font-medium transition-colors ${
-              tab === key
-                ? "border-blue-600 text-[var(--gp-action)]"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            {text}
-            {!isLoading && <span className="ml-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{count}</span>}
-          </button>
-        ))}
+      {/* 单行紧凑分类筛选 + 搜索条 */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-slate-200/85 bg-white px-3.5 py-2 shadow-xs">
+        <div role="tablist" aria-label={tr("项目分类筛选")} className="gp-segmented !p-0.5">
+          {(
+            [
+              ["all", tr("全部"), projects.length],
+              ["independent", tr("独立项目"), totalIndependent],
+              ["course", tr("课程项目"), totalCourse],
+            ] as const
+          ).map(([key, text, count]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              data-active={tab === key ? "true" : undefined}
+              onClick={() => setTab(key)}
+              className="gp-segmented-item !min-h-8 !px-3 !py-1 !text-xs"
+            >
+              <span>{text}</span>
+              {!isLoading && (
+                <span className="rounded-full bg-slate-200/70 px-1.5 py-0.2 text-[11px] font-semibold text-slate-600">
+                  {count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-60">
+          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            aria-label={tr("搜索项目")}
+            placeholder={tr("搜索项目或课程名称…")}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            className="h-9 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 pl-8 pr-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/15"
+          />
+        </div>
       </div>
 
-      {isLoading && <div role="status" className="gp-empty">{tr("正在加载项目列表…")}</div>}
+      {isLoading && <div role="status" className="gp-empty !py-8">{tr("正在加载项目列表…")}</div>}
 
       {isError && (
-        <div role="alert">
+        <div role="alert" className="rounded-2xl border border-rose-200/85 bg-white p-4 shadow-xs">
           <Feedback tone="error">{errorText(homeSummary.error)}</Feedback>
-          <button type="button" className={`${secondary} mt-3`} onClick={refreshAll}>
+          <button type="button" className={`${secondary} mt-3 !min-h-8 !text-xs`} onClick={refreshAll}>
             {tr("重试")}
           </button>
         </div>
       )}
 
       {!isLoading && !isError && projects.length === 0 && (
-        <Panel>
+        <div className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
           <EmptyState
             title={tr("还没有参与任何项目")}
             description={tr("点击「创建项目」立即开启一个独立项目，或加入课程后在小组内创建课程项目。")}
@@ -398,20 +429,20 @@ export function MyProjectsApiPage() {
               </div>
             }
           />
-        </Panel>
+        </div>
       )}
 
       {!isLoading && !isError && projects.length > 0 && (
         <>
           {(tab === "all" || tab === "independent") && (
-            <section aria-label={tr("独立项目")} className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <section aria-label={tr("独立项目")} className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
-                    <Folder size={15} />
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-sky-50 text-sky-700">
+                    <Folder size={13} />
                   </span>
                   <h2 className="text-sm font-bold text-slate-800">{tr("独立项目")}</h2>
-                  <span className="gp-pill">{independentProjects.length}</span>
+                  <span className="gp-pill !min-h-5 !px-2 !py-0">{independentProjects.length}</span>
                 </div>
                 <button
                   type="button"
@@ -422,60 +453,60 @@ export function MyProjectsApiPage() {
                 </button>
               </div>
               {independentProjects.length > 0 ? (
-                <div className="space-y-3">
+                <div className="grid gap-3.5 md:grid-cols-2">
                   {independentProjects.map((item) => (
                     <ProjectCard key={item.id} item={item} userId={userId} />
                   ))}
                 </div>
               ) : (
-                <Panel>
+                <div className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
                   <EmptyState
                     title={tr("暂无独立项目")}
                     description={tr("独立项目无需加入课程即可创建，适合个人探索或自由组队协作。")}
                     action={
-                      <button type="button" className={button} onClick={() => setCreateOpen(true)}>
-                        <Plus size={15} />
+                      <button type="button" className={`${button} !min-h-8 !text-xs`} onClick={() => setCreateOpen(true)}>
+                        <Plus size={14} />
                         {tr("创建项目")}
                       </button>
                     }
                   />
-                </Panel>
+                </div>
               )}
             </section>
           )}
 
           {(tab === "all" || tab === "course") && (
-            <section aria-label={tr("课程项目")} className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <section aria-label={tr("课程项目")} className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
-                    <BookOpen size={15} />
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-50 text-teal-700">
+                    <BookOpen size={13} />
                   </span>
                   <h2 className="text-sm font-bold text-slate-800">{tr("课程项目")}</h2>
-                  <span className="gp-pill">{courseProjects.length}</span>
+                  <span className="gp-pill !min-h-5 !px-2 !py-0">{courseProjects.length}</span>
                 </div>
                 <Link href="/courses?intent=create-project" className="text-xs font-semibold text-[var(--gp-action)] hover:underline">
                   {tr("前往我的课程 →")}
                 </Link>
               </div>
               {courseProjects.length > 0 ? (
-                <div className="space-y-3">
+                <div className="grid gap-3.5 md:grid-cols-2">
                   {courseProjects.map((item) => (
                     <ProjectCard key={item.id} item={item} userId={userId} />
                   ))}
                 </div>
               ) : (
-                <Panel>
+                <div className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
                   <EmptyState
                     title={tr("暂无课程项目")}
                     description={tr("加入课程并在小组内完成组队后，即可按课程规则创建课程项目。")}
                     action={
-                      <Link href="/courses?intent=create-project" className={secondary}>
+                      <Link href="/courses?intent=create-project" className={`${secondary} !min-h-8 !text-xs`}>
                         {tr("前往我的课程")}
                       </Link>
                     }
                   />
-                </Panel>
+                </div>
               )}
             </section>
           )}
