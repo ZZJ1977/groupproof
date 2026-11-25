@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Download,
+  FileDown,
   FileText,
   History,
   Pencil,
@@ -15,6 +13,7 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  X,
 } from "lucide-react";
 import { Feedback, StatusBadge } from "@/components/common";
 import { button, input, secondary } from "@/features/b/ui";
@@ -31,6 +30,13 @@ type VersionMeta = {
   milestones_total?: number;
   github_commits?: number;
   feishu_conclusions?: number;
+  course_name?: string | null;
+  course_code?: string | null;
+  semester?: string | null;
+  team_members?: string[];
+  ai_chapters_count?: number;
+  word_count?: number;
+  last_rewritten_section?: string | null;
 };
 
 type Version = {
@@ -96,37 +102,22 @@ const sectionHeadingLabels: Record<string, string> = {
   appendix: "附录：正式证据清单",
 };
 
-const shortChapterLabels: Record<string, string> = {
-  overview: "1. 项目概述",
-  workflow: "2. 开发流程",
-  progress: "3. 进度里程碑",
-  collaboration: "4. 沟通与决策",
-  evidence: "5. 证据与验收",
-  contribution: "6. 成员贡献",
-  reflection: "7. 风险与建议",
-  tasks: "任务进展",
-  milestones: "里程碑",
-  risks: "风险记录",
-  risk_explanation: "风险分析",
-  appendix: "附录",
-};
-
 const statusMeta: Record<string, { label: string; tone: "blue" | "green" | "amber" | "red" | "gray" }> = {
   draft: { label: "草稿", tone: "gray" },
   generating: { label: "生成中", tone: "blue" },
-  generated: { label: "已生成", tone: "blue" },
+  generated: { label: "草稿", tone: "blue" },
   returned: { label: "已退回修改", tone: "amber" },
-  submitted: { label: "已提交审核", tone: "amber" },
+  submitted: { label: "待教师审核", tone: "amber" },
   finalized: { label: "已定稿", tone: "green" },
   failed: { label: "生成失败", tone: "red" },
 };
 
-const compactBtn =
+const toolbarBtn =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
-const compactPrimaryBtn =
+const toolbarPrimaryBtn =
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[var(--gp-action)] px-3 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[var(--gp-action-hover)] disabled:cursor-not-allowed disabled:opacity-50";
-const compactSelect =
-  "h-8 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
+const toolbarSelect =
+  "h-8 max-w-[260px] rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition-colors hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
 
 const ERROR_MESSAGES: Record<string, string> = {
   REPORT_WRITE_DENIED: "仅项目组长或任课教师可生成、刷新或编辑结项报告。",
@@ -173,11 +164,6 @@ function safeFileStem(name: string | undefined): string {
   return (name || "GroupProof").replace(/[\\/:*?"<>|]+/g, "-").trim() || "GroupProof";
 }
 
-function formatLabel(format: ExportFormat): string {
-  if (format === "md") return "Markdown";
-  return format.toUpperCase();
-}
-
 function resolveOrderedSections(data: Version["data"] | undefined): [string, string][] {
   const sections = data?.sections;
   if (!sections) return [];
@@ -192,6 +178,16 @@ function resolveOrderedSections(data: Version["data"] | undefined): [string, str
     (key) => !canonical.includes(key as (typeof CHAPTER_ORDER)[number]) && !rest.includes(key),
   );
   return [...canonical, ...rest, ...extras].map((key) => [key, sections[key] ?? ""]);
+}
+
+function countDocumentChars(entries: [string, string][]): number {
+  return entries.reduce((sum, [, body]) => sum + body.replace(/\s+/g, "").length, 0);
+}
+
+function authoringLabel(meta?: VersionMeta): string {
+  if (meta?.authoring_mode === "ai") return "AI 深度撰写";
+  if (meta?.last_rewritten_section) return "AI 辅助修订";
+  return "结构化汇编";
 }
 
 async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
@@ -243,10 +239,7 @@ export function ReportApiPage({
 }) {
   const base = `/api/v1/projects/${projectId}/reports`;
   const [listing, setListing] = useState<Listing>({ status: "draft", versions: [], artifacts: [], downloads: [], reviews: [] });
-  const [embeddedMode, setEmbeddedMode] = useState<"preview" | "export">(exportView ? "export" : "preview");
-  const isExportView = embedded ? embeddedMode === "export" : exportView;
   const [selected, setSelected] = useState<number | null>(null);
-  const [readMode, setReadMode] = useState<"chapter" | "full">("chapter");
   const [activeChapter, setActiveChapter] = useState<string>("");
   const [editing, setEditing] = useState("");
   const [draft, setDraft] = useState("");
@@ -254,15 +247,20 @@ export function ReportApiPage({
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [fileFormat, setFileFormat] = useState<ExportFormat>("pdf");
   const [reviewReason, setReviewReason] = useState("");
-  const readerScrollRef = useRef<HTMLDivElement>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(exportView);
+  const [drawerTab, setDrawerTab] = useState<"versions" | "exports">(exportView ? "exports" : "versions");
+
+  const canvasScrollRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const busy = busyAction !== null;
 
   const refresh = useCallback(async () => setListing(await request<Listing>(base)), [base]);
   useEffect(() => {
     void refresh().catch((failure) => setError((failure as Error).message));
   }, [refresh]);
+
   useEffect(() => {
     if (listing.status !== "generating" && !listing.artifacts.some((item) => item.status === "pending" || item.status === "generating")) return;
     const timer = setInterval(() => {
@@ -270,6 +268,26 @@ export function ReportApiPage({
     }, 2000);
     return () => clearInterval(timer);
   }, [listing.artifacts, listing.status, refresh]);
+
+  useEffect(() => {
+    function handleOutsideClick(event: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setExportMenuOpen(false);
+        setDrawerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const latest = listing.versions[0];
   const viewed = listing.versions.find((version) => version.version === selected) ?? latest;
@@ -286,16 +304,49 @@ export function ReportApiPage({
     return sectionEntries[0][0];
   }, [activeChapter, sectionEntries]);
 
-  const activeChapterIndex = sectionEntries.findIndex(([key]) => key === resolvedActiveChapter);
-  const visibleEntries = useMemo(() => {
-    if (readMode === "full") return sectionEntries;
-    const current = sectionEntries.find(([key]) => key === resolvedActiveChapter);
-    return current ? [current] : sectionEntries.slice(0, 1);
-  }, [readMode, resolvedActiveChapter, sectionEntries]);
-
+  const totalChars = useMemo(() => countDocumentChars(sectionEntries), [sectionEntries]);
   const isRefreshing = busyAction === "refresh";
   const isExporting = busyAction === "export" || busyAction === "download";
-  const isAiAuthored = viewed?.data?.meta?.authoring_mode === "ai";
+
+  const counts = viewed?.data?.counts;
+  const meta = viewed?.data?.meta;
+  const completionRate = useMemo(() => {
+    const total = counts?.tasks ?? 0;
+    const done = counts?.completed_tasks ?? 0;
+    return total > 0 ? Math.round((done / total) * 100) : 0;
+  }, [counts]);
+
+  const teamMembersDisplay = useMemo(() => {
+    if (meta?.team_members && meta.team_members.length > 0) {
+      return meta.team_members.join("、");
+    }
+    return `${counts?.members ?? 0} 名成员`;
+  }, [counts?.members, meta?.team_members]);
+
+  const handleCanvasScroll = useCallback(() => {
+    const container = canvasScrollRef.current;
+    if (!container || sectionEntries.length === 0) return;
+    const containerTop = container.getBoundingClientRect().top;
+    let currentKey = sectionEntries[0][0];
+    for (const [key] of sectionEntries) {
+      const el = container.querySelector<HTMLElement>(`#report-sec-${key}`);
+      if (!el) continue;
+      if (el.getBoundingClientRect().top - containerTop <= 96) {
+        currentKey = key;
+      }
+    }
+    setActiveChapter((prev) => (prev === currentKey ? prev : currentKey));
+  }, [sectionEntries]);
+
+  function scrollToChapter(sectionKey: string) {
+    setActiveChapter(sectionKey);
+    const container = canvasScrollRef.current;
+    if (!container) return;
+    const target = container.querySelector<HTMLElement>(`#report-sec-${sectionKey}`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 
   async function mutate(url: string, body?: unknown, successMsg?: string, action: BusyAction = "edit") {
     setBusyAction(action);
@@ -306,6 +357,7 @@ export function ReportApiPage({
       await refresh();
       setEditing("");
       setSelected(null);
+      if (action === "review") setReviewReason("");
       if (successMsg) setNotice(successMsg);
     } catch (failure) {
       setError((failure as Error).message);
@@ -328,13 +380,13 @@ export function ReportApiPage({
       setEditing("");
       setSelected(null);
       if (created.status === "generating") {
-        setNotice(`已提交 v${created.version} 报告生成任务，正在后台汇编预览…`);
+        setNotice(`已提交 v${created.version} 结项报告生成任务，正在后台深度撰写…`);
       } else {
         const aiTag = created.data?.meta?.authoring_mode === "ai" ? "（AI 深度撰写）" : "";
         setNotice(
           initial
             ? `首版 7 章结项报告（v${created.version}）已生成${aiTag}。`
-            : `报告已刷新至 v${created.version}${aiTag}。`,
+            : `已生成新版结项报告 v${created.version}${aiTag}。`,
         );
       }
     } catch (failure) {
@@ -362,8 +414,8 @@ export function ReportApiPage({
       const label = sectionHeadingLabels[sectionKey] ?? sectionKey;
       setNotice(
         updated.authoring_mode === "ai"
-          ? `AI 已重写「${label}」并保存为 v${updated.version}。`
-          : `已按最新真实数据重新汇编「${label}」并保存为 v${updated.version}。`,
+          ? `AI 已重新润色「${label}」并保存为 v${updated.version}。`
+          : `已依据最新真实工程数据重新汇编「${label}」并保存为 v${updated.version}。`,
       );
     } catch (failure) {
       setError((failure as Error).message);
@@ -383,7 +435,7 @@ export function ReportApiPage({
       const fallback = `${stem}-结项报告-v${versionNo ?? viewed?.version ?? 1}.${fmt ?? "pdf"}`;
       await downloadBinaryFromApi(link.url, fallback);
       await refresh();
-      setNotice(`已开始下载 ${(fmt ?? "pdf").toUpperCase()} 报告文件。`);
+      setNotice(`已开始下载 ${(fmt ?? "pdf").toUpperCase()} 文档。`);
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
@@ -392,6 +444,7 @@ export function ReportApiPage({
   }
 
   async function exportAndDownloadNow(versionNo: number, format: ExportFormat) {
+    setExportMenuOpen(false);
     setBusyAction("export");
     setError("");
     setNotice("");
@@ -402,7 +455,7 @@ export function ReportApiPage({
           `${base}/versions/${versionNo}/markdown`,
           `${stem}-结项报告-v${versionNo}.md`,
         );
-        setNotice(`已生成并开始下载 v${versionNo} Markdown (.md) 报告。`);
+        setNotice(`已导出并开始下载 v${versionNo} Markdown (.md) 文档。`);
         return;
       }
       const created = await request<{ id: string; status: string }>(`${base}/exports`, "POST", {
@@ -424,7 +477,7 @@ export function ReportApiPage({
       }
       if (status === "failed") {
         await refresh();
-        throw new Error(exportError || `导出 ${format.toUpperCase()} 文件失败，请重试。`);
+        throw new Error(exportError || `导出 ${format.toUpperCase()} 文档失败，请重试。`);
       }
       if (status === "ready") {
         const link = await request<{ url: string; expires_at: string }>(
@@ -433,10 +486,10 @@ export function ReportApiPage({
         );
         await downloadBinaryFromApi(link.url, `${stem}-结项报告-v${versionNo}.${format}`);
         await refresh();
-        setNotice(`已生成真实 ${format.toUpperCase()} 文件并开始下载。`);
+        setNotice(`已生成并开始下载 ${format.toUpperCase()} 标准文档。`);
       } else {
         await refresh();
-        setNotice(`已提交后台生成 ${format.toUpperCase()} 文件，就绪后可在下方导出记录中下载。`);
+        setNotice(`已提交后台导出 ${format.toUpperCase()} 文档，就绪后可在「版本历史 → 导出记录」下载。`);
       }
     } catch (failure) {
       setError((failure as Error).message);
@@ -445,660 +498,694 @@ export function ReportApiPage({
     }
   }
 
-  function selectChapter(sectionKey: string) {
-    setActiveChapter(sectionKey);
-    setEditing("");
-    if (readMode === "full" && readerScrollRef.current) {
-      const target = readerScrollRef.current.querySelector<HTMLElement>(`#report-sec-${sectionKey}`);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    } else if (readerScrollRef.current) {
-      readerScrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }
-
-  const versionHistoryCard = (
-    <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <History size={15} className="text-slate-500" />
-          <h2 className="text-sm font-semibold text-slate-900">版本历史与提交审核</h2>
-        </div>
-        <span className="text-xs text-slate-500">{listing.versions.length} 个版本</span>
-      </div>
-
-      {listing.versions.length === 0 ? (
-        <p className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs text-slate-500">尚未生成报告版本</p>
-      ) : (
-        <ul className="max-h-44 divide-y divide-slate-100 overflow-y-auto text-xs">
-          {listing.versions.map((version) => {
-            const isActive = viewed?.version === version.version;
-            const vMeta = statusMeta[version.status] ?? { label: version.status, tone: "gray" as const };
-            return (
-              <li key={version.id} className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelected(version.version);
-                    setEditing("");
-                  }}
-                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors ${
-                    isActive ? "bg-sky-50/80 text-sky-900" : "hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  <span className="font-mono font-semibold">v{version.version}</span>
-                  <StatusBadge tone={vMeta.tone} label={vMeta.label} />
-                  <span className="truncate text-slate-500">
-                    {version.created_by_name ?? version.created_by ?? "历史记录"} · {version.created_at?.slice(0, 16).replace("T", " ")}
-                  </span>
-                </button>
-                {version.version !== latest?.version &&
-                  ["generated", "returned", "failed"].includes(listing.status) &&
-                  version.status === "generated" && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className="shrink-0 text-xs font-medium text-sky-700 hover:underline disabled:opacity-50"
-                      onClick={() => void mutate(`${base}/restore`, { version: version.version }, `已恢复至 v${version.version}。`, "restore")}
-                    >
-                      恢复此版本
-                    </button>
-                  )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {(canSubmit || listing.status === "submitted") && (
-        <div className="mt-3 border-t border-slate-100 pt-3">
-          {canSubmit && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void mutate(`${base}/submit`, undefined, "已提交教师审核。", "submit")}
-              className={`${compactPrimaryBtn} w-full`}
-            >
-              <Send size={13} />
-              提交给老师定稿
-            </button>
-          )}
-          {listing.status === "submitted" && (
-            <div className="space-y-2">
-              <textarea
-                aria-label="教师审核理由"
-                value={reviewReason}
-                onChange={(event) => setReviewReason(event.target.value)}
-                className={`${input} text-xs`}
-                rows={2}
-                placeholder="填写教师审核理由"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !reviewReason.trim()}
-                  className={`${compactBtn} flex-1`}
-                  onClick={() => void mutate(`${base}/review`, { action: "return", reason: reviewReason }, "已退回修改。", "review")}
-                >
-                  退回修改
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !reviewReason.trim()}
-                  className={`${compactPrimaryBtn} flex-1`}
-                  onClick={() => void mutate(`${base}/review`, { action: "approve", reason: reviewReason }, "已审核通过并定稿。", "review")}
-                >
-                  <CheckCircle2 size={13} />
-                  审核通过并定稿
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-
-  const exportControlsCard = (
-    <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-900">导出与快照设置</h2>
-        {viewed && <span className="font-mono text-xs text-slate-500">当前 v{viewed.version}</span>}
-      </div>
-      <div className="space-y-2.5 text-xs">
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="mb-1 block font-medium text-slate-600" htmlFor="report-version-select">
-              选择版本
-            </label>
-            <select
-              id="report-version-select"
-              value={viewed?.version ?? ""}
-              onChange={(event) => setSelected(Number(event.target.value))}
-              className={`${compactSelect} w-full`}
-              disabled={listing.versions.length === 0}
-            >
-              {listing.versions.length === 0 && <option value="">尚未生成</option>}
-              {listing.versions.map((version) => (
-                <option key={version.id} value={version.version}>
-                  v{version.version} · {version.created_at?.slice(0, 10)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block font-medium text-slate-600" htmlFor="report-format-select">
-              导出格式
-            </label>
-            <select
-              id="report-format-select"
-              value={fileFormat}
-              onChange={(event) => setFileFormat(event.target.value as ExportFormat)}
-              className={`${compactSelect} w-full`}
-            >
-              <option value="pdf">PDF（标准排版）</option>
-              <option value="docx">DOCX（Word 文档）</option>
-              <option value="md">Markdown（.md）</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 pt-0.5">
-          {viewed ? (
-            <>
-              <button
-                type="button"
-                disabled={!canExport}
-                onClick={() => void exportAndDownloadNow(viewed.version, fileFormat)}
-                className={`${compactPrimaryBtn} flex-1`}
-              >
-                <Download size={13} className={isExporting ? "animate-bounce" : ""} />
-                {isExporting ? `正在导出 ${formatLabel(fileFormat)}…` : `导出并下载 ${formatLabel(fileFormat)}`}
-              </button>
-              <button type="button" onClick={() => window.print()} className={compactBtn}>
-                <Printer size={13} />
-                打印
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={!canRefresh}
-              onClick={() => void refreshPreview(true)}
-              className={`${compactPrimaryBtn} w-full`}
-            >
-              <Sparkles size={13} className={isRefreshing ? "animate-pulse" : ""} />
-              {isRefreshing ? "AI 正在撰写 7 章报告…" : "AI 生成首版结项报告"}
-            </button>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-
-  const auditLogsCard = (
-    <details
-      className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs"
-      open={isExportView && (listing.downloads.length > 0 || listing.reviews.length > 0)}
-    >
-      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-slate-900">
-        <span>导出文件与审核记录（{listing.artifacts.length + listing.downloads.length + listing.reviews.length}）</span>
-        <ChevronDown size={15} className="text-slate-400" />
-      </summary>
-      <div className="mt-3 space-y-3 text-xs">
-        {!isExportView && listing.artifacts.length > 0 && (
-          <div>
-            <h3 className="mb-1.5 font-semibold text-slate-700">最近导出文件</h3>
-            <ul className="divide-y divide-slate-100">
-              {listing.artifacts.slice(0, 4).map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-2 py-1.5">
-                  <span className="truncate text-slate-600">
-                    v{item.version} · {item.format.toUpperCase()} ·{" "}
-                    <StatusBadge tone={item.status === "ready" ? "green" : item.status === "failed" ? "red" : "amber"} label={item.status} />
-                  </span>
-                  {item.status === "ready" && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className="shrink-0 font-medium text-sky-700 hover:underline"
-                      onClick={() => void download(item.id, item.version, item.format)}
-                    >
-                      下载
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className={!isExportView && listing.artifacts.length > 0 ? "border-t border-slate-100 pt-2.5" : ""}>
-          <h3 className="mb-1 font-semibold text-slate-700">下载记录（{listing.downloads.length}）</h3>
-          {listing.downloads.length === 0 ? (
-            <p className="text-slate-500">暂无下载记录</p>
-          ) : (
-            <div className="space-y-1">
-              {listing.downloads.slice(0, 6).map((item, index) => (
-                <p key={index} className="text-slate-600">
-                  v{item.version} · {item.format.toUpperCase()} · {item.user_name ?? item.user_id} · {item.created_at?.slice(0, 16).replace("T", " ")}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="border-t border-slate-100 pt-2.5">
-          <h3 className="mb-1 font-semibold text-slate-700">提交与审核历史（{listing.reviews.length}）</h3>
-          {listing.reviews.length === 0 ? (
-            <p className="text-slate-500">暂无审核记录</p>
-          ) : (
-            <div className="space-y-1">
-              {listing.reviews.map((item, index) => (
-                <p key={index} className="text-slate-600">
-                  {item.action} · {item.reason} · {item.actor_name ?? item.actor_id} · {item.created_at?.slice(0, 16).replace("T", " ")}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </details>
-  );
-
   return (
     <div className="space-y-3">
-      {/* Compact Header with Inline Status Pill + Primary Actions */}
-      <div className={`${embedded ? "rounded-2xl border border-slate-200/85 bg-white px-4 py-2.5 shadow-xs" : "mb-3"} flex flex-wrap items-center justify-between gap-2.5`}>
+      {/* Single Sleek Top Document Toolbar */}
+      <header className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200/85 bg-white px-3.5 py-2.5 shadow-2xs print:hidden">
         <div className="flex flex-wrap items-center gap-2">
-          {embedded ? (
-            <h2 className="text-sm font-semibold text-slate-900">结项报告</h2>
-          ) : (
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">项目结项报告</h1>
-          )}
-          <StatusBadge tone={st.tone} label={st.label} />
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-xs font-medium text-slate-600">
-            {latest ? `最新 v${latest.version}` : "尚未生成"}
-          </span>
-          {viewed?.data?.counts && (
-            <span className="hidden items-center gap-2 text-xs text-slate-500 lg:inline-flex">
-              <span className="h-3 w-px bg-slate-200" aria-hidden="true" />
-              <span>成员 <strong className="font-mono text-slate-800">{viewed.data.counts.members ?? 0}</strong></span>
-              <span>任务 <strong className="font-mono text-emerald-700">{viewed.data.counts.completed_tasks ?? 0}/{viewed.data.counts.tasks ?? 0}</strong></span>
-              <span>证据 <strong className="font-mono text-sky-700">{viewed.data.counts.evidence ?? 0}</strong></span>
-              <span>风险 <strong className="font-mono text-amber-700">{viewed.data.counts.risks ?? 0}</strong></span>
+          {!embedded && (
+            <span className="inline-flex items-center gap-1.5 pr-1 text-sm font-semibold text-slate-900">
+              <FileText size={15} className="text-slate-500" />
+              结项报告
             </span>
           )}
+          <select
+            aria-label="选择报告版本"
+            value={viewed?.version ?? ""}
+            onChange={(event) => {
+              setSelected(Number(event.target.value));
+              setEditing("");
+            }}
+            disabled={listing.versions.length === 0}
+            className={toolbarSelect}
+          >
+            {listing.versions.length === 0 && <option value="">尚未生成报告版本</option>}
+            {listing.versions.map((version) => (
+              <option key={version.id} value={version.version}>
+                v{version.version} · {authoringLabel(version.data?.meta)} · {version.created_at?.slice(0, 10) ?? ""}
+              </option>
+            ))}
+          </select>
+
+          <StatusBadge tone={st.tone} label={st.label} />
+
+          <button
+            type="button"
+            onClick={() => {
+              setDrawerTab("versions");
+              setDrawerOpen(true);
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          >
+            <History size={13} />
+            版本历史
+            {listing.versions.length > 0 && (
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.2 font-mono text-[11px] text-slate-500">
+                {listing.versions.length}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {embedded ? (
-            <div className="gp-segmented" role="tablist" aria-label="报告视图">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!isExportView}
-                data-active={!isExportView ? "true" : undefined}
-                className="gp-segmented-item"
-                onClick={() => setEmbeddedMode("preview")}
-              >
-                报告阅读
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isExportView}
-                data-active={isExportView ? "true" : undefined}
-                className="gp-segmented-item"
-                onClick={() => setEmbeddedMode("export")}
-              >
-                导出与历史
-              </button>
-            </div>
-          ) : (
-            <div className="gp-segmented" role="navigation" aria-label="报告视图">
-              <Link className="gp-segmented-item" data-active={!isExportView ? "true" : undefined} href={`/projects/${projectId}/reports`}>
-                报告阅读
-              </Link>
-              <Link className="gp-segmented-item" data-active={isExportView ? "true" : undefined} href={`/projects/${projectId}/reports/export`}>
-                导出与历史
-              </Link>
-            </div>
-          )}
           <button
             type="button"
             disabled={!canRefresh}
             onClick={() => void refreshPreview(!latest)}
-            className={compactPrimaryBtn}
+            className={toolbarBtn}
           >
-            <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
-            {isRefreshing ? "AI 撰写中…" : latest ? "AI 重新生成" : "生成预览"}
+            {isRefreshing ? (
+              <RefreshCw size={13} className="animate-spin text-sky-600" />
+            ) : (
+              <Sparkles size={13} className="text-sky-600" />
+            )}
+            {isRefreshing ? "AI 深度撰写中…" : latest ? "AI 生成新版报告" : "AI 生成首版报告"}
           </button>
+
           {viewed && (
+            <div ref={exportMenuRef} className="relative">
+              <button
+                type="button"
+                disabled={!canExport}
+                aria-expanded={exportMenuOpen}
+                aria-haspopup="menu"
+                onClick={() => setExportMenuOpen((open) => !open)}
+                className={toolbarBtn}
+              >
+                <Download size={13} className={isExporting ? "animate-bounce" : ""} />
+                {isExporting ? "导出中…" : "导出文档"}
+                <ChevronDown size={13} className="text-slate-400" />
+              </button>
+              {exportMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-30 mt-1.5 w-48 rounded-xl border border-slate-200 bg-white py-1.5 text-xs shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void exportAndDownloadNow(viewed.version, "pdf")}
+                    className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileDown size={14} className="text-rose-500" />
+                    <span>PDF 标准文档</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void exportAndDownloadNow(viewed.version, "docx")}
+                    className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileText size={14} className="text-sky-600" />
+                    <span>Word 文档 (.docx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void exportAndDownloadNow(viewed.version, "md")}
+                    className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileText size={14} className="text-slate-500" />
+                    <span>Markdown (.md)</span>
+                  </button>
+                  <div className="my-1 border-t border-slate-100" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setExportMenuOpen(false);
+                      window.print();
+                    }}
+                    className="flex w-full items-center gap-2 px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
+                  >
+                    <Printer size={14} className="text-slate-500" />
+                    <span>打印当前文档</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {canSubmit && (
             <button
               type="button"
-              disabled={!canExport}
-              onClick={() => void exportAndDownloadNow(viewed.version, fileFormat)}
-              className={compactBtn}
+              disabled={busy}
+              onClick={() => void mutate(`${base}/submit`, undefined, "已提交给任课教师审核定稿。", "submit")}
+              className={toolbarPrimaryBtn}
             >
-              <Download size={13} />
-              {isExporting ? "导出中…" : `导出 ${formatLabel(fileFormat)}`}
+              <Send size={13} />
+              提交定稿
             </button>
+          )}
+
+          {listing.status === "submitted" && (
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerTab("versions");
+                setDrawerOpen(true);
+              }}
+              className={toolbarPrimaryBtn}
+            >
+              <CheckCircle2 size={13} />
+              教师审核
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Progress / Status / Feedback Banners */}
+      {isRefreshing && (
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800 print:hidden">
+          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
+          <span>AI 正在结合需求基线、任务与里程碑、GitHub 提交、飞书结论、正式证据与成员贡献深度撰写 7 章结项报告，请稍候…</span>
+        </div>
+      )}
+      {rewritingSection && (
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800 print:hidden">
+          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
+          <span>AI 正在润色「{sectionHeadingLabels[rewritingSection] ?? rewritingSection}」…</span>
+        </div>
+      )}
+      {listing.status === "submitted" && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200/80 bg-amber-50/75 px-3.5 py-2 text-xs text-amber-900 print:hidden">
+          <span>该报告已提交至任课教师审阅，当前文档内容已锁定。任课教师可在审核抽屉中填写评语并选择退回修改或审核通过定稿。</span>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawerTab("versions");
+              setDrawerOpen(true);
+            }}
+            className="font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700"
+          >
+            打开审核面板
+          </button>
+        </div>
+      )}
+      {error && (
+        <div role="alert" className="print:hidden">
+          <Feedback tone="error">{error}</Feedback>
+        </div>
+      )}
+      {notice && (
+        <div className="print:hidden">
+          <Feedback tone="success">{notice}</Feedback>
+        </div>
+      )}
+
+      {/* 2-Pane Authentic Document Workspace (100% Width Dedicated to Reading & Authoring) */}
+      <div className="flex overflow-hidden rounded-2xl border border-slate-200/85 bg-slate-100/75 lg:h-[calc(100vh-215px)] lg:min-h-[540px] print:block print:h-auto print:overflow-visible print:border-0 print:bg-white">
+        {/* Left Quiet Document Outline */}
+        <aside
+          aria-label="文档目录"
+          className="hidden flex-col overflow-y-auto border-r border-slate-200/80 bg-white/95 p-4 lg:flex lg:w-56 lg:shrink-0 print:hidden"
+        >
+          <p className="mb-3 px-2 text-[11px] font-semibold tracking-wider text-slate-400">文档目录</p>
+          {sectionEntries.length === 0 ? (
+            <p className="px-2 text-xs text-slate-400">生成报告后显示章节目录</p>
+          ) : (
+            <nav className="flex-1 space-y-0.5">
+              {sectionEntries.map(([section]) => {
+                const isActive = resolvedActiveChapter === section;
+                const label = sectionHeadingLabels[section] ?? section;
+                return (
+                  <button
+                    key={section}
+                    type="button"
+                    onClick={() => scrollToChapter(section)}
+                    className={`block w-full border-l-2 py-1.5 pl-2.5 pr-2 text-left text-[12.5px] leading-snug transition-colors ${
+                      isActive
+                        ? "border-slate-900 bg-slate-100/80 font-semibold text-slate-900"
+                        : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+          {viewed && sectionEntries.length > 0 && (
+            <div className="mt-4 border-t border-slate-100 px-2 pt-3 text-[11px] leading-5 text-slate-400">
+              <p>共 {sectionEntries.length} 章 · 约 {totalChars.toLocaleString()} 字</p>
+              <p>快照版本 v{viewed.version}</p>
+            </div>
+          )}
+        </aside>
+
+        {/* Right Continuous White A4 Paper Canvas */}
+        <div
+          ref={canvasScrollRef}
+          onScroll={handleCanvasScroll}
+          className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 print:overflow-visible print:p-0"
+        >
+          {viewed ? (
+            <article className="mx-auto max-w-[840px] rounded-xl border border-slate-200/90 bg-white px-8 py-9 shadow-xs sm:px-12 sm:py-11 print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none">
+              {viewed.status === "generating" && (
+                <p role="status" className="mb-6 rounded-lg bg-sky-50 px-3.5 py-2.5 text-xs text-sky-700 print:hidden">
+                  AI 正在后台汇编完整 7 章结项报告，完成后将自动刷新正文…
+                </p>
+              )}
+              {viewed.status === "failed" && (
+                <p role="alert" className="mb-6 rounded-lg bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700 print:hidden">
+                  该版本报告生成失败，请点击上方「AI 生成新版报告」重试。
+                </p>
+              )}
+
+              {/* Formal Editorial Cover / Document Header Block */}
+              <header className="mb-8">
+                <p className="mb-2 text-xs tracking-wide text-slate-400">
+                  {meta?.course_name
+                    ? `${meta.course_name}${meta.semester ? ` · ${meta.semester}` : ""} · 课程小组项目结项报告`
+                    : "课程小组项目结项文档"}
+                </p>
+                <h1 className="text-2xl font-bold leading-snug tracking-tight text-slate-900 sm:text-[26px]">
+                  {viewed.data.project_name || "项目"} 小组项目合作结项报告
+                </h1>
+
+                <dl className="my-5 grid grid-cols-2 gap-x-6 gap-y-2.5 border-y border-slate-200 py-3.5 text-xs sm:grid-cols-4">
+                  <div className="min-w-0">
+                    <dt className="text-slate-400">团队成员</dt>
+                    <dd className="mt-0.5 font-medium text-slate-800">{teamMembersDisplay}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400">任务完成情况</dt>
+                    <dd className="mt-0.5 font-medium text-slate-800">
+                      {counts?.completed_tasks ?? 0} / {counts?.tasks ?? 0} 项（{completionRate}%）
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400">有效正式证据</dt>
+                    <dd className="mt-0.5 font-medium text-slate-800">{counts?.evidence ?? 0} 条</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400">版本与编制时间</dt>
+                    <dd className="mt-0.5 font-medium text-slate-800">
+                      v{viewed.version} · {viewed.created_at?.slice(0, 10) ?? "—"}（{authoringLabel(meta)}）
+                    </dd>
+                  </div>
+                </dl>
+              </header>
+
+              {/* Continuous Flowing 7-Chapter Document Body */}
+              <div>
+                {sectionEntries.map(([section, body]) => {
+                  const isRewritingThis = rewritingSection === section;
+                  return (
+                    <section
+                      id={`report-sec-${section}`}
+                      key={section}
+                      className="group mt-9 scroll-mt-6 first:mt-0"
+                    >
+                      <div className="mb-3.5 flex items-baseline justify-between gap-4 border-b border-slate-100 pb-2">
+                        <h2 className="text-lg font-bold tracking-tight text-slate-900">
+                          {sectionHeadingLabels[section] ?? section}
+                        </h2>
+                        {canEditChapter && editing !== section && (
+                          <div
+                            className={`flex shrink-0 items-center gap-3 transition-opacity duration-150 print:hidden ${
+                              isRewritingThis
+                                ? "opacity-100"
+                                : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                setEditing(section);
+                                setDraft(body);
+                              }}
+                              className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-800 disabled:opacity-40"
+                            >
+                              <Pencil size={12} />
+                              编辑
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void rewriteChapterWithAi(viewed.version, section)}
+                              className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-800 disabled:opacity-40"
+                            >
+                              <Sparkles size={12} className={isRewritingThis ? "animate-spin text-sky-600" : ""} />
+                              {isRewritingThis ? "重写中…" : "AI 重写"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {editing === section ? (
+                        <div className="space-y-2.5 rounded-lg border border-slate-200 bg-slate-50/50 p-3.5">
+                          <textarea
+                            aria-label={`编辑${sectionHeadingLabels[section] ?? section}`}
+                            className={`${input} bg-white font-mono text-xs leading-6`}
+                            rows={12}
+                            value={draft}
+                            onChange={(event) => setDraft(event.target.value)}
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={busy || !draft.trim()}
+                              onClick={() =>
+                                void mutate(
+                                  `${base}/sections`,
+                                  { section, body: draft, expected_version: latest.version },
+                                  "已保存章节修改并生成新版本。",
+                                  "edit",
+                                )
+                              }
+                              className={button}
+                            >
+                              保存修改
+                            </button>
+                            <button type="button" onClick={() => setEditing("")} className={secondary}>
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-[14.5px] leading-7 text-slate-800 [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:bg-transparent [&_blockquote]:py-0.5 [&_blockquote]:pl-3.5 [&_blockquote]:text-slate-600 [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-[15.5px] [&_h3]:font-semibold [&_h3]:text-slate-900 [&_li]:leading-7 [&_p]:my-2.5 [&_p]:leading-7 [&_table]:my-3.5 [&_table]:text-[13px] [&_th]:bg-slate-50/90 [&_th]:font-semibold [&_th]:text-slate-700">
+                          <MarkdownPreview source={body} />
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+
+              {/* Formal Paper End Footer */}
+              <footer className="mt-12 border-t border-slate-200/80 pt-5 text-center text-xs tracking-wide text-slate-400">
+                — 报告正文结束 · GroupProof 证据驱动协作平台生成 —
+              </footer>
+            </article>
+          ) : (
+            <div className="mx-auto flex max-w-[840px] min-h-[420px] flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-white px-8 py-14 text-center shadow-xs">
+              <FileText size={28} className="mb-3 text-slate-300" />
+              <h2 className="text-base font-semibold text-slate-900">尚无结项报告文档</h2>
+              <p className="mt-2 max-w-md text-xs leading-6 text-slate-500">
+                系统将自动汇总需求基线、阶段里程碑与任务、GitHub 工程提交、飞书协作决策、正式证据与成员贡献画像，由 AI 撰写可供任课教师直接评阅的 7 章正式结项报告。
+              </p>
+              <button
+                type="button"
+                disabled={!canRefresh}
+                onClick={() => void refreshPreview(true)}
+                className={`${toolbarPrimaryBtn} mt-5`}
+              >
+                <Sparkles size={13} className={isRefreshing ? "animate-pulse" : ""} />
+                {isRefreshing ? "AI 正在撰写首版报告…" : "AI 生成首版报告"}
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      {isRefreshing && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800">
-          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
-          <span>AI 正在基于任务、GitHub、飞书与证据撰写 7 章结项报告，请稍候…</span>
-        </div>
-      )}
-      {rewritingSection && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2 text-xs text-sky-800">
-          <Sparkles size={14} className="shrink-0 animate-pulse text-sky-600" />
-          <span>AI 正在基于最新真实数据重写「{sectionHeadingLabels[rewritingSection] ?? rewritingSection}」…</span>
-        </div>
-      )}
-      {error && (
-        <div role="alert">
-          <Feedback tone="error">{error}</Feedback>
-        </div>
-      )}
-      {notice && <Feedback tone="success">{notice}</Feedback>}
-
-      {isExportView ? (
-        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.35fr)_minmax(310px,0.9fr)] xl:items-start">
-          <div className="space-y-3.5">
-            {exportControlsCard}
-
-            <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">生成进度与导出记录</h2>
-                <span className="text-xs text-slate-500">{listing.artifacts.length} 份文件</span>
+      {/* Slide-Over Drawer for Version History, Teacher Review & Export Records */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/20 backdrop-blur-[1px] print:hidden"
+          onClick={() => setDrawerOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="版本历史与导出记录"
+            className="flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <History size={15} className="text-slate-500" />
+                <h2 className="text-sm font-semibold text-slate-900">版本历史与导出管理</h2>
               </div>
-              {listing.artifacts.length === 0 ? (
-                <div className="rounded-xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
-                  暂无导出文件记录，生成报告版本后可一键导出 PDF、DOCX 或 Markdown。
-                </div>
+              <button
+                type="button"
+                aria-label="关闭抽屉"
+                onClick={() => setDrawerOpen(false)}
+                className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex border-b border-slate-100 px-5 pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setDrawerTab("versions")}
+                className={`border-b-2 px-3 py-2 font-medium transition-colors ${
+                  drawerTab === "versions"
+                    ? "border-slate-900 text-slate-900"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                版本与审核（{listing.versions.length}）
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawerTab("exports")}
+                className={`border-b-2 px-3 py-2 font-medium transition-colors ${
+                  drawerTab === "exports"
+                    ? "border-slate-900 text-slate-900"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                导出与下载（{listing.artifacts.length}）
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4 text-xs">
+              {drawerTab === "versions" ? (
+                <>
+                  {listing.status === "submitted" && (
+                    <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                      <h3 className="mb-2 font-semibold text-amber-950">任课教师审核定稿</h3>
+                      <textarea
+                        aria-label="教师审核理由"
+                        value={reviewReason}
+                        onChange={(event) => setReviewReason(event.target.value)}
+                        className={`${input} bg-white text-xs`}
+                        rows={3}
+                        placeholder="请填写评阅意见或修改建议…"
+                      />
+                      <div className="mt-2.5 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy || !reviewReason.trim()}
+                          className={`${toolbarBtn} flex-1`}
+                          onClick={() =>
+                            void mutate(`${base}/review`, { action: "return", reason: reviewReason }, "已退回修改。", "review")
+                          }
+                        >
+                          退回修改
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || !reviewReason.trim()}
+                          className={`${toolbarPrimaryBtn} flex-1`}
+                          onClick={() =>
+                            void mutate(
+                              `${base}/review`,
+                              { action: "approve", reason: reviewReason },
+                              "已审核通过并定稿。",
+                              "review",
+                            )
+                          }
+                        >
+                          <CheckCircle2 size={13} />
+                          审核通过并定稿
+                        </button>
+                      </div>
+                    </section>
+                  )}
+
+                  <section>
+                    <h3 className="mb-2 font-semibold text-slate-700">历史快照版本</h3>
+                    {listing.versions.length === 0 ? (
+                      <p className="rounded-lg bg-slate-50 py-6 text-center text-slate-400">尚未生成报告版本</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {listing.versions.map((version) => {
+                          const isActive = viewed?.version === version.version;
+                          const vMeta = statusMeta[version.status] ?? { label: version.status, tone: "gray" as const };
+                          return (
+                            <li key={version.id} className="flex items-center justify-between gap-2 py-2.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelected(version.version);
+                                  setEditing("");
+                                  setDrawerOpen(false);
+                                }}
+                                className={`min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                                  isActive ? "bg-sky-50 text-sky-950" : "hover:bg-slate-50 text-slate-700"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-semibold">v{version.version}</span>
+                                  <StatusBadge tone={vMeta.tone} label={vMeta.label} />
+                                  <span className="text-[11px] text-slate-500">{authoringLabel(version.data?.meta)}</span>
+                                </div>
+                                <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                                  {version.created_by_name ?? version.created_by ?? "系统"} ·{" "}
+                                  {version.created_at?.slice(0, 16).replace("T", " ")}
+                                </p>
+                              </button>
+                              {version.version !== latest?.version &&
+                                ["generated", "returned", "failed"].includes(listing.status) &&
+                                version.status === "generated" && (
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void mutate(
+                                        `${base}/restore`,
+                                        { version: version.version },
+                                        `已恢复至 v${version.version}。`,
+                                        "restore",
+                                      )
+                                    }
+                                    className="shrink-0 font-medium text-sky-700 hover:underline disabled:opacity-50"
+                                  >
+                                    恢复
+                                  </button>
+                                )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section className="border-t border-slate-100 pt-4">
+                    <h3 className="mb-2 font-semibold text-slate-700">提交与审核记录（{listing.reviews.length}）</h3>
+                    {listing.reviews.length === 0 ? (
+                      <p className="text-slate-400">暂无审核记录</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {listing.reviews.map((item, index) => (
+                          <li key={index} className="rounded-lg bg-slate-50/80 px-3 py-2 text-slate-600">
+                            <div className="flex items-center justify-between font-medium text-slate-800">
+                              <span>{item.action}</span>
+                              <span className="text-[11px] font-normal text-slate-400">
+                                {item.created_at?.slice(0, 16).replace("T", " ")}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-slate-600">{item.reason}</p>
+                            <p className="mt-0.5 text-[11px] text-slate-400">操作人：{item.actor_name ?? item.actor_id}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-slate-500">
-                        <th className="pb-2 font-medium">版本 / 格式</th>
-                        <th className="pb-2 font-medium">状态</th>
-                        <th className="pb-2 font-medium">生成者</th>
-                        <th className="pb-2 font-medium">时间</th>
-                        <th className="pb-2 text-right font-medium">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {listing.artifacts.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/60">
-                          <td className="py-2.5 font-mono font-medium text-slate-900">
-                            v{item.version} · {item.format.toUpperCase()}
-                          </td>
-                          <td className="py-2.5">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <StatusBadge
-                                tone={item.status === "ready" ? "green" : item.status === "failed" ? "red" : "amber"}
-                                label={item.status}
-                              />
+                <>
+                  {viewed && (
+                    <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                      <p className="mb-2.5 font-semibold text-slate-800">快速导出当前版本（v{viewed.version}）</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          disabled={!canExport}
+                          onClick={() => void exportAndDownloadNow(viewed.version, "pdf")}
+                          className={toolbarBtn}
+                        >
+                          PDF
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canExport}
+                          onClick={() => void exportAndDownloadNow(viewed.version, "docx")}
+                          className={toolbarBtn}
+                        >
+                          Word
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canExport}
+                          onClick={() => void exportAndDownloadNow(viewed.version, "md")}
+                          className={toolbarBtn}
+                        >
+                          Markdown
+                        </button>
+                      </div>
+                    </section>
+                  )}
+
+                  <section>
+                    <h3 className="mb-2 font-semibold text-slate-700">历史导出文件（{listing.artifacts.length}）</h3>
+                    {listing.artifacts.length === 0 ? (
+                      <p className="rounded-lg bg-slate-50 py-6 text-center text-slate-400">暂无导出文件记录</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {listing.artifacts.map((item) => (
+                          <li key={item.id} className="flex items-center justify-between gap-2 py-2.5">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-semibold text-slate-900">
+                                  v{item.version} · {item.format.toUpperCase()}
+                                </span>
+                                <StatusBadge
+                                  tone={item.status === "ready" ? "green" : item.status === "failed" ? "red" : "amber"}
+                                  label={item.status}
+                                />
+                              </div>
+                              <p className="mt-0.5 text-[11px] text-slate-400">
+                                {item.requested_by_name ?? item.requested_by} ·{" "}
+                                {item.created_at?.slice(0, 16).replace("T", " ")}
+                              </p>
                               {item.status === "failed" && item.error && (
-                                <span className="text-[11px] text-rose-600">{item.error}</span>
+                                <p className="mt-0.5 text-[11px] text-rose-600">{item.error}</p>
                               )}
                             </div>
-                          </td>
-                          <td className="py-2.5 text-slate-600">{item.requested_by_name ?? item.requested_by}</td>
-                          <td className="py-2.5 text-slate-500">{item.created_at?.slice(0, 16).replace("T", " ")}</td>
-                          <td className="py-2.5 text-right">
                             {item.status === "ready" && (
                               <button
                                 type="button"
                                 disabled={busy}
-                                className="font-medium text-sky-700 hover:underline disabled:opacity-50"
                                 onClick={() => void download(item.id, item.version, item.format)}
+                                className="shrink-0 font-medium text-sky-700 hover:underline disabled:opacity-50"
                               >
-                                下载文件
+                                下载
                               </button>
                             )}
                             {item.status === "failed" && (
                               <button
                                 type="button"
                                 disabled={busy}
-                                className={compactBtn}
                                 onClick={() => void exportAndDownloadNow(item.version, item.format)}
+                                className={toolbarBtn}
                               >
                                 重试
                               </button>
                             )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
 
-          <div className="space-y-3.5 xl:sticky xl:top-4">
-            {versionHistoryCard}
-            {auditLogsCard}
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.85fr)] xl:items-start">
-          {/* Left: Single-Viewport Compact Document Reader */}
-          <section className="flex flex-col overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs lg:h-[calc(100vh-240px)] lg:min-h-[520px]">
-            {/* Sticky Top Reader Bar */}
-            <div className="shrink-0 space-y-2.5 border-b border-slate-100 bg-white px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <FileText size={16} className="shrink-0 text-sky-600" />
-                  <h2 className="truncate text-sm font-semibold text-slate-900">
-                    {viewed ? `${viewed.data.project_name || "项目报告"} · v${viewed.version}` : "报告内容预览"}
-                  </h2>
-                  {viewed && (
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        isAiAuthored ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {isAiAuthored && <Sparkles size={10} />}
-                      {isAiAuthored ? "AI 深度撰写" : "结构化汇编"}
-                    </span>
-                  )}
-                </div>
-
-                {viewed && sectionEntries.length > 0 && (
-                  <div className="gp-segmented" role="tablist" aria-label="阅读模式">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={readMode === "chapter"}
-                      data-active={readMode === "chapter" ? "true" : undefined}
-                      className="gp-segmented-item"
-                      onClick={() => setReadMode("chapter")}
-                    >
-                      单章聚焦
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={readMode === "full"}
-                      data-active={readMode === "full" ? "true" : undefined}
-                      className="gp-segmented-item"
-                      onClick={() => setReadMode("full")}
-                    >
-                      全文浏览
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {sectionEntries.length > 0 && (
-                <div className="flex flex-wrap gap-1.5" role="navigation" aria-label="报告章节导航">
-                  {sectionEntries.map(([section]) => {
-                    const isCurrent = resolvedActiveChapter === section;
-                    return (
-                      <button
-                        key={section}
-                        type="button"
-                        onClick={() => selectChapter(section)}
-                        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-                          isCurrent
-                            ? "bg-sky-600 text-white shadow-2xs"
-                            : "bg-slate-100 text-slate-600 hover:bg-sky-50 hover:text-sky-700"
-                        }`}
-                      >
-                        {shortChapterLabels[section] ?? sectionHeadingLabels[section] ?? section}
-                      </button>
-                    );
-                  })}
-                </div>
+                  <section className="border-t border-slate-100 pt-4">
+                    <h3 className="mb-2 font-semibold text-slate-700">下载审计记录（{listing.downloads.length}）</h3>
+                    {listing.downloads.length === 0 ? (
+                      <p className="text-slate-400">暂无下载记录</p>
+                    ) : (
+                      <ul className="space-y-1.5 text-slate-600">
+                        {listing.downloads.slice(0, 10).map((item, index) => (
+                          <li key={index} className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              v{item.version} · {item.format.toUpperCase()} · {item.user_name ?? item.user_id}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-slate-400">
+                              {item.created_at?.slice(0, 16).replace("T", " ")}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </>
               )}
             </div>
-
-            {/* Internal Scrollable Document Body */}
-            <div ref={readerScrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              {viewed?.status === "generating" && (
-                <p role="status" className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                  AI 正在后台汇编 7 章结项报告…
-                </p>
-              )}
-              {viewed?.status === "failed" && (
-                <p role="alert" className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  预览生成失败，请点击右上角重试刷新。
-                </p>
-              )}
-
-              {viewed ? (
-                <div className="divide-y divide-slate-100">
-                  {visibleEntries.map(([section, body]) => {
-                    const isRewritingThis = rewritingSection === section;
-                    return (
-                      <article id={`report-sec-${section}`} key={section} className="py-3.5 first:pt-0 last:pb-0">
-                        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-                          <h3 className="text-base font-bold tracking-tight text-slate-900">
-                            {sectionHeadingLabels[section] ?? section}
-                          </h3>
-                          {canEditChapter && editing !== section && (
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={busy}
-                                className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50/70 px-2.5 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-100/80 disabled:opacity-50"
-                                onClick={() => void rewriteChapterWithAi(viewed.version, section)}
-                              >
-                                <Sparkles size={12} className={isRewritingThis ? "animate-spin" : ""} />
-                                {isRewritingThis ? "AI 重写中…" : "AI 重写本章"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={busy}
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
-                                onClick={() => {
-                                  setEditing(section);
-                                  setDraft(body);
-                                }}
-                              >
-                                <Pencil size={12} />
-                                编辑
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        {editing === section ? (
-                          <div className="space-y-2">
-                            <textarea
-                              className={`${input} font-mono text-xs leading-6`}
-                              rows={10}
-                              value={draft}
-                              onChange={(event) => setDraft(event.target.value)}
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                disabled={busy || !draft.trim()}
-                                onClick={() =>
-                                  void mutate(
-                                    `${base}/sections`,
-                                    { section, body: draft, expected_version: latest.version },
-                                    "已保存为新版本。",
-                                    "edit",
-                                  )
-                                }
-                                className={button}
-                              >
-                                保存为新版本
-                              </button>
-                              <button type="button" onClick={() => setEditing("")} className={secondary}>
-                                取消
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-                            <MarkdownPreview source={body} />
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-xl bg-slate-50/80 px-4 py-8 text-center">
-                  <Sparkles size={24} className="mb-2 text-sky-600" />
-                  <p className="text-sm font-semibold text-slate-800">尚无结项报告预览</p>
-                  <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-500">
-                    系统将汇总需求基线、任务与里程碑、GitHub 提交、飞书协作结论、正式证据与成员贡献，由 AI 撰写结构完整的 7 章高校课程结项报告。
-                  </p>
-                  <button
-                    type="button"
-                    disabled={!canRefresh}
-                    onClick={() => void refreshPreview(true)}
-                    className={`${compactPrimaryBtn} mt-4`}
-                  >
-                    <Sparkles size={13} className={isRefreshing ? "animate-pulse" : ""} />
-                    {isRefreshing ? "AI 正在撰写首版报告…" : "生成首版预览"}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Compact Single-Chapter Navigation Footer */}
-            {viewed && readMode === "chapter" && sectionEntries.length > 1 && (
-              <div className="flex shrink-0 items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-2 text-xs">
-                <button
-                  type="button"
-                  disabled={activeChapterIndex <= 0}
-                  onClick={() => selectChapter(sectionEntries[activeChapterIndex - 1][0])}
-                  className={compactBtn}
-                >
-                  <ChevronLeft size={13} />
-                  上一章
-                </button>
-                <span className="font-mono text-slate-500">
-                  第 {activeChapterIndex + 1} / {sectionEntries.length} 章
-                  {viewed.created_at ? ` · 快照 ${viewed.created_at.slice(0, 16).replace("T", " ")}` : ""}
-                </span>
-                <button
-                  type="button"
-                  disabled={activeChapterIndex < 0 || activeChapterIndex >= sectionEntries.length - 1}
-                  onClick={() => selectChapter(sectionEntries[activeChapterIndex + 1][0])}
-                  className={compactBtn}
-                >
-                  下一章
-                  <ChevronRight size={13} />
-                </button>
-              </div>
-            )}
-          </section>
-
-          {/* Right Sticky Column: Export, Version History, Audit */}
-          <div className="space-y-3 xl:sticky xl:top-4">
-            {exportControlsCard}
-            {versionHistoryCard}
-            {auditLogsCard}
           </div>
         </div>
       )}
