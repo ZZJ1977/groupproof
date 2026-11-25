@@ -109,4 +109,5 @@ npm run test:workspace-real        # Staging 模式下的隔离接口浏览器�
 
 - [开发环境详细说明](../architecture/DEVELOPMENT.md)
 - [生产与 Staging 部署参考](../architecture/DEPLOYMENT.md)
+- [并发压力测试报告](../testing/STRESS_TEST_REPORT.md)
 - [后端 API 说明](../../services/api/README.md)
