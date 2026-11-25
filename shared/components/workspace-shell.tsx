@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -666,16 +666,35 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     if (!navRef.current) return;
     writeSidebarScroll(sidebarScopeKey, navRef.current.scrollTop);
   };
-  const cachedCContext = useQuery<{ project?: { name?: string } }>({
-    queryKey: ["c-project-context", userId, context.projectId],
-    queryFn: () => Promise.resolve({}),
-    enabled: false,
-  });
-  const cachedBOverview = useQuery<{ name?: string; project?: { name?: string } }>({
-    queryKey: ["b-project-overview", userId, context.projectId],
-    queryFn: () => Promise.resolve({}),
-    enabled: false,
-  });
+  const queryClient = useQueryClient();
+  const subscribeQueryCache = useCallback(
+    (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),
+    [queryClient],
+  );
+  const cachedCContextState = useSyncExternalStore(
+    subscribeQueryCache,
+    () =>
+      context.projectId
+        ? queryClient.getQueryState<{ project?: { name?: string } }>([
+            "c-project-context",
+            userId,
+            context.projectId,
+          ])
+        : undefined,
+    () => undefined,
+  );
+  const cachedBOverviewState = useSyncExternalStore(
+    subscribeQueryCache,
+    () =>
+      context.projectId
+        ? queryClient.getQueryState<{ name?: string; project?: { name?: string } }>([
+            "b-project-overview",
+            userId,
+            context.projectId,
+          ])
+        : undefined,
+    () => undefined,
+  );
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const dailyClient = useMemo(() => createCClient(), []);
   const cachedHome = useQuery<{ projects?: { id: string; name: string }[] }>({
@@ -690,9 +709,13 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     : (cachedHome.data?.projects ?? []);
   const resolvedProjectName =
     context.projectName ??
-    (cachedCContext.status === "success" && !cachedCContext.error ? cachedCContext.data?.project?.name : undefined) ??
-    (cachedBOverview.status === "success" && !cachedBOverview.error ? (cachedBOverview.data?.name ?? cachedBOverview.data?.project?.name) : undefined) ??
-    (cachedCContext.status !== "error" && cachedBOverview.status !== "error"
+    (cachedCContextState?.status === "success" && !cachedCContextState.error
+      ? cachedCContextState.data?.project?.name
+      : undefined) ??
+    (cachedBOverviewState?.status === "success" && !cachedBOverviewState.error
+      ? (cachedBOverviewState.data?.name ?? cachedBOverviewState.data?.project?.name)
+      : undefined) ??
+    (cachedCContextState?.status !== "error" && cachedBOverviewState?.status !== "error"
       ? cachedHome.data?.projects?.find((item) => item.id === context.projectId)?.name
       : undefined);
 

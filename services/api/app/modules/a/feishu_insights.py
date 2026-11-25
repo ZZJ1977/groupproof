@@ -335,7 +335,7 @@ def _latest_summary(session: Session, project_id: UUID) -> ActivitySummary | Non
 
 def get_collaboration_insights(session: Session, actor: User, project_id: UUID) -> dict[str, Any]:
     """读取项目最新缓存的飞书协作 AI 结论，并实时关联真实聊天消息详情。"""
-    permissions.require_project_member(session, actor, project_id, write=False)
+    permissions.require_project_read(session, actor, project_id)
     ctx = _load_project_context(session, project_id)
     cached = _latest_summary(session, project_id)
     return _hydrate_response(ctx, cached)

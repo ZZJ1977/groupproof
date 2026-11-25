@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from app.api.errors import ApiError
-from app.modules.a import github_sync
+from app.modules.a import github_activity, github_sync
 from app.modules.a.models import GithubFile
 
 db = fixtures.db
@@ -149,3 +149,36 @@ def test_sync_is_leader_only_and_members_can_list(db, scope):
     with pytest.raises(ApiError) as exc:
         github_sync.list_linked_repos(db, scope.users["outsider"], scope.project.id)
     assert exc.value.status_code == 404
+
+
+def test_course_teacher_can_read_linked_repos_and_stats_but_cannot_write(db, scope):
+    client = FakeGithub({})
+    _link(db, scope, client)
+    teacher = scope.users["teacher"]
+    peer = scope.users["peer"]
+    outsider = scope.users["outsider"]
+
+    # 本课教师只读项目概览：可读取已绑定仓库元数据与代码统计
+    links = github_sync.list_linked_repos(db, teacher, scope.project.id)
+    assert [(link.owner, link.repo) for link in links] == [("acme", "demo")]
+    stats = github_activity.get_activity_stats(db, teacher, scope.project.id, range_key="all")
+    assert stats["total_commits"] == 0
+
+    # 本课教师仍无权绑定或同步仓库（403）
+    with pytest.raises(ApiError) as link_err:
+        github_sync.link_repo(
+            db, teacher, scope.project.id, "https://github.com/acme/other", client
+        )
+    assert link_err.value.status_code == 403
+    with pytest.raises(ApiError) as sync_err:
+        github_sync.sync_project_repos(db, teacher, scope.project.id, client)
+    assert sync_err.value.status_code == 403
+
+    # 非项目成员的同课同学与外人仍不可读（404）
+    for blocked in (peer, outsider):
+        with pytest.raises(ApiError) as repo_err:
+            github_sync.list_linked_repos(db, blocked, scope.project.id)
+        assert repo_err.value.status_code == 404
+        with pytest.raises(ApiError) as stat_err:
+            github_activity.get_activity_stats(db, blocked, scope.project.id, range_key="all")
+        assert stat_err.value.status_code == 404

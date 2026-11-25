@@ -1331,8 +1331,8 @@ def feishu_activity_port(session_factory) -> DatabaseFeishuActivityPort:
 
 
 def list_linked_chats(session: Session, actor: User, project_id: UUID) -> list[FeishuChatLink]:
-    """项目成员可以查看本项目绑定了哪些飞书群（不包含凭证）。"""
-    permissions.require_project_member(session, actor, project_id, write=False)
+    """项目成员及本课教师/助教可只读查看本项目绑定了哪些飞书群（不包含凭证或消息正文）。"""
+    permissions.require_project_read(session, actor, project_id)
     return list(
         session.scalars(
             select(FeishuChatLink)
