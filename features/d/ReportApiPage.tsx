@@ -32,10 +32,13 @@ type Artifact = {
   version: number;
   format: "pdf" | "docx";
   status: string;
+  error?: string | null;
   requested_by: string;
   requested_by_name: string | null;
   created_at: string | null;
 };
+type ExportFormat = "pdf" | "docx" | "md";
+type BusyAction = null | "refresh" | "export" | "download" | "submit" | "review" | "edit" | "restore";
 type Listing = {
   status: string;
   versions: Version[];
@@ -72,6 +75,55 @@ const compactPrimaryBtn =
 const compactSelect =
   "h-8 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  REPORT_WRITE_DENIED: "仅项目组长或任课教师可生成、刷新或编辑结项报告。",
+  REPORT_FINALIZE_DENIED: "仅项目组长可提交结项报告给教师定稿。",
+  REPORT_REVIEW_DENIED: "仅该课程任课教师可审核结项报告。",
+  PROJECT_READ_ONLY: "当前项目已归档或只读，无法修改报告。",
+  REPORT_GENERATING: "报告预览正在生成中，请稍候片刻。",
+  REPORT_READ_ONLY: "报告正在审核中或已定稿，暂不支持重新生成。",
+  REPORT_NOT_READY: "报告预览尚未完成，请稍后重试。",
+  REPORT_WORKER_UNAVAILABLE: "报告生成服务暂时不可用，请稍后重试。",
+  REPORT_PREVIEW_FAILED: "报告预览生成失败，请点击重试。",
+  REPORT_EXPORT_FAILED: "报告文件导出失败，请点击重试。",
+  REPORT_LINK_EXPIRED: "下载链接已过期，请重新点击下载。",
+};
+
+function extractErrorMessage(result: unknown, fallback = "请求失败"): string {
+  if (result && typeof result === "object") {
+    const obj = result as { error?: { code?: string; message?: string }; detail?: string };
+    const code = obj.error?.code;
+    if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+    if (obj.error?.message) return obj.error.message;
+    if (typeof obj.detail === "string" && obj.detail) return obj.detail;
+  }
+  return fallback;
+}
+
+function parseFilename(disposition: string | null, fallback: string): string {
+  if (!disposition) return fallback;
+  const utf8Match = /filename\*=UTF-8''([^;\n]+)/i.exec(disposition);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      // fall through to ascii filename
+    }
+  }
+  const plainMatch = /filename="?([^";\n]+)"?/i.exec(disposition);
+  if (plainMatch?.[1]) return plainMatch[1].trim();
+  return fallback;
+}
+
+function safeFileStem(name: string | undefined): string {
+  return (name || "GroupProof").replace(/[\\/:*?"<>|]+/g, "-").trim() || "GroupProof";
+}
+
+function formatLabel(format: ExportFormat): string {
+  if (format === "md") return "Markdown";
+  return format.toUpperCase();
+}
+
 async function request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetchWithSession(
     new Request(new URL(apiConfig.baseUrl + url, window.location.origin), {
@@ -83,8 +135,31 @@ async function request<T>(url: string, method = "GET", body?: unknown): Promise<
     }),
   );
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error?.message ?? "请求失败");
+  if (!response.ok) throw new Error(extractErrorMessage(result, `请求失败（HTTP ${response.status}）`));
   return result.data as T;
+}
+
+async function downloadBinaryFromApi(url: string, fallbackFilename: string): Promise<void> {
+  const fullUrl = new URL(apiConfig.baseUrl + url, window.location.origin);
+  const response = await fetch(fullUrl, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(result, `文件下载失败（HTTP ${response.status}）`));
+  }
+  const blob = await response.blob();
+  const filename = parseFilename(response.headers.get("content-disposition"), fallbackFilename);
+  const blobUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = blobUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 }
 
 export function ReportApiPage({
@@ -104,11 +179,12 @@ export function ReportApiPage({
   const [appendix, setAppendix] = useState(false);
   const [editing, setEditing] = useState("");
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [fileFormat, setFileFormat] = useState<"pdf" | "docx">("pdf");
+  const [fileFormat, setFileFormat] = useState<ExportFormat>("pdf");
   const [reviewReason, setReviewReason] = useState("");
+  const busy = busyAction !== null;
 
   const refresh = useCallback(async () => setListing(await request<Listing>(base)), [base]);
   useEffect(() => {
@@ -129,9 +205,11 @@ export function ReportApiPage({
   const canExport = Boolean(viewed && !busy && ["generated", "finalized"].includes(viewed.status));
   const canSubmit = Boolean(latest && ["generated", "returned"].includes(listing.status));
   const sectionEntries = Object.entries(viewed?.data?.sections ?? {});
+  const isRefreshing = busyAction === "refresh";
+  const isExporting = busyAction === "export" || busyAction === "download";
 
-  async function mutate(url: string, body?: unknown, successMsg?: string) {
-    setBusy(true);
+  async function mutate(url: string, body?: unknown, successMsg?: string, action: BusyAction = "edit") {
+    setBusyAction(action);
     setError("");
     setNotice("");
     try {
@@ -143,47 +221,102 @@ export function ReportApiPage({
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
-  async function download(artifactId: string) {
-    setBusy(true);
-    setError("");
-    try {
-      const link = await request<{ url: string; expires_at: string }>(`${base}/exports/${artifactId}/download-link`, "POST");
-      window.location.assign(link.url);
-    } catch (failure) {
-      setError((failure as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function exportAndDownloadNow(versionNo: number, format: "pdf" | "docx") {
-    setBusy(true);
+  async function refreshPreview(initial: boolean) {
+    setBusyAction("refresh");
     setError("");
     setNotice("");
     try {
-      const created = await request<{ id: string; status: string }>(`${base}/exports`, "POST", {
-        version: versionNo,
-        file_format: format,
+      const created = await request<{ version: number; status: string }>(`${base}/refresh`, "POST", {
+        includes_appendix: appendix,
       });
       await refresh();
-      if (created.status === "ready") {
-        const link = await request<{ url: string; expires_at: string }>(
-          `${base}/exports/${created.id}/download-link`,
-          "POST",
-        );
-        setNotice(`已生成真实 ${format.toUpperCase()} 文件并开始下载。`);
-        window.location.assign(link.url);
+      setEditing("");
+      setSelected(null);
+      if (created.status === "generating") {
+        setNotice(`已提交 v${created.version} 报告生成任务，正在后台汇编预览…`);
       } else {
-        setNotice(`已提交后台生成 ${format.toUpperCase()} 文件，就绪后可点击获取下载链接。`);
+        setNotice(initial ? `首版报告预览（v${created.version}）已生成。` : `报告预览已刷新至 v${created.version}。`);
       }
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
+    }
+  }
+
+  async function download(artifactId: string, versionNo?: number, fmt?: "pdf" | "docx") {
+    setBusyAction("download");
+    setError("");
+    setNotice("");
+    try {
+      const link = await request<{ url: string; expires_at: string }>(`${base}/exports/${artifactId}/download-link`, "POST");
+      const stem = safeFileStem(viewed?.data?.project_name);
+      const fallback = `${stem}-结项报告-v${versionNo ?? viewed?.version ?? 1}.${fmt ?? "pdf"}`;
+      await downloadBinaryFromApi(link.url, fallback);
+      await refresh();
+      setNotice(`已开始下载 ${(fmt ?? "pdf").toUpperCase()} 报告文件。`);
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function exportAndDownloadNow(versionNo: number, format: ExportFormat) {
+    setBusyAction("export");
+    setError("");
+    setNotice("");
+    const stem = safeFileStem(viewed?.data?.project_name);
+    try {
+      if (format === "md") {
+        await downloadBinaryFromApi(
+          `${base}/versions/${versionNo}/markdown`,
+          `${stem}-结项报告-v${versionNo}.md`,
+        );
+        setNotice(`已生成并开始下载 v${versionNo} Markdown (.md) 报告。`);
+        return;
+      }
+      const created = await request<{ id: string; status: string }>(`${base}/exports`, "POST", {
+        version: versionNo,
+        file_format: format,
+      });
+      let status = created.status;
+      let exportError: string | null = null;
+      if (status === "pending" || status === "generating") {
+        for (let attempt = 0; attempt < 25; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+          const polled = await request<{ id: string; status: string; error?: string | null }>(
+            `${base}/exports/${created.id}`,
+          );
+          status = polled.status;
+          exportError = polled.error ?? null;
+          if (status === "ready" || status === "failed") break;
+        }
+      }
+      if (status === "failed") {
+        await refresh();
+        throw new Error(exportError || `导出 ${format.toUpperCase()} 文件失败，请重试。`);
+      }
+      if (status === "ready") {
+        const link = await request<{ url: string; expires_at: string }>(
+          `${base}/exports/${created.id}/download-link`,
+          "POST",
+        );
+        await downloadBinaryFromApi(link.url, `${stem}-结项报告-v${versionNo}.${format}`);
+        await refresh();
+        setNotice(`已生成真实 ${format.toUpperCase()} 文件并开始下载。`);
+      } else {
+        await refresh();
+        setNotice(`已提交后台生成 ${format.toUpperCase()} 文件，就绪后可在下方导出记录中下载。`);
+      }
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -323,11 +456,12 @@ export function ReportApiPage({
             <select
               id="report-format-select"
               value={fileFormat}
-              onChange={(event) => setFileFormat(event.target.value as "pdf" | "docx")}
+              onChange={(event) => setFileFormat(event.target.value as ExportFormat)}
               className={`${compactSelect} w-full`}
             >
               <option value="pdf">PDF（标准文档）</option>
               <option value="docx">DOCX（Word 文档）</option>
+              <option value="md">Markdown（.md 文档）</option>
             </select>
           </div>
         </div>
@@ -349,8 +483,8 @@ export function ReportApiPage({
                 onClick={() => void exportAndDownloadNow(viewed.version, fileFormat)}
                 className={`${compactPrimaryBtn} flex-1`}
               >
-                <Download size={13} />
-                导出并下载 {fileFormat.toUpperCase()}
+                <Download size={13} className={isExporting ? "animate-bounce" : ""} />
+                {isExporting ? `正在导出 ${formatLabel(fileFormat)}…` : `导出并下载 ${formatLabel(fileFormat)}`}
               </button>
               <button type="button" onClick={() => window.print()} className={compactBtn}>
                 <Printer size={13} />
@@ -361,21 +495,21 @@ export function ReportApiPage({
             <button
               type="button"
               disabled={!canRefresh}
-              onClick={() => void mutate(`${base}/refresh`, { includes_appendix: appendix }, "首版报告快照已生成。")}
+              onClick={() => void refreshPreview(true)}
               className={`${compactPrimaryBtn} w-full`}
             >
-              <RefreshCw size={13} />
-              生成首版报告快照
+              <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
+              {isRefreshing ? "正在生成首版报告快照…" : "生成首版报告快照"}
             </button>
           )}
         </div>
-        {viewed && (
+        {viewed && fileFormat !== "md" && (
           <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
             <span>基于项目当前真实数据生成快照</span>
             <button
               type="button"
               disabled={!canExport}
-              onClick={() => void mutate(`${base}/exports`, { version: viewed.version, file_format: fileFormat }, "已提交后台生成任务。")}
+              onClick={() => void mutate(`${base}/exports`, { version: viewed.version, file_format: fileFormat }, "已生成导出文件记录。", "export")}
               className="font-medium text-sky-700 hover:underline disabled:opacity-50"
             >
               后台生成文件
@@ -404,7 +538,12 @@ export function ReportApiPage({
                     <StatusBadge tone={item.status === "ready" ? "green" : item.status === "failed" ? "red" : "amber"} label={item.status} />
                   </span>
                   {item.status === "ready" && (
-                    <button type="button" disabled={busy} className="shrink-0 font-medium text-sky-700 hover:underline" onClick={() => void download(item.id)}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="shrink-0 font-medium text-sky-700 hover:underline"
+                      onClick={() => void download(item.id, item.version, item.format)}
+                    >
                       下载
                     </button>
                   )}
@@ -498,17 +637,17 @@ export function ReportApiPage({
           <button
             type="button"
             disabled={!canRefresh}
-            onClick={() => void mutate(`${base}/refresh`, { includes_appendix: appendix }, "报告版本已刷新。")}
+            onClick={() => void refreshPreview(!latest)}
             className={compactPrimaryBtn}
           >
-            <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
-            {latest ? "刷新预览" : "生成预览"}
+            <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
+            {isRefreshing ? "正在生成…" : latest ? "刷新预览" : "生成预览"}
           </button>
           {canSubmit && (
             <button
               type="button"
               disabled={busy}
-              onClick={() => void mutate(`${base}/submit`, undefined, "已提交教师审核。")}
+              onClick={() => void mutate(`${base}/submit`, undefined, "已提交教师审核。", "submit")}
               className={compactBtn}
             >
               <Send size={13} />
@@ -523,12 +662,17 @@ export function ReportApiPage({
               className={compactBtn}
             >
               <Download size={13} />
-              导出 {fileFormat.toUpperCase()}
+              {isExporting ? "导出中…" : `导出 ${formatLabel(fileFormat)}`}
             </button>
           )}
         </div>
       </div>
 
+      {isRefreshing && (
+        <div role="status" className="rounded-xl border border-sky-200/80 bg-sky-50/80 px-3.5 py-2.5 text-xs text-sky-800">
+          正在基于当前任务、里程碑、正式证据与风险数据生成报告预览，请稍候…
+        </div>
+      )}
       {error && (
         <div role="alert">
           <Feedback tone="error">{error}</Feedback>
@@ -601,10 +745,15 @@ export function ReportApiPage({
                             v{item.version} · {item.format.toUpperCase()}
                           </td>
                           <td className="py-2.5">
-                            <StatusBadge
-                              tone={item.status === "ready" ? "green" : item.status === "failed" ? "red" : "amber"}
-                              label={item.status}
-                            />
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <StatusBadge
+                                tone={item.status === "ready" ? "green" : item.status === "failed" ? "red" : "amber"}
+                                label={item.status}
+                              />
+                              {item.status === "failed" && item.error && (
+                                <span className="text-[11px] text-rose-600">{item.error}</span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 text-slate-600">{item.requested_by_name ?? item.requested_by}</td>
                           <td className="py-2.5 text-slate-500">{item.created_at?.slice(0, 16).replace("T", " ")}</td>
@@ -614,7 +763,7 @@ export function ReportApiPage({
                                 type="button"
                                 disabled={busy}
                                 className="font-medium text-sky-700 hover:underline disabled:opacity-50"
-                                onClick={() => void download(item.id)}
+                                onClick={() => void download(item.id, item.version, item.format)}
                               >
                                 获取十分钟下载链接
                               </button>
@@ -624,7 +773,7 @@ export function ReportApiPage({
                                 type="button"
                                 disabled={busy}
                                 className={compactBtn}
-                                onClick={() => void mutate(`${base}/exports`, { version: item.version, file_format: item.format })}
+                                onClick={() => void exportAndDownloadNow(item.version, item.format)}
                               >
                                 重试
                               </button>
@@ -746,11 +895,11 @@ export function ReportApiPage({
                 <button
                   type="button"
                   disabled={!canRefresh}
-                  onClick={() => void mutate(`${base}/refresh`, { includes_appendix: appendix }, "首版报告预览已生成。")}
+                  onClick={() => void refreshPreview(true)}
                   className={`${compactPrimaryBtn} mt-3`}
                 >
-                  <RefreshCw size={13} />
-                  生成首版预览
+                  <RefreshCw size={13} className={isRefreshing ? "animate-spin" : ""} />
+                  {isRefreshing ? "正在生成首版预览…" : "生成首版预览"}
                 </button>
               </div>
             )}
