@@ -133,28 +133,32 @@ export function HomeInboxPanel({
     return (
       <div
         key={`action-${item.id}`}
-        className="flex items-start justify-between gap-3 rounded-xl border border-amber-200/75 bg-amber-50/40 px-3.5 py-2.5 transition hover:border-amber-300/80 hover:bg-amber-50/70"
+        className="flex items-center justify-between gap-2.5 py-2.5 first:pt-1 last:pb-0.5"
       >
-        <div className="min-w-0 flex-1 space-y-1">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <StatusBadge label="待处理" tone="amber" />
-            <span className="gp-pill">{ACTION_CATEGORY_LABELS[item.category]}</span>
+            <StatusBadge label="待处理" tone="amber" className="!min-h-5 !px-1.5 !py-0 !text-[10px]" />
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+              {ACTION_CATEGORY_LABELS[item.category]}
+            </span>
+            <span className="truncate text-xs font-semibold text-slate-900">{item.title}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-slate-500">
+            <span className="truncate">{item.description}</span>
             {item.due_at && (
-              <span className="text-[11px] text-amber-800/90">
+              <span className="shrink-0 text-amber-700">
                 {tr("截止 {0}", { 0: formatDate(item.due_at) })}
               </span>
             )}
           </div>
-          <div className="truncate text-sm font-semibold text-slate-900">{item.title}</div>
-          <p className="line-clamp-1 text-xs text-slate-600">{item.description}</p>
         </div>
         {href && (
           <Link
             href={href}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-50"
+            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50/50 px-2 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-100/70"
           >
             前往处理
-            <ArrowRight size={12} />
+            <ArrowRight size={11} />
           </Link>
         )}
       </div>
@@ -167,32 +171,29 @@ export function HomeInboxPanel({
     return (
       <div
         key={`notif-${item.id}`}
-        className={`flex items-start justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition ${
-          isUnread
-            ? "border-sky-200/85 bg-sky-50/45 hover:border-sky-300/80 hover:bg-sky-50/75"
-            : "border-slate-200/75 bg-slate-50/50 hover:border-slate-300/80 hover:bg-white"
-        }`}
+        className="flex items-center justify-between gap-2.5 py-2.5 first:pt-1 last:pb-0.5"
       >
-        <div className="min-w-0 flex-1 space-y-1">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${isUnread ? "bg-sky-600" : "bg-slate-300"}`}
               aria-hidden="true"
             />
-            <span className="text-[11px] font-semibold text-slate-500">
-              {isUnread ? "未读" : "已读"}
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+              {NOTIFICATION_CATEGORY_LABELS[item.category]}
             </span>
-            <span className="gp-pill">{NOTIFICATION_CATEGORY_LABELS[item.category]}</span>
-            <span className="text-[11px] text-slate-400">{formatDate(item.created_at)}</span>
+            <span className={`truncate text-xs ${isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-700"}`}>
+              {item.title}
+            </span>
+            <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{formatDate(item.created_at)}</span>
           </div>
-          <div className="truncate text-sm font-semibold text-slate-900">{item.title}</div>
-          <p className="line-clamp-1 text-xs text-slate-600">{item.description}</p>
+          <p className="mt-0.5 line-clamp-1 pl-3.5 text-[11px] text-slate-500">{item.description}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           {href && (
             <Link
               href={href}
-              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+              className="inline-flex h-7 items-center rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
             >
               查看相关内容
             </Link>
@@ -204,9 +205,9 @@ export function HomeInboxPanel({
               onClick={() => void markOneRead(item)}
               title="标为已读"
               aria-label={tr("将「{0}」标为已读", { 0: item.title })}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-white text-sky-700 transition hover:bg-sky-50 disabled:opacity-50"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-sky-50/60 text-sky-700 transition hover:bg-sky-100/70 disabled:opacity-50"
             >
-              <Check size={13} />
+              <Check size={12} />
             </button>
           )}
         </div>
@@ -217,35 +218,30 @@ export function HomeInboxPanel({
   return (
     <section
       aria-label="待办与通知中心"
-      className="rounded-2xl border border-slate-200/85 bg-white p-5 shadow-xs"
+      className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-            <Bell size={18} />
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+            <Bell size={15} />
           </span>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold tracking-tight text-slate-900">待办与通知</h2>
-              {attentionTotal > 0 && (
-                <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
-                  {tr("{0} 项需关注", { 0: attentionTotal })}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-slate-500">集中查看待处理事项与动态通知，按类型快速筛选</p>
-          </div>
+          <h2 className="text-sm font-bold tracking-tight text-slate-900">待办与通知</h2>
+          {attentionTotal > 0 && (
+            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+              {tr("{0} 项需关注", { 0: attentionTotal })}
+            </span>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           <Link
             href="/action-items"
-            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-800 transition hover:bg-amber-100"
+            className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 transition hover:bg-amber-100"
           >
             {tr("待处理事项：{0}", { 0: pendingCount ?? "暂不可用" })}
           </Link>
           <Link
             href="/notifications"
-            className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 font-medium text-sky-800 transition hover:bg-sky-100"
+            className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-800 transition hover:bg-sky-100"
           >
             {tr("未读通知：{0}", { 0: unreadCount ?? "暂不可用" })}
           </Link>
@@ -253,17 +249,17 @@ export function HomeInboxPanel({
       </div>
 
       {/* 一级切换：全部 / 待处理 / 通知 */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="gp-segmented" role="tablist" aria-label="收件箱视图切换">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="gp-segmented !p-0.5" role="tablist" aria-label="收件箱视图切换">
           <button
             type="button"
             role="tab"
             aria-selected={primaryTab === "all"}
             data-active={primaryTab === "all" ? "true" : undefined}
-            className="gp-segmented-item"
+            className="gp-segmented-item !min-h-7 !px-2.5 !py-1 !text-xs"
             onClick={() => setPrimaryTab("all")}
           >
-            <Inbox size={13} />
+            <Inbox size={12} />
             全部
           </button>
           <button
@@ -271,10 +267,10 @@ export function HomeInboxPanel({
             role="tab"
             aria-selected={primaryTab === "actions"}
             data-active={primaryTab === "actions" ? "true" : undefined}
-            className="gp-segmented-item"
+            className="gp-segmented-item !min-h-7 !px-2.5 !py-1 !text-xs"
             onClick={() => setPrimaryTab("actions")}
           >
-            <CheckSquare size={13} />
+            <CheckSquare size={12} />
             {tr("待处理 ({0})", { 0: pendingDisplay ?? 0 })}
           </button>
           <button
@@ -282,10 +278,10 @@ export function HomeInboxPanel({
             role="tab"
             aria-selected={primaryTab === "notifications"}
             data-active={primaryTab === "notifications" ? "true" : undefined}
-            className="gp-segmented-item"
+            className="gp-segmented-item !min-h-7 !px-2.5 !py-1 !text-xs"
             onClick={() => setPrimaryTab("notifications")}
           >
-            <Bell size={13} />
+            <Bell size={12} />
             {tr("通知 ({0})", { 0: unreadDisplay ?? 0 })}
           </button>
         </div>
@@ -299,7 +295,7 @@ export function HomeInboxPanel({
 
       {/* 二级细分筛选 */}
       {primaryTab === "actions" && (
-        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="按待处理类型筛选">
+        <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="按待处理类型筛选">
           {(
             [
               ["all", "全部待办"],
@@ -312,7 +308,7 @@ export function HomeInboxPanel({
               key={key}
               type="button"
               onClick={() => setActionFilter(key)}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
                 actionFilter === key
                   ? "bg-slate-900 text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200/80"
@@ -325,7 +321,7 @@ export function HomeInboxPanel({
       )}
 
       {primaryTab === "notifications" && (
-        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="按通知类型筛选">
+        <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="按通知类型筛选">
           {(
             [
               ["all", "全部通知"],
@@ -339,7 +335,7 @@ export function HomeInboxPanel({
               key={key}
               type="button"
               onClick={() => setNotificationFilter(key)}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
                 notificationFilter === key
                   ? "bg-slate-900 text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200/80"
@@ -352,60 +348,63 @@ export function HomeInboxPanel({
       )}
 
       {inlineNotice && (
-        <p role="status" className="mt-3 text-xs text-amber-700">
+        <p role="status" className="mt-2 text-xs text-amber-700">
           {inlineNotice}
         </p>
       )}
 
       {(actionsQuery.isError || notificationsQuery.isError) && !isInitialLoading && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-2 text-[11px] text-slate-500">
           部分收件箱明细暂不可用，可点击上方「待处理事项」或「未读通知」链接进入完整页面查看。
         </p>
       )}
 
-      <div className="mt-4 space-y-2.5">
+      <div className="mt-2.5">
         {isInitialLoading && (
-          <div className="space-y-2">
-            <div className="h-14 animate-pulse rounded-xl bg-slate-100" />
-            <div className="h-14 animate-pulse rounded-xl bg-slate-100" />
+          <div className="space-y-2 py-1">
+            <div className="h-10 animate-pulse rounded-lg bg-slate-100" />
+            <div className="h-10 animate-pulse rounded-lg bg-slate-100" />
           </div>
         )}
 
         {!isInitialLoading && primaryTab === "all" && (
-          <>
-            {actionItems.slice(0, 3).map(renderActionRow)}
-            {notifications.slice(0, actionItems.length > 0 ? 4 : 6).map(renderNotificationRow)}
-            {actionItems.length === 0 && notifications.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center">
-                <div className="text-sm font-semibold text-slate-700">当前没有待处理事项或通知</div>
-                <p className="mt-1 text-xs text-slate-500">新的任务确认、审批与项目通知会集中显示在这里。</p>
-              </div>
-            )}
-          </>
+          actionItems.length > 0 || notifications.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {actionItems.slice(0, 3).map(renderActionRow)}
+              {notifications.slice(0, actionItems.length > 0 ? 3 : 5).map(renderNotificationRow)}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3.5 py-4 text-center">
+              <div className="text-xs font-semibold text-slate-700">当前没有待处理事项或通知</div>
+              <p className="mt-0.5 text-[11px] text-slate-500">新的任务确认、审批与项目通知会集中显示在这里。</p>
+            </div>
+          )
         )}
 
         {!isInitialLoading && primaryTab === "actions" && (
-          <>
-            {filteredActions.slice(0, 6).map(renderActionRow)}
-            {filteredActions.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center">
-                <div className="text-sm font-semibold text-slate-700">该分类下暂无待处理事项</div>
-                <p className="mt-1 text-xs text-slate-500">切换其他分类或前往「待处理事项」查看历史记录。</p>
-              </div>
-            )}
-          </>
+          filteredActions.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {filteredActions.slice(0, 5).map(renderActionRow)}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3.5 py-4 text-center">
+              <div className="text-xs font-semibold text-slate-700">该分类下暂无待处理事项</div>
+              <p className="mt-0.5 text-[11px] text-slate-500">切换其他分类或前往「待处理事项」查看历史记录。</p>
+            </div>
+          )
         )}
 
         {!isInitialLoading && primaryTab === "notifications" && (
-          <>
-            {filteredNotifications.slice(0, 6).map(renderNotificationRow)}
-            {filteredNotifications.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center">
-                <div className="text-sm font-semibold text-slate-700">该分类下暂无通知</div>
-                <p className="mt-1 text-xs text-slate-500">切换其他筛选条件或前往「通知」页面查看全部记录。</p>
-              </div>
-            )}
-          </>
+          filteredNotifications.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {filteredNotifications.slice(0, 5).map(renderNotificationRow)}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3.5 py-4 text-center">
+              <div className="text-xs font-semibold text-slate-700">该分类下暂无通知</div>
+              <p className="mt-0.5 text-[11px] text-slate-500">切换其他筛选条件或前往「通知」页面查看全部记录。</p>
+            </div>
+          )
         )}
       </div>
     </section>
