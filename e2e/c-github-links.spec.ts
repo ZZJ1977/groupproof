@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { seedData } from "../mocks/seed";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
 
 test("C4-01 GitHub activity links only expose the trusted GitHub origin", async ({ page }) => {
   await page.addInitScript((data) => {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { migrateWorkspace } from "../lib/versioning.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { changeCourseFile, courseFileAccess, listCourseFiles } from "../features/c/course-file-commands.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { migrateWorkspace } from "../shared/legacy-mock/versioning.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { changeCourseFile, courseFileAccess, listCourseFiles } from "../shared/legacy-mock/features/c/course-file-commands.ts";
 
 let passed = 0;
 const check = (message, actual, expected) => { assert.deepEqual(actual, expected, message); passed += 1; };

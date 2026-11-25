@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
 import {
   CURRENT_SCHEMA_VERSION,
   activeBaseline,
@@ -13,7 +13,7 @@ import {
   draftPlan,
   migrateWorkspace,
   validateWorkspace,
-} from "../lib/versioning.ts";
+} from "../shared/legacy-mock/versioning.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

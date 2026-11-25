@@ -5,13 +5,13 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const files = {
-  shell: readFileSync(resolve(root, "components/workspace-shell.tsx"), "utf8"),
-  primitives: readFileSync(resolve(root, "features/governance/primitives.tsx"), "utf8"),
+  shell: readFileSync(resolve(root, "shared/components/workspace-shell.tsx"), "utf8"),
+  primitives: readFileSync(resolve(root, "admin/components/primitives.tsx"), "utf8"),
   globals: readFileSync(resolve(root, "app/globals.css"), "utf8"),
-  governance: readFileSync(resolve(root, "features/governance/governance.module.css"), "utf8"),
-  hans: readFileSync(resolve(root, "messages/zh-Hans.json"), "utf8"),
-  hant: readFileSync(resolve(root, "messages/zh-Hant.json"), "utf8"),
-  en: readFileSync(resolve(root, "messages/en.json"), "utf8"),
+  governance: readFileSync(resolve(root, "admin/components/governance.module.css"), "utf8"),
+  hans: readFileSync(resolve(root, "shared/i18n/messages/zh-Hans.json"), "utf8"),
+  hant: readFileSync(resolve(root, "shared/i18n/messages/zh-Hant.json"), "utf8"),
+  en: readFileSync(resolve(root, "shared/i18n/messages/en.json"), "utf8"),
 };
 
 const checks = [

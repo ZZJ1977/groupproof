@@ -1,5 +1,5 @@
-// Every Chinese UI string in features/, components/ and lib/ must have an English and a
-// Traditional Chinese entry in lib/i18n/catalog (see lib/i18n/tr.ts). Run: npm run check:ui-catalog
+// Every Chinese UI string in student/, teacher/, admin/ and shared/ must have an English and a
+// Traditional Chinese entry in shared/i18n/catalog (see shared/i18n/tr.ts). Run: npm run check:ui-catalog
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,9 +15,11 @@ const walk = (dir, out = []) => {
   }
   return out;
 };
-const files = ["features", "components", "lib"].flatMap((d) => walk(path.join(root, d))).filter((f) => !f.includes(`${path.sep}lib${path.sep}i18n${path.sep}`));
+const files = ["student", "teacher", "admin", "shared"]
+  .flatMap((d) => walk(path.join(root, d)))
+  .filter((f) => !f.includes(`${path.sep}shared${path.sep}i18n${path.sep}`));
 const loadCatalog = (name) => {
-  const text = fs.readFileSync(path.join(root, "lib/i18n/catalog", `${name}.ts`), "utf8");
+  const text = fs.readFileSync(path.join(root, "shared/i18n/catalog", `${name}.ts`), "utf8");
   return JSON.parse(text.slice(text.indexOf("= {") + 2, text.lastIndexOf("};") + 1));
 };
 const en = loadCatalog("en");
@@ -58,7 +60,7 @@ for (const file of files) {
 const allowed = new Set(Object.entries(en).filter(([k, v]) => k === v).map(([k]) => k));
 const real = missing.filter((m) => !allowed.has(m.split("  ").slice(1).join("  ")));
 if (real.length) {
-  console.error(`UI 文案缺少英文/繁体翻译（${real.length} 处）。请把它们加入 lib/i18n/catalog/en.ts 与 zh-Hant.ts：`);
+  console.error(`UI 文案缺少英文/繁体翻译（${real.length} 处）。请把它们加入 shared/i18n/catalog/en.ts 与 zh-Hant.ts：`);
   for (const m of real) console.error(`  ${m}`);
   process.exit(1);
 }

@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { resolveCanonicalRouteContext } from "@/lib/ux/navigation";
+import { resolveCanonicalRouteContext } from "@/shared/lib/navigation";
 
 export const dynamic = "force-dynamic";
 

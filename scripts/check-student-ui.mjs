@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const css = fs.readFileSync("app/globals.css", "utf8");
-const common = fs.readFileSync("components/common.tsx", "utf8");
-const shell = fs.readFileSync("components/workspace-shell.tsx", "utf8");
+const common = fs.readFileSync("shared/components/common.tsx", "utf8");
+const shell = fs.readFileSync("shared/components/workspace-shell.tsx", "utf8");
 
 const checks = [
   ["语义分隔色令牌", css.includes("--gp-border-subtle")],

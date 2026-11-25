@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
 import {
   compareBaselines,
   confirmBaselineSelf,
@@ -10,8 +10,8 @@ import {
   publishBaseline,
   saveBaselineDraft,
   submitBaselineForConfirmation,
-} from "../lib/commands/baseline.ts";
-import { activeBaseline, confirmationsComplete, confirmedUserIds, draftBaseline } from "../lib/versioning.ts";
+} from "../shared/legacy-mock/commands/baseline.ts";
+import { activeBaseline, confirmationsComplete, confirmedUserIds, draftBaseline } from "../shared/legacy-mock/versioning.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

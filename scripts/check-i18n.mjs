@@ -21,7 +21,7 @@ function paramsOf(text) {
 }
 
 const bundles = Object.fromEntries(
-  LOCALES.map((locale) => [locale, flatten(JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), "utf8")))]),
+  LOCALES.map((locale) => [locale, flatten(JSON.parse(readFileSync(new URL(`../shared/i18n/messages/${locale}.json`, import.meta.url), "utf8")))]),
 );
 
 const reference = bundles["zh-Hans"];

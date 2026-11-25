@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { archiveProject, reopenProject, updateProjectSettings } from "../lib/commands/project.ts";
-import { saveBaselineDraft, createBaselineDraft } from "../lib/commands/baseline.ts";
-import { uploadProjectFile } from "../lib/commands/files.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { archiveProject, reopenProject, updateProjectSettings } from "../shared/legacy-mock/commands/project.ts";
+import { saveBaselineDraft, createBaselineDraft } from "../shared/legacy-mock/commands/baseline.ts";
+import { uploadProjectFile } from "../shared/legacy-mock/commands/files.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

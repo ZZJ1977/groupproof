@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
 import {
   MAX_FILE_BYTES,
   getFileDownload,
@@ -10,7 +10,7 @@ import {
   replaceProjectFile,
   uploadProjectFile,
   validateUploadSize,
-} from "../lib/commands/files.ts";
+} from "../shared/legacy-mock/commands/files.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

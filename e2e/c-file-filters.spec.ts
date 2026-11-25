@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { seedData } from "../mocks/seed";
-import type { FileRecord, MockData } from "../types/domain";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
+import type { FileRecord, MockData } from "../shared/types/domain";
 
 const key = "groupproof-v1-workspace:c-url-fixture";
 const fixture = structuredClone(seedData);

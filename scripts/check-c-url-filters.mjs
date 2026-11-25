@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { filterEvidence, patchQueryHref, readEvidenceFilters, readEvidenceView, readTaskDetailTab, safeEvidenceSourceUrl, taskDetailTabs } from "../features/c/url-filters.ts";
+import { filterEvidence, patchQueryHref, readEvidenceFilters, readEvidenceView, readTaskDetailTab, safeEvidenceSourceUrl, taskDetailTabs } from "../shared/lib/c-url-filters.ts";
 
 let passed = 0;
 function check(description, actual, expected) {

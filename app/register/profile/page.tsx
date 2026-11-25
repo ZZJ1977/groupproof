@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { RegistrationProfilePage } from "@/features/auth/RegistrationProfilePage";
-import { sanitizeReturnTo } from "@/lib/auth/return-to";
+import { RegistrationProfilePage } from "@/shared/auth/RegistrationProfilePage";
+import { sanitizeReturnTo } from "@/shared/auth/return-to";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },

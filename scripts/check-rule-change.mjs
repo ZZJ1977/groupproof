@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { applyCourseRuleChange, compareCourseRuleSnapshots, getRuleChangeImpact } from "../lib/commands/rule-change.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { applyCourseRuleChange, compareCourseRuleSnapshots, getRuleChangeImpact } from "../shared/legacy-mock/commands/rule-change.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

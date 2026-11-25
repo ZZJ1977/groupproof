@@ -24,11 +24,26 @@
       }
     ],
     "paths": {
+      "@/student/*": [
+        "./student/*"
+      ],
+      "@/teacher/*": [
+        "./teacher/*"
+      ],
+      "@/admin/*": [
+        "./admin/*"
+      ],
+      "@/shared/*": [
+        "./shared/*"
+      ],
+      "@/packages/*": [
+        "./packages/*"
+      ],
       "@/*": [
         "./*"
       ]
     },
-    "jsxImportSource": "@/lib/i18n"
+    "jsxImportSource": "@/shared/i18n"
   },
   "include": [
     "**/*.ts",
