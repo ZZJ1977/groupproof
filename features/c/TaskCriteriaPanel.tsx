@@ -18,6 +18,7 @@ type Props = {
   taskStatus: string;
   actorId: string;
   canLeadOrTeach: boolean;
+  isLeader?: boolean;
   isResponsible: boolean;
   canCaptureEvidence: boolean;
   criteria: { id: string; text: string }[];
@@ -33,6 +34,7 @@ export function TaskCriteriaPanel({
   taskStatus,
   actorId,
   canLeadOrTeach,
+  isLeader = false,
   isResponsible,
   canCaptureEvidence,
   criteria,
@@ -41,6 +43,7 @@ export function TaskCriteriaPanel({
   evidences,
   onChanged,
 }: Props) {
+  const canConfirmComplete = isResponsible || isLeader;
   const current = rechecks?.isSuccess && !rechecks.isFetching ? rechecks.data : [];
   const byCriterion = new Map(current.map((row) => [row.criterion_id, row]));
   const titles = new Map(requirements.map((requirement) => [requirement.id, requirement.title]));
@@ -146,7 +149,7 @@ export function TaskCriteriaPanel({
     action={<Link className="gp-link text-xs" href={`/projects/${projectId}/tasks?view=plan&task=${taskId}`}>在分工与规划中查看/修改标准 →</Link>}
   >
     {criteria.length > 0 && (
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5 text-xs">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 text-xs">
         <div className="flex flex-wrap items-center gap-2 text-slate-600">
           <span>共 <strong className="text-slate-900">{criteria.length}</strong> 条交付标准</span>
           <span>·</span>
@@ -172,14 +175,14 @@ export function TaskCriteriaPanel({
     )}
 
     {taskStatus === "completed" && criteria.length > 0 && (
-      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
+      <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 text-sm text-emerald-900">
         <p className="font-semibold">正式验收已通过（{confirmedCount}/{criteria.length}）· 任务已完成（100%）</p>
         <p className="mt-0.5 text-xs text-emerald-700">全部交付标准均已由真实代码证据核验并完成人工确认。</p>
       </div>
     )}
 
     {allAiPassed && taskStatus !== "completed" && (
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5">
         <div className="text-sm text-emerald-900">
           <p className="font-semibold">
             {allConfirmed
@@ -187,14 +190,16 @@ export function TaskCriteriaPanel({
               : `AI 自动验收结果：全部通过（${evidencedCount}/${criteria.length} 条标准已由代码实现覆盖）`}
           </p>
           <p className="mt-0.5 text-xs text-emerald-700">
-            {isResponsible
-              ? allConfirmed
-                ? "点击右侧按钮将自动完成完整性核验与验收记录，并将本任务标记为「已完成（100%）」。"
-                : "AI 已完成逐条核验并生成下方实现说明，无需逐条点采纳，核对无误后点击右侧按钮即可一键确认并完成任务。"
-              : "AI 已核验全部交付标准达标，等待本任务负责人一键确认完成任务。"}
+            {canConfirmComplete
+              ? isResponsible
+                ? allConfirmed
+                  ? "点击右侧按钮将自动完成完整性核验与验收记录，并将本任务标记为「已完成（100%）」。"
+                  : "AI 已完成逐条核验并生成下方实现说明，无需逐条点采纳，核对无误后点击右侧按钮即可一键确认并完成任务。"
+                : "AI 已核验全部交付标准达标，作为项目组长可直接一键确认完成任务（贡献仍归属任务负责人）。"
+              : "AI 已核验全部交付标准达标，等待本任务负责人或项目组长一键确认完成任务。"}
           </p>
         </div>
-        {isResponsible && (
+        {canConfirmComplete && (
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-2xs transition hover:bg-emerald-700 disabled:opacity-50"
@@ -231,11 +236,11 @@ export function TaskCriteriaPanel({
     {notice && <div className="mb-3"><Feedback tone={notice.tone}>{notice.text}</Feedback></div>}
 
     {criteria.length === 0 && <p>暂无验收标准。</p>}
-    <ul className="space-y-3">{criteria.map((criterion) => {
+    <ul className="space-y-2">{criteria.map((criterion) => {
       const row = byCriterion.get(criterion.id);
       const linked = evidenceByCriterion.get(criterion.id) ?? [];
       const confirmed = linked.some((ev) => ev.effective);
-      return <li key={criterion.id} className="rounded-xl border border-slate-200/75 bg-white p-3.5">
+      return <li key={criterion.id} className="rounded-xl border border-slate-200/75 bg-white p-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <p className="text-sm font-medium text-slate-900">{criterion.text}</p>
           {confirmed ? <StatusBadge tone="green" label="已正式确认通过" />
@@ -244,10 +249,14 @@ export function TaskCriteriaPanel({
         </div>
 
         {linked.length > 0 && (
-          <div className="mt-2.5 space-y-2 border-t border-slate-100 pt-2.5">
+          <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
             {linked.map((ev) => {
               const url = safeHttps(ev.source_url, ev.source_type === "github");
-              return <div key={ev.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+              const lines = (ev.description ?? "").split(/\r?\n/).filter((line) => line.trim());
+              const leadLine = lines.find((line) => line.startsWith("实现内容：") || line.startsWith("AI 代码实现分析：")) ?? lines[0];
+              const extraLines = lines.filter((line) => line !== leadLine);
+              const leadColonIdx = leadLine ? leadLine.indexOf("：") : -1;
+              return <div key={ev.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <FileCode2 size={13} className="shrink-0 text-sky-600" />
@@ -257,21 +266,34 @@ export function TaskCriteriaPanel({
                     </span>
                     {url && <a className="inline-flex items-center gap-0.5 text-sky-700 hover:underline" href={url} target="_blank" rel="noopener noreferrer">GitHub <ExternalLink size={11} /></a>}
                   </div>
-                  {ev.description && (
-                    <div className="mt-1.5 space-y-1">
-                      {ev.description.split(/\r?\n/).filter((line) => line.trim()).map((line, lineIdx) => {
-                        const isDetail = line.startsWith("实现内容：") || line.startsWith("AI 代码实现分析：") || line.startsWith("影响范围：") || line.startsWith("验证说明：");
-                        const colonIdx = line.indexOf("：");
-                        return isDetail && colonIdx > 0 ? (
-                          <p key={lineIdx} className="text-xs leading-5 text-slate-700">
-                            <strong className="font-semibold text-slate-800">{line.slice(0, colonIdx + 1)}</strong>
-                            {line.slice(colonIdx + 1)}
-                          </p>
-                        ) : (
-                          <p key={lineIdx} className="text-[11px] leading-4 text-slate-500">{line}</p>
-                        );
-                      })}
-                    </div>
+                  {leadLine && (
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
+                      {leadColonIdx > 0 ? (
+                        <>
+                          <strong className="font-semibold text-slate-800">{leadLine.slice(0, leadColonIdx + 1)}</strong>
+                          {leadLine.slice(leadColonIdx + 1)}
+                        </>
+                      ) : leadLine}
+                    </p>
+                  )}
+                  {extraLines.length > 0 && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer select-none text-[11px] font-medium text-slate-500 hover:text-slate-700">展开完整 AI 分析</summary>
+                      <div className="mt-1 space-y-1 border-t border-slate-200/70 pt-1">
+                        {extraLines.map((line, lineIdx) => {
+                          const isDetail = line.startsWith("实现内容：") || line.startsWith("AI 代码实现分析：") || line.startsWith("影响范围：") || line.startsWith("验证说明：");
+                          const colonIdx = line.indexOf("：");
+                          return isDetail && colonIdx > 0 ? (
+                            <p key={lineIdx} className="text-xs leading-5 text-slate-700">
+                              <strong className="font-semibold text-slate-800">{line.slice(0, colonIdx + 1)}</strong>
+                              {line.slice(colonIdx + 1)}
+                            </p>
+                          ) : (
+                            <p key={lineIdx} className="text-[11px] leading-4 text-slate-500">{line}</p>
+                          );
+                        })}
+                      </div>
+                    </details>
                   )}
                 </div>
                 {canAdopt(ev) && (

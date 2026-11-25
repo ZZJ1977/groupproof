@@ -394,10 +394,16 @@ def test_code_progress_sync_matches_commits_and_caps_at_90_percent(bp_db):
         )
     )
     responsible = leader if assignee_id == leader.id else _member
-    other_member = _member if responsible is leader else leader
+    outsider_member = _user(
+        bp_db, tag=f"out_{uuid4().hex[:6]}", role="student", index=3, now=datetime.now(UTC)
+    )
+    bp_db.add(
+        ProjectMember(id=uuid4(), project_id=project.id, user_id=outsider_member.id, role="member")
+    )
+    bp_db.flush()
 
     with pytest.raises(ApiError) as non_resp_exc:
-        acceptance.complete_by_criteria(bp_db, project.id, task.id, other_member)
+        acceptance.complete_by_criteria(bp_db, project.id, task.id, outsider_member)
     assert non_resp_exc.value.code == "TASK_RESPONSIBLE_REQUIRED"
 
     with pytest.raises(ApiError) as exc:
@@ -900,3 +906,109 @@ def test_code_progress_uses_ready_ai_summary_and_assigns_candidate_evidence_to_t
     bp_db.flush()
     pending = activity_summary.recent_unanalyzed_commit_ids(bp_db, project.id, limit=5)
     assert pending[0] == old_act.id
+
+
+def test_complete_by_criteria_allows_project_leader_and_credits_assignee(bp_db):
+    from app.modules.d import acceptance
+    from app.modules.d.models import FormalOutcome
+
+    leader, member, project = _seed_independent_project(bp_db)
+    mat = BProjectMaterial(
+        id=uuid4(),
+        project_id=project.id,
+        kind="text",
+        title="组长代确认需求.txt",
+        text_content="B1 我的课程列表与邀请码加入课程。",
+        extract_status="ready",
+        created_by=leader.id,
+    )
+    bp_db.add(mat)
+    bp_db.flush()
+    ai_blueprint_service.generate_and_apply_blueprint(
+        bp_db, leader, project.id, get_verification_port()
+    )
+    project.setup_status = "frozen"
+    bp_db.flush()
+
+    tasks = list(bp_db.scalars(select(Task).where(Task.project_id == project.id)).all())
+    task = tasks[0]
+    existing_assignees = list(
+        bp_db.scalars(select(TaskAssignee).where(TaskAssignee.task_id == task.id)).all()
+    )
+    for row in existing_assignees:
+        bp_db.delete(row)
+    bp_db.flush()
+    bp_db.add(
+        TaskAssignee(
+            task_id=task.id, user_id=member.id, role="responsible", assigned_at=datetime.now(UTC)
+        )
+    )
+    bp_db.flush()
+
+    plan_dto = planning_service.plan_view(bp_db, leader, project.id)
+    planning_service.confirm_mine(
+        bp_db, leader, project.id, ConfirmAssignment(task_versions=plan_dto.my_task_versions)
+    )
+    member_plan = planning_service.plan_view(bp_db, member, project.id)
+    planning_service.confirm_mine(
+        bp_db, member, project.id, ConfirmAssignment(task_versions=member_plan.my_task_versions)
+    )
+    plan_dto = planning_service.plan_view(bp_db, leader, project.id)
+    planning_service.freeze(
+        bp_db, leader, project.id, FreezePlan(expected_version=plan_dto.lock_version)
+    )
+
+    link = GithubRepoLink(
+        id=uuid4(),
+        project_id=project.id,
+        owner="acme",
+        repo="leader-confirm",
+        installation_id=789,
+        default_branch="main",
+        linked_by_id=leader.id,
+    )
+    bp_db.add(link)
+    bp_db.flush()
+    bp_db.add(
+        GithubActivity(
+            id=uuid4(),
+            project_id=project.id,
+            link_id=link.id,
+            kind="commit",
+            external_id="2233445566778899001122334455667788990011",
+            revision="b" * 64,
+            title=f"feat: {task.title}",
+            summary=task.description or task.title,
+            author_login="ProgramingGod-ykj",
+            author_name="杨凯景",
+            author_user_id=member.id,
+            detail={"files": [{"path": "features/b/CoursesApiPage.tsx"}]},
+            occurred_at=datetime(2026, 11, 20, 12, 0, tzinfo=UTC),
+            synced_at=datetime(2026, 11, 20, 12, 5, tzinfo=UTC),
+        )
+    )
+    bp_db.flush()
+    code_progress_service.sync_task_code_progress(
+        bp_db, project.id, actor=leader, require_member_auth=True
+    )
+
+    # 项目组长虽非该任务直接负责人，仍可代表确认 AI 验收完成，并将 100% 贡献计入实际负责人
+    done = acceptance.complete_by_criteria(
+        bp_db, project.id, task.id, leader, auto_adopt_candidates=True
+    )
+    assert done["status"] == "completed"
+    assert done["task_status"] == "completed"
+    assert done["progress_percent"] == 100
+    ev_rows = list(bp_db.scalars(select(Evidence).where(Evidence.task_id == task.id)).all())
+    assert ev_rows and all(ev.status == "formal" for ev in ev_rows)
+    outcome = bp_db.scalar(
+        select(FormalOutcome).where(
+            FormalOutcome.task_id == task.id, FormalOutcome.invalidated_at.is_(None)
+        )
+    )
+    from decimal import Decimal
+
+    assert outcome is not None
+    shares = outcome.basis_json["responsibility_shares"]
+    assert set(shares) == {str(member.id)}
+    assert Decimal(shares[str(member.id)]) == Decimal("100")

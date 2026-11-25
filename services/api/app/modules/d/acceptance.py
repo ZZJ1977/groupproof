@@ -3,13 +3,13 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.db.models import TaskAssignee, User
+from app.db.models import ProgressEvent, TaskAssignee, User
 from app.modules.c.execution_schemas import PrepareSubmissionRequest
 from app.modules.c.permissions import get_project_access
 from app.modules.c.task_execution import (
@@ -345,8 +345,13 @@ def complete_by_criteria(
         raise ApiError(403, "PROJECT_MEMBER_REQUIRED", "Only an active project member can decide.")
     task = require_task(session, project_id, task_id)
     assignees = responsible_ids(session, task_id)
-    if user.id not in assignees:
-        raise ApiError(403, "TASK_RESPONSIBLE_REQUIRED", "只有该任务的负责人可以确认完成任务。")
+    if not assignees:
+        raise ApiError(409, "TASK_RESPONSIBLE_REQUIRED", "该任务尚未指派负责人。")
+    is_assignee = user.id in assignees
+    if not is_assignee and not access.leader:
+        raise ApiError(
+            403, "TASK_RESPONSIBLE_REQUIRED", "只有该任务的负责人或项目组长可以确认完成任务。"
+        )
     if task.status == "completed":
         return {
             "status": "completed",
@@ -427,18 +432,64 @@ def complete_by_criteria(
 
     task = require_task(session, project_id, task_id)
     if task.status == "not_started":
-        TaskExecutionService(SqlExecutionRepository(session)).start(
-            task_id, user, task.lock_version
-        )
+        if is_assignee:
+            TaskExecutionService(SqlExecutionRepository(session)).start(
+                task_id, user, task.lock_version
+            )
+        else:
+            exec_view = TaskExecutionService(SqlExecutionRepository(session)).get(task_id, user)
+            if not all(dep.satisfied for dep in exec_view.dependencies):
+                raise ApiError(409, "DEPENDENCIES_INCOMPLETE", "Complete blocking tasks first.")
+            now = datetime.now(UTC)
+            task.status = "in_progress"
+            task.started_at = now
+            task.updated_at = now
+            task.lock_version += 1
+            session.add(
+                ProgressEvent(
+                    id=uuid4(),
+                    project_id=project_id,
+                    task_id=task.id,
+                    actor_id=user.id,
+                    from_status="not_started",
+                    to_status="in_progress",
+                    progress_before=task.progress_percent,
+                    progress_after=task.progress_percent,
+                    reason="Project leader advanced task for acceptance.",
+                    created_at=now,
+                )
+            )
+            session.commit()
         task = require_task(session, project_id, task_id)
 
     if task.status == "in_progress":
-        TaskSubmissionService(session).prepare(
-            task_id,
-            user,
-            PrepareSubmissionRequest(expected_version=task.lock_version),
-            key=f"complete-criteria-{task.id}-v{task.lock_version}",
-        )
+        if is_assignee:
+            TaskSubmissionService(session).prepare(
+                task_id,
+                user,
+                PrepareSubmissionRequest(expected_version=task.lock_version),
+                key=f"complete-criteria-{task.id}-v{task.lock_version}",
+            )
+        else:
+            now = datetime.now(UTC)
+            task.status = "pending_submission"
+            task.updated_at = now
+            task.lock_version += 1
+            session.add(
+                ProgressEvent(
+                    id=uuid4(),
+                    project_id=project_id,
+                    task_id=task.id,
+                    actor_id=user.id,
+                    from_status="in_progress",
+                    to_status="pending_submission",
+                    progress_before=task.progress_percent,
+                    progress_after=task.progress_percent,
+                    reason="Project leader submitted task for acceptance.",
+                    created_at=now,
+                )
+            )
+            session.commit()
         task = require_task(session, project_id, task_id)
 
     if task.status == "pending_submission":
@@ -455,16 +506,60 @@ def complete_by_criteria(
     )
     if latest_run is None or latest_run.status != "completed" or stale_reason(session, latest_run):
         run_verification(session, project_id, task_id, user)
-
-    share_val = responsibility_share
-    if share_val is None:
-        if len(assignees) == 1:
-            share_val = Decimal("100")
-        else:
-            share_val = (Decimal("100") / Decimal(len(assignees))).quantize(Decimal("0.01"))
+        latest_run = session.scalar(
+            select(VerificationRun)
+            .where(VerificationRun.project_id == project_id, VerificationRun.task_id == task_id)
+            .order_by(VerificationRun.created_at.desc(), VerificationRun.id.desc())
+        )
 
     confirm_reason = reason.strip() or "全部交付标准已由真实代码证据确认达标，确认完成任务。"
-    res = decide(session, project_id, task_id, user, "confirmed", confirm_reason, share_val)
+    if is_assignee:
+        share_val = responsibility_share
+        if share_val is None:
+            if len(assignees) == 1:
+                share_val = Decimal("100")
+            else:
+                share_val = (Decimal("100") / Decimal(len(assignees))).quantize(Decimal("0.01"))
+        res = decide(session, project_id, task_id, user, "confirmed", confirm_reason, share_val)
+    else:
+        if len(assignees) == 1:
+            shares = [Decimal("100")]
+        else:
+            base = (Decimal("100") / Decimal(len(assignees))).quantize(Decimal("0.01"))
+            shares = [Decimal("100") - base * (len(assignees) - 1)] + [base] * (len(assignees) - 1)
+        decisions = decisions_for_run(session, latest_run.id)
+        for uid, uid_share in zip(assignees, shares, strict=True):
+            if uid not in decisions or decisions[uid].decision != "confirmed":
+                next_rev = (
+                    session.scalar(
+                        select(func.max(AcceptanceDecision.revision_no)).where(
+                            AcceptanceDecision.verification_run_id == latest_run.id,
+                            AcceptanceDecision.actor_id == uid,
+                        )
+                    )
+                    or 0
+                ) + 1
+                session.add(
+                    AcceptanceDecision(
+                        verification_run_id=latest_run.id,
+                        actor_id=uid,
+                        revision_no=next_rev,
+                        decision="confirmed",
+                        reason=f"[组长确认验收] {confirm_reason}",
+                        responsibility_share=uid_share,
+                    )
+                )
+        session.flush()
+        task = require_task(session, project_id, task_id)
+        TaskExecutionService(SqlExecutionRepository(session)).mark_completed(
+            task_id,
+            user,
+            task.lock_version,
+            f"Project leader confirmed acceptance: {confirm_reason}",
+            provider=HumanTransitionProvider(session, latest_run.id, "confirmed"),
+        )
+        res = {"status": "recorded"}
+
     task = require_task(session, project_id, task_id)
     return {
         "status": "completed" if task.status == "completed" else res["status"],
