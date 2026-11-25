@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+/* WorkspaceShell — unified sidebar, topbar & mobile drawer with Lucian UX/UI Prompt #412 motion language */
+
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Activity, ArrowRight, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowRight, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/shared/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/shared/components/ui/dropdown-menu";
 import { GpThemeScopeProvider } from "@/shared/components/ui/theme-scope";
@@ -27,6 +29,7 @@ import { cn, formatDate } from "@/shared/lib/utils";
 import { AdminEnvironmentSwitcher } from "@/admin/components/admin-environment-switcher";
 import { TeacherWorkbenchProvider } from "@/teacher/components/TeacherWorkbenchContext";
 import { TeacherQuickSwitcher } from "@/teacher/components/TeacherQuickSwitcher";
+import "@/shared/styles/lux-shell.css";
 
 type NavItem = {
   label: string;
@@ -51,6 +54,19 @@ const iconByKey: Record<string, typeof Home> = {
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const SIDEBAR_SCROLL_STORAGE_PREFIX = "gp-sidebar-scroll:";
 const sidebarScrollMemory = new Map<string, number>();
+
+type NavPillRect = { top: number; left: number; width: number; height: number };
+const lastPillRectMemory = new Map<string, NavPillRect>();
+let recentSidebarNav: { scope: string; at: number } | null = null;
+
+function TwoBarToggleGlyph() {
+  return (
+    <span className="lux-burger-bars" aria-hidden="true">
+      <i />
+      <i />
+    </span>
+  );
+}
 
 function readSidebarScroll(scopeKey: string): number {
   const cached = sidebarScrollMemory.get(scopeKey);
@@ -112,24 +128,28 @@ function NavLink({
       href={item.href}
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
+      aria-current={active ? "page" : undefined}
       className={cn("gp-nav-link", active && "active")}
     >
-      <span className="relative inline-flex shrink-0">
+      <span className="gp-nav-link-icon relative inline-flex shrink-0">
         <Icon size={15} strokeWidth={1.9} className="shrink-0" />
-        {hasBadge && collapsed && (
+        {hasBadge && (
           <span
             aria-hidden="true"
-            className="hidden md:block absolute -right-1 -top-1 h-[7px] w-[7px] rounded-full bg-[#d93025] ring-2 ring-[var(--gp-rail-bg,#ffffff)]"
+            className={cn(
+              "gp-nav-collapsed-dot hidden md:block absolute -right-1 -top-1 h-[7px] w-[7px] rounded-full bg-[#d93025] ring-2 ring-white",
+              collapsed && "is-visible",
+            )}
           />
         )}
       </span>
-      <span className={cn("min-w-0 truncate", collapsed && "md:hidden")}>{label}</span>
+      <span aria-hidden={collapsed || undefined} className="gp-nav-link-label gp-nav-label min-w-0 truncate">
+        {label}
+      </span>
       {badgeText && (
         <span
-          className={cn(
-            "gp-tabular ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#d93025] px-1.5 text-[10px] font-bold leading-none text-white",
-            collapsed && "md:hidden",
-          )}
+          aria-hidden={collapsed || undefined}
+          className="gp-nav-badge gp-tabular ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#d93025] px-1.5 text-[10px] font-bold leading-none text-white"
         >
           {badgeText}
         </span>
@@ -246,6 +266,8 @@ function NotificationCenterPopover({
     }
   };
 
+  const hasUnread = unreadCount !== null && unreadCount > 0;
+
   return (
     <div ref={containerRef} className="relative">
       <Link
@@ -255,7 +277,7 @@ function NotificationCenterPopover({
         aria-expanded={open}
         aria-label={ts("notifications")}
         title={unreadCount === null ? "未读数暂不可用" : `未读通知 ${unreadCount} 条`}
-        className="gp-icon-button relative"
+        className={cn("gp-icon-button relative", hasUnread && "lux-bell-unread")}
         onClick={(event) => {
           if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
           event.preventDefault();
@@ -271,10 +293,10 @@ function NotificationCenterPopover({
         }}
       >
         <Bell size={18} />
-        {unreadCount !== null && unreadCount > 0 && (
+        {hasUnread && (
           <span
             data-testid="unread-notification-dot"
-            className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]"
+            className="lux-unread-dot absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]"
           />
         )}
       </Link>
@@ -546,8 +568,29 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchBoxRef = useRef<HTMLDivElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  const mobileMenuBtnRef = useRef<HTMLButtonElement | null>(null);
+  const topNavRef = useRef<HTMLElement | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
   const restoringNavScrollRef = useRef(false);
+  const hasMeasuredPillRef = useRef<string | null>(null);
+  const [navPill, setNavPill] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+    visible: boolean;
+    animate: boolean;
+    ready: boolean;
+  }>({ top: 0, left: 0, width: 0, height: 0, visible: false, animate: false, ready: false });
+  const [hoveredTopHref, setHoveredTopHref] = useState<string | null>(null);
+  const [topNavBar, setTopNavBar] = useState<{
+    left: number;
+    width: number;
+    visible: boolean;
+    animate: boolean;
+    ready: boolean;
+  }>({ left: 0, width: 0, visible: false, animate: false, ready: false });
   const searchString = searchParams.toString();
   const user = data.users.find((item) => item.id === data.currentUserId);
   const displayName = session?.user?.name || userName || (mockWorkspace ? user?.name : null) || "—";
@@ -644,6 +687,24 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
       ? `teacher:${navCourseId}`
       : `global:${kind}`;
 
+  const [shouldAnimateNavEnter, setShouldAnimateNavEnter] = useState<boolean>(() => {
+    if (!recentSidebarNav) return true;
+    return recentSidebarNav.scope !== sidebarScopeKey || Date.now() - recentSidebarNav.at > 5000;
+  });
+  const prevScopeKeyRef = useRef(sidebarScopeKey);
+
+  useIsomorphicLayoutEffect(() => {
+    if (prevScopeKeyRef.current !== sidebarScopeKey) {
+      prevScopeKeyRef.current = sidebarScopeKey;
+      const isSameScopeClick = Boolean(
+        recentSidebarNav &&
+        recentSidebarNav.scope === sidebarScopeKey &&
+        Date.now() - recentSidebarNav.at <= 5000,
+      );
+      setShouldAnimateNavEnter(!isSameScopeClick);
+    }
+  }, [sidebarScopeKey]);
+
   useIsomorphicLayoutEffect(() => {
     const navEl = navRef.current;
     if (!navEl) return;
@@ -666,6 +727,149 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     if (!navRef.current) return;
     writeSidebarScroll(sidebarScopeKey, navRef.current.scrollTop);
   };
+
+  const measureNavPill = useCallback(
+    (animate: boolean) => {
+      const navEl = navRef.current;
+      if (!navEl) return;
+      const activeLink = navEl.querySelector<HTMLElement>(".gp-nav-link.active");
+      if (!activeLink || activeLink.closest('.gp-nav-group[data-open="false"]')) {
+        setNavPill((prev) => {
+          if (!prev.visible && prev.ready) return prev;
+          return { ...prev, visible: false, animate, ready: true };
+        });
+        return;
+      }
+      let top = 0;
+      let left = 0;
+      let cur: HTMLElement | null = activeLink;
+      while (cur && cur !== navEl) {
+        top += cur.offsetTop;
+        left += cur.offsetLeft;
+        const parent = cur.offsetParent as HTMLElement | null;
+        if (!parent || !navEl.contains(parent)) break;
+        cur = parent;
+      }
+      const width = activeLink.offsetWidth;
+      const height = activeLink.offsetHeight;
+      if (width <= 0 || height <= 0) return;
+      lastPillRectMemory.set(sidebarScopeKey, { top, left, width, height });
+      setNavPill((prev) => {
+        if (
+          prev.ready &&
+          prev.visible &&
+          prev.top === top &&
+          prev.left === left &&
+          prev.width === width &&
+          prev.height === height &&
+          prev.animate === animate
+        ) {
+          return prev;
+        }
+        return { top, left, width, height, visible: true, animate, ready: true };
+      });
+    },
+    [sidebarScopeKey],
+  );
+
+  useIsomorphicLayoutEffect(() => {
+    if (isGlobalStudentTopNav) return;
+    const navEl = navRef.current;
+    if (!navEl) return;
+    let rafId = 0;
+    const isScopeInit = hasMeasuredPillRef.current !== sidebarScopeKey;
+    if (isScopeInit) {
+      hasMeasuredPillRef.current = sidebarScopeKey;
+      const prev = lastPillRectMemory.get(sidebarScopeKey);
+      if (prev) {
+        setNavPill({ ...prev, visible: true, animate: false, ready: true });
+        rafId = window.requestAnimationFrame(() => measureNavPill(true));
+      } else {
+        measureNavPill(false);
+      }
+    } else {
+      measureNavPill(true);
+    }
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [isGlobalStudentTopNav, measureNavPill, pathname, searchString, sidebarScopeKey, railCollapsed, openProjectGroups, mobileOpen, locale]);
+
+  useEffect(() => {
+    if (isGlobalStudentTopNav || typeof ResizeObserver === "undefined") return;
+    const navEl = navRef.current;
+    const sidebarEl = sidebarRef.current;
+    if (!navEl) return;
+    let initialRun = true;
+    const ro = new ResizeObserver(() => {
+      if (initialRun) {
+        initialRun = false;
+        return;
+      }
+      measureNavPill(false);
+    });
+    if (sidebarEl) ro.observe(sidebarEl);
+    ro.observe(navEl);
+    navEl.querySelectorAll(".gp-nav-group-shell").forEach((shellEl) => ro.observe(shellEl));
+    return () => ro.disconnect();
+  }, [isGlobalStudentTopNav, measureNavPill, sidebarScopeKey, projectMode]);
+
+  const activeTopHref = topNavLinks.find((item) => item.active)?.href ?? null;
+  const targetTopHref = hoveredTopHref ?? activeTopHref;
+
+  const measureTopNavBar = useCallback(
+    (animate: boolean) => {
+      const container = topNavRef.current;
+      if (!container || !targetTopHref) {
+        setTopNavBar((prev) => (prev.visible || !prev.ready ? { ...prev, visible: false, ready: true } : prev));
+        return;
+      }
+      const links = Array.from(container.querySelectorAll<HTMLAnchorElement>("a[data-top-href]"));
+      const target = links.find((el) => el.dataset.topHref === targetTopHref);
+      if (!target || target.offsetWidth <= 0) {
+        setTopNavBar((prev) => (prev.visible || !prev.ready ? { ...prev, visible: false, ready: true } : prev));
+        return;
+      }
+      const inset = 10;
+      const width = Math.max(12, target.offsetWidth - inset * 2);
+      const left = target.offsetLeft + inset;
+      setTopNavBar((prev) => {
+        const nextAnimate = prev.ready ? animate : false;
+        if (
+          prev.ready &&
+          prev.visible &&
+          prev.left === left &&
+          prev.width === width &&
+          prev.animate === nextAnimate
+        ) {
+          return prev;
+        }
+        return { left, width, visible: true, animate: nextAnimate, ready: true };
+      });
+    },
+    [targetTopHref],
+  );
+
+  useIsomorphicLayoutEffect(() => {
+    if (!isGlobalStudentTopNav) return;
+    measureTopNavBar(true);
+  }, [isGlobalStudentTopNav, measureTopNavBar, locale, pathname]);
+
+  useEffect(() => {
+    if (!isGlobalStudentTopNav || typeof ResizeObserver === "undefined") return;
+    const container = topNavRef.current;
+    if (!container) return;
+    let initialRun = true;
+    const ro = new ResizeObserver(() => {
+      if (initialRun) {
+        initialRun = false;
+        return;
+      }
+      measureTopNavBar(false);
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [isGlobalStudentTopNav, measureTopNavBar]);
   const queryClient = useQueryClient();
   const subscribeQueryCache = useCallback(
     (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),
@@ -949,9 +1153,32 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     </div>
   );
 
+  let navStaggerIndex = 0;
+  const nextNavStyle = (): CSSProperties => ({ "--i": Math.min(navStaggerIndex++, 10) }) as CSSProperties;
+  const teacherHasUnread = unreadCount !== null && unreadCount > 0;
+
   return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace", isGlobalStudentTopNav && "gp-shell-topnav", kind === "admin" && "gp-shell-admin", isTeacher && "gp-teacher-shell")}>
-    {!isGlobalStudentTopNav && mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
-    {!isGlobalStudentTopNav && <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open", isTeacher && railCollapsed && "is-collapsed")}>
+    {!isGlobalStudentTopNav && mobileOpen && (
+      <button
+        type="button"
+        className="lux-mobile-backdrop fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden"
+        aria-label={ts("closeMenu")}
+        onClick={() => setMobileOpen(false)}
+      />
+    )}
+    {!isGlobalStudentTopNav && <aside
+      id="gp-workspace-sidebar"
+      ref={sidebarRef}
+      data-nav-enter={shouldAnimateNavEnter ? "true" : undefined}
+      className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open", isTeacher && railCollapsed && "is-collapsed")}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && mobileOpen) {
+          event.stopPropagation();
+          setMobileOpen(false);
+          mobileMenuBtnRef.current?.focus();
+        }
+      }}
+    >
       <div className="gp-sidebar-header">
         {isTeacher ? (
           <div className="gp-teacher-rail-head flex items-center justify-between gap-1 pr-2">
@@ -962,16 +1189,20 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
               title={tc("appName")}
             >
               <span className="gp-brand-mark shrink-0" />
-              <span className={cn("gp-brand-label truncate", railCollapsed && "md:hidden")}>{tc("appName")}</span>
+              <span aria-hidden={railCollapsed || undefined} className="gp-brand-label truncate">{tc("appName")}</span>
             </Link>
             <button
               type="button"
               onClick={toggleRail}
+              aria-expanded={!railCollapsed}
               aria-label={railCollapsed ? tr("展开导航栏") : tr("收起导航栏")}
               title={railCollapsed ? tr("展开导航栏") : tr("收起导航栏")}
-              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[var(--gp-muted,#646a73)] transition-colors hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)] md:inline-flex"
+              className={cn(
+                "lux-burger-btn hidden h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-[var(--gp-muted,#646a73)] md:inline-flex",
+                !railCollapsed && "is-open",
+              )}
             >
-              {railCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+              <TwoBarToggleGlyph />
             </button>
           </div>
         ) : (
@@ -1025,71 +1256,101 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
       <nav
         ref={navRef}
         className="gp-nav"
+        data-pill-ready={navPill.ready ? "true" : undefined}
         onScroll={handleNavScroll}
         onPointerDown={persistCurrentNavScroll}
-        onClick={() => {
+        onClick={(event) => {
           persistCurrentNavScroll();
+          if ((event.target as HTMLElement | null)?.closest("a.gp-nav-link")) {
+            recentSidebarNav = { scope: sidebarScopeKey, at: Date.now() };
+          }
           setMobileOpen(false);
         }}
       >
         {isTeacher ? (
           <>
             {teacherTopLinks.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                label={item.label}
-                pathname={pathname}
-                search={searchString}
-                collapsed={railCollapsed}
-              />
+              <div key={item.href} className="gp-nav-drop" style={nextNavStyle()}>
+                <NavLink
+                  item={item}
+                  label={item.label}
+                  pathname={pathname}
+                  search={searchString}
+                  collapsed={railCollapsed}
+                />
+              </div>
             ))}
-            <div className={cn("gp-nav-section", railCollapsed && "md:hidden")}>
+            <div
+              aria-hidden={railCollapsed || undefined}
+              className="gp-nav-section gp-nav-drop"
+              style={nextNavStyle()}
+            >
               {tr("教学")}
             </div>
             {teacherTeachingLinks.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                label={item.label}
-                pathname={pathname}
-                search={searchString}
-                collapsed={railCollapsed}
-              />
+              <div key={item.href} className="gp-nav-drop" style={nextNavStyle()}>
+                <NavLink
+                  item={item}
+                  label={item.label}
+                  pathname={pathname}
+                  search={searchString}
+                  collapsed={railCollapsed}
+                />
+              </div>
             ))}
-            <div className={cn("gp-nav-section", railCollapsed && "md:hidden")}>
+            <div
+              aria-hidden={railCollapsed || undefined}
+              className="gp-nav-section gp-nav-drop"
+              style={nextNavStyle()}
+            >
               {tr("个人")}
             </div>
             {teacherPersonalLinks.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                label={item.label}
-                pathname={pathname}
-                search={searchString}
-                collapsed={railCollapsed}
-                badge={item.badge}
-              />
+              <div key={item.href} className="gp-nav-drop" style={nextNavStyle()}>
+                <NavLink
+                  item={item}
+                  label={item.label}
+                  pathname={pathname}
+                  search={searchString}
+                  collapsed={railCollapsed}
+                  badge={item.badge}
+                />
+              </div>
             ))}
           </>
         ) : kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>
-          <div className="gp-nav-section" role="heading" aria-level={2}>{group.label}</div>
-          {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
+          <div className="gp-nav-section gp-nav-drop" role="heading" aria-level={2} style={nextNavStyle()}>{group.label}</div>
+          {group.items.map((item) => (
+            <div key={item.href} className="gp-nav-drop" style={nextNavStyle()}>
+              <NavLink item={item} label={item.label} pathname={pathname} search={searchString} />
+            </div>
+          ))}
         </div>) : projectMode ? <>
-          <div className="gp-nav-section">{t("global")}</div>
-          <NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" />
-          <NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" />
-          <NavLink item={globalNav[2]} label={globalNav[2].label} pathname={pathname} search="" />
-          <div className="gp-nav-section">{t("currentProject")}</div>
+          <div className="gp-nav-section gp-nav-drop" style={nextNavStyle()}>{t("global")}</div>
+          <div className="gp-nav-drop" style={nextNavStyle()}>
+            <NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" />
+          </div>
+          <div className="gp-nav-drop" style={nextNavStyle()}>
+            <NavLink item={globalNav[1]} label={globalNav[1].label} pathname={pathname} search="" />
+          </div>
+          <div className="gp-nav-drop" style={nextNavStyle()}>
+            <NavLink item={globalNav[2]} label={globalNav[2].label} pathname={pathname} search="" />
+          </div>
+          <div className="gp-nav-section gp-nav-drop" style={nextNavStyle()}>{t("currentProject")}</div>
           {projectGroups.map((group) => {
             const collapsible = group.id === "plan" || group.id === "collaborate" || group.id === "review";
             const open = openProjectGroups[group.id] !== false;
-            if (!collapsible) return group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />);
+            if (!collapsible) return group.items.map((item) => (
+              <div key={item.href} className="gp-nav-drop" style={nextNavStyle()}>
+                <NavLink item={item} label={item.label} pathname={pathname} search={searchString} />
+              </div>
+            ));
             const panelId = `project-nav-${group.id}`;
-            return <div className="gp-nav-group" key={group.id}>
+            return <div className="gp-nav-group" key={group.id} data-open={open ? "true" : "false"}>
               <button
                 type="button"
-                className="gp-nav-group-toggle"
+                className="gp-nav-group-toggle gp-nav-drop"
+                style={nextNavStyle()}
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={(event) => {
@@ -1101,12 +1362,41 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
                 <span>{t(`projectGroups.${group.label}`)}</span>
                 <ChevronDown size={13} aria-hidden="true" className={cn("gp-nav-group-chevron", open && "open")} />
               </button>
-              {open && <div id={panelId} className="gp-nav-group-items">
-                {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
-              </div>}
+              <div id={panelId} className="gp-nav-group-shell" inert={!open} aria-hidden={!open}>
+                <div className="gp-nav-group-items">
+                  {group.items.map((item, itemIdx) => (
+                    <div
+                      key={item.href}
+                      className="gp-nav-group-item"
+                      style={{ "--group-i": itemIdx } as CSSProperties}
+                    >
+                      <div className="gp-nav-drop" style={nextNavStyle()}>
+                        <NavLink item={item} label={item.label} pathname={pathname} search={searchString} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>;
           })}
-        </> : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
+        </> : nav.map((item) => (
+          <div key={item.href} className="gp-nav-drop" style={nextNavStyle()}>
+            <NavLink item={item} label={item.label} pathname={pathname} search={searchString} />
+          </div>
+        ))}
+        <span
+          aria-hidden="true"
+          className={cn(
+            "gp-nav-active-pill",
+            navPill.visible && "is-visible",
+            !navPill.animate && "is-instant",
+          )}
+          style={{
+            width: `${navPill.width}px`,
+            height: `${navPill.height}px`,
+            transform: `translate3d(${navPill.left}px, ${navPill.top}px, 0)`,
+          }}
+        />
       </nav>
     </aside>}
     <div className="gp-main">
@@ -1114,21 +1404,23 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
         <div className={cn("gp-topbar-inner", isGlobalStudentTopNav && "gp-topbar-inner-centered")}>
           <div className={cn("gp-topbar-left", isTeacher && "min-w-0 flex-1")}>
             <button
+              ref={mobileMenuBtnRef}
               type="button"
-              className="gp-icon-button gp-mobile-menu"
+              className={cn("gp-icon-button gp-mobile-menu lux-burger-btn", mobileOpen && "is-open")}
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label={mobileOpen ? ts("closeMenu") : ts("openMenu")}
               title={mobileOpen ? ts("closeMenu") : ts("openMenu")}
               aria-expanded={mobileOpen}
+              aria-controls={isGlobalStudentTopNav ? "gp-topnav-mobile-drawer" : "gp-workspace-sidebar"}
             >
-              {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+              <TwoBarToggleGlyph />
             </button>
             {isTeacher ? (
               <button
                 type="button"
                 onClick={() => setTeacherSwitcherOpen(true)}
                 aria-label={tr("快速跳转")}
-                className="flex h-9 w-full max-w-[360px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-3 text-left text-xs text-[var(--gp-muted,#646a73)] transition-colors hover:border-[#c9ced6] hover:bg-white hover:text-[var(--gp-ink,#1f2329)]"
+                className="flex h-9 w-full max-w-[360px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-3 text-left text-xs text-[var(--gp-muted,#646a73)] transition-colors hover:border-[#c9ced6] hover:bg-white hover:text-[var(--gp-ink,#1f2329)] active:scale-[0.99]"
               >
                 <Search size={15} className="shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{tr("搜索班级、模块或学生...")}</span>
@@ -1142,17 +1434,43 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
                   <span className="gp-brand-mark" />
                   <span>{tc("appName")}</span>
                 </Link>
-                <nav aria-label={t("global")} className="gp-topnav-links">
+                <nav
+                  ref={topNavRef}
+                  aria-label={t("global")}
+                  className="gp-topnav-links"
+                  data-indicator-ready={topNavBar.ready ? "true" : undefined}
+                  onMouseLeave={() => setHoveredTopHref(null)}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setHoveredTopHref(null);
+                    }
+                  }}
+                >
                   {topNavLinks.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
+                      data-top-href={item.href}
                       aria-current={item.active ? "page" : undefined}
+                      onMouseEnter={() => setHoveredTopHref(item.href)}
+                      onFocus={() => setHoveredTopHref(item.href)}
                       className={cn("gp-topnav-link", item.active && "active")}
                     >
                       {item.label}
                     </Link>
                   ))}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "gp-topnav-indicator",
+                      topNavBar.visible && "is-visible",
+                      !topNavBar.animate && "is-instant",
+                    )}
+                    style={{
+                      width: `${topNavBar.width}px`,
+                      transform: `translateX(${topNavBar.left}px)`,
+                    }}
+                  />
                 </nav>
               </>
             ) : (
@@ -1167,15 +1485,15 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
             {isTeacher ? (
               <Link
                 href="/notifications"
-                className="gp-icon-button relative"
+                className={cn("gp-icon-button relative", teacherHasUnread && "lux-bell-unread")}
                 aria-label={ts("notifications")}
                 title={unreadCount === null ? tr("未读数暂不可用") : tr("未读通知 {0} 条", { 0: unreadCount })}
               >
                 <Bell size={18} />
-                {unreadCount !== null && unreadCount > 0 && (
+                {teacherHasUnread && (
                   <span
                     data-testid="unread-notification-dot"
-                    className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]"
+                    className="lux-unread-dot absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]"
                   />
                 )}
               </Link>
@@ -1183,7 +1501,7 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
               <NotificationCenterPopover userId={userId} realInbox={realInbox} unreadCount={unreadCount} pathname={pathname} />
             )}
             <DropdownMenu>
-              <DropdownMenuTrigger aria-label={ts("accountCenter")} title={ts("accountCenter")} className="flex shrink-0 items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]">
+              <DropdownMenuTrigger aria-label={ts("accountCenter")} title={ts("accountCenter")} className="flex shrink-0 items-center gap-2 rounded-[8px] px-1.5 py-1 text-[12px] text-[#42526e] transition-colors hover:bg-[#f4f8fc] active:scale-[0.97]">
                 <Avatar name={displayName} color={user?.avatarColor} size={28} />
                 <span className="hidden lg:inline">{displayName}</span>
                 <ChevronDown size={13} />
@@ -1208,33 +1526,55 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
           </div>
         </div>
       </header>
-      {isGlobalStudentTopNav && mobileOpen && (
-        <nav aria-label={t("global")} className="gp-topnav-mobile-drawer">
-          <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2.5">
-            {topNavLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={item.active ? "page" : undefined}
-                onClick={() => setMobileOpen(false)}
-                className={cn("gp-nav-link", item.active && "active")}
-              >
-                <span>{item.label}</span>
-              </Link>
-            ))}
-            <div className="my-1 h-px bg-slate-100" />
-            <Link href="/action-items" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/action-items" && "active")}>
-              <CheckSquare size={15} className="shrink-0" />
-              <span>{t("actionItems")}</span>
-            </Link>
-            <Link href="/notifications" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/notifications" && "active")}>
-              <Bell size={15} className="shrink-0" />
-              <span>{t("notifications")}</span>
-            </Link>
-            <Link href="/activity" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/activity" && "active")}>
-              <Activity size={15} className="shrink-0" />
-              <span>{t("activity")}</span>
-            </Link>
+      {isGlobalStudentTopNav && (
+        <nav
+          id="gp-topnav-mobile-drawer"
+          aria-label={t("global")}
+          aria-hidden={!mobileOpen}
+          inert={!mobileOpen}
+          className={cn("gp-topnav-mobile-drawer", mobileOpen && "is-open")}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && mobileOpen) {
+              event.stopPropagation();
+              setMobileOpen(false);
+              mobileMenuBtnRef.current?.focus();
+            }
+          }}
+        >
+          <div className="gp-topnav-mobile-drawer-inner">
+            <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2.5">
+              {topNavLinks.map((item, idx) => (
+                <div key={item.href} className="gp-topnav-drawer-item" style={{ "--i": idx } as CSSProperties}>
+                  <Link
+                    href={item.href}
+                    aria-current={item.active ? "page" : undefined}
+                    onClick={() => setMobileOpen(false)}
+                    className={cn("gp-nav-link", item.active && "active")}
+                  >
+                    <span>{item.label}</span>
+                  </Link>
+                </div>
+              ))}
+              <div className="gp-topnav-drawer-item my-1 h-px bg-slate-100" style={{ "--i": topNavLinks.length } as CSSProperties} />
+              <div className="gp-topnav-drawer-item" style={{ "--i": topNavLinks.length + 1 } as CSSProperties}>
+                <Link href="/action-items" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/action-items" && "active")}>
+                  <CheckSquare size={15} className="shrink-0" />
+                  <span>{t("actionItems")}</span>
+                </Link>
+              </div>
+              <div className="gp-topnav-drawer-item" style={{ "--i": topNavLinks.length + 2 } as CSSProperties}>
+                <Link href="/notifications" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/notifications" && "active")}>
+                  <Bell size={15} className="shrink-0" />
+                  <span>{t("notifications")}</span>
+                </Link>
+              </div>
+              <div className="gp-topnav-drawer-item" style={{ "--i": topNavLinks.length + 3 } as CSSProperties}>
+                <Link href="/activity" onClick={() => setMobileOpen(false)} className={cn("gp-nav-link", pathname === "/activity" && "active")}>
+                  <Activity size={15} className="shrink-0" />
+                  <span>{t("activity")}</span>
+                </Link>
+              </div>
+            </div>
           </div>
         </nav>
       )}
