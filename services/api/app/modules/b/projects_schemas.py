@@ -69,6 +69,20 @@ class CreatedProjectDTO(BaseModel):
     href: str
 
 
+class AttachProjectToCourse(Strict):
+    course_id: UUID
+    group_id: UUID | None = None
+
+
+class AttachCourseResultDTO(BaseModel):
+    project_id: UUID
+    course_id: UUID
+    group_id: UUID
+    group_name: str
+    members_synced: int
+    already_attached: bool = False
+
+
 class ProjectStatsDTO(BaseModel):
     task_count: int
     completed_count: int

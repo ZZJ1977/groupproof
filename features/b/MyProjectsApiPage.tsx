@@ -6,6 +6,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, Folder, FolderKanban, Plus, RefreshCw, Search, Users } from "lucide-react";
 import { EmptyState, Feedback, PageHeader, ProgressBar, StatusBadge } from "@/components/common";
 import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
+import { AttachCourseControl } from "@/features/b/AttachCourseControl";
 import { CreateProjectModal } from "@/features/b/CreateProjectModal";
 import { useBErrorMessage } from "@/features/b/use-b-error";
 import { button, queryPolicy, secondary } from "@/features/b/ui";
@@ -164,6 +165,13 @@ function ProjectCard({ item, userId }: { item: ProjectItem; userId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
         <ProjectIntegrationBadges projectId={item.id} userId={userId} />
         <div className="flex flex-wrap items-center gap-1 text-[11px]">
+          {!item.isCourseProject && item.lifecycle === "active" && (
+            <AttachCourseControl
+              projectId={item.id}
+              projectName={item.name}
+              variant="compact"
+            />
+          )}
           <Link
             href={`${baseHref}/tasks?view=tree`}
             className="rounded-md border border-slate-200/80 bg-slate-50/70 px-2 py-0.5 font-medium text-slate-600 transition hover:border-sky-300 hover:bg-white hover:text-sky-700"

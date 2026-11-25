@@ -22,6 +22,8 @@ from app.modules.b.common import (
 from app.modules.b.ports import MaterialTextPort, get_material_text_port
 from app.modules.b.projects_schemas import (
     AddMaterial,
+    AttachCourseResultDTO,
+    AttachProjectToCourse,
     CreatedProjectDTO,
     CreateProject,
     DraftDTO,
@@ -231,3 +233,27 @@ def material(
     project_id: UUID, material_id: UUID, request: Request, session: Database, user: CurrentUser
 ):
     return envelope(service.material(session, user, project_id, material_id), request)
+
+
+@router.post(
+    "/projects/{project_id}/attach-course",
+    response_model=SuccessResponse[AttachCourseResultDTO],
+)
+def attach_project_to_course(
+    project_id: UUID,
+    command: AttachProjectToCourse,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    key: IdempotencyKey,
+):
+    return _write(
+        session,
+        request,
+        user,
+        key,
+        f"project.attach_course:{project_id}",
+        command.model_dump(mode="json"),
+        lambda: service.attach_project_to_course(session, user, project_id, command, request),
+        integrity_error=ApiError(409, "GROUP_HAS_PROJECT", "该小组已有项目，无法再移入其他项目。"),
+    )
