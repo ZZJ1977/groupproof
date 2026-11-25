@@ -939,7 +939,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
                                   : "如需查看说明版本或补充人工材料，可展开手动选项。"}
                               </span>
                               <div className="flex flex-wrap items-center gap-2">
-                                {canPrepare && (
+                                {canPrepare && !showManualSubmissionForms && (
                                   <button type="button" className={compactBtn} disabled={busy || !noteReady} onClick={() => void perform("prepare", true)}>
                                     检查完整性
                                   </button>
@@ -969,7 +969,10 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
                   userId={userId}
                   fixedTaskId={taskId}
                   visible={Boolean(state && canNote && showManualSubmissionForms)}
-                  onSaved={() => void evidence.refetch()}
+                  onSaved={() => {
+                    setShowAdvancedSubmission(true);
+                    void evidence.refetch();
+                  }}
                   onDenied={deny}
                   onDirtyChange={setEvidenceDirty}
                 />

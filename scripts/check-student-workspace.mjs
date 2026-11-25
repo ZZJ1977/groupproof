@@ -7,7 +7,7 @@ const groups = projectNavGroups(projectId);
 
 assert.deepEqual(
   groups.map((group) => group.id),
-  ["overview", "plan", "collaborate", "review", "settings"],
+  ["overview", "plan", "collaborate", "review"],
   "project navigation follows the student task model",
 );
 
@@ -23,8 +23,6 @@ for (const href of [
   `${base}/discussions`,
   `${base}/evidence`,
   `${base}/contribution`,
-  `${base}/reports`,
-  `${base}/settings`,
 ]) assert.ok(hrefs.includes(href), `keeps existing destination ${href}`);
 assert.ok(!hrefs.includes(`${base}/setup`), "setup is reached from overview rather than a flat primary nav item");
 assert.ok(!hrefs.includes(`${base}/planning`), "planning is unified inside tasks workspace rather than a duplicate nav item");

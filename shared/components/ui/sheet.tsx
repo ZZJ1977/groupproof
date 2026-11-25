@@ -22,21 +22,27 @@ export const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimi
   ({ className, overlayClassName, children, side = "right", ...props }, ref) => {
     const t = useTranslations("pages.shared");
     const scope = useGpThemeScope();
-    const portalClass = scope === "teacher" ? "gp-teacher-portal" : undefined;
+    const isTeacher = scope === "teacher";
+    const portalClass = isTeacher ? "gp-teacher-portal" : undefined;
 
     return (
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           data-radix-dialog-overlay
-          className={cn("fixed inset-0 z-50 bg-[#14233d]/35 gp-overlay-anim", portalClass, overlayClassName)}
+          className={cn(
+            "fixed inset-0 z-50 bg-[#14233d]/35",
+            isTeacher && "gp-overlay-anim",
+            portalClass,
+            overlayClassName,
+          )}
         />
         <DialogPrimitive.Content
           ref={ref}
           className={cn(
             "fixed inset-y-0 z-50 w-[min(100vw,520px)] overflow-y-auto bg-white p-6 shadow-xl outline-none",
             side === "left"
-              ? "left-0 border-r border-[var(--gp-border,#dfe6ee)] gp-sheet-left"
-              : "right-0 border-l border-[var(--gp-border,#dfe6ee)] gp-sheet-right",
+              ? cn("left-0 border-r border-[var(--gp-border,#dfe6ee)]", isTeacher && "gp-sheet-left")
+              : cn("right-0 border-l border-[var(--gp-border,#dfe6ee)]", isTeacher && "gp-sheet-right"),
             portalClass,
             className,
           )}
