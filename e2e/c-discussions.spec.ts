@@ -46,3 +46,26 @@ test("C6 discussion preview appends ephemeral local messages without persisting 
   await page.reload();
   await expect(page.getByText("这是一条仅前端预览消息", { exact: true })).toHaveCount(0);
 });
+
+test("C6 discussion preview uses compact desktop workspace height and 2-tab sidecar with student roles", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/projects/project-1/discussions");
+
+  const workspace = page.getByRole("region", { name: "项目群聊界面预览" });
+  await expect(workspace).toBeVisible();
+  const box = await workspace.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeGreaterThanOrEqual(500);
+  expect(box!.height).toBeLessThanOrEqual(680);
+
+  const insightsTab = page.getByRole("tab", { name: "AI 洞察", exact: true });
+  const membersTab = page.getByRole("tab", { name: "群成员 (4)", exact: true });
+  await expect(insightsTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("分工确认", { exact: true })).toBeVisible();
+
+  await membersTab.click();
+  await expect(membersTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("林同学", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("指导教师")).toHaveCount(0);
+  await expect(page.getByText("当前功能进度与替代路径")).toHaveCount(0);
+});
