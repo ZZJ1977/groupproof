@@ -14,9 +14,12 @@ type Props = {
   target?: { id: string; lock_version: number; name: string };
   saved: () => void;
   denied: (error: CApiError) => void;
+  /** Render without the card chrome, for use inside a dialog or drawer section. */
+  bare?: boolean;
+  hideLegend?: boolean;
 };
 
-export function FileUploadForm({ scope, scopeId, target, saved, denied }: Props) {
+export function FileUploadForm({ scope, scopeId, target, saved, denied, bare = false, hideLegend = false }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [reason, setReason] = useState("");
   const [category, setCategory] = useState<Category>("documents");
@@ -94,9 +97,9 @@ export function FileUploadForm({ scope, scopeId, target, saved, denied }: Props)
       if (!controller.signal.aborted) { setStatus(""); setPercent(null); }
     }
   }
-  return <form className="my-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs" onSubmit={submit}>
+  return <form className={bare ? "space-y-3" : "my-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs"} onSubmit={submit}>
     <fieldset disabled={busy} className="space-y-2">
-      <legend className="font-semibold">{target ? "上传新版本 · " + target.name : "上传文件"}</legend>
+      <legend className={hideLegend ? "sr-only" : "font-semibold"}>{target ? "上传新版本 · " + target.name : "上传文件"}</legend>
       <label className="block">选择文件<input type="file" required className="block" accept={uploadAccept}
         onChange={(event) => { setFile(event.target.files?.[0] ?? null); receipt.current = null; setError(""); commandKey.reset(); }} /></label>
       {!target && <label className="block">新文件分类<select className={apiInput} value={category} onChange={(event) => setCategory(event.target.value as Category)}>

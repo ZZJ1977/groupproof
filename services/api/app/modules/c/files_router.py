@@ -218,15 +218,47 @@ def content(
         exp=exp,
         sig=sig,
     )
-    disposition = "attachment" if purpose == "download" else "inline"
     return Response(
         content=data,
         media_type=media_type,
-        headers={
-            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
-            "X-Content-Type-Options": "nosniff",
-        },
+        headers=internal_content_headers(purpose, media_type, filename),
     )
+
+
+# 只有这些类型允许在同源页面内联展示；其余类型（如 text/html、xml）即使申请预览
+# 也按附件下发，避免同源脚本执行。
+_INLINE_PREVIEW_TYPES = frozenset(
+    {
+        "application/json",
+        "application/pdf",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/svg+xml",
+        "image/webp",
+        "text/csv",
+        "text/markdown",
+        "text/plain",
+    }
+)
+
+
+def internal_content_headers(purpose: str, media_type: str, filename: str) -> dict[str, str]:
+    base_type = media_type.split(";", 1)[0].strip().lower()
+    inline = purpose == "preview" and base_type in _INLINE_PREVIEW_TYPES
+    headers = {
+        "Content-Disposition": (
+            f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(filename)}"
+        ),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+    }
+    if inline and base_type != "application/pdf":
+        # 文本/图片预览不需要脚本、外链或嵌套浏览上下文；PDF 查看器与 sandbox 不兼容，故排除。
+        headers["Content-Security-Policy"] = (
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+        )
+    return headers
 
 
 @router.post(
