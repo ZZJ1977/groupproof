@@ -323,3 +323,64 @@ def test_attach_course_reuses_existing_empty_group_and_handles_errors(actors, b_
         assert proj is not None and grp is not None
         assert proj.course_id == UUID(course_id)
         assert proj.group_id == grp.id
+
+
+def test_attach_course_blocks_non_leader_group_member_and_respects_frozen_roster(actors, b_engine):
+    api, ids = actors
+    course_id, invite_code = _create_teacher_class(api, ids["teacher"], "INTEROP03")
+    _join_course(api, ids["leader"], invite_code)
+    _join_course(api, ids["teammate_in_course"], invite_code)
+    _join_course(api, ids["outsider"], invite_code)
+
+    # Leader creates an empty group; teammate_in_course joins as non-leader member.
+    grp_resp = api.as_user(ids["leader"]).post(
+        f"/api/v1/courses/{course_id}/groups",
+        {"name": "权限校验组", "direction": "Security"},
+    )
+    assert grp_resp.status_code == 201, grp_resp.text
+    group_id = grp_resp.json()["data"]["id"]
+    join_resp = api.as_user(ids["teammate_in_course"]).post(f"/api/v1/groups/{group_id}/join")
+    assert join_resp.status_code == 200, join_resp.text
+
+    # Non-leader member creates their own standalone project and tries to attach without group_id.
+    member_proj = _create_standalone_project(
+        api, b_engine, ids["teammate_in_course"], "非组长个人项目"
+    )
+    denied = api.as_user(ids["teammate_in_course"]).post(
+        f"/api/v1/projects/{member_proj}/attach-course",
+        {"course_id": course_id},
+    )
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "GROUP_LEADER_REQUIRED"
+
+    # Now freeze group roster and verify leader's attach does not mutate frozen group members.
+    with Session(b_engine) as session:
+        grp = session.get(ProjectGroup, UUID(group_id))
+        assert grp is not None
+        grp.roster_frozen = True
+        session.commit()
+
+    leader_proj = _create_standalone_project(
+        api,
+        b_engine,
+        ids["leader"],
+        "冻结名单项目",
+        member_ids=[ids["outsider"]],
+    )
+    attached = api.as_user(ids["leader"]).post(
+        f"/api/v1/projects/{leader_proj}/attach-course",
+        {"course_id": course_id},
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["data"]["members_synced"] == 0
+
+    with Session(b_engine) as session:
+        gm_users = set(
+            session.scalars(
+                select(GroupMember.user_id).where(
+                    GroupMember.group_id == UUID(group_id), GroupMember.left_at.is_(None)
+                )
+            ).all()
+        )
+        assert ids["outsider"] not in gm_users
+        assert gm_users == {ids["leader"], ids["teammate_in_course"]}

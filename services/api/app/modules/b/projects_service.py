@@ -863,6 +863,17 @@ def attach_project_to_course(
             .execution_options(populate_existing=True)
         )
         if existing_group is not None:
+            gm = session.scalar(
+                select(GroupMember).where(
+                    GroupMember.group_id == existing_group.id,
+                    GroupMember.user_id == user.id,
+                    GroupMember.left_at.is_(None),
+                )
+            )
+            if gm is None or gm.role != "leader":
+                raise ApiError(
+                    403, "GROUP_LEADER_REQUIRED", "只有该小组的组长可以将项目关联到此小组。"
+                )
             existing_proj = session.scalar(
                 select(Project.id).where(
                     Project.group_id == existing_group.id,
@@ -884,38 +895,39 @@ def attach_project_to_course(
             session.flush()
             session.add(GroupMember(group_id=group.id, user_id=user.id, role="leader"))
 
-    other_project_members = session.scalars(
-        select(ProjectMember).where(
-            ProjectMember.project_id == project.id,
-            ProjectMember.user_id != user.id,
-            ProjectMember.left_at.is_(None),
-        )
-    ).all()
     members_synced = 0
-    for pm in other_project_members:
-        in_course = session.scalar(
-            select(CourseMember.id).where(
-                CourseMember.course_id == course.id,
-                CourseMember.user_id == pm.user_id,
-                CourseMember.status == "active",
-                CourseMember.left_at.is_(None),
+    if not group.roster_frozen:
+        other_project_members = session.scalars(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id != user.id,
+                ProjectMember.left_at.is_(None),
             )
-        )
-        if in_course is None:
-            continue
-        in_any_group = session.scalar(
-            select(GroupMember.id)
-            .join(ProjectGroup, ProjectGroup.id == GroupMember.group_id)
-            .where(
-                ProjectGroup.course_id == course.id,
-                GroupMember.user_id == pm.user_id,
-                GroupMember.left_at.is_(None),
+        ).all()
+        for pm in other_project_members:
+            in_course = session.scalar(
+                select(CourseMember.id).where(
+                    CourseMember.course_id == course.id,
+                    CourseMember.user_id == pm.user_id,
+                    CourseMember.status == "active",
+                    CourseMember.left_at.is_(None),
+                )
             )
-        )
-        if in_any_group is not None:
-            continue
-        session.add(GroupMember(group_id=group.id, user_id=pm.user_id, role="member"))
-        members_synced += 1
+            if in_course is None:
+                continue
+            in_any_group = session.scalar(
+                select(GroupMember.id)
+                .join(ProjectGroup, ProjectGroup.id == GroupMember.group_id)
+                .where(
+                    ProjectGroup.course_id == course.id,
+                    GroupMember.user_id == pm.user_id,
+                    GroupMember.left_at.is_(None),
+                )
+            )
+            if in_any_group is not None:
+                continue
+            session.add(GroupMember(group_id=group.id, user_id=pm.user_id, role="member"))
+            members_synced += 1
 
     project.course_id = course.id
     project.group_id = group.id

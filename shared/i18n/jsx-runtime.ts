@@ -1,4 +1,4 @@
-// JSX runtime used by the whole app (tsconfig "jsxImportSource": "@/lib/i18n").
+// JSX runtime used by the whole app (tsconfig "jsxImportSource": "@/shared/i18n").
 // It is React's runtime plus localizeProps(), so Chinese UI text renders in the active language.
 import * as runtime from "react/jsx-runtime";
 import { localizeProps } from "@/shared/i18n/localize-props";
