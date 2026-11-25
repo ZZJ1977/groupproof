@@ -126,13 +126,28 @@ test("C4 URL filters and pagination preserve canonical IDs; GitHub links reject 
   await expect(page.getByText("来源记录第 1 页", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   await expect(page.getByText("来源记录第 2 页", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "查询活动", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "重置", exact: true })).toHaveCount(0);
+  const filterControls = [
+    page.getByRole("textbox", { name: "搜索记录", exact: true }),
+    page.getByRole("combobox", { name: "记录类型", exact: true }),
+    page.getByRole("combobox", { name: "处理状态", exact: true }),
+    page.getByRole("combobox", { name: "关联任务", exact: true }),
+    page.getByRole("combobox", { name: "记录作者", exact: true }),
+    page.getByLabel("开始日期", { exact: true }),
+    page.getByLabel("结束日期", { exact: true }),
+  ];
+  const boxes = await Promise.all(filterControls.map((locator) => locator.boundingBox()));
+  expect(boxes.every((box) => box !== null && box.height <= 40)).toBe(true);
+  const firstY = boxes[0]!.y;
+  expect(boxes.every((box) => Math.abs(box!.y - firstY) <= 4)).toBe(true);
   await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("接口");
   await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption({ label: "提交记录" });
   await page.getByRole("combobox", { name: "关联任务", exact: true }).selectOption(taskId);
   await page.getByLabel("开始日期", { exact: true }).fill("2026-10-01");
   await page.getByLabel("结束日期", { exact: true }).fill("2026-10-12");
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
   await expect(page).toHaveURL(/date_from=2026-10-01/);
+  await expect.poll(() => requests.at(-1)?.searchParams.get("q")).toBe("接口");
   await expect.poll(() => requests.at(-1)?.searchParams.get("until")).toBe("2026-10-12T23:59:59.999999Z");
   expect(requests.at(-1)?.searchParams.get("task_id")).toBe(taskId);
   expect(requests.at(-1)?.searchParams.get("kind")).toBe("commit");
@@ -176,7 +191,7 @@ test("C4 Feishu group and kind filters use authorized page metadata, combine in 
   await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption({ label: "消息" });
   await page.getByRole("combobox", { name: "处理状态", exact: true }).selectOption("candidate");
   await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("乙组讨论");
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("q")).toBe("乙组讨论");
   await expect.poll(() => requests.at(-1)?.searchParams.get("group_id")).toBe(groupB);
   expect(requests.at(-1)?.searchParams.get("kind")).toBe("message");
   expect(requests.at(-1)?.searchParams.get("status")).toBe("candidate");
@@ -189,12 +204,19 @@ test("C4 Feishu group and kind filters use authorized page metadata, combine in 
   await expect(page.getByText("群记录 11", { exact: true })).toBeVisible();
   await expect(group).toHaveValue(groupB);
   await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("message");
-  await page.goBack();
+  for (let i = 0; i < 4; i += 1) {
+    await page.goBack();
+  }
   await expect(page).toHaveURL(/page=2/);
   await expect(group).toHaveValue("");
-  await page.goForward();
+  for (let i = 0; i < 4; i += 1) {
+    await page.goForward();
+  }
   await expect(group).toHaveValue(groupB);
-  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await group.selectOption("");
+  await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption("");
+  await page.getByRole("combobox", { name: "处理状态", exact: true }).selectOption("");
+  await page.getByRole("textbox", { name: "搜索记录", exact: true }).fill("");
   await expect.poll(() => requests.at(-1)?.searchParams.has("group_id")).toBe(false);
   expect(requests.at(-1)?.searchParams.has("kind")).toBe(false);
   await expect(group.locator("option")).toHaveText(["全部群组", groupA]);
@@ -215,10 +237,10 @@ test("C4 an empty linked group remains explicit, legacy group links work, and de
   await expect(group).toHaveValue("oc_empty");
   await expect(group.locator("option")).toHaveText(["全部群组", "当前 URL 群组筛选（待来源核对）"]);
   expect(requests.at(-1)?.searchParams.get("group_id")).toBe("oc_empty");
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await page.getByRole("combobox", { name: "记录类型", exact: true }).selectOption("");
   await expect(page).toHaveURL(/group_id=oc_empty/);
   expect(new URL(page.url()).searchParams.has("group")).toBe(false);
-  await page.getByRole("button", { name: "重置", exact: true }).click();
+  await group.selectOption("");
   await expect(group.locator("option")).toHaveText(["全部群组", "oc_visible_only"]);
   await page.route(`**${base}/c-context`, (route) => failure(route, 403));
   await page.getByRole("button", { name: "刷新活动", exact: true }).click();
@@ -237,7 +259,7 @@ test("C4 GitHub PR filter keeps its exact wire value and does not forward Feishu
   await page.goto(`/projects/${projectId}/github?kind=pr&group_id=oc_other_surface`);
   await expect(page.getByRole("combobox", { name: "记录类型", exact: true })).toHaveValue("pr");
   await expect(page.getByRole("combobox", { name: "来源群组", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "查询活动", exact: true }).click();
+  await page.getByRole("textbox", { name: "搜索记录", exact: true }).press("Enter");
   await expect.poll(() => requests.at(-1)?.searchParams.get("kind")).toBe("pr");
   expect(requests.every((url) => !url.searchParams.has("group_id"))).toBe(true);
   expect(new URL(page.url()).searchParams.has("group_id")).toBe(false);
