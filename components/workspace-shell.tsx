@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -35,12 +35,44 @@ const iconByKey: Record<string, typeof Home> = {
   userCog: UserCog, bell: Bell,
 };
 
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const SIDEBAR_SCROLL_STORAGE_PREFIX = "gp-sidebar-scroll:";
+const sidebarScrollMemory = new Map<string, number>();
+
+function readSidebarScroll(scopeKey: string): number {
+  const cached = sidebarScrollMemory.get(scopeKey);
+  if (typeof cached === "number" && Number.isFinite(cached)) return cached;
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.sessionStorage.getItem(`${SIDEBAR_SCROLL_STORAGE_PREFIX}${scopeKey}`);
+    const parsed = raw === null ? 0 : Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      sidebarScrollMemory.set(scopeKey, parsed);
+      return parsed;
+    }
+  } catch {
+    // Ignore storage access failures in restricted environments.
+  }
+  return 0;
+}
+
+function writeSidebarScroll(scopeKey: string, top: number): void {
+  const safeTop = Math.max(0, Math.round(top));
+  sidebarScrollMemory.set(scopeKey, safeTop);
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(`${SIDEBAR_SCROLL_STORAGE_PREFIX}${scopeKey}`, String(safeTop));
+  } catch {
+    // Ignore storage quota or privacy-mode failures.
+  }
+}
+
 function NavLink({ item, label, pathname, search }: { item: NavItem; label: string; pathname: string; search: string }) {
   const Icon = item.icon;
   const [hrefPath, hrefSearch] = item.href.split("?");
   const isPlanningAlias = hrefPath.endsWith("/tasks") && pathname === `${hrefPath.slice(0, -"/tasks".length)}/planning`;
   const active = isPlanningAlias || (hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search));
-  return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={17} strokeWidth={1.9} /><span>{label}</span></Link>;
+  return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={15} strokeWidth={1.9} className="shrink-0" /><span className="truncate">{label}</span></Link>;
 }
 
 export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: "student" | "teacher" | "admin" }) {
@@ -67,6 +99,9 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchBoxRef = useRef<HTMLDivElement | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
+  const restoringNavScrollRef = useRef(false);
+  const searchString = searchParams.toString();
   const user = data.users.find((item) => item.id === data.currentUserId);
   const displayName = session?.user?.name || userName || (mockWorkspace ? user?.name : null) || "—";
   const canonicalContext = resolveCanonicalRouteContext(pathname);
@@ -75,6 +110,34 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const defaultCourse = mockShell ? data.courses.find((item) => item.teacherId === data.currentUserId) ?? data.courses[0] : undefined;
   const navCourseId = context.courseId ?? defaultCourse?.id;
   const projectMode = kind === "student" && pathname.startsWith("/projects/") && Boolean(context.projectId);
+  const sidebarScopeKey = projectMode && context.projectId
+    ? `project:${context.projectId}`
+    : kind === "teacher" && navCourseId
+      ? `teacher:${navCourseId}`
+      : `global:${kind}`;
+
+  useIsomorphicLayoutEffect(() => {
+    const navEl = navRef.current;
+    if (!navEl) return;
+    const savedTop = readSidebarScroll(sidebarScopeKey);
+    const maxTop = Math.max(0, navEl.scrollHeight - navEl.clientHeight);
+    const targetTop = Math.min(savedTop, maxTop);
+    if (navEl.scrollTop !== targetTop) {
+      restoringNavScrollRef.current = true;
+      navEl.scrollTop = targetTop;
+      restoringNavScrollRef.current = false;
+    }
+  }, [sidebarScopeKey, pathname, searchString]);
+
+  const handleNavScroll = () => {
+    if (restoringNavScrollRef.current || !navRef.current) return;
+    writeSidebarScroll(sidebarScopeKey, navRef.current.scrollTop);
+  };
+
+  const persistCurrentNavScroll = () => {
+    if (!navRef.current) return;
+    writeSidebarScroll(sidebarScopeKey, navRef.current.scrollTop);
+  };
   const cachedCContext = useQuery<{ project?: { name?: string } }>({
     queryKey: ["c-project-context", userId, context.projectId],
     queryFn: () => Promise.resolve({}),
@@ -241,56 +304,67 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace", kind === "admin" && "gp-shell-admin")}>
     {mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
     <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
-      <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
-      {kind === "admin" && <div className="px-[22px] text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
-      {projectMode && <DropdownMenu open={switcherOpen} onOpenChange={setSwitcherOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="mx-3 mt-2 flex w-[calc(100%-24px)] items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-left text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300/80 hover:bg-slate-100/80"
-          >
-            <Folder size={15} className="shrink-0 text-[var(--gp-action)]" />
-            <span className="truncate">{context.courseName ? `${context.courseName} · ` : ""}{resolvedProjectName ?? ts("projectFallback")}</span>
-            <ChevronDown size={13} className="ml-auto shrink-0 text-slate-400" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[236px]">
-          <DropdownMenuItem asChild>
-            <Link href={`/projects/${context.projectId}`} onClick={() => setMobileOpen(false)}>
-              <Folder size={14} className="mr-2 text-[var(--gp-action)]" />
-              <span className="truncate font-medium">{resolvedProjectName ?? ts("projectFallback")}</span>
-              <Check size={13} className="ml-auto text-[var(--gp-action)]" />
-            </Link>
-          </DropdownMenuItem>
-          {switcherProjects.filter((item) => item.id !== context.projectId).length > 0 && (
-            <>
-              <div className="my-1 h-px bg-slate-100" />
-              {switcherProjects
-                .filter((item) => item.id !== context.projectId)
-                .map((item) => (
-                  <DropdownMenuItem key={item.id} asChild>
-                    <Link href={`/projects/${encodeURIComponent(item.id)}`} onClick={() => setMobileOpen(false)}>
-                      <Folder size={14} className="mr-2 text-slate-400" />
-                      <span className="truncate">{item.name}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-            </>
-          )}
-          <div className="my-1 h-px bg-slate-100" />
-          <DropdownMenuItem asChild>
-            <Link href="/projects/new" onClick={() => setMobileOpen(false)}>
-              <Plus size={14} className="mr-2 text-[var(--gp-action)]" />
-              <span>新建项目</span>
-            </Link>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>}
-      {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mt-2 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] px-3 py-2 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={15} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
-      <nav className="gp-nav" onClick={() => setMobileOpen(false)}>
+      <div className="gp-sidebar-header">
+        <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
+        {kind === "admin" && <div className="px-[20px] pb-2 text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
+        {projectMode && <DropdownMenu open={switcherOpen} onOpenChange={setSwitcherOpen}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="mx-3 mb-2.5 flex w-[calc(100%-24px)] items-center gap-2 rounded-lg border border-slate-200/90 bg-slate-50 px-2.5 py-1.5 text-left text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-300/90 hover:bg-slate-100"
+            >
+              <Folder size={14} className="shrink-0 text-[var(--gp-action)]" />
+              <span className="truncate">{context.courseName ? `${context.courseName} · ` : ""}{resolvedProjectName ?? ts("projectFallback")}</span>
+              <ChevronDown size={13} className="ml-auto shrink-0 text-slate-400" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[236px]">
+            <DropdownMenuItem asChild>
+              <Link href={`/projects/${context.projectId}`} onClick={() => setMobileOpen(false)}>
+                <Folder size={14} className="mr-2 text-[var(--gp-action)]" />
+                <span className="truncate font-medium">{resolvedProjectName ?? ts("projectFallback")}</span>
+                <Check size={13} className="ml-auto text-[var(--gp-action)]" />
+              </Link>
+            </DropdownMenuItem>
+            {switcherProjects.filter((item) => item.id !== context.projectId).length > 0 && (
+              <>
+                <div className="my-1 h-px bg-slate-100" />
+                {switcherProjects
+                  .filter((item) => item.id !== context.projectId)
+                  .map((item) => (
+                    <DropdownMenuItem key={item.id} asChild>
+                      <Link href={`/projects/${encodeURIComponent(item.id)}`} onClick={() => setMobileOpen(false)}>
+                        <Folder size={14} className="mr-2 text-slate-400" />
+                        <span className="truncate">{item.name}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+              </>
+            )}
+            <div className="my-1 h-px bg-slate-100" />
+            <DropdownMenuItem asChild>
+              <Link href="/projects/new" onClick={() => setMobileOpen(false)}>
+                <Plus size={14} className="mr-2 text-[var(--gp-action)]" />
+                <span>新建项目</span>
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>}
+        {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mb-2.5 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] bg-white px-2.5 py-1.5 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={14} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
+      </div>
+      <nav
+        ref={navRef}
+        className="gp-nav"
+        onScroll={handleNavScroll}
+        onPointerDown={persistCurrentNavScroll}
+        onClick={() => {
+          persistCurrentNavScroll();
+          setMobileOpen(false);
+        }}
+      >
         {kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>
           <div className="gp-nav-section" role="heading" aria-level={2}>{group.label}</div>
-          {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+          {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
         </div>) : projectMode ? <>
           <div className="gp-nav-section">{t("global")}</div>
           <NavLink item={globalNav[0]} label={globalNav[0].label} pathname={pathname} search="" />
@@ -300,7 +374,7 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
           {projectGroups.map((group) => {
             const collapsible = group.id === "plan" || group.id === "collaborate" || group.id === "review";
             const open = openProjectGroups[group.id] !== false;
-            if (!collapsible) return group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />);
+            if (!collapsible) return group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />);
             const panelId = `project-nav-${group.id}`;
             return <div className="gp-nav-group" key={group.id}>
               <button
@@ -310,18 +384,19 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
                 aria-controls={panelId}
                 onClick={(event) => {
                   event.stopPropagation();
+                  persistCurrentNavScroll();
                   setOpenProjectGroups((current) => ({ ...current, [group.id]: !open }));
                 }}
               >
                 <span>{t(`projectGroups.${group.label}`)}</span>
-                <ChevronDown size={14} aria-hidden="true" className={cn("gp-nav-group-chevron", open && "open")} />
+                <ChevronDown size={13} aria-hidden="true" className={cn("gp-nav-group-chevron", open && "open")} />
               </button>
               {open && <div id={panelId} className="gp-nav-group-items">
-                {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+                {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
               </div>}
             </div>;
           })}
-        </> : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
+        </> : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
       </nav>
       <div className="gp-sidebar-footer">{ts("footer")}</div>
     </aside>
