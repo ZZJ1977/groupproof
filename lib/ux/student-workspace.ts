@@ -43,13 +43,7 @@ export function projectNavGroups(projectId: string): ProjectNavGroup[] {
       items: [
         { label: "evidence", href: `${base}/evidence`, iconKey: "shieldCheck" },
         { label: "contribution", href: `${base}/contribution`, iconKey: "users" },
-        { label: "reports", href: `${base}/reports`, iconKey: "fileText" },
       ],
-    },
-    {
-      id: "settings",
-      label: "settingsGroup",
-      items: [{ label: "settings", href: `${base}/settings`, iconKey: "settings" }],
     },
   ];
 }
