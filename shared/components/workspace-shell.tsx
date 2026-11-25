@@ -900,6 +900,26 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     () => undefined,
   );
   const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (teacherSwitcherOpen || switcherOpen || searchOpen) return;
+      if (
+        document.querySelector(
+          '[role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], .u448-portal.is-open',
+        )
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setMobileOpen(false);
+      mobileMenuBtnRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen, searchOpen, switcherOpen, teacherSwitcherOpen]);
   const dailyClient = useMemo(() => createCClient(), []);
   const cachedHome = useQuery<{ projects?: { id: string; name: string }[] }>({
     queryKey: ["c-home-summary", userId],
@@ -1171,13 +1191,6 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
       ref={sidebarRef}
       data-nav-enter={shouldAnimateNavEnter ? "true" : undefined}
       className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open", isTeacher && railCollapsed && "is-collapsed")}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && mobileOpen) {
-          event.stopPropagation();
-          setMobileOpen(false);
-          mobileMenuBtnRef.current?.focus();
-        }
-      }}
     >
       <div className="gp-sidebar-header">
         {isTeacher ? (
@@ -1533,13 +1546,6 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
           aria-hidden={!mobileOpen}
           inert={!mobileOpen}
           className={cn("gp-topnav-mobile-drawer", mobileOpen && "is-open")}
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && mobileOpen) {
-              event.stopPropagation();
-              setMobileOpen(false);
-              mobileMenuBtnRef.current?.focus();
-            }
-          }}
         >
           <div className="gp-topnav-mobile-drawer-inner">
             <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2.5">
