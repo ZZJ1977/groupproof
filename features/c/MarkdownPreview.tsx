@@ -24,6 +24,7 @@ const listMarker = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 const tableSeparator = /^\s*\|?\s*:?-{1,}:?\s*(?:\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
 const safeDataImage = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i;
+const standaloneImage = /^!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)$/;
 
 export function safeLinkHref(value: string): string | null {
   try {
@@ -218,8 +219,34 @@ function renderBlocks(blocks: Block[], depth: number, keyPrefix: string): ReactN
         const Tag = `h${block.level}` as "h1";
         return <Tag key={key} className={headingClass[block.level]}>{renderInline(block.text, 0, key)}</Tag>;
       }
-      case "paragraph":
+      case "paragraph": {
+        const imageOnly = standaloneImage.exec(block.text.trim());
+        if (imageOnly) {
+          const alt = imageOnly[1].trim();
+          const imgSrc = safeImageSrc(imageOnly[2]);
+          if (imgSrc) {
+            return (
+              <figure key={key} className="my-5 flex flex-col items-center">
+                {/* eslint-disable-next-line @next/next/no-img-element -- dynamic markdown/signed image URL */}
+                <img
+                  src={imgSrc}
+                  alt={alt || "文档图片"}
+                  loading="lazy"
+                  referrerPolicy={imgSrc.startsWith("/api/v1/") ? "same-origin" : "no-referrer"}
+                  className="w-full max-w-[740px] rounded-xl border border-slate-200/85 bg-white shadow-2xs"
+                />
+                {alt ? <figcaption className="mt-2 text-center text-xs text-slate-500">{alt}</figcaption> : null}
+              </figure>
+            );
+          }
+          return (
+            <p key={key} className="my-3 leading-7 text-slate-800">
+              {`[图片：${alt || imageOnly[2]}]`}
+            </p>
+          );
+        }
         return <p key={key} className="my-3 leading-7 text-slate-800">{renderInline(block.text, 0, key)}</p>;
+      }
       case "code":
         return <pre key={key} className="my-3 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] leading-6 text-slate-800" data-lang={block.lang || undefined}><code className="font-mono">{block.text}</code></pre>;
       case "quote":

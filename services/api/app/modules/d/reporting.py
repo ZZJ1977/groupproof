@@ -21,10 +21,12 @@ from xml.sax.saxutils import escape as xml_escape
 import httpx
 from celery.app.task import Task as CeleryTask
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 from fastapi import APIRouter, Depends, Request, Response
+from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -34,11 +36,15 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import (
     HRFlowable,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
+)
+from reportlab.platypus import (
+    Image as RLImage,
 )
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
@@ -87,6 +93,13 @@ from app.modules.d.models import (
     Risk,
     VerificationRun,
 )
+from app.modules.d.report_charts import (
+    ALLOWED_DEFAULT_CHART_KEYS,
+    CHART_KEY_RE,
+    build_default_visual_specs,
+    render_chart_from_snapshot,
+    sanitize_visual_specs,
+)
 from app.modules.d.risk_read import risk_counts
 
 logger = logging.getLogger(__name__)
@@ -96,6 +109,7 @@ STALE_GENERATING_SECONDS = 180
 AI_REPORT_TIMEOUT_SECONDS = 75.0
 AI_REWRITE_TIMEOUT_SECONDS = 45.0
 AI_REPORT_BATCH_MAX_TOKENS = 4800
+AI_VISUALS_MAX_TOKENS = 2600
 AI_REWRITE_MAX_TOKENS = 3200
 _MIN_AI_CHAPTER_CHARS = 80
 CHAPTER_BATCH_1: tuple[str, ...] = ("overview", "workflow", "progress", "collaboration")
@@ -665,20 +679,27 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
             }
         )
 
-    # Evidence source breakdown
+    # Evidence source breakdown & per-member authorship
     ev_by_source: dict[str, int] = {}
     ev_by_task: dict[UUID, int] = {}
+    ev_by_author: dict[UUID, int] = {}
+    feishu_ev_by_author: dict[UUID, int] = {}
     for item in evidence:
         ev_by_source[item.source_type] = ev_by_source.get(item.source_type, 0) + 1
         ev_by_task[item.task_id] = ev_by_task.get(item.task_id, 0) + 1
+        if item.author_id:
+            ev_by_author[item.author_id] = ev_by_author.get(item.author_id, 0) + 1
+            if item.source_type == "feishu":
+                feishu_ev_by_author[item.author_id] = feishu_ev_by_author.get(item.author_id, 0) + 1
 
-    # Member portraits (combine ProjectMember + ContributionItem + Tasks + GitHub + Modules)
+    # Member portraits (combine ProjectMember + ContributionItem + Tasks + GitHub + Modules + Feishu/Evidence)
     share_by_uid = {item.user_id: item for item in contrib_items}
     owned_modules_by_uid: dict[UUID, list[str]] = {}
     for mod in modules:
         if mod.owner_id:
             owned_modules_by_uid.setdefault(mod.owner_id, []).append(mod.name)
 
+    feishu_highlights = feishu_stats.get("highlights") or []
     member_portraits: list[dict[str, Any]] = []
     for pm in sorted(
         members_rows, key=lambda m: (0 if m.role == "leader" else 1, _uname(m.user_id))
@@ -687,6 +708,16 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
         c_item = share_by_uid.get(pm.user_id)
         assigned = tasks_by_user.get(pm.user_id, [])
         gh = github_stats["by_member"].get(name, {})
+        feishu_mentions = (
+            sum(
+                1
+                for h in feishu_highlights
+                if name
+                and (name in str(h.get("title") or "") or name in str(h.get("summary") or ""))
+            )
+            if name
+            else 0
+        )
         member_portraits.append(
             {
                 "name": name,
@@ -701,6 +732,9 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
                 "github_prs": int(gh.get("prs", 0)),
                 "github_additions": int(gh.get("additions", 0)),
                 "github_deletions": int(gh.get("deletions", 0)),
+                "evidence_authored": int(ev_by_author.get(pm.user_id, 0)),
+                "feishu_collab_count": int(feishu_ev_by_author.get(pm.user_id, 0))
+                + feishu_mentions,
                 "key_tasks": [t.title for t in assigned[:6]],
             }
         )
@@ -804,7 +838,13 @@ def _md_cell(value: object) -> str:
     return _sanitize_text(value).replace("\n", " ").replace("|", "\\|").strip() or "—"
 
 
-def render_fallback_chapters(facts: dict[str, Any]) -> dict[str, str]:
+def render_fallback_chapters(
+    facts: dict[str, Any],
+    *,
+    project_id: UUID | None = None,
+    version_no: int | None = None,
+    visuals: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
     """Deterministically generate all 7 publication-grade Chinese chapters for professor grading."""
     proj = facts["project"]
     counts = facts["counts"]
@@ -1240,7 +1280,7 @@ def render_fallback_chapters(facts: dict[str, Any]) -> dict[str, str]:
     for idx, tip in enumerate(suggestions, start=1):
         refl_lines.append(f"{idx}. {tip}")
 
-    return {
+    chapters = {
         "overview": "\n".join(overview_lines),
         "workflow": "\n".join(workflow_lines),
         "progress": "\n".join(progress_lines),
@@ -1249,6 +1289,12 @@ def render_fallback_chapters(facts: dict[str, Any]) -> dict[str, str]:
         "contribution": "\n".join(contrib_lines),
         "reflection": "\n".join(refl_lines),
     }
+    if project_id is not None and version_no is not None:
+        resolved_visuals = visuals if visuals is not None else build_default_visual_specs(facts)
+        chapters = _inject_visuals_into_chapters(
+            chapters, resolved_visuals, project_id=project_id, version_no=version_no
+        )
+    return chapters
 
 
 def _openrouter_config() -> tuple[str, str] | None:
@@ -1431,6 +1477,168 @@ def _compact_facts_for_llm(facts: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_CHART_URL_RE = re.compile(
+    r"/api/v1/projects/[^/\s)]+/reports/versions/\d+/charts/([a-z0-9_-]{1,48})\.png(?:\?[^)\s]*)?"
+)
+_CHART_VERSION_PREFIX_RE = re.compile(
+    r"(/api/v1/projects/[^/\s)]+/reports/versions/)\d+(/charts/[a-z0-9_-]{1,48}\.png)"
+)
+
+
+def _chart_image_url(project_id: UUID, version_no: int, chart_key: str) -> str:
+    return f"/api/v1/projects/{project_id}/reports/versions/{version_no}/charts/{chart_key}.png"
+
+
+def _insert_markdown_figures(body: str, figure_lines: list[str]) -> str:
+    """Insert Markdown figure lines after opening prose (before first ### heading) to keep footnotes intact."""
+    if not figure_lines:
+        return body
+    existing_ids = set(_CHART_URL_RE.findall(body))
+    to_add = [
+        line
+        for line in figure_lines
+        if not any(cid in existing_ids for cid in _CHART_URL_RE.findall(line))
+    ]
+    if not to_add:
+        return body
+    figure_block = "\n\n".join(to_add)
+    lines = body.splitlines()
+    for idx, line in enumerate(lines):
+        if re.match(r"^\s*#{3,4}\s+", line):
+            before = "\n".join(lines[:idx]).rstrip()
+            after = "\n".join(lines[idx:]).lstrip("\n")
+            return (
+                f"{before}\n\n{figure_block}\n\n{after}".strip()
+                if before
+                else f"{figure_block}\n\n{after}".strip()
+            )
+    # No ### subheading: insert after the first non-empty paragraph (so trailing footnotes stay last)
+    first_blank = next((i for i, ln in enumerate(lines) if i > 0 and not ln.strip()), None)
+    if first_blank is not None:
+        before = "\n".join(lines[:first_blank]).rstrip()
+        after = "\n".join(lines[first_blank:]).lstrip("\n")
+        return f"{before}\n\n{figure_block}\n\n{after}".strip()
+    return f"{body.rstrip()}\n\n{figure_block}".strip()
+
+
+def _inject_visuals_into_chapters(
+    chapters: dict[str, str],
+    visuals: list[dict[str, Any]],
+    *,
+    project_id: UUID,
+    version_no: int,
+) -> dict[str, str]:
+    by_section: dict[str, list[str]] = {}
+    for spec in visuals:
+        if not isinstance(spec, dict):
+            continue
+        sec = str(spec.get("section_key") or "")
+        vid = str(spec.get("id") or "")
+        caption = str(spec.get("caption") or spec.get("title") or vid).replace("]", "").strip()
+        if sec in chapters and vid and CHART_KEY_RE.match(vid):
+            url = _chart_image_url(project_id, version_no, vid)
+            by_section.setdefault(sec, []).append(f"![{caption}]({url})")
+    updated = dict(chapters)
+    for sec, fig_lines in by_section.items():
+        updated[sec] = _insert_markdown_figures(updated[sec], fig_lines)
+    return updated
+
+
+def _rewrite_chart_version_urls(sections: dict[str, str], new_version_no: int) -> dict[str, str]:
+    changed = False
+    out: dict[str, str] = {}
+    for key, val in sections.items():
+        text = str(val or "")
+        if _CHART_VERSION_PREFIX_RE.search(text):
+            replaced = _CHART_VERSION_PREFIX_RE.sub(rf"\g<1>{new_version_no}\g<2>", text)
+            if replaced != text:
+                changed = True
+            out[key] = replaced
+        else:
+            out[key] = text
+    return out if changed else sections
+
+
+def _snapshot_chart_facts(facts: dict[str, Any]) -> dict[str, Any]:
+    """Persist compact grounded facts inside `data_snapshot['facts']` for chart & export rendering."""
+    return {
+        "project": facts.get("project") or {},
+        "counts": facts.get("counts") or {},
+        "modules": (facts.get("modules") or [])[:12],
+        "milestones": (facts.get("milestones") or [])[:16],
+        "github": {
+            "repo_count": (facts.get("github") or {}).get("repo_count", 0),
+            "commits": (facts.get("github") or {}).get("commits", 0),
+            "pull_requests": (facts.get("github") or {}).get("pull_requests", 0),
+            "merged_prs": (facts.get("github") or {}).get("merged_prs", 0),
+            "ci_runs": (facts.get("github") or {}).get("ci_runs", 0),
+            "ci_success": (facts.get("github") or {}).get("ci_success", 0),
+            "additions": (facts.get("github") or {}).get("additions", 0),
+            "deletions": (facts.get("github") or {}).get("deletions", 0),
+        },
+        "github_repos": (facts.get("github_repos") or [])[:5],
+        "feishu": {
+            "chat_count": (facts.get("feishu") or {}).get("chat_count", 0),
+            "total_messages": (facts.get("feishu") or {}).get("total_messages", 0),
+            "date_range": (facts.get("feishu") or {}).get("date_range", ""),
+            "total_conclusions": (facts.get("feishu") or {}).get("total_conclusions", 0),
+            "categories": (facts.get("feishu") or {}).get("categories") or {},
+        },
+        "evidence": {
+            "total_formal": (facts.get("evidence") or {}).get("total_formal", 0),
+            "by_source": (facts.get("evidence") or {}).get("by_source") or {},
+            "tasks_with_evidence": (facts.get("evidence") or {}).get("tasks_with_evidence", 0),
+            "criteria_total": (facts.get("evidence") or {}).get("criteria_total", 0),
+            "verification_runs": (facts.get("evidence") or {}).get("verification_runs", 0),
+            "formal_outcomes": (facts.get("evidence") or {}).get("formal_outcomes", 0),
+        },
+        "members": (facts.get("members") or [])[:12],
+        "risks": {
+            "active_count": (facts.get("risks") or {}).get("active_count", 0),
+            "closed_count": (facts.get("risks") or {}).get("closed_count", 0),
+            "counts": (facts.get("risks") or {}).get("counts") or {},
+        },
+    }
+
+
+def _plan_report_visuals_with_ai(
+    facts: dict[str, Any], *, actor_id: UUID | None, project_id: UUID
+) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """Let OpenRouter AI freely design 3-5 bespoke declarative visuals tailored to THIS project."""
+    compact_facts = _compact_facts_for_llm(facts)
+    system_prompt = (
+        "你是高校软件工程项目结项报告的资深信息图与架构可视化设计师。\n"
+        "请阅读输入的项目真实工程事实 JSON（含项目描述/定位、模块、任务、里程碑、GitHub、飞书、正式证据与成员分工），"
+        "为**当前这个具体项目**自由规划 **3 至 5 张**最能提升图文并茂阅读体验的插图规范（不要机械照搬固定套路，按项目真实特点与现有数据决定最值得画什么图、放在哪一章、起什么标题与节点文案）。\n\n"
+        "严格要求：\n"
+        '1. 只输出一个合法 JSON 对象：`{"visuals": [ ... ]}`。\n'
+        "2. 每张图对象必须包含：`id`（小写英文/数字/下划线 slug，如 `system_layers`）、`section_key`（只能取 overview / workflow / progress / collaboration / evidence / contribution / reflection 之一）、"
+        "`template`（只能从以下 5 种通用布局模板中自由选用，可按需组合）、`badge`（2–4字左上标签）、`title`（图主标题）、`subtitle`（副标题）、`caption`（图注，例如「图 1：...」）、`payload`（模板结构化数据）。\n"
+        "3. 100% 忠实于输入 JSON 中的真实项目名、模块名、成员姓名、里程碑、日期与数值，严禁编造任何未出现的数字或人名。\n"
+        "4. 五种通用模板的 `payload` 结构：\n"
+        '   - `layered_architecture`：分层架构/系统组成图，`{"layers": [{"name": "层名", "accent": "sky|emerald|violet|amber", "nodes": [{"title": "节点名", "subtitle": "职责/技术说明", "metric": "可选指标", "progress": 100}]}]}`（2–4层，每层1–5节点）\n'
+        '   - `process_flow`：水平多阶段流程图，`{"steps": [{"step": "01", "title": "阶段名", "metric": "核心实数", "detail": "简要说明", "accent": "sky|indigo|violet|amber|emerald|teal"}], "footer_note": "闭环总结", "kpis": [{"label": "指标", "value": "数值"}]}`（3–6步）\n'
+        '   - `milestone_timeline`：阶段进度/时间线横向条图，`{"summary_badges": [{"label": "标签", "value": "值", "accent": "emerald"}], "items": [{"label": "里程碑或模块名", "date": "YYYY-MM-DD", "progress": 100, "status": "已完成", "tone": "emerald|sky|amber|slate", "meta": "交付物/任务数"}]}`\n'
+        '   - `category_breakdown`：单面板或双面板分类统计横向条图，`{"panels": [{"title": "面板标题", "accent": "sky|violet", "total_label": "总计标签", "items": [{"label": "类别", "value": 80, "unit": " 条"}], "footnote": "补充指标"}]}`（1–2个面板）\n'
+        '   - `member_comparison`：成员多维对比分组条图，`{"series": [{"key": "share", "label": "正式贡献权重 (%)", "accent": "sky"}, ...], "members": [{"name": "真实姓名", "role": "组长/成员", "subtitle": "负责模块", "values": {"share": {"value": 30.0, "label": "30.0%"}}}]}`（2–4个维度）\n'
+        "5. 若某项外部数据（如飞书或里程碑）为空，请灵活避开空白维度，转而围绕该项目已有丰富数据设计更有信息量的图表。"
+    )
+    parsed, model = _call_openrouter_json(
+        system_prompt=system_prompt,
+        user_payload=compact_facts,
+        timeout=AI_REPORT_TIMEOUT_SECONDS,
+        feature="plan_report_visuals",
+        actor_id=actor_id,
+        project_id=project_id,
+        max_tokens=AI_VISUALS_MAX_TOKENS,
+    )
+    if isinstance(parsed, dict):
+        visuals = sanitize_visual_specs(parsed.get("visuals"), facts)
+        if visuals:
+            return visuals, model
+    return None, model
+
+
 def _author_report_with_ai(
     facts: dict[str, Any], *, actor_id: UUID | None, project_id: UUID
 ) -> tuple[dict[str, str] | None, str | None]:
@@ -1443,6 +1651,7 @@ def _author_report_with_ai(
         "- 行文风格：正式、客观冷静、数据翔实、论证严谨，禁止空洞套话、禁止营销夸大词、严禁 1 句话敷衍。\n"
         "- 绝对事实约束：所有数字、成员姓名、模块名、任务名、里程碑、GitHub 提交/PR 数、飞书结论、正式证据数与风险项"
         "必须 100% 源自输入的真实工程事实 JSON，严禁编造任何未出现的人名、数据或事件。\n"
+        "- 图文结合：系统会为报告自动配发与本章数据对应的架构图、流程图或统计图表，请在行文中自然围绕架构分工、协作流程、阶段进度、证据分布与成员贡献展开论证（无需手写图片 URL）。\n"
         "- 排版格式：每个键的值必须是纯中文 Markdown 正文，**不要重复写章级标题（如 `# 一、...` 或 `## 一、...`）**；"
         "每章必须包含**至少 2 个实质性自然段 + `###` 子标题 + 至少 1 个规范 GFM Markdown 表格或结构化条目**，每章字数控制在 **450–700 中文字符**（全篇 7 章合计约 3,200–4,500 字）。"
     )
@@ -1535,7 +1744,8 @@ def _rewrite_section_with_ai(
         "2. 正文使用规范中文 Markdown（包含多个自然段、### 子标题、必要时包含 GFM 表格与结构化条目），不要重复写章级大标题。\n"
         "3. 严格依据输入事实，严禁编造数字、成员或事件；客观冷静，禁止夸大；字数约 450–700 中文字符。\n"
         "4. 若改写第六章（成员贡献），严禁在章首输出草稿告警横幅，仅可在末尾以简短斜体脚注注明快照版本。\n"
-        "5. 充分响应用户的改写要求（若提供）。"
+        "5. 若原文中包含 Markdown 配图行（如 `![图 ...](/api/v1/projects/.../charts/....png)`），请原样保留该配图行并使正文与之自然呼应。\n"
+        "6. 充分响应用户的改写要求（若提供）。"
     )
     payload = {
         "target_section": section_key,
@@ -1573,6 +1783,24 @@ def _legacy_tasks_text(facts: dict[str, Any]) -> str:
     )
 
 
+def _resolve_target_version_no(session: Session, project_id: UUID, version_no: int | None) -> int:
+    if version_no is not None and version_no >= 1:
+        return version_no
+    try:
+        latest_no = session.scalar(
+            select(ReportSnapshot.version_no)
+            .join(Report, ReportSnapshot.report_id == Report.id)
+            .where(Report.project_id == project_id)
+            .order_by(ReportSnapshot.version_no.desc())
+            .limit(1)
+        )
+        if latest_no is not None and latest_no >= 1:
+            return int(latest_no)
+    except Exception:
+        pass
+    return 1
+
+
 def build_report_snapshot_data(
     session: Session,
     project_id: UUID,
@@ -1581,22 +1809,43 @@ def build_report_snapshot_data(
     *,
     actor_id: UUID | None = None,
     use_ai: bool = False,
+    version_no: int | None = None,
 ) -> dict[str, Any]:
-    """Build complete frozen report data_snapshot with 7 ordered chapters."""
+    """Build complete frozen report data_snapshot with 7 ordered chapters and declarative visuals."""
     facts = collect_project_facts(session, project_id, project_name)
+    resolved_version_no = _resolve_target_version_no(session, project_id, version_no)
     chapters = render_fallback_chapters(facts)
     authoring_mode = "fallback"
     model_used: str | None = None
     ai_chapters_count = 0
+    ai_visuals: list[dict[str, Any]] | None = None
 
     if use_ai:
-        ai_chapters, model_used = _author_report_with_ai(
-            facts, actor_id=actor_id, project_id=project_id
-        )
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            prose_future = pool.submit(
+                _author_report_with_ai, facts, actor_id=actor_id, project_id=project_id
+            )
+            visuals_future = pool.submit(
+                _plan_report_visuals_with_ai, facts, actor_id=actor_id, project_id=project_id
+            )
+            ai_chapters, prose_model = prose_future.result()
+            ai_visuals, visuals_model = visuals_future.result()
+        model_used = prose_model or visuals_model
         if ai_chapters:
             chapters.update(ai_chapters)
             ai_chapters_count = len(ai_chapters)
             authoring_mode = "ai"
+
+    if ai_visuals and len(ai_visuals) >= 2:
+        visuals = ai_visuals
+        visuals_mode = "ai"
+    else:
+        visuals = build_default_visual_specs(facts)
+        visuals_mode = "fallback"
+
+    chapters = _inject_visuals_into_chapters(
+        chapters, visuals, project_id=project_id, version_no=resolved_version_no
+    )
 
     chapter_order = list(CHAPTER_ORDER)
     sections: dict[str, str] = {key: chapters[key] for key in CHAPTER_ORDER}
@@ -1616,9 +1865,13 @@ def build_report_snapshot_data(
         "counts": facts["counts"],
         "chapter_order": chapter_order,
         "sections": sections,
+        "visuals": visuals,
+        "facts": _snapshot_chart_facts(facts),
         "evidence_records": facts["evidence_records"],
         "meta": {
             "authoring_mode": authoring_mode,
+            "visuals_mode": visuals_mode,
+            "visuals_count": len(visuals),
             "model": model_used,
             "ai_chapters_count": ai_chapters_count,
             "word_count": word_count,
@@ -1870,14 +2123,19 @@ def edit_section(
             )
         if payload.section not in latest.data_snapshot.get("sections", {}):
             raise ApiError(422, "REPORT_SECTION_INVALID", "Unknown report section.")
+        new_version_no = latest.version_no + 1
+        updated_sections = _rewrite_chart_version_urls(
+            {**latest.data_snapshot["sections"], payload.section: payload.body.strip()},
+            new_version_no,
+        )
         data = {
             **latest.data_snapshot,
-            "sections": {**latest.data_snapshot["sections"], payload.section: payload.body.strip()},
+            "sections": updated_sections,
         }
         version = ReportSnapshot(
             report_id=report.id,
             created_by=user.id,
-            version_no=latest.version_no + 1,
+            version_no=new_version_no,
             status="generated",
             baseline_version_id=latest.baseline_version_id,
             plan_version_id=latest.plan_version_id,
@@ -1946,6 +2204,7 @@ def ai_rewrite_section(
                 )
 
         latest = versions(session, report.id)[0]
+        new_version_no = latest.version_no + 1
         prev_meta = (
             dict(source.data_snapshot.get("meta"))
             if isinstance(source.data_snapshot.get("meta"), dict)
@@ -1955,15 +2214,36 @@ def ai_rewrite_section(
         prev_meta["last_rewritten_mode"] = authoring_mode
         if model_used:
             prev_meta["model"] = model_used
+        updated_sections = _rewrite_chart_version_urls(
+            {**sections_map, section_key: rewritten}, new_version_no
+        )
+        existing_visuals = (
+            source.data_snapshot.get("visuals")
+            if isinstance(source.data_snapshot.get("visuals"), list)
+            else []
+        )
+        section_visuals = [
+            v
+            for v in existing_visuals
+            if isinstance(v, dict) and str(v.get("section_key") or "") == section_key
+        ]
+        if section_visuals:
+            updated_sections = _inject_visuals_into_chapters(
+                updated_sections,
+                section_visuals,
+                project_id=project_id,
+                version_no=new_version_no,
+            )
         data = {
             **source.data_snapshot,
-            "sections": {**sections_map, section_key: rewritten},
+            "sections": updated_sections,
+            "facts": source.data_snapshot.get("facts") or _snapshot_chart_facts(facts),
             "meta": prev_meta,
         }
         created = ReportSnapshot(
             report_id=report.id,
             created_by=user.id,
-            version_no=latest.version_no + 1,
+            version_no=new_version_no,
             status="generated",
             baseline_version_id=source.baseline_version_id,
             plan_version_id=source.plan_version_id,
@@ -2011,15 +2291,23 @@ def restore_report_version(
         if source is None:
             raise ApiError(404, "REPORT_VERSION_NOT_FOUND", "Report version not found.")
         latest = versions(session, report.id)[0]
+        new_version_no = latest.version_no + 1
+        restored_data = source.data_snapshot
+        if isinstance(restored_data, dict) and isinstance(restored_data.get("sections"), dict):
+            rewritten_sections = _rewrite_chart_version_urls(
+                restored_data["sections"], new_version_no
+            )
+            if rewritten_sections is not restored_data["sections"]:
+                restored_data = {**restored_data, "sections": rewritten_sections}
         restored = ReportSnapshot(
             report_id=report.id,
             created_by=user.id,
-            version_no=latest.version_no + 1,
+            version_no=new_version_no,
             status="generated",
             baseline_version_id=source.baseline_version_id,
             plan_version_id=source.plan_version_id,
             contribution_snapshot_id=source.contribution_snapshot_id,
-            data_snapshot=source.data_snapshot,
+            data_snapshot=restored_data,
         )
         session.add(restored)
         report.status = "generated"
@@ -2209,6 +2497,7 @@ def _complete_preview_inline(
         appendix,
         actor_id=actor_id,
         use_ai=True,
+        version_no=version.version_no,
     )
     contribution_id = data.get("contribution_snapshot_id")
     version.contribution_snapshot_id = UUID(contribution_id) if contribution_id else None
@@ -2285,6 +2574,9 @@ def _ensure_pdf_font() -> None:
 
 
 _MD_HEADING_RE = re.compile(r"^\s*(#{1,6})\s+(.*?)\s*#*\s*$")
+_MD_IMAGE_LINE_RE = re.compile(
+    r"^\s*!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+(?:\"[^\"]*\"|'[^']*'))?\s*\)\s*$"
+)
 _MD_TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-{1,}:?\s*(?:\|\s*:?-{1,}:?\s*)*\|?\s*$")
 _MD_UL_RE = re.compile(r"^\s*[-*+]\s+(.*)$")
 _MD_OL_RE = re.compile(r"^\s*\d+[.)]\s+(.*)$")
@@ -2316,6 +2608,11 @@ def _parse_markdown_blocks(markdown_text: str) -> list[dict[str, Any]]:
         hm = _MD_HEADING_RE.match(raw)
         if hm:
             blocks.append({"type": "heading", "level": len(hm.group(1)), "text": hm.group(2)})
+            idx += 1
+            continue
+        im = _MD_IMAGE_LINE_RE.match(raw)
+        if im:
+            blocks.append({"type": "image", "alt": im.group(1).strip(), "src": im.group(2).strip()})
             idx += 1
             continue
         if (
@@ -2368,6 +2665,7 @@ def _parse_markdown_blocks(markdown_text: str) -> list[dict[str, Any]]:
             if (
                 not nxt.strip()
                 or _MD_HEADING_RE.match(nxt)
+                or _MD_IMAGE_LINE_RE.match(nxt)
                 or _MD_UL_RE.match(nxt)
                 or _MD_OL_RE.match(nxt)
                 or nxt.strip().startswith(">")
@@ -2419,6 +2717,32 @@ def _md_inline_to_rl_markup(text: str) -> str:
     if pos < len(cleaned):
         parts.append(xml_escape(cleaned[pos:]))
     return "".join(parts)
+
+
+def _resolve_chart_png_for_export(data: dict, src: str) -> bytes | None:
+    match = _CHART_URL_RE.search(src or "")
+    if not match:
+        return None
+    chart_key = match.group(1)
+    try:
+        return render_chart_from_snapshot(data, chart_key)
+    except Exception:
+        logger.warning("Failed to render report chart %s during export", chart_key, exc_info=True)
+        return None
+
+
+def _fit_pdf_image_size(
+    png_bytes: bytes, max_w: float, max_h: float = 270.0
+) -> tuple[float, float]:
+    try:
+        with PILImage.open(BytesIO(png_bytes)) as im:
+            px_w, px_h = im.size
+    except Exception:
+        return max_w, max_w * 0.45
+    if px_w <= 0 or px_h <= 0:
+        return max_w, max_w * 0.45
+    scale = min(max_w / float(px_w), max_h / float(px_h))
+    return float(px_w) * scale, float(px_h) * scale
 
 
 def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
@@ -2525,6 +2849,27 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
                 if btype == "heading":
                     lvl = min(4, max(2, int(block["level"]) - 1))
                     document.add_heading(_sanitize_text(block["text"]), level=lvl)
+                elif btype == "image":
+                    alt_text = _sanitize_text(block.get("alt") or "项目插图")
+                    png_bytes = _resolve_chart_png_for_export(data, str(block.get("src") or ""))
+                    if png_bytes:
+                        img_p = document.add_paragraph()
+                        img_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        img_p.add_run().add_picture(BytesIO(png_bytes), width=Inches(6.0))
+                        if alt_text:
+                            cap_p = document.add_paragraph()
+                            cap_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            cap_run = cap_p.add_run(alt_text)
+                            cap_run.italic = True
+                            cap_run.font.size = Pt(9)
+                            cap_run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+                    elif alt_text:
+                        cap_p = document.add_paragraph()
+                        cap_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        cap_run = cap_p.add_run(f"[插图：{alt_text}]")
+                        cap_run.italic = True
+                        cap_run.font.size = Pt(9)
+                        cap_run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
                 elif btype == "table":
                     head = block["head"]
                     rows = block["rows"]
@@ -2678,6 +3023,17 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
         textColor=colors.HexColor("#0F172A"),
         wordWrap="CJK",
     )
+    st_caption = ParagraphStyle(
+        "GPCaption",
+        fontName="STSong-Light",
+        fontSize=8.5,
+        leading=13,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#64748B"),
+        spaceBefore=4,
+        spaceAfter=8,
+        wordWrap="CJK",
+    )
     st_footer_end = ParagraphStyle(
         "GPFooterEnd",
         fontName="STSong-Light",
@@ -2740,6 +3096,21 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
             btype = block["type"]
             if btype == "heading":
                 story.append(Paragraph(f"<b>{_md_inline_to_rl_markup(block['text'])}</b>", st_h2))
+            elif btype == "image":
+                alt_text = _sanitize_text(block.get("alt") or "项目插图")
+                png_bytes = _resolve_chart_png_for_export(data, str(block.get("src") or ""))
+                if png_bytes:
+                    draw_w, draw_h = _fit_pdf_image_size(png_bytes, usable_w, max_h=270.0)
+                    img_flowable = RLImage(BytesIO(png_bytes), width=draw_w, height=draw_h)
+                    img_flowable.hAlign = "CENTER"
+                    figure_group: list[Any] = [Spacer(1, 4), img_flowable]
+                    if alt_text:
+                        figure_group.append(Paragraph(f"<i>{xml_escape(alt_text)}</i>", st_caption))
+                    else:
+                        figure_group.append(Spacer(1, 8))
+                    story.append(KeepTogether(figure_group))
+                elif alt_text:
+                    story.append(Paragraph(f"<i>[插图：{xml_escape(alt_text)}]</i>", st_caption))
             elif btype == "table":
                 head = block["head"]
                 rows = block["rows"]
@@ -2828,6 +3199,50 @@ def _render_export_inline_safe(
         artifact.completed_at = datetime.now(UTC)
         session.commit()
         raise ApiError(500, "REPORT_EXPORT_FAILED", artifact.error) from render_err
+
+
+@router.get("/versions/{version_no}/charts/{chart_key}.png")
+def get_report_chart(
+    project_id: UUID,
+    version_no: int,
+    chart_key: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    if not CHART_KEY_RE.match(chart_key):
+        raise ApiError(404, "REPORT_CHART_NOT_FOUND", "Unknown report chart.")
+    access = get_project_access(session, user, project_id)
+    report = session.scalar(select(Report).where(Report.project_id == project_id))
+    version = (
+        session.scalar(
+            select(ReportSnapshot).where(
+                ReportSnapshot.report_id == report.id,
+                ReportSnapshot.version_no == version_no,
+            )
+        )
+        if report
+        else None
+    )
+    if version is None:
+        raise ApiError(404, "REPORT_VERSION_NOT_FOUND", "Report version not found.")
+    if version.status not in {"generated", "finalized"}:
+        raise ApiError(409, "REPORT_NOT_READY", "Wait for report preview to finish.")
+    snapshot = version.data_snapshot if isinstance(version.data_snapshot, dict) else {}
+    fallback_facts: dict[str, Any] | None = None
+    if not snapshot.get("facts") and chart_key in ALLOWED_DEFAULT_CHART_KEYS:
+        project_name = str(snapshot.get("project_name") or access.project.name)
+        fallback_facts = collect_project_facts(session, project_id, project_name)
+    png_bytes = render_chart_from_snapshot(snapshot, chart_key, fallback_facts=fallback_facts)
+    if png_bytes is None:
+        raise ApiError(404, "REPORT_CHART_NOT_FOUND", "Report chart not found.")
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/versions/{version_no}/markdown")

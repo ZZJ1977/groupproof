@@ -1,15 +1,21 @@
 """D4 report authoring, 7-chapter structure, AI rewrite, and rich export regression checks."""
 
 import io
+import zipfile
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from docx import Document as DocxReader
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from PIL import Image as PILImage
 
-from app.api.errors import ApiError
-from app.modules.d import report_tasks, reporting
+from app.api.auth import get_current_user
+from app.api.errors import ApiError, install_exception_handlers
+from app.db.session import get_session
+from app.modules.d import report_charts, report_tasks, reporting
 from app.modules.d.reporting import (
     CHAPTER_ORDER,
     _content_disposition,
@@ -438,3 +444,290 @@ def test_report_editor_requires_leader_or_teacher_and_active_project():
             )
         )
     assert archived.value.status_code == 403
+
+
+def test_all_five_default_charts_render_valid_high_dpi_cjk_pngs():
+    facts = _sample_facts()
+    specs = report_charts.build_default_visual_specs(facts)
+    assert [s["id"] for s in specs] == [
+        "architecture",
+        "workflow",
+        "milestones",
+        "evidence",
+        "contribution",
+    ]
+    for spec in specs:
+        png = report_charts.render_visual_spec(spec, facts)
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        assert len(png) > 5000, f"chart {spec['id']} unexpectedly small ({len(png)} bytes)"
+        with PILImage.open(io.BytesIO(png)) as img:
+            w, h = img.size
+            assert w == report_charts.CANVAS_WIDTH
+            assert h >= 450
+
+
+def test_ai_custom_visual_specs_sanitization_and_arbitrary_slug_rendering():
+    facts = _sample_facts()
+    raw_visuals = [
+        {
+            "id": "Proposal-Arch!",
+            "section_key": "overview",
+            "template": "layered_architecture",
+            "badge": "总体架构",
+            "title": "智能课程协作系统三层架构",
+            "subtitle": "依据项目提案动态绘制",
+            "caption": "智能课程协作系统架构总览",
+            "payload": {
+                "layers": [
+                    {
+                        "name": "终端与前端层",
+                        "accent": "sky",
+                        "nodes": [{"title": "Web 协作端", "subtitle": "Next.js App Router"}],
+                    },
+                    {
+                        "name": "业务与 AI 服务层",
+                        "accent": "emerald",
+                        "nodes": [
+                            {
+                                "title": "模块 A：底座与认证",
+                                "subtitle": "负责人：卓子杰",
+                                "metric": "8/8 任务",
+                                "progress": 100,
+                            }
+                        ],
+                    },
+                ]
+            },
+        },
+        {
+            "id": "sprint_loop",
+            "section_key": "workflow",
+            "template": "process_flow",
+            "badge": "迭代闭环",
+            "title": "四周敏捷迭代与验证流水线",
+            "caption": "图 99：四周敏捷迭代与验证流水线",
+            "payload": {
+                "steps": [
+                    {"step": "01", "title": "需求对齐", "metric": "20 条", "detail": "冻结基线"},
+                    {"step": "02", "title": "并行开发", "metric": "142 提交", "detail": "PR 评审"},
+                    {"step": "03", "title": "自动验收", "metric": "114 证据", "detail": "人工确认"},
+                ]
+            },
+        },
+        {
+            "id": "invalid_tpl",
+            "section_key": "progress",
+            "template": "unsupported_3d_pie",
+            "title": "Should be dropped",
+            "payload": {},
+        },
+        {
+            "id": "invalid_sec",
+            "section_key": "unknown_chapter",
+            "template": "process_flow",
+            "title": "Should also be dropped",
+            "payload": {},
+        },
+    ]
+
+    cleaned = report_charts.sanitize_visual_specs(raw_visuals, facts)
+    assert len(cleaned) == 2
+    assert [sp["id"] for sp in cleaned] == ["proposal-arch", "sprint_loop"]
+    assert cleaned[0]["caption"] == "图 1：智能课程协作系统架构总览"
+    assert cleaned[1]["caption"] == "图 2：四周敏捷迭代与验证流水线"
+
+    snapshot = {"visuals": cleaned, "facts": facts}
+    for sp in cleaned:
+        png = report_charts.render_chart_from_snapshot(snapshot, sp["id"])
+        assert png is not None and png.startswith(b"\x89PNG\r\n\x1a\n") and len(png) > 5000
+    assert report_charts.render_chart_from_snapshot(snapshot, "../bad") is None
+    assert report_charts.render_chart_from_snapshot(snapshot, "unknown_slug") is None
+
+
+def test_plan_report_visuals_with_ai_and_chapter_injection_preserves_footnotes(monkeypatch):
+    facts = _sample_facts()
+    project_id = uuid4()
+
+    def fake_openrouter(**kwargs):
+        assert kwargs["feature"] == "plan_report_visuals"
+        return (
+            {
+                "visuals": [
+                    {
+                        "id": "domain_arch",
+                        "section_key": "overview",
+                        "template": "layered_architecture",
+                        "title": "项目领域分层架构",
+                        "caption": "项目领域分层架构",
+                        "payload": {},
+                    },
+                    {
+                        "id": "member_matrix",
+                        "section_key": "contribution",
+                        "template": "member_comparison",
+                        "title": "团队贡献多维矩阵",
+                        "caption": "团队贡献多维矩阵",
+                        "payload": {},
+                    },
+                ]
+            },
+            "deepseek/deepseek-v3.2",
+        )
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
+    visuals, model = reporting._plan_report_visuals_with_ai(
+        facts, actor_id=uuid4(), project_id=project_id
+    )
+    assert model == "deepseek/deepseek-v3.2"
+    assert visuals is not None and len(visuals) == 2
+
+    chapters = render_fallback_chapters(facts, project_id=project_id, version_no=2, visuals=visuals)
+    expected_arch_url = f"/api/v1/projects/{project_id}/reports/versions/2/charts/domain_arch.png"
+    expected_contrib_url = (
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/member_matrix.png"
+    )
+    assert f"![图 1：项目领域分层架构]({expected_arch_url})" in chapters["overview"]
+    assert f"![图 2：团队贡献多维矩阵]({expected_contrib_url})" in chapters["contribution"]
+    # Footnote must remain at the bottom of Chapter 6
+    assert "当前基于最新贡献快照 v4 编制" in chapters["contribution"].splitlines()[-1]
+
+    # Re-injecting must be idempotent (no duplicate image lines)
+    re_injected = reporting._inject_visuals_into_chapters(
+        chapters, visuals, project_id=project_id, version_no=2
+    )
+    assert re_injected["overview"].count(expected_arch_url) == 1
+
+    # Rewriting version URLs updates v2 -> v3 cleanly
+    bumped = reporting._rewrite_chart_version_urls(chapters, 3)
+    assert "/versions/3/charts/domain_arch.png" in bumped["overview"]
+    assert "/versions/2/charts/domain_arch.png" not in bumped["overview"]
+
+
+def test_pdf_and_docx_exports_embed_real_png_charts():
+    facts = _sample_facts()
+    project_id = uuid4()
+    visuals = report_charts.build_default_visual_specs(facts)
+    chapters = render_fallback_chapters(facts, project_id=project_id, version_no=1, visuals=visuals)
+    data = {
+        "project_name": facts["project"]["name"],
+        "counts": facts["counts"],
+        "chapter_order": list(CHAPTER_ORDER),
+        "sections": chapters,
+        "visuals": visuals,
+        "facts": reporting._snapshot_chart_facts(facts),
+        "evidence_records": facts["evidence_records"],
+    }
+
+    blocks = _parse_markdown_blocks(chapters["overview"])
+    img_blocks = [b for b in blocks if b["type"] == "image"]
+    assert len(img_blocks) == 1
+    assert img_blocks[0]["alt"] == "图 1：系统架构与模块分工总览图"
+
+    pdf_bytes, pdf_mime = render_document(data, "pdf")
+    docx_bytes, docx_mime = render_document(data, "docx")
+    md_bytes, md_mime = render_document(data, "md")
+
+    assert pdf_mime == "application/pdf"
+    assert pdf_bytes.startswith(b"%PDF-") and len(pdf_bytes) > 50000
+    assert b"/Subtype /Image" in pdf_bytes
+
+    assert "wordprocessingml" in docx_mime
+    assert docx_bytes.startswith(b"PK") and len(docx_bytes) > 50000
+    with zipfile.ZipFile(io.BytesIO(docx_bytes)) as zf:
+        media_pngs = [
+            name
+            for name in zf.namelist()
+            if name.startswith("word/media/") and name.endswith(".png")
+        ]
+        assert len(media_pngs) == 5
+        for media_name in media_pngs:
+            raw_img = zf.read(media_name)
+            assert raw_img.startswith(b"\x89PNG\r\n\x1a\n") and len(raw_img) > 5000
+
+    assert md_mime == "text/markdown; charset=utf-8"
+    md_text = md_bytes.decode("utf-8")
+    expected_md_img = (
+        f"![图 1：系统架构与模块分工总览图]"
+        f"(/api/v1/projects/{project_id}/reports/versions/1/charts/architecture.png)"
+    )
+    assert expected_md_img in md_text
+
+
+def test_report_chart_http_endpoint_returns_png_and_enforces_validation(monkeypatch):
+    project_id = uuid4()
+    report_id = uuid4()
+    facts = _sample_facts()
+    visuals = report_charts.build_default_visual_specs(facts)
+    custom_spec = {
+        **visuals[0],
+        "id": "custom_proposal_map",
+        "title": "自定义提案架构图",
+        "caption": "图 1：自定义提案架构图",
+    }
+    snap_obj = SimpleNamespace(
+        id=uuid4(),
+        report_id=report_id,
+        version_no=2,
+        status="generated",
+        data_snapshot={
+            "project_name": facts["project"]["name"],
+            "visuals": [custom_spec, *visuals[1:]],
+            "facts": reporting._snapshot_chart_facts(facts),
+        },
+    )
+    report_obj = SimpleNamespace(id=report_id, project_id=project_id)
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        def scalar(self, _stmt):
+            self.calls += 1
+            return report_obj if self.calls == 1 else snap_obj
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_request_id(request, call_next):
+        request.state.request_id = "test-req-id"
+        return await call_next(request)
+
+    install_exception_handlers(app)
+    app.include_router(reporting.router)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid4(), name="测试员")
+    app.dependency_overrides[get_session] = lambda: FakeSession()
+
+    monkeypatch.setattr(
+        reporting,
+        "get_project_access",
+        lambda *_a, **_k: SimpleNamespace(project=SimpleNamespace(name=facts["project"]["name"])),
+    )
+
+    client = TestClient(app)
+
+    # Custom AI-authored visual slug works
+    res_custom = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/custom_proposal_map.png"
+    )
+    assert res_custom.status_code == 200
+    assert res_custom.headers["content-type"] == "image/png"
+    assert res_custom.headers["x-content-type-options"] == "nosniff"
+    assert "max-age=300" in res_custom.headers["cache-control"]
+    assert res_custom.content.startswith(b"\x89PNG\r\n\x1a\n") and len(res_custom.content) > 5000
+
+    # Built-in default key also works
+    res_wf = client.get(f"/api/v1/projects/{project_id}/reports/versions/2/charts/workflow.png")
+    assert res_wf.status_code == 200
+    assert res_wf.content.startswith(b"\x89PNG\r\n\x1a\n") and len(res_wf.content) > 5000
+
+    # Unknown chart key returns 404
+    res_missing = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/does_not_exist.png"
+    )
+    assert res_missing.status_code == 404
+
+    # Invalid slug returns 404
+    res_bad = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/INVALID%20KEY.png"
+    )
+    assert res_bad.status_code == 404
