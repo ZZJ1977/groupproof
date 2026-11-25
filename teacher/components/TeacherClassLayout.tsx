@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +26,8 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
+import "@/shared/styles/lux-teacher.css";
+import { MorphNav, type MorphNavItem, useHubSlideDirection } from "@/shared/components/lux/MorphNav";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -75,6 +77,7 @@ export type TeacherCourseLegacyTab =
 
 type HubId = "home" | "groups" | "actions" | "projects" | "settings";
 
+const HUB_IDS: readonly HubId[] = ["home", "groups", "actions", "projects", "settings"];
 const ROSTER_STORAGE_KEY = "gp-teacher-roster-open";
 const EMPTY_ROSTER: RosterStudent[] = [];
 
@@ -118,6 +121,15 @@ export function TeacherClassLayout({
   const [quickStudent, setQuickStudent] = useState<RosterStudent | null>(null);
   const [quickDrawerOpen, setQuickDrawerOpen] = useState(false);
   const [quickDrawerError, setQuickDrawerError] = useState<string | undefined>();
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -250,24 +262,22 @@ export function TeacherClassLayout({
     try {
       await navigator.clipboard.writeText(code);
       setCopiedCode(true);
-      window.setTimeout(() => setCopiedCode(false), 1800);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => setCopiedCode(false), 1800);
     } catch {
       setInviteDialogOpen(true);
     }
   };
 
   const activeHub = resolveActiveHub(activeTab);
+  const slideDir = useHubSlideDirection(courseId, activeHub, HUB_IDS);
   const canManage = (detail.data?.can_manage ?? false) && (perms.loading || perms.isTeacher);
   const rosterCount = roster.data?.counts.all ?? detail.data?.student_count;
   const rosterOpen = isXlDesktop ? desktopRosterOpen : mobileSheetOpen;
 
-  const hubs: {
-    id: HubId;
-    label: string;
-    href: string;
-    icon: typeof Home;
-    badge?: number;
-  }[] = [
+  const hubs: MorphNavItem[] = [
     { id: "home", label: tr("概览"), href: `/teacher/courses/${courseId}`, icon: Home },
     { id: "groups", label: tr("组队与名单"), href: `/teacher/courses/${courseId}/groups`, icon: Users },
     {
@@ -284,10 +294,10 @@ export function TeacherClassLayout({
   return (
     <div className="min-w-0 space-y-4">
       <div className="z-10 flex min-w-0 flex-wrap items-center gap-2 rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] px-2.5 py-2 shadow-[var(--gp-shadow-card)] lg:sticky lg:top-[56px] xl:flex-nowrap xl:justify-between xl:gap-1 xl:px-2 2xl:gap-2 2xl:px-3">
-        <div className="order-1 flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:flex-nowrap xl:gap-1 xl:overflow-hidden 2xl:gap-1.5">
+        <div className="order-1 -my-1 flex min-w-0 flex-1 flex-wrap items-center gap-1.5 py-1 sm:flex-nowrap xl:gap-1 xl:overflow-hidden 2xl:gap-1.5">
           <Link
             href="/teacher/courses"
-            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-2 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] transition-colors hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)] xl:px-1.5 2xl:h-8 2xl:px-2"
+            className="gp-toolbar-pill gp-rainbow-ring inline-flex h-7 shrink-0 items-center gap-1 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-2 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] transition-colors hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)] xl:px-1.5 2xl:h-8 2xl:px-2"
           >
             <ArrowLeft size={13} aria-hidden="true" />
             <span>{tr("班级")}</span>
@@ -301,7 +311,7 @@ export function TeacherClassLayout({
                     type="button"
                     aria-label={tr("切换班级")}
                     title={detail.data.name}
-                    className="inline-flex h-7 max-w-[180px] min-w-0 items-center gap-1 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] px-2 text-sm font-semibold text-[var(--gp-ink,#1f2329)] transition-colors hover:bg-[var(--gp-surface-subtle,#f8f9fa)] sm:min-w-[60px] 2xl:h-8 2xl:max-w-[220px] 2xl:px-2.5"
+                    className="gp-toolbar-pill gp-rainbow-ring inline-flex h-7 max-w-[180px] min-w-0 items-center gap-1 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] px-2 text-sm font-semibold text-[var(--gp-ink,#1f2329)] transition-colors hover:bg-[var(--gp-surface-subtle,#f8f9fa)] sm:min-w-[60px] 2xl:h-8 2xl:max-w-[220px] 2xl:px-2.5"
                   >
                     <span className="truncate">{detail.data.name}</span>
                     <ChevronDown size={13} className="shrink-0 text-[var(--gp-muted,#646a73)]" aria-hidden="true" />
@@ -360,7 +370,7 @@ export function TeacherClassLayout({
                 {statusLabels[detail.data.status] ? tr(statusLabels[detail.data.status]) : detail.data.status}
               </span>
               {(detail.data.invite_code || canManage) && (
-                <div className="inline-flex shrink-0 items-center rounded-full border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] p-0.5">
+                <div className="gp-toolbar-pill gp-rainbow-ring inline-flex shrink-0 items-center rounded-full border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] p-0.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -368,7 +378,7 @@ export function TeacherClassLayout({
                       setInviteDialogOpen(true);
                     }}
                     title={tr("点击打开邀请码管理")}
-                    className="gp-tabular inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-[11px] font-medium text-[var(--gp-ink-soft,#4e5969)] transition-colors hover:bg-white hover:text-[var(--gp-ink,#1f2329)] 2xl:px-2"
+                    className="gp-tabular inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-[11px] font-medium text-[var(--gp-ink-soft,#4e5969)] transition-[background-color,color,transform] duration-150 hover:bg-white hover:text-[var(--gp-ink,#1f2329)] active:scale-[0.96] 2xl:px-2"
                   >
                     <KeyRound size={11} className="shrink-0 text-[var(--gp-action,#3370ff)]" aria-hidden="true" />
                     <span className="hidden min-[1720px]:inline">{tr("邀请码")}:</span>
@@ -382,7 +392,7 @@ export function TeacherClassLayout({
                       onClick={() => void copyHeaderInvite(detail.data!.invite_code!)}
                       aria-label={copiedCode ? tr("已复制邀请码") : tr("复制邀请码")}
                       title={copiedCode ? tr("已复制邀请码") : tr("复制邀请码")}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--gp-muted,#646a73)] transition-colors hover:bg-white hover:text-[var(--gp-action,#3370ff)] xl:w-5 2xl:w-6"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--gp-muted,#646a73)] transition-[background-color,color,transform] duration-150 hover:bg-white hover:text-[var(--gp-action,#3370ff)] active:scale-[0.94] xl:w-5 2xl:w-6"
                     >
                       {copiedCode ? (
                         <Check size={11} className="text-[#008a5c]" aria-hidden="true" />
@@ -397,97 +407,75 @@ export function TeacherClassLayout({
           )}
         </div>
 
-        <nav
-          aria-label="班级管理子导航"
-          data-testid="teacher-course-nav"
-          className="order-3 flex w-full min-w-0 max-w-full flex-wrap items-center gap-1 xl:order-2 xl:w-auto xl:shrink-0 xl:flex-nowrap xl:gap-0.5 2xl:gap-1"
-        >
-          {hubs.map((hub) => {
-            const Icon = hub.icon;
-            const active = activeHub === hub.id;
-            return (
-              <Link
-                key={hub.id}
-                href={hub.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] active:scale-[0.98] xl:max-[1535px]:gap-1 xl:max-[1535px]:px-1.5 xl:max-[1535px]:py-1 xl:max-[1535px]:text-[11.5px] 2xl:max-[1679px]:gap-1 2xl:max-[1679px]:px-2",
-                  active
-                    ? "bg-[#e8f0fe] font-semibold text-[#1d4ed8]"
-                    : "text-[var(--gp-ink-soft,#4e5969)] hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)]",
-                )}
-              >
-                <Icon size={13} className="shrink-0 xl:max-[1679px]:hidden" aria-hidden="true" />
-                <span>{hub.label}</span>
-                {hub.badge !== undefined && (
-                  <span className="gp-tabular inline-flex min-w-[16px] items-center justify-center rounded-full bg-[#d93025] px-1 py-0.5 text-[10px] font-bold leading-none text-white">
-                    {hub.badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild id="teacher-course-more-menu">
-              <button
-                type="button"
-                aria-label={tr("切换子页面")}
-                title={tr("更多")}
-                className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] transition-colors hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)] xl:px-1.5 2xl:px-2"
-              >
-                <MoreHorizontal size={14} aria-hidden="true" />
-                <span className="sr-only">{tr("更多")}</span>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="gp-teacher-portal w-48">
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/actions`)}>
-                <CheckSquare size={13} />
-                {tr("待办审批")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/member-changes`)}>
-                <UserCog size={13} />
-                {tr("成员变动")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/appeals`)}>
-                <ShieldCheck size={13} />
-                {tr("申诉裁决")}
-              </DropdownMenuItem>
-              <div className="my-1 border-t border-[var(--gp-border-subtle,#ebedf0)]" />
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/projects`)}>
-                <ListTree size={13} />
-                {tr("项目监控")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/reports`)}>
-                <BarChart3 size={13} />
-                {tr("班级数据报告")}
-              </DropdownMenuItem>
-              <div className="my-1 border-t border-[var(--gp-border-subtle,#ebedf0)]" />
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/settings`)}>
-                <Settings size={13} />
-                {tr("基础设置")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/rules`)}>
-                <ClipboardList size={13} />
-                {tr("规则与模板")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/files`)}>
-                <Folder size={13} />
-                {tr("课程资料")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/announcements`)}>
-                <Bell size={13} />
-                {tr("课程公告")}
-              </DropdownMenuItem>
-              {perms.isOwner && (
-                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/staff`)}>
-                  <Shield size={13} />
-                  {tr("助教管理")}
+        <MorphNav
+          items={hubs}
+          activeId={activeHub}
+          courseKey={courseId}
+          ariaLabel="班级管理子导航"
+          testId="teacher-course-nav"
+          className="order-3 w-full xl:order-2 xl:w-auto xl:shrink-0"
+          trailing={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild id="teacher-course-more-menu">
+                <button
+                  type="button"
+                  aria-label={tr("切换子页面")}
+                  title={tr("更多")}
+                  className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-xs font-medium text-[var(--gp-ink-soft,#4e5969)] transition-[background-color,color,transform] duration-150 hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)] active:scale-[0.96] xl:px-1.5 2xl:px-2"
+                >
+                  <MoreHorizontal size={14} aria-hidden="true" />
+                  <span className="sr-only">{tr("更多")}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="gp-teacher-portal w-48">
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/actions`)}>
+                  <CheckSquare size={13} />
+                  {tr("待办审批")}
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </nav>
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/member-changes`)}>
+                  <UserCog size={13} />
+                  {tr("成员变动")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/appeals`)}>
+                  <ShieldCheck size={13} />
+                  {tr("申诉裁决")}
+                </DropdownMenuItem>
+                <div className="my-1 border-t border-[var(--gp-border-subtle,#ebedf0)]" />
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/projects`)}>
+                  <ListTree size={13} />
+                  {tr("项目监控")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/reports`)}>
+                  <BarChart3 size={13} />
+                  {tr("班级数据报告")}
+                </DropdownMenuItem>
+                <div className="my-1 border-t border-[var(--gp-border-subtle,#ebedf0)]" />
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/settings`)}>
+                  <Settings size={13} />
+                  {tr("基础设置")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/rules`)}>
+                  <ClipboardList size={13} />
+                  {tr("规则与模板")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/files`)}>
+                  <Folder size={13} />
+                  {tr("课程资料")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/announcements`)}>
+                  <Bell size={13} />
+                  {tr("课程公告")}
+                </DropdownMenuItem>
+                {perms.isOwner && (
+                  <DropdownMenuItem onSelect={() => router.push(`/teacher/courses/${courseId}/staff`)}>
+                    <Shield size={13} />
+                    {tr("助教管理")}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
 
         <div className="order-2 ml-auto shrink-0 xl:order-3 xl:ml-0">
           <Button
@@ -498,7 +486,7 @@ export function TeacherClassLayout({
             data-testid="roster-toggle-btn"
             aria-expanded={rosterOpen}
             onClick={toggleRoster}
-            className="h-7 px-2 text-xs xl:px-1.5 xl:text-[11.5px] 2xl:h-8 2xl:px-2.5 2xl:text-xs"
+            className="gp-toolbar-pill gp-rainbow-ring h-7 px-2 text-xs xl:px-1.5 xl:text-[11.5px] 2xl:h-8 2xl:px-2.5 2xl:text-xs"
           >
             <Users size={13} aria-hidden="true" />
             <span className="gp-tabular">
@@ -517,18 +505,31 @@ export function TeacherClassLayout({
         </div>
       </div>
 
-      {isXlDesktop && desktopRosterOpen ? (
-        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="min-w-0 space-y-5">{children}</div>
+      <div
+        className={cn(
+          isXlDesktop &&
+            desktopRosterOpen &&
+            "grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_280px]",
+        )}
+      >
+        <div
+          key={activeHub}
+          data-slide={slideDir}
+          className={cn(
+            "gp-hub-panel min-w-0 space-y-5",
+            slideDir !== "none" && "u354-hub-content",
+          )}
+        >
+          {children}
+        </div>
+        {isXlDesktop && desktopRosterOpen && (
           <ClassRosterSidebar
             courseId={courseId}
             showCollapseButton
             onCollapse={toggleRoster}
           />
-        </div>
-      ) : (
-        <div className="min-w-0 space-y-5">{children}</div>
-      )}
+        )}
+      </div>
 
       {!isXlDesktop && (
         <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
