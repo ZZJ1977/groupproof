@@ -715,8 +715,8 @@ export function AdminProjectsPage() {
             </tbody>
           </Table>
           {!data.items.length && <Empty>暂无符合条件的项目</Empty>}
-          <div className={styles.pager}>
-            <span className="text-xs text-slate-500">
+          <div className={styles.tableFooter}>
+            <span>
               {tr("共 {0} 条 · 第 {1} 页", { 0: data.total, 1: page })}
             </span>
             <div className={styles.actions}>
