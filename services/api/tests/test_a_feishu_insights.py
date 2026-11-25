@@ -231,6 +231,26 @@ def test_feishu_insights_rejects_outsider(db, scope):
     assert err2.value.status_code in (403, 404)
 
 
+def test_feishu_insights_allows_course_teacher_read_only(db, scope):
+    _seed_messages(db, scope.project.id)
+    teacher = scope.users["teacher"]
+    peer = scope.users["peer"]
+
+    view = feishu_insights.get_collaboration_insights(db, teacher, scope.project.id)
+    assert view["status"] == "not_generated"
+    assert view["total_messages"] == 4
+
+    with pytest.raises(ApiError) as write_err:
+        feishu_insights.analyze_collaboration_insights(
+            db, teacher, scope.project.id, provider=FakeProvider()
+        )
+    assert write_err.value.status_code == 403
+
+    with pytest.raises(ApiError) as peer_err:
+        feishu_insights.get_collaboration_insights(db, peer, scope.project.id)
+    assert peer_err.value.status_code == 404
+
+
 def test_ai_function_analyze_feishu_collaboration_unit():
     msg_id = uuid4()
     payload = ai.FeishuCollaborationInput(

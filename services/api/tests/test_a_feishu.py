@@ -626,3 +626,26 @@ def test_members_can_see_linked_chats_outsiders_cannot(db, scope):
     with pytest.raises(ApiError) as exc:
         feishu.list_linked_chats(db, scope.users["outsider"], scope.project.id)
     assert exc.value.status_code == 404
+
+
+def test_course_teacher_can_read_linked_chats_but_cannot_write(db, scope):
+    link_visible_chat(db, scope.users["leader"], scope.project.id, CHAT)
+    teacher = scope.users["teacher"]
+    peer = scope.users["peer"]
+
+    # 本课教师可只读查看项目绑定的飞书群元数据
+    links = feishu.list_linked_chats(db, teacher, scope.project.id)
+    assert [link.chat_id for link in links] == [CHAT]
+
+    # 本课教师不能绑定/同步飞书群（403）
+    with pytest.raises(ApiError) as link_err:
+        feishu.link_chat(db, teacher, scope.project.id, "oc_other", None)
+    assert link_err.value.status_code == 403
+    with pytest.raises(ApiError) as sync_err:
+        feishu.sync_project(db, teacher, scope.project.id, None)
+    assert sync_err.value.status_code == 403
+
+    # 未获授权的非项目成员（同课同学）仍不可读（404）
+    with pytest.raises(ApiError) as peer_err:
+        feishu.list_linked_chats(db, peer, scope.project.id)
+    assert peer_err.value.status_code == 404

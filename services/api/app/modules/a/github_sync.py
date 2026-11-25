@@ -87,7 +87,7 @@ def link_repo(
 
 
 def list_linked_repos(session: Session, actor: User, project_id: UUID) -> list[GithubRepoLink]:
-    permissions.require_project_member(session, actor, project_id, write=False)
+    permissions.require_project_read(session, actor, project_id)
     return list(
         session.scalars(
             select(GithubRepoLink)

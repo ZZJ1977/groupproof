@@ -1127,7 +1127,7 @@ def get_activity_stats(
     days: int | None = None,
 ) -> dict[str, Any]:
     """按成员和可选时间范围聚合本项目已同步的 GitHub 提交次数与代码增减统计（只读，自动排除机器人/Claude）。"""
-    permissions.require_project_member(session, actor, project_id, write=False)
+    permissions.require_project_read(session, actor, project_id)
 
     if date_from is not None and date_to is not None and date_from > date_to:
         raise ApiError(422, "INVALID_DATE_RANGE", "开始日期不能晚于结束日期。")
