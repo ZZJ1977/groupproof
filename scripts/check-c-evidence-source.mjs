@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildCandidateEvidence, draftFromFeishu, draftFromGithub, emptyEvidenceDraft, githubEvidenceUrl, taskAcceptsEvidence } from "../features/c/evidence-source.ts";
+import { buildCandidateEvidence, draftFromFeishu, draftFromGithub, emptyEvidenceDraft, githubEvidenceUrl, taskAcceptsEvidence } from "../shared/legacy-mock/features/c/evidence-source.ts";
 
 let passed = 0;
 function check(message, actual, expected) { assert.deepEqual(actual, expected, message); passed += 1; }

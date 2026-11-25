@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { seedData } from "../mocks/seed";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
 
 async function asTeacher(page: Page, actorId: "teacher-1" | "teacher-2") {
   const data = structuredClone(seedData);

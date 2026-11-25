@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
 import {
   advanceSetupStep,
   runMockRequirementAnalysis,
   saveSetupDraft,
-} from "../lib/commands/setup.ts";
-import { confirmBaselineSelf, publishBaseline } from "../lib/commands/baseline.ts";
+} from "../shared/legacy-mock/commands/setup.ts";
+import { confirmBaselineSelf, publishBaseline } from "../shared/legacy-mock/commands/baseline.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

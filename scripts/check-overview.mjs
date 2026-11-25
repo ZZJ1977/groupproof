@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { deriveProgress, getProjectOverview, getProjectSummary, weightedProgress } from "../lib/overview.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { deriveProgress, getProjectOverview, getProjectSummary, weightedProgress } from "../shared/legacy-mock/overview.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

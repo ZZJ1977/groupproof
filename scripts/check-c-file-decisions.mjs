@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { migrateWorkspace } from "../lib/versioning.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { canWriteProjectFiles, designateProjectFile } from "../features/c/file-decisions.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { migrateWorkspace } from "../shared/legacy-mock/versioning.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { canWriteProjectFiles, designateProjectFile } from "../shared/legacy-mock/features/c/file-decisions.ts";
 
 let passed = 0;
 function check(message, actual, expected) { assert.deepEqual(actual, expected, message); passed += 1; }

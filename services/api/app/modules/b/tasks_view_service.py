@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api.errors import ApiError
 from app.db.models import FunctionalModule, Milestone, Requirement, Task, User
 from app.modules.a import permissions
+from app.modules.b.code_progress_service import task_commit_metrics, task_criteria_metrics
 from app.modules.b.courses_schemas import PersonDTO
 from app.modules.b.plan_validation import validate_plan
 from app.modules.b.planning_schemas import OptionDTO
@@ -141,6 +142,8 @@ def list_tasks(
     facts = _facts(session, project_id)
     by_id = {t.id: t for t in facts.tasks}
     progress = _progress(facts.tasks)
+    commit_metrics = task_commit_metrics(session, project_id, facts.tasks)
+    crit_metrics = task_criteria_metrics(session, project_id, facts.tasks)
     plan = _latest_plan(session, project_id)
     plan_frozen = plan is not None and plan.status == "frozen"
     code_match = CODE.match(q)
@@ -290,6 +293,20 @@ def list_tasks(
             content_version=meta.content_version if meta else 0,
             lock_version=task.lock_version,
             updated_at=task.updated_at,
+            matched_commits=commit_metrics[task.id].commit_count
+            if task.id in commit_metrics
+            else 0,
+            latest_commit_at=commit_metrics[task.id].latest_at
+            if task.id in commit_metrics
+            else None,
+            criteria_total=crit_metrics[task.id].criteria_total if task.id in crit_metrics else 0,
+            criteria_evidenced=crit_metrics[task.id].criteria_evidenced
+            if task.id in crit_metrics
+            else 0,
+            criteria_confirmed=crit_metrics[task.id].criteria_confirmed
+            if task.id in crit_metrics
+            else 0,
+            evidence_count=crit_metrics[task.id].evidence_count if task.id in crit_metrics else 0,
             links=TaskLinksDTO(
                 detail=base,
                 submit=f"{base}/submit",

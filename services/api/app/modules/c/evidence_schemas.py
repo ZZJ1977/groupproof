@@ -110,5 +110,30 @@ class DecideEvidence(Command):
     reason: str = Field(min_length=1, max_length=4000)
 
 
+class BatchAdoptEvidenceItem(Command):
+    evidence_id: UUID
+    expected_version: int = Field(ge=0, strict=True)
+
+
+class BatchAdoptEvidence(Command):
+    items: list[BatchAdoptEvidenceItem] = Field(min_length=1, max_length=50)
+    reason: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("items")
+    @classmethod
+    def unique_evidence_ids(
+        cls, value: list[BatchAdoptEvidenceItem]
+    ) -> list[BatchAdoptEvidenceItem]:
+        ids = [item.evidence_id for item in value]
+        if len(set(ids)) != len(ids):
+            raise ValueError("items must not contain duplicate evidence_id values")
+        return value
+
+
+class BatchAdoptEvidenceDTO(BaseModel):
+    adopted: list[EvidenceDTO]
+    count: int
+
+
 class CheckEvidenceSource(DecideEvidence):
     source_id: UUID

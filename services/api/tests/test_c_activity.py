@@ -770,3 +770,18 @@ def test_github_commit_can_be_adopted_ignored_and_restored(db, scope):
         port,
     )
     assert restored["status"] == "candidate"
+
+
+def test_github_activities_resolve_active_member_real_name(db, scope):
+    member = scope.users["member"]
+    member.name = "卓子杰"
+    db.flush()
+    row = source(scope, kind="github", author_id=member.id, author_name="ZZJ1977")
+    port = FixtureSources([row])
+    listing = query_activities(
+        db, scope.users["leader"], scope.project.id, "github", port, author_id=member.id
+    )
+    assert listing["total"] == 1
+    assert listing["items"][0]["author_name"] == "卓子杰"
+    detail = get_activity(db, scope.users["leader"], scope.project.id, "github", row.id, port)
+    assert detail["author_name"] == "卓子杰"

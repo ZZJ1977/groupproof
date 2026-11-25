@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createApiClient } from "../lib/api/client.ts";
-import { CApiError, createCClient } from "../lib/api/c-client.ts";
+import { createApiClient } from "../shared/lib/api-client.ts";
+import { CApiError, createCClient } from "../shared/daily-inbox/c-client.ts";
 
 // HTTP contract fixtures only; this does not claim a production SourcePort is connected.
 const requests = [];

@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { seedData } from "../mocks/seed";
-import type { MockData } from "../types/domain";
-import type { ManagedActivity } from "../features/c/activity-records";
-import type { SourcedEvidence } from "../features/c/evidence-source";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
+import type { MockData } from "../shared/types/domain";
+import type { ManagedActivity } from "../shared/legacy-mock/features/c/activity-records";
+import type { SourcedEvidence } from "../shared/legacy-mock/features/c/evidence-source";
 
 type CWorkspace = Omit<MockData, "github" | "feishu" | "evidence"> & {
   github: ManagedActivity<MockData["github"][number]>[];

@@ -13,7 +13,7 @@ from app.db.session import get_session
 from app.modules.a.ai import AIUsageContext, RiskExplanationInput, explain_risk
 from app.modules.a.ai.schemas import RiskRecord, TaskProgressBrief
 from app.modules.c.permissions import get_project_access
-from app.modules.d.acceptance import decide, history
+from app.modules.d.acceptance import complete_by_criteria, decide, history
 from app.modules.d.contribution import calculate, freeze_snapshot, latest_snapshot
 from app.modules.d.integrity import enter_verification, latest_check, run_check
 from app.modules.d.models import Risk, RiskEvent
@@ -36,6 +36,12 @@ class AcceptanceDecisionRequest(BaseModel):
         if not value.strip():
             raise ValueError("Reason must not be blank")
         return value.strip()
+
+
+class CompleteByCriteriaRequest(BaseModel):
+    reason: str = Field(default="", max_length=2000)
+    responsibility_share: float | None = Field(default=None, ge=0, le=100)
+    auto_adopt_candidates: bool = Field(default=False)
 
 
 @acceptance_router.get("/{project_id}/tasks/{task_id}/integrity-check")
@@ -119,6 +125,32 @@ def create_acceptance_decision(
             Decimal(str(payload.responsibility_share))
             if payload.responsibility_share is not None
             else None,
+        )
+    }
+
+
+@acceptance_router.post("/{project_id}/tasks/{task_id}/complete-by-criteria")
+def complete_task_by_criteria(
+    project_id: UUID,
+    task_id: UUID,
+    payload: CompleteByCriteriaRequest | None = None,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    from decimal import Decimal
+
+    body = payload or CompleteByCriteriaRequest()
+    return {
+        "data": complete_by_criteria(
+            session,
+            project_id,
+            task_id,
+            user,
+            reason=body.reason,
+            responsibility_share=Decimal(str(body.responsibility_share))
+            if body.responsibility_share is not None
+            else None,
+            auto_adopt_candidates=body.auto_adopt_candidates,
         )
     }
 

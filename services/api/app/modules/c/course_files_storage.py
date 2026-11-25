@@ -28,6 +28,7 @@ ALLOWED_MIME = {
     "xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
     "md": {"text/markdown", "text/plain"},
     "txt": {"text/plain"},
+    "csv": {"text/csv", "text/plain", "application/vnd.ms-excel"},
     "zip": {"application/zip", "application/x-zip-compressed"},
     "png": {"image/png"},
     "jpg": {"image/jpeg"},

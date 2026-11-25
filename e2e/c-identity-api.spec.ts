@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { IdentityAdminUser, IdentityTeacherApplication } from "../lib/api/c-identity-client";
+import type { IdentityAdminUser, IdentityTeacherApplication } from "../admin/api/c-identity-client";
 
 const target: IdentityAdminUser = { id: "identity-student", name: "真实账号", studentId: "S123", college: "计算机学院", roles: ["student"], status: "enabled", version: 3, schoolEmail: "student@must.edu.mo", schoolEmailVerified: true, canDisable: true };
 const application: IdentityTeacherApplication = { id: "identity-application", userId: "identity-teacher", name: "申请教师", college: "计算机学院", applicationVersion: 4, status: "pending", createdAt: "2026-10-12T00:00:00Z", emailVerified: true, emailDomain: "must.edu.mo", submittedName: "提交时姓名", submittedIdentity: "teacher", submittedEmailDomain: "must.edu.mo", reviewedAt: null, reviewerName: null, reviewReason: null };

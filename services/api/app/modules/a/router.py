@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
@@ -32,6 +32,7 @@ from app.modules.a import (
     ai,
     code_analysis,
     feishu,
+    feishu_insights,
     github,
     github_activity,
     github_sync,
@@ -144,6 +145,61 @@ def complete_upload(receipt_id: UUID, request: Request, session: Database, user:
     )
 
 
+@router.post(
+    "/api/v1/storage/uploads/direct",
+    response_model=SuccessResponse[UploadReceiptDTO],
+    status_code=201,
+    include_in_schema=False,
+    dependencies=[Depends(_private)],
+)
+async def direct_upload(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    scope: Literal["project", "course"] = Query(...),
+    scope_id: UUID = Query(...),
+    filename: str = Query(..., min_length=1, max_length=255),
+):
+    raw_ct = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if not raw_ct:
+        raise ApiError(415, "FILE_TYPE_NOT_ALLOWED", "缺少文件类型。")
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > storage.MAX_FILE_BYTES:
+        raise ApiError(413, "FILE_TOO_LARGE", "文件不能为空，且不能超过 50MB。")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > storage.MAX_FILE_BYTES:
+            raise ApiError(413, "FILE_TOO_LARGE", "文件不能为空，且不能超过 50MB。")
+        chunks.append(chunk)
+    data = b"".join(chunks)
+    row = storage.upload_direct(
+        session,
+        user,
+        scope=scope,
+        scope_id=scope_id,
+        filename=filename,
+        mime_type=raw_ct,
+        data=data,
+    )
+    session.commit()
+    return success(
+        UploadReceiptDTO(
+            receipt_id=row.id,
+            scope=row.scope,
+            scope_id=row.scope_id,
+            filename=row.filename,
+            status=row.status,
+            content_hash=row.content_hash,
+            size_bytes=row.size_bytes,
+            mime_type=row.mime_type,
+            rejection_reason=row.rejection_reason,
+        ),
+        request,
+    )
+
+
 # ------------------------------------------------------------------ A6 飞书只读同步
 
 
@@ -194,7 +250,13 @@ def bind_feishu_chat(
     response_model=SuccessResponse[FeishuSyncDTO],
     dependencies=[Depends(_private)],
 )
-def sync_feishu(project_id: UUID, request: Request, session: Database, user: CurrentUser):
+def sync_feishu(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+):
     reader = feishu.get_feishu_reader()
     try:
         totals = feishu.sync_project(session, user, project_id, reader)
@@ -205,6 +267,18 @@ def sync_feishu(project_id: UUID, request: Request, session: Database, user: Cur
         if isinstance(reader, feishu.FeishuClient):
             reader.close()
     session.commit()
+    try:
+        from app.modules.c.external_files_sync import sync_external_project_files
+
+        sync_external_project_files(
+            session, user, project_id, refresh_sources=False, require_member_auth=False
+        )
+        session.commit()
+    except Exception:  # noqa: BLE001 - 外部资料同步不阻断飞书同步返回
+        session.rollback()
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        background_tasks.add_task(feishu_insights.run_auto_analysis, project_id, user.id)
     return success(FeishuSyncDTO(**totals), request)
 
 
@@ -461,12 +535,32 @@ def sync_github(
         if client is not None:
             client.close()
     session.commit()
+    try:
+        from app.modules.b import code_progress_service
+
+        code_progress_service.sync_task_code_progress(session, project_id, actor=user)
+        session.commit()
+    except Exception:  # noqa: BLE001 - 代码进度联动不阻断 GitHub 同步返回
+        session.rollback()
+    try:
+        from app.modules.c.external_files_sync import sync_external_project_files
+
+        sync_external_project_files(
+            session, user, project_id, refresh_sources=False, require_member_auth=False
+        )
+        session.commit()
+    except Exception:  # noqa: BLE001 - README 同步不阻断 GitHub 同步返回
+        session.rollback()
     bind = session.get_bind()
     if bind is not None and bind.dialect.name == "postgresql":
         pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, project_id)
         if pending_ids:
             background_tasks.add_task(
-                activity_summary.run_auto_summaries, project_id, user.id, pending_ids
+                activity_summary.run_auto_summaries,
+                project_id,
+                user.id,
+                pending_ids,
+                refresh_code_progress=True,
             )
     return success(GithubSyncDTO(**totals), request)
 
@@ -534,6 +628,13 @@ async def github_webhook(request: Request, session: Database, background_tasks: 
             )
         ).all()
         for link in links:
+            try:
+                from app.modules.b import code_progress_service
+
+                code_progress_service.sync_task_code_progress(session, link.project_id)
+                session.commit()
+            except Exception:  # noqa: BLE001
+                session.rollback()
             pending_ids = activity_summary.recent_unanalyzed_commit_ids(session, link.project_id)
             if pending_ids:
                 background_tasks.add_task(
@@ -541,6 +642,7 @@ async def github_webhook(request: Request, session: Database, background_tasks: 
                     link.project_id,
                     link.linked_by_id,
                     pending_ids,
+                    refresh_code_progress=True,
                 )
     return success(GithubWebhookResultDTO(event=event, handled=True, **totals), request)
 
@@ -753,6 +855,12 @@ class GithubDailyStatDTO(BaseModel):
 
 
 class GithubActivityStatsDTO(BaseModel):
+    range: Literal["all", "30d", "14d", "7d", "custom"] = "all"
+    date_from: str | None = None
+    date_to: str | None = None
+    earliest_date: str | None = None
+    latest_date: str | None = None
+    all_time_commits: int = 0
     total_commits: int
     total_pull_requests: int
     total_ci_runs: int
@@ -773,9 +881,22 @@ def get_github_activity_stats(
     request: Request,
     session: Database,
     user: CurrentUser,
-    days: int = Query(default=14, ge=7, le=90),
+    range_key: Literal["all", "30d", "14d", "7d", "custom"] | None = Query(
+        default=None, alias="range"
+    ),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    days: int | None = Query(default=None, ge=1, le=365),
 ):
-    stats = github_activity.get_activity_stats(session, user, project_id, days=days)
+    stats = github_activity.get_activity_stats(
+        session,
+        user,
+        project_id,
+        range_key=range_key,
+        date_from=date_from,
+        date_to=date_to,
+        days=days,
+    )
     return success(GithubActivityStatsDTO(**stats), request)
 
 
@@ -865,6 +986,17 @@ def generate_github_activity_summary(
     session: Database,
     user: CurrentUser,
 ):
+    from app.db.session import SessionLocal, engine
+
+    bind = session.get_bind()
+    if bind is engine and bind.dialect.name == "postgresql":
+        actor_id = user.id
+        session.commit()
+        session.close()
+        result = activity_summary.generate_summary_isolated(
+            SessionLocal, actor_id, project_id, activity_id
+        )
+        return success(ActivitySummaryDTO(**result), request)
     result = activity_summary.generate_summary(session, user, project_id, activity_id)
     session.commit()
     return success(ActivitySummaryDTO(**result), request)
@@ -882,6 +1014,20 @@ def generate_github_activity_summaries(
     session: Database,
     user: CurrentUser,
 ):
+    from app.db.session import SessionLocal, engine
+
+    bind = session.get_bind()
+    if bind is engine and bind.dialect.name == "postgresql":
+        actor_id = user.id
+        session.commit()
+        session.close()
+        result = [
+            activity_summary.generate_summary_isolated(
+                SessionLocal, actor_id, project_id, source_id
+            )
+            for source_id in payload.source_ids
+        ]
+        return success([ActivitySummaryDTO(**item) for item in result], request)
     result = [
         activity_summary.generate_summary(session, user, project_id, source_id)
         for source_id in payload.source_ids
@@ -998,6 +1144,98 @@ def verify_feishu_attachment(
             reader.close()
     session.commit()
     return success(FeishuAttachmentDTO.model_validate(attachment, from_attributes=True), request)
+
+
+class FeishuInsightAttachmentDTO(BaseModel):
+    id: UUID
+    kind: str
+    name: str | None = None
+    verified: bool = False
+
+
+class FeishuInsightMessageDTO(BaseModel):
+    id: UUID
+    chat_id: str
+    occurred_at: datetime
+    sender_label: str
+    msg_type: str
+    text: str
+    attachments: list[FeishuInsightAttachmentDTO] = Field(default_factory=list)
+
+
+class FeishuInsightTaskDTO(BaseModel):
+    id: UUID
+    code: str
+    title: str
+    status: str
+
+
+class FeishuInsightItemDTO(BaseModel):
+    id: str
+    title: str
+    category: Literal["division_confirm", "task_progress", "doc_review", "decision", "blocker"]
+    status: Literal["completed", "in_progress", "needs_followup"]
+    summary: str
+    judgment_basis: str
+    confirmed_count: int = 0
+    confidence: float = 0.8
+    linked_tasks: list[FeishuInsightTaskDTO] = Field(default_factory=list)
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    message_count: int = 0
+    messages: list[FeishuInsightMessageDTO] = Field(default_factory=list)
+
+
+class FeishuCollaborationInsightsDTO(BaseModel):
+    status: Literal["ready", "not_generated", "pending", "failed", "empty"]
+    overview: str | None = None
+    items: list[FeishuInsightItemDTO] = Field(default_factory=list)
+    total_messages: int = 0
+    analyzed_messages: int = 0
+    stale: bool = False
+    provider: str | None = None
+    model: str | None = None
+    is_placeholder: bool = False
+    needs_human_review: bool = True
+    error_code: str | None = None
+    generated_at: datetime | None = None
+
+
+class AnalyzeFeishuInsightsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    force: bool = False
+
+
+@router.get(
+    "/api/v1/a/projects/{project_id}/feishu/insights",
+    response_model=SuccessResponse[FeishuCollaborationInsightsDTO],
+    dependencies=[Depends(_private)],
+)
+def get_feishu_collaboration_insights(
+    project_id: UUID, request: Request, session: Database, user: CurrentUser
+):
+    """读取本项目由 AI 从飞书群聊提炼的协作结论（附关联原始聊天记录）。"""
+    data = feishu_insights.get_collaboration_insights(session, user, project_id)
+    return success(FeishuCollaborationInsightsDTO(**data), request)
+
+
+@router.post(
+    "/api/v1/a/projects/{project_id}/feishu/insights/analyze",
+    response_model=SuccessResponse[FeishuCollaborationInsightsDTO],
+    dependencies=[Depends(_private)],
+)
+def analyze_feishu_collaboration_insights(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    payload: AnalyzeFeishuInsightsRequest | None = None,
+):
+    """触发 AI 分析本项目飞书群聊上下文，提炼分工确认、任务进展与决策结论。"""
+    force = bool(payload.force) if payload is not None else False
+    data = feishu_insights.analyze_collaboration_insights(session, user, project_id, force=force)
+    session.commit()
+    return success(FeishuCollaborationInsightsDTO(**data), request)
 
 
 class RevokeGrantRequest(BaseModel):

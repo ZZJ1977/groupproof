@@ -8,8 +8,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.settings import get_database_timezone, get_database_url
 
 DATABASE_TIMEZONE = get_database_timezone()
+_DATABASE_URL = get_database_url()
+_ENGINE_KWARGS: dict[str, object] = {"pool_pre_ping": True}
+if not _DATABASE_URL.startswith("sqlite"):
+    _ENGINE_KWARGS.update(
+        pool_size=15,
+        max_overflow=25,
+        pool_timeout=15,
+        pool_recycle=1800,
+    )
 
-engine = create_engine(get_database_url(), pool_pre_ping=True)
+engine = create_engine(_DATABASE_URL, **_ENGINE_KWARGS)
 
 
 @event.listens_for(engine, "connect")

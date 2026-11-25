@@ -224,7 +224,45 @@ def test_collaboration_profile_accounts_can_be_saved_updated_and_cleared(client:
     assert updated.json()["data"]["registration"]["accountState"] == "review_required"
     current = client.get("/api/v1/me").json()["data"]["user"]
     assert current["githubUsername"] is None
+    assert current["githubLogin"] is None
     assert current["feishuAccount"] == "lark42"
+
+    cleared = client.patch(
+        "/api/v1/me/profile",
+        json={"expectedVersion": current["version"], "feishuAccount": None},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["data"]["user"]["feishuAccount"] is None
+
+
+def test_active_student_can_update_and_clear_feishu_account(client: TestClient):
+    _register_account(client, "student")
+    session = client.get("/api/v1/auth/session").json()["data"]
+    csrf = session["csrfToken"]
+    me_before = client.get("/api/v1/me").json()["data"]
+    assert me_before["registration"]["accountState"] == "active"
+    assert me_before["user"]["feishuAccount"] is None
+    assert me_before["user"]["githubLogin"] is None
+
+    saved = client.patch(
+        "/api/v1/me/profile",
+        json={"expectedVersion": me_before["user"]["version"], "feishuAccount": "  ou_demo12345  "},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert saved.status_code == 200
+    saved_data = saved.json()["data"]
+    assert saved_data["registration"]["accountState"] == "active"
+    assert saved_data["user"]["feishuAccount"] == "ou_demo12345"
+
+    cleared = client.patch(
+        "/api/v1/me/profile",
+        json={"expectedVersion": saved_data["user"]["version"], "feishuAccount": None},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["data"]["user"]["feishuAccount"] is None
+    assert cleared.json()["data"]["registration"]["accountState"] == "active"
 
 
 def test_collaboration_profile_fields_reject_invalid_accounts_before_saving(client: TestClient):

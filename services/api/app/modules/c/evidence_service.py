@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.db.models import AcceptanceCriterion, SourceReference, Task, User
-from app.modules.c.evidence_schemas import CheckEvidenceSource, CreateEvidence, DecideEvidence
+from app.modules.c.evidence_schemas import (
+    BatchAdoptEvidence,
+    CheckEvidenceSource,
+    CreateEvidence,
+    DecideEvidence,
+)
 from app.modules.c.integration_events import claim_request, content_hash, emit_event, finish_request
 from app.modules.c.models import (
     Evidence,
@@ -461,6 +466,107 @@ def decide_evidence(
     )
     session.flush()
     return finish_request(session, record, evidence_data(session, row))
+
+
+def batch_adopt_evidence(
+    session: Session,
+    user: User,
+    project_id: UUID,
+    command: BatchAdoptEvidence,
+    key: str,
+) -> dict:
+    """单事务原子批量采纳候选证据：一次项目锁、一次提交、每个任务只失效验收一次。"""
+    access = get_project_access(session, user, project_id, lock=True)
+    record, replay = claim_request(
+        session,
+        actor_id=user.id,
+        project_id=project_id,
+        operation="evidence.batch_adopted",
+        key=key,
+        payload=command.model_dump(mode="json"),
+    )
+    if replay is not None:
+        return replay
+
+    rows_by_id = {
+        row.id: row
+        for row in session.scalars(
+            select(Evidence).where(
+                Evidence.project_id == project_id,
+                Evidence.id.in_([item.evidence_id for item in command.items]),
+            )
+        )
+    }
+    ordered_rows: list[tuple[Evidence, int]] = []
+    for item in command.items:
+        row = rows_by_id.get(item.evidence_id)
+        if row is None:
+            raise ApiError(404, "EVIDENCE_NOT_FOUND", "Evidence does not exist in this project.")
+        require_decision(access, user, row)
+        if row.lock_version != item.expected_version:
+            raise ApiError(
+                409,
+                "VERSION_CONFLICT",
+                "Evidence has changed; reload and retry.",
+                {
+                    "evidence_id": str(row.id),
+                    "expected_version": item.expected_version,
+                    "current_version": row.lock_version,
+                },
+            )
+        if row.status not in {"candidate", "pending_confirmation"} or row.source_changed:
+            raise ApiError(
+                409, "EVIDENCE_STATE_CONFLICT", "Only an unchanged candidate can be adopted."
+            )
+        task = task_in_project(session, row.task_id, project_id)
+        require_task_plan(access.latest_plan, task.id)
+        criteria = list(
+            session.scalars(
+                select(EvidenceCriterion.criterion_id).where(
+                    EvidenceCriterion.evidence_id == row.id
+                )
+            )
+        )
+        validate_criteria(session, task_id=row.task_id, criterion_ids=criteria, require_any=True)
+        ordered_rows.append((row, item.expected_version))
+
+    invalidated_tasks: set[UUID] = set()
+    from app.modules.d.acceptance import invalidate_for_task
+
+    for row, expected_version in ordered_rows:
+        bump_evidence(session, row, expected_version, status="formal")
+        if row.task_id not in invalidated_tasks:
+            invalidate_for_task(session, row.task_id, user.id, f"证据已批量采纳：{row.id}")
+            invalidated_tasks.add(row.task_id)
+        session.add(
+            EvidenceDecision(
+                evidence_id=row.id,
+                actor_id=user.id,
+                decision="adopted",
+                resulting_status="formal",
+                reason=command.reason,
+            )
+        )
+        emit_event(
+            session,
+            project_id=project_id,
+            aggregate_id=row.id,
+            event_type="evidence.adopted",
+            payload={
+                "evidence_id": str(row.id),
+                "task_id": str(row.task_id),
+                "actor_id": str(user.id),
+                "lock_version": row.lock_version,
+                "reason": command.reason,
+            },
+        )
+    session.flush()
+    adopted_dtos = [evidence_data(session, row) for row, _ in ordered_rows]
+    return finish_request(
+        session,
+        record,
+        {"adopted": adopted_dtos, "count": len(adopted_dtos)},
+    )
 
 
 def append_source_change(

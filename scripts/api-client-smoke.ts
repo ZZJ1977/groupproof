@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createApiClient } from "../lib/api/client";
+import { createApiClient } from "../shared/lib/api-client";
 
 const requests: Request[] = [];
 const client = createApiClient({

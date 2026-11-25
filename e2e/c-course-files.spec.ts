@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { seedData } from "../mocks/seed";
-import type { CourseFileRecord } from "../features/c/course-file-commands";
-import type { MockData } from "../types/domain";
+import { seedData } from "../shared/legacy-mock/mocks/seed";
+import type { CourseFileRecord } from "../shared/legacy-mock/features/c/course-file-commands";
+import type { MockData } from "../shared/types/domain";
 
 const storageKey = "groupproof-v1-workspace:c-url-fixture";
 type CourseFileWorkspace = Omit<MockData, "files"> & { files: CourseFileRecord[] };

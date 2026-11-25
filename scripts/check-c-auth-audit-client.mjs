@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { createApiClient } from "../lib/api/client.ts";
-import { CApiError } from "../lib/api/c-client.ts";
-import { createGovernanceClient } from "../lib/api/c-governance-client.ts";
+import { createApiClient } from "../shared/lib/api-client.ts";
+import { CApiError } from "../shared/daily-inbox/c-client.ts";
+import { createGovernanceClient } from "../admin/api/c-governance-client.ts";
 
 // Test the real client contract with local responses; no production audit records are fabricated.
 const requests = [];

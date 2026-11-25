@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getLocale, getMessages, getTimeZone } from "next-intl/server";
-import { AppProviders } from "@/components/app-providers";
+import { AppProviders } from "@/shared/components/app-providers";
 import "./globals.css";
 
 export const metadata: Metadata = {

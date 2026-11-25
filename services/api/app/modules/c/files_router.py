@@ -1,7 +1,9 @@
 from typing import Annotated, Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 
 from app.api.responses import SuccessResponse, success
 from app.modules.c.evidence_router import (
@@ -12,9 +14,16 @@ from app.modules.c.evidence_router import (
     commit_command,
     private_response,
 )
+from app.modules.c.external_files_sync import (
+    probe_internal_file_media_type,
+    read_feishu_media,
+    read_internal_file_content,
+    sync_external_project_files,
+)
 from app.modules.c.files_schemas import (
     AppendFileVersion,
     DesignateFileVersion,
+    ExternalFilesSyncDTO,
     FileDetailDTO,
     FilePageDTO,
     FilePurpose,
@@ -189,4 +198,130 @@ def link(
 ):
     return success(
         get_signed_link(session, user, project_id, file_id, version_id, purpose, storage), request
+    )
+
+
+@router.head("/projects/{project_id}/files/{file_id}/versions/{version_id}/content")
+def content_head(
+    project_id: UUID,
+    file_id: UUID,
+    version_id: UUID,
+    session: Database,
+    purpose: FilePurpose = "preview",
+    exp: int = Query(ge=0),
+    sig: str = Query(min_length=16, max_length=128),
+):
+    media_type, filename = probe_internal_file_media_type(
+        session,
+        project_id,
+        file_id,
+        version_id,
+        purpose=purpose,
+        exp=exp,
+        sig=sig,
+    )
+    return Response(
+        content=b"",
+        media_type=media_type,
+        headers=internal_content_headers(purpose, media_type, filename),
+    )
+
+
+@router.get("/projects/{project_id}/files/feishu-media/{token}")
+def feishu_media(
+    project_id: UUID,
+    token: str,
+    session: Database,
+    user: CurrentUser,
+):
+    data, media_type = read_feishu_media(session, user, project_id, token)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+@router.get("/projects/{project_id}/files/{file_id}/versions/{version_id}/content")
+def content(
+    project_id: UUID,
+    file_id: UUID,
+    version_id: UUID,
+    session: Database,
+    purpose: FilePurpose = "preview",
+    exp: int = Query(ge=0),
+    sig: str = Query(min_length=16, max_length=128),
+):
+    data, media_type, filename = read_internal_file_content(
+        session,
+        project_id,
+        file_id,
+        version_id,
+        purpose=purpose,
+        exp=exp,
+        sig=sig,
+    )
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers=internal_content_headers(purpose, media_type, filename),
+    )
+
+
+# 只有这些类型允许在同源页面内联展示；其余类型（如 text/html、xml）即使申请预览
+# 也按附件下发，避免同源脚本执行。
+_INLINE_PREVIEW_TYPES = frozenset(
+    {
+        "application/json",
+        "application/pdf",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/svg+xml",
+        "image/webp",
+        "text/csv",
+        "text/markdown",
+        "text/plain",
+    }
+)
+
+
+def internal_content_headers(purpose: str, media_type: str, filename: str) -> dict[str, str]:
+    base_type = media_type.split(";", 1)[0].strip().lower()
+    inline = purpose == "preview" and base_type in _INLINE_PREVIEW_TYPES
+    headers = {
+        "Content-Disposition": (
+            f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(filename)}"
+        ),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+    }
+    if inline and base_type != "application/pdf":
+        # 文本/图片预览不需要脚本、外链或嵌套浏览上下文；PDF 查看器与 sandbox 不兼容，故排除。
+        headers["Content-Security-Policy"] = (
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+        )
+    return headers
+
+
+@router.post(
+    "/projects/{project_id}/files/sync-external",
+    response_model=SuccessResponse[ExternalFilesSyncDTO],
+)
+def sync_external(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    return success(
+        commit_command(
+            session,
+            lambda: sync_external_project_files(session, user, project_id).model_dump(mode="json"),
+        ),
+        request,
     )

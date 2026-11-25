@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { seedData } from "../mocks/seed.ts";
-import { createCommandRunner } from "../lib/commands/core.ts";
-import { createCourseProject } from "../lib/commands/project-create.ts";
-import { publishedCourseRule } from "../lib/versioning.ts";
+import { seedData } from "../shared/legacy-mock/mocks/seed.ts";
+import { createCommandRunner } from "../shared/legacy-mock/commands/core.ts";
+import { createCourseProject } from "../shared/legacy-mock/commands/project-create.ts";
+import { publishedCourseRule } from "../shared/legacy-mock/versioning.ts";
 
 let passed = 0;
 function check(desc, actual, expected) {

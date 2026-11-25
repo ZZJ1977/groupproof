@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.db.models import Task, User
+from app.db.models import ProjectMember, Task, User
 from app.modules.c.permissions import get_project_access
 from app.modules.d.acceptance import stale_reason
 from app.modules.d.models import (
@@ -72,6 +72,21 @@ def current_frozen_snapshot(session: Session, project_id: UUID) -> ContributionS
     if calculation.input_hash != current_basis_hash(session, project_id):
         return None
     return snapshot
+
+
+def _active_project_members(session: Session, project_id: UUID) -> list[User]:
+    """Return all active project members (`left_at IS NULL`) for contribution reporting."""
+    return list(
+        session.scalars(
+            select(User)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.left_at.is_(None),
+            )
+            .order_by(User.name, User.id)
+        ).all()
+    )
 
 
 def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | None:
@@ -138,6 +153,19 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
                 "share": float(item.share),
                 "task_credit": float(item.task_credit),
                 "tasks": tasks,
+            }
+        )
+    seen_user_ids = {person.id for _, person in items}
+    for person in _active_project_members(session, project_id):
+        if person.id in seen_user_ids:
+            continue
+        members.append(
+            {
+                "user_id": str(person.id),
+                "name": person.name or person.username or person.email,
+                "share": 0.0,
+                "task_credit": 0.0,
+                "tasks": [],
             }
         )
     return {
@@ -252,6 +280,9 @@ def calculate(session: Session, project_id: UUID, user: User) -> dict:
     total = sum(credits.values(), Decimal())
     if total <= 0:
         raise ApiError(409, "NO_CONTRIBUTION_CREDIT", "No positive responsibility share recorded.")
+    for member_user in _active_project_members(session, project_id):
+        credits.setdefault(member_user.id, Decimal())
+        task_links.setdefault(member_user.id, [])
     digest = hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()
     version = (
         session.scalar(
@@ -282,13 +313,18 @@ def calculate(session: Session, project_id: UUID, user: User) -> dict:
     )
     session.add(snapshot)
     session.flush()
-    # Largest-remainder rounding keeps the persisted percentages exactly at 100.0000.
+    # Largest-remainder rounding keeps the persisted percentages exactly at 100.0000
+    # across members with positive formal outcomes while keeping 0-outcome members at 0.
     exact = {uid: credit * 100 / total for uid, credit in credits.items()}
     rounded = {
         uid: value.quantize(Decimal("0.0001"), rounding=ROUND_DOWN) for uid, value in exact.items()
     }
     units = int((Decimal(100) - sum(rounded.values())) / Decimal("0.0001"))
-    order = sorted(exact, key=lambda uid: (exact[uid] - rounded[uid], str(uid)), reverse=True)
+    order = sorted(
+        (uid for uid in exact if credits[uid] > 0),
+        key=lambda uid: (exact[uid] - rounded[uid], str(uid)),
+        reverse=True,
+    )
     for uid in order[:units]:
         rounded[uid] += Decimal("0.0001")
     for uid in sorted(credits, key=str):
@@ -298,7 +334,7 @@ def calculate(session: Session, project_id: UUID, user: User) -> dict:
             task_credit=credits[uid],
             collaboration_credit=0,
             share=rounded[uid],
-            acceptance_rate=100,
+            acceptance_rate=100 if task_links[uid] else 0,
             status="formal",
             note=None,
         )

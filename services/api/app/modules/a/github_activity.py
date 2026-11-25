@@ -16,7 +16,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -24,7 +24,7 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.auth.models import VerifiedGithubIdentity
+from app.auth.models import PasswordCredential, SchoolEmailBinding, VerifiedGithubIdentity
 from app.db.models import ProjectMember, User
 from app.modules.a import permissions
 from app.modules.a.models import GithubActivity, GithubRepoLink, GithubUserLink
@@ -39,9 +39,8 @@ logger = logging.getLogger("groupproof.a.github_activity")
 
 KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
-MAX_BRANCHES_PER_SYNC = 10
-MAX_NON_DEFAULT_BRANCH_COMMITS = 30
-MAX_COMMIT_DETAIL_PER_SYNC = 30
+MAX_NON_DEFAULT_BRANCH_COMMITS = 100
+MAX_COMMIT_DETAIL_PER_SYNC = 80
 MAX_COMMIT_FILES = 80
 MAX_PATCH_CHARS = 6000
 MAX_TOTAL_PATCH_CHARS = 120_000
@@ -193,7 +192,6 @@ def _verified_author_id():
         _verified_member_identities(GithubActivity.project_id)
         .with_only_columns(VerifiedGithubIdentity.user_id)
         .where(
-            VerifiedGithubIdentity.user_id == GithubActivity.author_user_id,
             cast(VerifiedGithubIdentity.github_user_id, String)
             == GithubActivity.detail[_ACTOR_ACCOUNT_ID].as_string(),
         )
@@ -284,7 +282,7 @@ def _upsert(
 
 
 def _discover_branches(client, owner: str, repo: str, default_branch: str, inst: int) -> list[str]:
-    """发现要同步提交的分支：默认分支优先，其次 develop 等活跃分支。"""
+    """发现要同步提交的全部分支：默认分支优先，其次 develop 等常用分支，覆盖仓库全部分支。"""
     ordered: list[str] = [default_branch]
     reader = getattr(client, "branches", None)
     if not callable(reader):
@@ -304,7 +302,7 @@ def _discover_branches(client, owner: str, repo: str, default_branch: str, inst:
         (name for name in dict.fromkeys(names) if name != default_branch),
         key=lambda name: (priority.get(name.lower(), 10), name.lower()),
     )
-    return (ordered + extras)[:MAX_BRANCHES_PER_SYNC]
+    return ordered + extras
 
 
 def _fetch_branch_commits(
@@ -398,7 +396,7 @@ def sync_activity(
                 if len(detail_shas) >= MAX_COMMIT_DETAIL_PER_SYNC:
                     break
         if detail_shas:
-            with ThreadPoolExecutor(max_workers=min(8, len(detail_shas))) as pool:
+            with ThreadPoolExecutor(max_workers=min(10, len(detail_shas))) as pool:
                 detail_futures = {
                     sha: pool.submit(detail_reader, owner, repo, sha, inst) for sha in detail_shas
                 }
@@ -595,7 +593,21 @@ class _Reuse:
 # ---------------------------------------------------------------- C 的活动页读取
 
 
-def _record(row: GithubActivity, author_id: UUID | None) -> ActivitySourceRecord:
+def _row_actor_account_id(row: GithubActivity) -> int | None:
+    detail = row.detail if isinstance(row.detail, dict) else None
+    raw = detail.get(_ACTOR_ACCOUNT_ID) if detail else None
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return None
+
+
+def _record(
+    row: GithubActivity,
+    author_id: UUID | None,
+    author_name: str | None = None,
+) -> ActivitySourceRecord:
     if row.deleted:
         title, summary = f"[已删除] {row.kind} {row.external_id[:12]}", ""
         content = {"deleted": True, "kind": row.kind, "external_id": row.external_id}
@@ -611,12 +623,13 @@ def _record(row: GithubActivity, author_id: UUID | None) -> ActivitySourceRecord
         }
         if row.kind == "commit":
             content["message"] = row.summary
+    resolved_name = (author_name or "").strip() or row.author_name or row.author_login or "未知作者"
     return ActivitySourceRecord(
         id=row.id,
         title=title or f"{row.kind} {row.external_id[:12]}",
         summary=summary,
         author_id=author_id,
-        author_name=row.author_name or row.author_login or "未知作者",
+        author_name=resolved_name[:240],
         occurred_at=row.occurred_at,
         kind=row.kind,
         source=VerifiedSource(
@@ -640,12 +653,7 @@ def _escape_like(value: str) -> str:
 def github_filters(project_id: UUID, query: ActivitySourceQuery) -> list:
     filters = [GithubActivity.project_id == project_id]
     if query.author_id is not None:
-        filters.extend(
-            (
-                GithubActivity.author_user_id == query.author_id,
-                _verified_author_id() == query.author_id,
-            )
-        )
+        filters.append(_verified_author_id() == query.author_id)
     if query.record_kind:
         filters.append(GithubActivity.kind == query.record_kind)
     if query.since is not None:
@@ -696,8 +704,21 @@ class DatabaseGithubActivityPort:
                 .offset((query.page - 1) * query.page_size)
                 .limit(query.page_size)
             ).all()
+            directory = (
+                _load_project_member_directory(session, project_id, active_only=True)
+                if rows
+                else None
+            )
             return ActivitySourcePage(
-                items=tuple(_record(row, author_id) for row, author_id in rows), total=total or 0
+                items=tuple(
+                    _record(
+                        row,
+                        author_id,
+                        directory.display_name_for_row(row, author_id) if directory else None,
+                    )
+                    for row, author_id in rows
+                ),
+                total=total or 0,
             )
 
     def get(
@@ -713,7 +734,8 @@ class DatabaseGithubActivityPort:
             if result is None:
                 raise ApiError(404, "ACTIVITY_NOT_FOUND", "记录不存在。")
             row, author_id = result
-            return _record(row, author_id)
+            directory = _load_project_member_directory(session, project_id, active_only=True)
+            return _record(row, author_id, directory.display_name_for_row(row, author_id))
 
 
 class CompositeActivityPort:
@@ -785,17 +807,428 @@ def _extract_commit_diff_stats(detail: Any) -> tuple[int, int, int, bool]:
     return max(0, additions or 0), max(0, deletions or 0), max(0, changed_files or 0), has_stats
 
 
+_EXCLUDED_BOT_TOKENS = frozenset(
+    {
+        "claude",
+        "claude[bot]",
+        "anthropic",
+        "dependabot",
+        "dependabot[bot]",
+        "github-actions",
+        "github-actions[bot]",
+        "renovate",
+        "renovate[bot]",
+        "copilot",
+        "copilot[bot]",
+        "codecov",
+        "codecov[bot]",
+        "snyk-bot",
+        "greenkeeper[bot]",
+        "mergify[bot]",
+        "openai",
+        "codex",
+        "cursor",
+        "cursoragent",
+    }
+)
+_EXCLUDED_BOT_EMAIL_DOMAINS = (
+    "@anthropic.com",
+    "@bots.github.com",
+    "@openai.com",
+)
+_STATS_RANGE_DAYS = {"7d": 7, "14d": 14, "30d": 30}
+_NOREPLY_EMAIL_RE = re.compile(r"^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$")
+_HANDLE_FOLD = str.maketrans({"0": "o", "1": "l"})
+
+
+def _normalize_handle(value: str | None) -> str:
+    """规范化用户名/别名：去分隔符与空格、转小写并折叠常见同形字符（0↔o、1↔l）。"""
+    if not value:
+        return ""
+    cleaned = (
+        value.strip().lower().replace("-", "").replace("_", "").replace(".", "").replace(" ", "")
+    )
+    return cleaned.translate(_HANDLE_FOLD)
+
+
+def _email_handle_candidates(email_norm: str) -> list[str]:
+    """从提交邮箱中提取可用于匹配成员 GitHub 别名的候选词。"""
+    if not email_norm or "@" not in email_norm:
+        return []
+    noreply_match = _NOREPLY_EMAIL_RE.match(email_norm)
+    if noreply_match:
+        return [noreply_match.group(1)]
+    local = email_norm.split("@", 1)[0]
+    candidates: list[str] = [local]
+    for token in re.split(r"[._\-]+", local):
+        if len(token) >= 5 and token not in candidates:
+            candidates.append(token)
+    return candidates
+
+
+def _is_edit_distance_one(a: str, b: str) -> bool:
+    """判断两个规范化字符串之间的编辑距离是否不超过 1（O(n)）。"""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:
+        return sum(ca != cb for ca, cb in zip(a, b, strict=True)) == 1
+    if la > lb:
+        a, b = b, a
+        la, lb = lb, la
+    i = j = diffs = 0
+    while i < la and j < lb:
+        if a[i] != b[j]:
+            diffs += 1
+            if diffs > 1:
+                return False
+            j += 1
+        else:
+            i += 1
+            j += 1
+    return True
+
+
+def _put_unique(mapping: dict[str, Any], ambiguous: set[str], key: str, value: Any) -> None:
+    """仅当 key 唯一映射到单一值时保留；发生冲突时标记为歧义并移除。"""
+    if not key or key in ambiguous:
+        return
+    if key in mapping and mapping[key] != value:
+        ambiguous.add(key)
+        mapping.pop(key, None)
+        return
+    mapping[key] = value
+
+
+def _is_excluded_bot_author(login: str | None, name: str | None, email: str | None) -> bool:
+    """过滤 Claude/AI 助手及自动化 Bot，不计入团队成员贡献统计。"""
+    for raw in (login, name):
+        text = (raw or "").strip().lower()
+        if not text:
+            continue
+        if text.endswith("[bot]") or text in _EXCLUDED_BOT_TOKENS:
+            return True
+        if text.startswith("claude ") or text.startswith("claude-"):
+            return True
+    email_norm = (email or "").strip().lower()
+    if email_norm:
+        if any(email_norm.endswith(domain) for domain in _EXCLUDED_BOT_EMAIL_DOMAINS):
+            return True
+        if "[bot]@" in email_norm:
+            return True
+    return False
+
+
+def _occurred_utc(value: datetime) -> datetime:
+    return (value if value.tzinfo is not None else value.replace(tzinfo=UTC)).astimezone(UTC)
+
+
+class _ProjectMemberDirectory:
+    """项目成员姓名与 GitHub 标识映射，用于把活动/统计作者统一展示为成员真实姓名。"""
+
+    def __init__(
+        self,
+        *,
+        user_names: dict[UUID, str],
+        user_logins: dict[UUID, str],
+        uid_to_verified_account_id: dict[UUID, int],
+        login_to_uid: dict[str, UUID],
+        email_to_uid: dict[str, UUID],
+        name_to_uid: dict[str, UUID],
+        handle_to_uid: dict[str, UUID],
+        member_handles: list[tuple[str, UUID]],
+    ) -> None:
+        self.user_names = user_names
+        self.user_logins = user_logins
+        self.uid_to_verified_account_id = uid_to_verified_account_id
+        self.login_to_uid = login_to_uid
+        self.email_to_uid = email_to_uid
+        self.name_to_uid = name_to_uid
+        self.handle_to_uid = handle_to_uid
+        self.member_handles = member_handles
+
+    def resolve_member_uid(
+        self,
+        verified_uid: UUID | None,
+        login: str | None,
+        raw_name: str,
+        email_norm: str,
+        *,
+        actor_account_id: int | None = None,
+    ) -> UUID | None:
+        if verified_uid is not None:
+            return verified_uid
+
+        def _accept(candidate: UUID | None) -> UUID | None:
+            if candidate is None:
+                return None
+            if actor_account_id is not None:
+                verified_id = self.uid_to_verified_account_id.get(candidate)
+                if verified_id is not None and verified_id != actor_account_id:
+                    return None
+            return candidate
+
+        if login:
+            hit = _accept(self.login_to_uid.get(login.lower()))
+            if hit is not None:
+                return hit
+        if email_norm:
+            hit = _accept(self.email_to_uid.get(email_norm))
+            if hit is not None:
+                return hit
+            noreply = _NOREPLY_EMAIL_RE.match(email_norm)
+            if noreply:
+                hit = _accept(self.login_to_uid.get(noreply.group(1).lower()))
+                if hit is not None:
+                    return hit
+        if raw_name:
+            raw_lower = raw_name.lower()
+            hit = _accept(self.login_to_uid.get(raw_lower) or self.name_to_uid.get(raw_lower))
+            if hit is not None:
+                return hit
+        for cand in [login, raw_name, *_email_handle_candidates(email_norm)]:
+            cand_h = _normalize_handle(cand)
+            if len(cand_h) >= 4:
+                hit = _accept(self.handle_to_uid.get(cand_h))
+                if hit is not None:
+                    return hit
+        for cand in (login, raw_name):
+            cand_h = _normalize_handle(cand)
+            if len(cand_h) >= 6 and cand_h.isascii():
+                matched_uids = {
+                    uid for mh, uid in self.member_handles if _is_edit_distance_one(cand_h, mh)
+                }
+                if len(matched_uids) == 1:
+                    hit = _accept(next(iter(matched_uids)))
+                    if hit is not None:
+                        return hit
+        return None
+
+    def display_name_for_row(self, row: GithubActivity, verified_uid: UUID | None) -> str:
+        if verified_uid is not None:
+            member_name = self.user_names.get(verified_uid)
+            if member_name:
+                return member_name[:240]
+        elif not _is_excluded_bot_author(row.author_login, row.author_name, row.author_email):
+            matched_uid = self.resolve_member_uid(
+                None,
+                (row.author_login or "").strip() or None,
+                (row.author_name or "").strip(),
+                (row.author_email or "").strip().lower(),
+                actor_account_id=_row_actor_account_id(row),
+            )
+            if matched_uid is not None:
+                member_name = self.user_names.get(matched_uid)
+                if member_name:
+                    return member_name[:240]
+        return ((row.author_name or "").strip() or row.author_login or "未知作者")[:240]
+
+
+def _load_project_member_directory(
+    session: Session, project_id: UUID, *, active_only: bool = True
+) -> _ProjectMemberDirectory:
+    stmt = (
+        select(
+            User.id,
+            User.name,
+            User.email,
+            User.github_username,
+            VerifiedGithubIdentity.login,
+            VerifiedGithubIdentity.github_user_id,
+            GithubUserLink.login,
+            SchoolEmailBinding.school_email_normalized,
+            PasswordCredential.login_email_normalized,
+        )
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .outerjoin(VerifiedGithubIdentity, VerifiedGithubIdentity.user_id == User.id)
+        .outerjoin(GithubUserLink, GithubUserLink.user_id == User.id)
+        .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
+        .outerjoin(PasswordCredential, PasswordCredential.user_id == User.id)
+        .where(ProjectMember.project_id == project_id, ProjectMember.left_at.is_(None))
+    )
+    if active_only:
+        stmt = stmt.where(User.status == "active")
+    member_rows = session.execute(stmt).all()
+
+    user_names: dict[UUID, str] = {}
+    user_logins: dict[UUID, str] = {}
+    uid_to_verified_account_id: dict[UUID, int] = {}
+    login_to_uid: dict[str, UUID] = {}
+    ambiguous_logins: set[str] = set()
+    email_to_uid: dict[str, UUID] = {}
+    ambiguous_emails: set[str] = set()
+    name_to_uid: dict[str, UUID] = {}
+    ambiguous_names: set[str] = set()
+    handle_to_uid: dict[str, UUID] = {}
+    ambiguous_handles: set[str] = set()
+    member_handle_pairs: set[tuple[str, UUID]] = set()
+
+    for (
+        uid,
+        name,
+        email,
+        gh_username,
+        verified_login,
+        verified_account_id,
+        linked_login,
+        school_email,
+        login_email,
+    ) in member_rows:
+        cleaned_name = (name or "").strip()
+        if cleaned_name:
+            user_names[uid] = cleaned_name
+            _put_unique(name_to_uid, ambiguous_names, cleaned_name.lower(), uid)
+            name_handle = _normalize_handle(cleaned_name)
+            if len(name_handle) >= 4:
+                _put_unique(handle_to_uid, ambiguous_handles, name_handle, uid)
+                if len(name_handle) >= 6 and name_handle.isascii():
+                    member_handle_pairs.add((name_handle, uid))
+        if verified_account_id is not None:
+            uid_to_verified_account_id[uid] = verified_account_id
+        canonical_login = (verified_login or gh_username or linked_login or "").strip()
+        if canonical_login:
+            user_logins[uid] = canonical_login
+        for cand_login in (verified_login, gh_username, linked_login):
+            l_key = (cand_login or "").strip().lower()
+            if l_key:
+                _put_unique(login_to_uid, ambiguous_logins, l_key, uid)
+            l_handle = _normalize_handle(cand_login)
+            if len(l_handle) >= 4:
+                _put_unique(handle_to_uid, ambiguous_handles, l_handle, uid)
+                if len(l_handle) >= 6 and l_handle.isascii():
+                    member_handle_pairs.add((l_handle, uid))
+        for cand_email in (email, school_email, login_email):
+            e_key = (cand_email or "").strip().lower()
+            if e_key:
+                _put_unique(email_to_uid, ambiguous_emails, e_key, uid)
+
+    return _ProjectMemberDirectory(
+        user_names=user_names,
+        user_logins=user_logins,
+        uid_to_verified_account_id=uid_to_verified_account_id,
+        login_to_uid=login_to_uid,
+        email_to_uid=email_to_uid,
+        name_to_uid=name_to_uid,
+        handle_to_uid=handle_to_uid,
+        member_handles=sorted(member_handle_pairs),
+    )
+
+
 def get_activity_stats(
-    session: Session, actor: User, project_id: UUID, *, days: int = 14
+    session: Session,
+    actor: User,
+    project_id: UUID,
+    *,
+    range_key: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    days: int | None = None,
 ) -> dict[str, Any]:
-    """按成员和日期聚合本项目已同步的 GitHub 提交次数与代码增减统计（只读）。"""
+    """按成员和可选时间范围聚合本项目已同步的 GitHub 提交次数与代码增减统计（只读，自动排除机器人/Claude）。"""
     permissions.require_project_member(session, actor, project_id, write=False)
-    days = max(7, min(days, 90))
+
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise ApiError(422, "INVALID_DATE_RANGE", "开始日期不能晚于结束日期。")
+
     rows = session.execute(
         select(GithubActivity, _verified_author_id())
         .where(GithubActivity.project_id == project_id, GithubActivity.deleted.is_(False))
         .order_by(GithubActivity.occurred_at.desc())
     ).all()
+
+    # 加载项目成员及其绑定信息，保证同一成员的不同 Git 别名合并为同一贡献者
+    directory = _load_project_member_directory(session, project_id, active_only=False)
+    user_names = directory.user_names
+    user_logins = directory.user_logins
+    _resolve_member_uid = directory.resolve_member_uid
+
+    # 先收集全部非机器人提交，确定项目最早/最晚提交日期
+    non_bot_rows: list[tuple[GithubActivity, UUID | None, datetime]] = []
+    commit_dates: list[date] = []
+    for row, verified_uid in rows:
+        if _is_excluded_bot_author(row.author_login, row.author_name, row.author_email):
+            continue
+        occurred_utc = _occurred_utc(row.occurred_at)
+        non_bot_rows.append((row, verified_uid, occurred_utc))
+        if row.kind == "commit":
+            commit_dates.append(occurred_utc.date())
+
+    all_time_commits = len(commit_dates)
+    earliest_commit_day = min(commit_dates) if commit_dates else None
+    latest_commit_day = max(commit_dates) if commit_dates else None
+    today_utc = datetime.now(UTC).date()
+
+    # 解析生效时间范围
+    if date_from is not None or date_to is not None or range_key == "custom":
+        resolved_range = "custom"
+        start_day = date_from or earliest_commit_day or today_utc
+        end_day = date_to or latest_commit_day or today_utc
+        if start_day > end_day:
+            raise ApiError(422, "INVALID_DATE_RANGE", "开始日期不能晚于结束日期。")
+    elif range_key is None and days is not None:
+        window = max(1, min(days, 365))
+        resolved_range = f"{window}d" if window in (7, 14, 30) else "custom"
+        anchor = latest_commit_day or today_utc
+        if latest_commit_day is not None and 0 <= (today_utc - latest_commit_day).days < window:
+            anchor = today_utc
+        end_day = anchor
+        start_day = end_day - timedelta(days=window - 1)
+    elif range_key in _STATS_RANGE_DAYS:
+        resolved_range = range_key
+        window = _STATS_RANGE_DAYS[range_key]
+        anchor = latest_commit_day or today_utc
+        if latest_commit_day is not None and 0 <= (today_utc - latest_commit_day).days < window:
+            anchor = today_utc
+        end_day = anchor
+        start_day = end_day - timedelta(days=window - 1)
+    else:
+        resolved_range = "all"
+        start_day = earliest_commit_day
+        end_day = latest_commit_day
+
+    extra_uids = {
+        uid
+        for row, uid, _ in non_bot_rows
+        if row.kind == "commit" and uid is not None and uid not in user_names
+    }
+    if extra_uids:
+        for uid, name in session.execute(select(User.id, User.name).where(User.id.in_(extra_uids))):
+            if name:
+                user_names[uid] = name
+
+    # 第一遍（全量项目提交）：归并成员已确认的本地邮箱/作者名及未绑定账号的别名映射
+    resolved_by_row_id: dict[UUID, UUID | None] = {}
+    observed_email_to_uid: dict[str, UUID] = {}
+    ambiguous_obs_emails: set[str] = set()
+    observed_name_to_uid: dict[str, UUID] = {}
+    ambiguous_obs_names: set[str] = set()
+    unresolved_handle_to_login: dict[str, str] = {}
+    ambiguous_unresolved_handles: set[str] = set()
+
+    for row, verified_uid, _ in non_bot_rows:
+        if row.kind != "commit":
+            continue
+        login = (row.author_login or "").strip() or None
+        raw_name = (row.author_name or "").strip() or login or "未知作者"
+        email_norm = (row.author_email or "").strip().lower()
+        uid = _resolve_member_uid(verified_uid, login, raw_name, email_norm)
+        resolved_by_row_id[row.id] = uid
+        if uid is not None:
+            if email_norm and not email_norm.endswith("@users.noreply.github.com"):
+                _put_unique(observed_email_to_uid, ambiguous_obs_emails, email_norm, uid)
+            if raw_name and raw_name != "未知作者":
+                _put_unique(observed_name_to_uid, ambiguous_obs_names, raw_name.lower(), uid)
+        elif login:
+            login_handle = _normalize_handle(login)
+            if len(login_handle) >= 4:
+                _put_unique(
+                    unresolved_handle_to_login,
+                    ambiguous_unresolved_handles,
+                    login_handle,
+                    login,
+                )
 
     total_commits = 0
     total_pull_requests = 0
@@ -804,19 +1237,16 @@ def get_activity_stats(
     total_deletions = 0
     commits_with_stats = 0
 
-    user_ids = {uid for row, uid in rows if row.kind == "commit" and uid is not None}
-    user_names: dict[UUID, str] = {}
-    if user_ids:
-        for uid, name in session.execute(select(User.id, User.name).where(User.id.in_(user_ids))):
-            if name:
-                user_names[uid] = name
-
     by_contributor: dict[str, dict[str, Any]] = {}
     daily_counts: dict[str, dict[str, int]] = {}
-    latest_commit_day = datetime.now(UTC).date()
-    saw_commit = False
 
-    for row, verified_uid in rows:
+    for row, _verified_uid, occurred_utc in non_bot_rows:
+        day_obj = occurred_utc.date()
+        if start_day is not None and day_obj < start_day:
+            continue
+        if end_day is not None and day_obj > end_day:
+            continue
+
         if row.kind == "pull_request":
             total_pull_requests += 1
             continue
@@ -833,18 +1263,7 @@ def get_activity_stats(
         if has_stats:
             commits_with_stats += 1
 
-        occurred = (
-            row.occurred_at
-            if row.occurred_at.tzinfo is not None
-            else row.occurred_at.replace(tzinfo=UTC)
-        )
-        occurred_utc = occurred.astimezone(UTC)
-        commit_day = occurred_utc.date()
-        if not saw_commit:
-            latest_commit_day = max(latest_commit_day, commit_day)
-            saw_commit = True
-
-        day_key = commit_day.isoformat()
+        day_key = day_obj.isoformat()
         bucket = daily_counts.setdefault(day_key, {"commits": 0, "additions": 0, "deletions": 0})
         bucket["commits"] += 1
         bucket["additions"] += adds
@@ -852,23 +1271,43 @@ def get_activity_stats(
 
         login = (row.author_login or "").strip() or None
         raw_name = (row.author_name or "").strip() or login or "未知作者"
-        if verified_uid is not None:
-            key = f"user:{verified_uid}"
-            display = user_names.get(verified_uid) or raw_name
+        email_norm = (row.author_email or "").strip().lower()
+
+        resolved_uid = resolved_by_row_id.get(row.id)
+        if resolved_uid is None and email_norm:
+            resolved_uid = observed_email_to_uid.get(email_norm)
+        if resolved_uid is None and raw_name and raw_name != "未知作者":
+            resolved_uid = observed_name_to_uid.get(raw_name.lower())
+
+        if resolved_uid is not None:
+            key = f"user:{resolved_uid}"
+            display = user_names.get(resolved_uid) or raw_name
+            canonical_login = user_logins.get(resolved_uid) or login
         elif login:
             key = f"login:{login.lower()}"
             display = raw_name
+            canonical_login = login
         else:
-            key = f"name:{raw_name.lower()}"
-            display = raw_name
+            raw_handle = _normalize_handle(raw_name)
+            matched_login = (
+                unresolved_handle_to_login.get(raw_handle) if len(raw_handle) >= 4 else None
+            )
+            if matched_login:
+                key = f"login:{matched_login.lower()}"
+                display = raw_name
+                canonical_login = matched_login
+            else:
+                key = f"name:{raw_name.lower()}"
+                display = raw_name
+                canonical_login = None
 
         entry = by_contributor.get(key)
         if entry is None:
             entry = {
                 "author_key": key,
-                "author_user_id": verified_uid,
+                "author_user_id": resolved_uid,
                 "author_name": display,
-                "author_login": login,
+                "author_login": canonical_login,
                 "commits": 0,
                 "additions": 0,
                 "deletions": 0,
@@ -883,8 +1322,8 @@ def get_activity_stats(
         entry["files_changed"] += files_cnt
         if has_stats:
             entry["commits_with_stats"] += 1
-        if login and not entry["author_login"]:
-            entry["author_login"] = login
+        if canonical_login and not entry["author_login"]:
+            entry["author_login"] = canonical_login
         if occurred_utc > entry["last_commit_at"]:
             entry["last_commit_at"] = occurred_utc
 
@@ -894,21 +1333,43 @@ def get_activity_stats(
         reverse=True,
     )
 
-    start_day = latest_commit_day - timedelta(days=days - 1)
-    daily = []
-    for offset in range(days):
-        day = (start_day + timedelta(days=offset)).isoformat()
-        stats = daily_counts.get(day, {"commits": 0, "additions": 0, "deletions": 0})
-        daily.append(
-            {
-                "date": day,
-                "commits": stats["commits"],
-                "additions": stats["additions"],
-                "deletions": stats["deletions"],
-            }
-        )
+    daily: list[dict[str, Any]] = []
+    if start_day is not None and end_day is not None:
+        span = (end_day - start_day).days + 1
+        # 超长跨度（> 180 天）仅输出有数据或抽样跨度防止响应过大；常规课程项目 <= 180 天完整按天输出
+        if span <= 180:
+            for offset in range(span):
+                day_str = (start_day + timedelta(days=offset)).isoformat()
+                day_stats = daily_counts.get(
+                    day_str, {"commits": 0, "additions": 0, "deletions": 0}
+                )
+                daily.append(
+                    {
+                        "date": day_str,
+                        "commits": day_stats["commits"],
+                        "additions": day_stats["additions"],
+                        "deletions": day_stats["deletions"],
+                    }
+                )
+        else:
+            for day_str in sorted(daily_counts.keys()):
+                day_stats = daily_counts[day_str]
+                daily.append(
+                    {
+                        "date": day_str,
+                        "commits": day_stats["commits"],
+                        "additions": day_stats["additions"],
+                        "deletions": day_stats["deletions"],
+                    }
+                )
 
     return {
+        "range": resolved_range,
+        "date_from": start_day.isoformat() if start_day else None,
+        "date_to": end_day.isoformat() if end_day else None,
+        "earliest_date": earliest_commit_day.isoformat() if earliest_commit_day else None,
+        "latest_date": latest_commit_day.isoformat() if latest_commit_day else None,
+        "all_time_commits": all_time_commits,
         "total_commits": total_commits,
         "total_pull_requests": total_pull_requests,
         "total_ci_runs": total_ci_runs,

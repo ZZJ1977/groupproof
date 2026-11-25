@@ -6,11 +6,11 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const source = (file) => readFileSync(resolve(root, file), "utf8");
 const pages = {
-  dashboard: source("features/c/AdminDashboardPage.tsx"),
-  identity: source("features/c/IdentityAdminApiPages.tsx"),
-  usage: source("features/c/GovernanceApiPages.tsx"),
+  dashboard: source("admin/pages/AdminDashboardPage.tsx"),
+  identity: source("admin/pages/IdentityAdminApiPages.tsx"),
+  usage: source("admin/pages/GovernanceApiPages.tsx"),
 };
-const governanceStyles = source("features/governance/governance.module.css");
+const governanceStyles = source("admin/components/governance.module.css");
 
 const checks = [
   ["dashboard keeps real KPI queries", /admin-dashboard-users/.test(pages.dashboard) && /admin-dashboard-courses/.test(pages.dashboard)],

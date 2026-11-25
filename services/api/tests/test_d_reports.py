@@ -1,48 +1,466 @@
-"""D4 binary export and report authorization regression checks."""
+"""D4 report authoring, 7-chapter structure, AI rewrite, and rich export regression checks."""
 
+import io
+import zipfile
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
+from docx import Document as DocxReader
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from PIL import Image as PILImage
 
-from app.api.errors import ApiError
-from app.modules.d.reporting import render_document, require_editor
+from app.api.auth import get_current_user
+from app.api.errors import ApiError, install_exception_handlers
+from app.db.session import get_session
+from app.modules.d import report_charts, report_tasks, reporting
+from app.modules.d.reporting import (
+    CHAPTER_ORDER,
+    _content_disposition,
+    _deterministic_risk_explanation,
+    _ordered_section_entries,
+    _parse_markdown_blocks,
+    _recover_stale_generating,
+    _should_run_inline,
+    render_document,
+    render_fallback_chapters,
+    require_editor,
+)
 
 
-def test_exports_are_real_pdf_and_docx_files():
-    data = {
-        "project_name": "GroupProof 跨模块全链路长标题测试项目 — 验证不截断标题与表格结构",
+def _sample_facts() -> dict:
+    return {
+        "project": {
+            "name": "GroupProof 协同平台",
+            "description": "高校软件工程团队协作与贡献核算系统",
+            "lifecycle": "active",
+            "setup_status": "frozen",
+            "final_deadline": "2026-12-01",
+            "baseline_version": 2,
+            "baseline_status": "frozen",
+            "plan_version": 3,
+            "plan_status": "frozen",
+            "modules_count": 4,
+            "requirements_count": 20,
+            "requirements_high": 10,
+        },
         "counts": {
             "members": 4,
-            "tasks": 6,
-            "completed_tasks": 5,
-            "evidence": 3,
-            "risks": 1,
+            "tasks": 28,
+            "completed_tasks": 28,
+            "evidence": 114,
+            "risks": 0,
+            "contribution_members": 0,
         },
-        "sections": {
-            "overview": "任务完成 5 项\n成员协作正常",
-            "risks": "存在一项风险",
-            "appendix": "证据 A\n证据 B",
+        "contribution_snapshot_id": None,
+        "contribution_meta": {"is_frozen": False, "version": 4, "status": "draft"},
+        "modules": [
+            {
+                "name": "模块 A：底座与认证",
+                "owner": "卓子杰",
+                "core": True,
+                "requirements_count": 5,
+                "tasks_total": 8,
+                "tasks_completed": 8,
+                "weight_sum": 30.0,
+                "sample_tasks": ["A1 仓库基建", "A3 Google 认证"],
+            }
+        ],
+        "milestones": [
+            {
+                "title": "第 1 周：底座搭通",
+                "status": "completed",
+                "status_label": "已完成",
+                "deadline": "2026-10-18",
+                "progress_percent": 100,
+                "deliverables_done": 2,
+                "deliverables_total": 2,
+                "deliverable_titles": ["架构文档", "迁移脚本"],
+                "linked_tasks_total": 4,
+                "linked_tasks_completed": 4,
+            }
+        ],
+        "tasks_brief": [
+            {
+                "title": "A1 仓库基建",
+                "module": "模块 A：底座与认证",
+                "status": "completed",
+                "status_label": "已完成",
+                "progress_percent": 100,
+                "weight": 10.0,
+                "assignees": ["卓子杰"],
+            }
+        ],
+        "github": {
+            "repo_count": 1,
+            "commits": 142,
+            "pull_requests": 18,
+            "merged_prs": 18,
+            "ci_runs": 24,
+            "ci_success": 23,
+            "additions": 48210,
+            "deletions": 11230,
+            "by_member": {
+                "卓子杰": {"commits": 50, "prs": 6, "additions": 20000, "deletions": 4000}
+            },
+            "recent_highlights": [
+                {
+                    "kind": "commit",
+                    "date": "2026-11-24",
+                    "author": "卓子杰",
+                    "title": "feat(reports): 7-chapter AI report",
+                    "additions": 320,
+                    "deletions": 40,
+                }
+            ],
+        },
+        "github_repos": [
+            {
+                "full_name": "org/groupproof",
+                "default_branch": "develop",
+                "last_synced_at": "2026-11-25",
+            }
+        ],
+        "feishu": {
+            "chat_count": 1,
+            "total_messages": 420,
+            "date_range": "2026-10-10 至 2026-11-24",
+            "total_conclusions": 54,
+            "overview": "四人按周同步推进并达成多项技术共识。",
+            "categories": {
+                "decision": 18,
+                "task_progress": 20,
+                "division_confirm": 8,
+                "doc_review": 8,
+            },
+            "highlights": [
+                {
+                    "title": "四人分工计划已确认",
+                    "category": "division_confirm",
+                    "status": "completed",
+                    "summary": "全体成员确认 A/B/C/D 四模块职责边界。",
+                    "confirmed_count": 4,
+                    "task_codes": ["T-001"],
+                }
+            ],
+        },
+        "evidence": {
+            "total_formal": 114,
+            "by_source": {"github": 80, "file": 20, "feishu": 14},
+            "tasks_with_evidence": 28,
+            "criteria_total": 84,
+            "verification_runs": 32,
+            "formal_outcomes": 28,
+            "highlights": [{"title": "[abc123] 完成全链路验收", "source_type": "github"}],
         },
         "evidence_records": [
-            {"id": "ev-1", "task_id": "task-1", "title": "登录接口自动化验收报告"},
+            {"id": "ev-1", "task_id": "task-1", "title": "登录接口自动化验收报告\x0b"},
         ],
+        "members": [
+            {
+                "name": "卓子杰",
+                "role": "组长",
+                "github_login": "zzj1977",
+                "share_percent": 30.0,
+                "task_credit": 30.0,
+                "tasks_assigned": 8,
+                "tasks_completed": 8,
+                "owned_modules": ["模块 A：底座与认证"],
+                "github_commits": 50,
+                "github_prs": 6,
+                "github_additions": 20000,
+                "github_deletions": 4000,
+                "key_tasks": ["A1 仓库基建", "A3 Google 认证"],
+            }
+        ],
+        "risks": {
+            "active_count": 0,
+            "closed_count": 2,
+            "counts": {"total": 0, "high": 0, "medium": 0, "low": 0},
+            "active": [],
+            "closed": [],
+        },
+    }
+
+
+def test_seven_ordered_chapters_and_rich_fallback_markdown_tables():
+    facts = _sample_facts()
+    facts["project"]["course_name"] = "软件工程综合实践"
+    facts["project"]["semester"] = "2026 秋季"
+    facts["feishu"]["blockers"] = [
+        {
+            "title": "CI 环境依赖版本冲突排查",
+            "category": "blocker",
+            "status": "completed",
+            "summary": "排查锁定 Alembic 迁移与 Python 依赖版本，修复构建失败。",
+            "confirmed_count": 3,
+            "task_codes": ["T-008"],
+        }
+    ]
+    chapters = render_fallback_chapters(facts)
+    assert list(chapters.keys()) == CHAPTER_ORDER
+    assert len(chapters) == 7
+    # Ensure substantive publication-grade prose + tables (never 1-sentence stubs)
+    total_chars = sum(len(content) for content in chapters.values())
+    assert total_chars >= 2000, f"fallback report too thin: {total_chars} chars"
+    for key, content in chapters.items():
+        assert len(content) > 220, f"chapter {key} too short ({len(content)} chars)"
+        assert "0 active risks" not in content
+        assert "No frozen contribution snapshot" not in content
+    assert "| 里程碑阶段 | 截止日期 | 状态 | 进度 | 交付物 | 关联任务 |" in chapters["progress"]
+    assert "| 第 1 周：底座搭通 | 2026-10-18 | 已完成 | 100% | 2/2 | 4/4 |" in chapters["progress"]
+    assert "| 卓子杰 | 组长 | 30.0%" in chapters["contribution"]
+    # Chapter 6 must NOT open with an ugly internal draft warning; footnote belongs at bottom
+    assert not chapters["contribution"].startswith("当前尚未冻结")
+    assert "当前基于最新贡献快照 v4 编制" in chapters["contribution"].splitlines()[-1]
+    assert "四人分工计划已确认" in chapters["collaboration"]
+    assert "无活跃未关闭风险" in chapters["reflection"]
+    assert "CI 环境依赖版本冲突排查" in chapters["reflection"]
+
+
+def test_extract_json_object_and_three_batch_ai_authoring_with_single_chapter_retry(monkeypatch):
+    parsed = reporting._extract_json_object(
+        '以下是结果：\n```json\n{"overview": "完整正文内容"}\n```\n请查收'
+    )
+    assert parsed == {"overview": "完整正文内容"}
+    assert (
+        reporting._strip_leading_chapter_heading(
+            "## 一、项目概述与目标范围\n\n正文开始", "overview"
+        )
+        == "正文开始"
+    )
+
+    facts = _sample_facts()
+    seen_features: list[str] = []
+    seen_batch_max_tokens: list[int] = []
+    long_body = (
+        "> **本章核心结论**：项目按周完成全部核心交付。\n\n"
+        "### 真实核验\n\n" + "项目按周持续推进，完成全部核心模块交付并沉淀可核验工程证据。" * 4
+    )
+
+    def fake_openrouter(**kwargs):
+        feature = kwargs["feature"]
+        seen_features.append(feature)
+        if feature.startswith("generate_project_report_part"):
+            seen_batch_max_tokens.append(kwargs["max_tokens"])
+        if feature == "generate_project_report_part1":
+            return (
+                {
+                    "overview": f"## 一、项目概述与目标范围\n\n{long_body}",
+                    "workflow": long_body,
+                    "progress": long_body,
+                },
+                "anthropic/claude-sonnet-4.5",
+            )
+        if feature == "generate_project_report_part2":
+            return (
+                {
+                    "collaboration": "太短",  # rejected -> triggers retry_collaboration
+                    "evidence": long_body,
+                },
+                "anthropic/claude-sonnet-4.5",
+            )
+        if feature == "generate_project_report_part3":
+            # Simulate truncated reflection (unclosed quote & mid-sentence) -> rejected -> retry
+            return (
+                {
+                    "contribution": long_body,
+                    "reflection": long_body + "\n\n并在飞书协作结论「并发编辑任务触发乐",
+                },
+                "anthropic/claude-sonnet-4.5",
+            )
+        if feature == "generate_project_report_retry_reflection":
+            return {"reflection": long_body}, "anthropic/claude-sonnet-4.5"
+        # Simulate retry failure for collaboration -> fallback will fill it
+        return None, "anthropic/claude-sonnet-4.5"
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
+    authored, model = reporting._author_report_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
+    assert model == "anthropic/claude-sonnet-4.5"
+    assert {
+        "generate_project_report_part1",
+        "generate_project_report_part2",
+        "generate_project_report_part3",
+        "generate_project_report_retry_collaboration",
+        "generate_project_report_retry_reflection",
+    }.issubset(set(seen_features))
+    assert all(mt == 16384 for mt in seen_batch_max_tokens)
+    assert authored is not None
+    assert set(authored.keys()) == {
+        "overview",
+        "workflow",
+        "progress",
+        "evidence",
+        "contribution",
+        "reflection",
+    }
+    assert not authored["overview"].startswith("## 一、")
+    assert "并发编辑任务触发乐" not in authored["reflection"]
+
+
+def test_ordered_section_entries_preserves_chapter_order_against_jsonb_shuffle():
+    facts = _sample_facts()
+    chapters = render_fallback_chapters(facts)
+    # Simulate Postgres JSONB scrambling dictionary keys (e.g. reflection/tasks first)
+    scrambled = {
+        "tasks": "legacy task line",
+        "reflection": chapters["reflection"],
+        "overview": chapters["overview"],
+        "contribution": chapters["contribution"],
+        "evidence": chapters["evidence"],
+        "collaboration": chapters["collaboration"],
+        "progress": chapters["progress"],
+        "workflow": chapters["workflow"],
+    }
+    ordered = _ordered_section_entries(
+        {"chapter_order": list(CHAPTER_ORDER), "sections": scrambled}
+    )
+    assert [key for key, _, _ in ordered] == CHAPTER_ORDER
+    assert "tasks" not in [key for key, _, _ in ordered]
+
+
+def test_exports_render_markdown_tables_to_real_pdf_docx_and_md():
+    facts = _sample_facts()
+    chapters = render_fallback_chapters(facts)
+    chapters["overview"] += "\n含控制字符\x00测试"
+    data = {
+        "project_name": "GroupProof 跨模块全链路长标题测试项目 — 验证不截断标题与表格结构",
+        "counts": facts["counts"],
+        "chapter_order": list(CHAPTER_ORDER),
+        "sections": {**chapters, "tasks": "legacy hidden task line"},
+        "evidence_records": facts["evidence_records"],
     }
     pdf, pdf_type = render_document(data, "pdf")
     docx, docx_type = render_document(data, "docx")
-    assert pdf.startswith(b"%PDF-") and len(pdf) > 500
-    assert docx.startswith(b"PK") and len(docx) > 500
+    md, md_type = render_document(data, "md")
+
+    assert pdf.startswith(b"%PDF-") and len(pdf) > 2000
+    assert docx.startswith(b"PK") and len(docx) > 5000
     assert pdf_type == "application/pdf"
     assert "wordprocessingml" in docx_type
-    assert "测试".encode() in docx or b"word/document.xml" in docx
+    assert md_type == "text/markdown; charset=utf-8"
 
-    import io
-
-    from docx import Document as DocxReader
+    md_text = md.decode("utf-8")
+    assert "## 一、项目概述与目标范围" in md_text
+    assert "## 七、风险复盘与后续改进建议" in md_text
+    assert "legacy hidden task line" not in md_text
+    assert "\x00" not in md_text
 
     parsed = DocxReader(io.BytesIO(docx))
-    assert len(parsed.tables) == 2
-    assert parsed.tables[0].cell(1, 2).text == "5"
-    assert parsed.tables[1].cell(1, 0).text == "登录接口自动化验收报告"
+    # Summary table + multiple real GFM tables across the 7 chapters
+    assert len(parsed.tables) >= 6
+    assert parsed.tables[0].cell(1, 2).text == "28"
+
+
+def test_markdown_block_parser_extracts_headings_tables_lists_and_quotes():
+    sample = (
+        "### 小节标题\n\n"
+        "> 引用提示\n\n"
+        "| 列A | 列B |\n"
+        "| --- | ---: |\n"
+        "| 值1 | **100%** |\n\n"
+        "- 要点一\n"
+        "- 要点二\n"
+    )
+    blocks = _parse_markdown_blocks(sample)
+    assert [b["type"] for b in blocks] == ["heading", "quote", "table", "list"]
+    assert blocks[2]["head"] == ["列A", "列B"]
+    assert blocks[2]["rows"] == [["值1", "**100%**"]]
+
+
+def test_ai_rewrite_helper_uses_openrouter_when_available(monkeypatch):
+    facts = _sample_facts()
+    monkeypatch.setattr(
+        reporting,
+        "_call_openrouter_json",
+        lambda **kwargs: (
+            {
+                "content": (
+                    "### 重写后的项目概述\n\n"
+                    "**GroupProof** 已完成全部 28 项任务并沉淀 114 条正式证据。"
+                )
+            },
+            "deepseek/deepseek-v3.2",
+        ),
+    )
+    rewritten, model = reporting._rewrite_section_with_ai(
+        facts,
+        section_key="overview",
+        current_body="旧内容",
+        instruction="更精炼",
+        actor_id=uuid4(),
+        project_id=uuid4(),
+    )
+    assert model == "deepseek/deepseek-v3.2"
+    assert rewritten is not None and "重写后的项目概述" in rewritten
+
+
+def test_content_disposition_supports_utf8_and_ascii_fallback():
+    header = _content_disposition("GroupProof 项目", 2, "pdf")
+    assert 'filename="report-v2.pdf"' in header
+    assert "filename*=UTF-8''" in header
+    assert header.startswith("attachment;")
+
+
+def test_should_run_inline_respects_env_monkeypatch_and_missing_worker(monkeypatch):
+    monkeypatch.delenv("REPORT_INLINE_MODE", raising=False)
+    reporting._worker_inspect_cache.clear()
+    monkeypatch.setattr(reporting, "_has_registered_report_worker", lambda _name: False)
+    assert _should_run_inline(
+        report_tasks.generate_preview, "app.modules.d.report_tasks.generate_preview"
+    )
+
+    monkeypatch.setattr(reporting, "_has_registered_report_worker", lambda _name: True)
+    assert not _should_run_inline(
+        report_tasks.generate_preview, "app.modules.d.report_tasks.generate_preview"
+    )
+
+    # Monkeypatched .delay in unit tests must keep async dispatch semantics.
+    monkeypatch.setattr(reporting, "_has_registered_report_worker", lambda _name: False)
+    monkeypatch.setattr(report_tasks.generate_preview, "delay", lambda *_: None)
+    assert not _should_run_inline(
+        report_tasks.generate_preview, "app.modules.d.report_tasks.generate_preview"
+    )
+
+    monkeypatch.setenv("REPORT_INLINE_MODE", "true")
+    assert _should_run_inline(
+        report_tasks.generate_preview, "app.modules.d.report_tasks.generate_preview"
+    )
+    monkeypatch.setenv("REPORT_INLINE_MODE", "false")
+    assert not _should_run_inline(
+        report_tasks.generate_preview, "app.modules.d.report_tasks.generate_preview"
+    )
+
+
+def test_stale_generating_recovery_unblocks_orphaned_snapshots():
+    report = SimpleNamespace(status="generating")
+    fresh_snap = SimpleNamespace(status="generating", created_at=datetime.now(UTC))
+    assert not _recover_stale_generating(report, [fresh_snap])
+    assert report.status == "generating"
+
+    stale_snap = SimpleNamespace(
+        status="generating", created_at=datetime.now(UTC) - timedelta(minutes=5)
+    )
+    assert _recover_stale_generating(report, [stale_snap])
+    assert report.status == "failed"
+    assert stale_snap.status == "failed"
+
+
+def test_deterministic_risk_explanation_covers_empty_and_active_risks():
+    empty_text = _deterministic_risk_explanation(
+        {"counts": {"tasks": 28, "completed_tasks": 28, "evidence": 114}}, []
+    )
+    assert "28/28" in empty_text
+    assert "无活跃风险" in empty_text
+
+    active_text = _deterministic_risk_explanation(
+        {"counts": {"tasks": 10, "completed_tasks": 8, "evidence": 5}},
+        [SimpleNamespace(title="接口延期", level="high")],
+    )
+    assert "接口延期" in active_text
+    assert "高 1" in active_text
 
 
 def test_report_editor_requires_leader_or_teacher_and_active_project():
@@ -60,3 +478,885 @@ def test_report_editor_requires_leader_or_teacher_and_active_project():
             )
         )
     assert archived.value.status_code == 403
+
+
+def test_all_five_default_charts_render_valid_high_dpi_cjk_pngs():
+    facts = _sample_facts()
+    facts["modules"] = [
+        {
+            "name": "模块 B：课程小组、项目初始化、需求、任务规划与里程碑",
+            "owner": "杨凯景",
+            "core": True,
+            "requirements_count": 6,
+            "tasks_total": 7,
+            "tasks_completed": 7,
+            "weight_sum": 23.0,
+            "sample_tasks": ["B1 课程与小组治理", "B7 里程碑交付物"],
+        },
+        *facts["modules"],
+    ]
+    specs = report_charts.build_default_visual_specs(facts)
+    assert [s["id"] for s in specs] == [
+        "architecture",
+        "workflow",
+        "milestones",
+        "evidence",
+        "contribution",
+    ]
+    expected_w = int(round(report_charts.CANVAS_WIDTH * report_charts.PNG_RASTER_SCALE))
+    for spec in specs:
+        svg = report_charts.render_visual_spec_svg(spec, facts)
+        assert svg.startswith("<svg ") and "</svg>" in svg
+        assert 'viewBox="0 0 1200 ' in svg
+        assert "…" not in svg, f"unexpected truncation ellipsis in {spec['id']} SVG"
+        if spec["id"] == "architecture":
+            assert "课程小组" in svg and "里程碑" in svg
+            assert "114 条" in svg and "28 项" in svg
+
+        png = report_charts.render_visual_spec(spec, facts)
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        assert len(png) > 5000, f"chart {spec['id']} unexpectedly small ({len(png)} bytes)"
+        with PILImage.open(io.BytesIO(png)) as img:
+            w, h = img.size
+            assert w == expected_w
+            assert h >= 800
+
+
+def test_ai_custom_visual_specs_sanitization_and_arbitrary_slug_rendering():
+    facts = _sample_facts()
+    raw_visuals = [
+        {
+            "id": "Proposal-Arch!",
+            "section_key": "overview",
+            "template": "layered_architecture",
+            "badge": "总体架构",
+            "title": "智能课程协作系统三层架构",
+            "subtitle": "依据项目提案动态绘制",
+            "caption": "智能课程协作系统架构总览",
+            "payload": {
+                "layers": [
+                    {
+                        "name": "终端与前端层",
+                        "accent": "sky",
+                        "nodes": [{"title": "Web 协作端", "subtitle": "Next.js App Router"}],
+                    },
+                    {
+                        "name": "业务与 AI 服务层",
+                        "accent": "emerald",
+                        "nodes": [
+                            {
+                                "title": "模块 A：底座与认证",
+                                "subtitle": "负责人：卓子杰",
+                                "metric": "8/8 任务",
+                                "progress": 100,
+                            }
+                        ],
+                    },
+                ]
+            },
+        },
+        {
+            "id": "sprint_loop",
+            "section_key": "workflow",
+            "template": "process_flow",
+            "badge": "迭代闭环",
+            "title": "四周敏捷迭代与验证流水线",
+            "caption": "图 99：四周敏捷迭代与验证流水线",
+            "payload": {
+                "steps": [
+                    {"step": "01", "title": "需求对齐", "metric": "20 条", "detail": "冻结基线"},
+                    {"step": "02", "title": "并行开发", "metric": "142 提交", "detail": "PR 评审"},
+                    {"step": "03", "title": "自动验收", "metric": "114 证据", "detail": "人工确认"},
+                ]
+            },
+        },
+        {
+            "id": "invalid_tpl",
+            "section_key": "progress",
+            "template": "unsupported_3d_pie",
+            "title": "Should be dropped",
+            "payload": {},
+        },
+        {
+            "id": "invalid_sec",
+            "section_key": "unknown_chapter",
+            "template": "process_flow",
+            "title": "Should also be dropped",
+            "payload": {},
+        },
+    ]
+
+    cleaned = report_charts.sanitize_visual_specs(raw_visuals, facts)
+    assert len(cleaned) == 2
+    assert [sp["id"] for sp in cleaned] == ["proposal-arch", "sprint_loop"]
+    assert cleaned[0]["caption"] == "图 1：智能课程协作系统架构总览"
+    assert cleaned[1]["caption"] == "图 2：四周敏捷迭代与验证流水线"
+
+    snapshot = {"visuals": cleaned, "facts": facts}
+    for sp in cleaned:
+        png = report_charts.render_chart_from_snapshot(snapshot, sp["id"])
+        assert png is not None and png.startswith(b"\x89PNG\r\n\x1a\n") and len(png) > 5000
+    assert report_charts.render_chart_from_snapshot(snapshot, "../bad") is None
+    assert report_charts.render_chart_from_snapshot(snapshot, "unknown_slug") is None
+
+
+def test_plan_report_visuals_with_ai_and_chapter_injection_preserves_footnotes(monkeypatch):
+    facts = _sample_facts()
+    project_id = uuid4()
+
+    def fake_openrouter(**kwargs):
+        assert kwargs["feature"] == "plan_report_visuals"
+        return (
+            {
+                "visuals": [
+                    {
+                        "id": "domain_arch",
+                        "section_key": "overview",
+                        "template": "layered_architecture",
+                        "title": "项目领域分层架构",
+                        "caption": "项目领域分层架构",
+                        "payload": {},
+                    },
+                    {
+                        "id": "member_matrix",
+                        "section_key": "contribution",
+                        "template": "member_comparison",
+                        "title": "团队贡献多维矩阵",
+                        "caption": "团队贡献多维矩阵",
+                        "payload": {},
+                    },
+                ]
+            },
+            "deepseek/deepseek-v3.2",
+        )
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
+    visuals, model = reporting._plan_report_visuals_with_ai(
+        facts, actor_id=uuid4(), project_id=project_id
+    )
+    assert model == "deepseek/deepseek-v3.2"
+    assert visuals is not None and len(visuals) == 2
+
+    chapters = render_fallback_chapters(facts, project_id=project_id, version_no=2, visuals=visuals)
+    expected_arch_url = f"/api/v1/projects/{project_id}/reports/versions/2/charts/domain_arch.svg"
+    expected_contrib_url = (
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/member_matrix.svg"
+    )
+    assert f"![图 1：项目领域分层架构]({expected_arch_url})" in chapters["overview"]
+    assert f"![图 2：团队贡献多维矩阵]({expected_contrib_url})" in chapters["contribution"]
+    # Footnote must remain at the bottom of Chapter 6
+    assert "当前基于最新贡献快照 v4 编制" in chapters["contribution"].splitlines()[-1]
+
+    # Re-injecting must be idempotent (no duplicate image lines)
+    re_injected = reporting._inject_visuals_into_chapters(
+        chapters, visuals, project_id=project_id, version_no=2
+    )
+    assert re_injected["overview"].count(expected_arch_url) == 1
+
+    # Rewriting version URLs updates v2 -> v3 cleanly (both .svg and legacy .png)
+    bumped = reporting._rewrite_chart_version_urls(chapters, 3)
+    assert "/versions/3/charts/domain_arch.svg" in bumped["overview"]
+    assert "/versions/2/charts/domain_arch.svg" not in bumped["overview"]
+    legacy_bumped = reporting._rewrite_chart_version_urls(
+        {"overview": f"![图](/api/v1/projects/{project_id}/reports/versions/2/charts/legacy.png)"},
+        3,
+    )
+    assert "/versions/3/charts/legacy.png" in legacy_bumped["overview"]
+
+
+def test_pdf_and_docx_exports_embed_real_png_charts():
+    facts = _sample_facts()
+    project_id = uuid4()
+    visuals = report_charts.build_default_visual_specs(facts)
+    chapters = render_fallback_chapters(facts, project_id=project_id, version_no=1, visuals=visuals)
+    data = {
+        "project_name": facts["project"]["name"],
+        "counts": facts["counts"],
+        "chapter_order": list(CHAPTER_ORDER),
+        "sections": chapters,
+        "visuals": visuals,
+        "facts": reporting._snapshot_chart_facts(facts),
+        "evidence_records": facts["evidence_records"],
+    }
+
+    blocks = _parse_markdown_blocks(chapters["overview"])
+    img_blocks = [b for b in blocks if b["type"] == "image"]
+    assert len(img_blocks) == 1
+    assert img_blocks[0]["alt"] == "图 1：系统架构与模块分工总览图"
+
+    pdf_bytes, pdf_mime = render_document(data, "pdf")
+    docx_bytes, docx_mime = render_document(data, "docx")
+    md_bytes, md_mime = render_document(data, "md")
+
+    assert pdf_mime == "application/pdf"
+    assert pdf_bytes.startswith(b"%PDF-") and len(pdf_bytes) > 50000
+    assert b"/Subtype /Image" in pdf_bytes
+
+    assert "wordprocessingml" in docx_mime
+    assert docx_bytes.startswith(b"PK") and len(docx_bytes) > 50000
+    with zipfile.ZipFile(io.BytesIO(docx_bytes)) as zf:
+        media_pngs = [
+            name
+            for name in zf.namelist()
+            if name.startswith("word/media/") and name.endswith(".png")
+        ]
+        assert len(media_pngs) == 5
+        for media_name in media_pngs:
+            raw_img = zf.read(media_name)
+            assert raw_img.startswith(b"\x89PNG\r\n\x1a\n") and len(raw_img) > 5000
+
+    assert md_mime == "text/markdown; charset=utf-8"
+    md_text = md_bytes.decode("utf-8")
+    expected_md_img = (
+        f"![图 1：系统架构与模块分工总览图]"
+        f"(/api/v1/projects/{project_id}/reports/versions/1/charts/architecture.svg)"
+    )
+    assert expected_md_img in md_text
+
+
+def test_report_chart_http_endpoint_returns_png_and_enforces_validation(monkeypatch):
+    project_id = uuid4()
+    report_id = uuid4()
+    facts = _sample_facts()
+    visuals = report_charts.build_default_visual_specs(facts)
+    custom_spec = {
+        **visuals[0],
+        "id": "custom_proposal_map",
+        "title": "自定义提案架构图",
+        "caption": "图 1：自定义提案架构图",
+    }
+    snap_obj = SimpleNamespace(
+        id=uuid4(),
+        report_id=report_id,
+        version_no=2,
+        status="generated",
+        data_snapshot={
+            "project_name": facts["project"]["name"],
+            "visuals": [custom_spec, *visuals[1:]],
+            "facts": reporting._snapshot_chart_facts(facts),
+        },
+    )
+    report_obj = SimpleNamespace(id=report_id, project_id=project_id)
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        def scalar(self, _stmt):
+            self.calls += 1
+            return report_obj if self.calls == 1 else snap_obj
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_request_id(request, call_next):
+        request.state.request_id = "test-req-id"
+        return await call_next(request)
+
+    install_exception_handlers(app)
+    app.include_router(reporting.router)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid4(), name="测试员")
+    app.dependency_overrides[get_session] = lambda: FakeSession()
+
+    monkeypatch.setattr(
+        reporting,
+        "get_project_access",
+        lambda *_a, **_k: SimpleNamespace(project=SimpleNamespace(name=facts["project"]["name"])),
+    )
+
+    client = TestClient(app)
+
+    # Custom AI-authored visual slug works as both .svg and 2.5x .png
+    res_svg = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/custom_proposal_map.svg"
+    )
+    assert res_svg.status_code == 200
+    assert res_svg.headers["content-type"].startswith("image/svg+xml")
+    assert res_svg.headers["x-content-type-options"] == "nosniff"
+    assert res_svg.headers["content-security-policy"] == "sandbox"
+    assert "max-age=300" in res_svg.headers["cache-control"]
+    svg_text = res_svg.text
+    assert svg_text.startswith("<svg ") and "</svg>" in svg_text
+
+    res_custom = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/custom_proposal_map.png"
+    )
+    assert res_custom.status_code == 200
+    assert res_custom.headers["content-type"] == "image/png"
+    assert res_custom.headers["x-content-type-options"] == "nosniff"
+    assert "max-age=300" in res_custom.headers["cache-control"]
+    assert res_custom.content.startswith(b"\x89PNG\r\n\x1a\n") and len(res_custom.content) > 5000
+
+    # Built-in default key also works
+    res_wf = client.get(f"/api/v1/projects/{project_id}/reports/versions/2/charts/workflow.png")
+    assert res_wf.status_code == 200
+    assert res_wf.content.startswith(b"\x89PNG\r\n\x1a\n") and len(res_wf.content) > 5000
+
+    # Unknown chart key returns 404
+    res_missing = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/does_not_exist.png"
+    )
+    assert res_missing.status_code == 404
+    res_missing_svg = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/does_not_exist.svg"
+    )
+    assert res_missing_svg.status_code == 404
+
+    # Invalid slug returns 404
+    res_bad = client.get(
+        f"/api/v1/projects/{project_id}/reports/versions/2/charts/INVALID%20KEY.png"
+    )
+    assert res_bad.status_code == 404
+
+
+def test_modular_skills_loader_and_prompt_injection(monkeypatch):
+    from app.modules.d.skills import (
+        SKILL_REPORT_VISUAL,
+        SKILL_REPORT_WRITING,
+        clear_skill_cache,
+        load_skill,
+    )
+
+    clear_skill_cache()
+    writing = load_skill(SKILL_REPORT_WRITING)
+    visual = load_skill(SKILL_REPORT_VISUAL)
+    assert "本章核心结论" in writing
+    assert "全链路闭环" in writing and "禁用套话黑名单" in writing
+    assert "custom_svg" in visual and "Noto Sans CJK SC" in visual
+    # Second call hits cache identically
+    assert load_skill(SKILL_REPORT_WRITING) is writing
+
+    with pytest.raises(ValueError):
+        load_skill("../secrets.md")
+
+    seen_prompts: dict[str, tuple[str, str | None]] = {}
+
+    def fake_openrouter(**kwargs):
+        seen_prompts[kwargs["feature"]] = (kwargs["system_prompt"], kwargs.get("model_role"))
+        if kwargs["feature"] == "plan_report_visuals":
+            return {"visuals": []}, "anthropic/claude-sonnet-4.5"
+        if kwargs["feature"] == "rewrite_report_section":
+            return (
+                {"content": "> **本章核心结论**：重写完成。\n\n" + "内容" * 30},
+                "anthropic/claude-sonnet-4.5",
+            )
+        return (
+            {
+                k: "> **本章核心结论**：测试结论。\n\n### 小节\n\n" + "真实数据论述。" * 15
+                for k in CHAPTER_ORDER
+            },
+            "anthropic/claude-sonnet-4.5",
+        )
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json", fake_openrouter)
+    facts = _sample_facts()
+    reporting._author_report_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
+    reporting._plan_report_visuals_with_ai(facts, actor_id=uuid4(), project_id=uuid4())
+    reporting._rewrite_section_with_ai(
+        facts,
+        section_key="overview",
+        current_body="旧正文",
+        instruction="",
+        actor_id=uuid4(),
+        project_id=uuid4(),
+    )
+    assert "禁用套话黑名单" in seen_prompts["generate_project_report_part1"][0]
+    assert seen_prompts["generate_project_report_part1"][1] == "writing"
+    assert "禁用套话黑名单" in seen_prompts["rewrite_report_section"][0]
+    assert seen_prompts["rewrite_report_section"][1] == "writing"
+    assert "custom_svg" in seen_prompts["plan_report_visuals"][0]
+    assert seen_prompts["plan_report_visuals"][1] == "visual"
+
+
+def test_dual_model_env_resolution_and_runtime_fallback(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "openrouter")
+    monkeypatch.setenv("AI_API_KEY", "sk-test-dummy")
+    monkeypatch.setenv("AI_MODEL", "deepseek/deepseek-v3.2")
+    monkeypatch.delenv("AI_REPORT_WRITING_MODEL", raising=False)
+    monkeypatch.delenv("AI_REPORT_VISUAL_MODEL", raising=False)
+
+    assert reporting._openrouter_config("writing") == (
+        "sk-test-dummy",
+        "deepseek/deepseek-v3.2",
+        "deepseek/deepseek-v3.2",
+    )
+    monkeypatch.setenv("AI_REPORT_WRITING_MODEL", "anthropic/claude-sonnet-4.5")
+    monkeypatch.setenv("AI_REPORT_VISUAL_MODEL", "google/gemini-2.5-flash")
+    assert reporting._openrouter_config("writing") == (
+        "sk-test-dummy",
+        "anthropic/claude-sonnet-4.5",
+        "deepseek/deepseek-v3.2",
+    )
+    assert reporting._openrouter_config("visual") == (
+        "sk-test-dummy",
+        "google/gemini-2.5-flash",
+        "deepseek/deepseek-v3.2",
+    )
+
+    attempted_models: list[str] = []
+
+    def fake_single(**kwargs):
+        attempted_models.append(kwargs["model"])
+        if kwargs["model"] == "google/gemini-2.5-flash":
+            return None, kwargs["model"]
+        return {"visuals": []}, kwargs["model"]
+
+    monkeypatch.setattr(reporting, "_call_openrouter_json_single", fake_single)
+    parsed, used = reporting._call_openrouter_json(
+        system_prompt="sys",
+        user_payload={"k": 1},
+        timeout=10.0,
+        feature="plan_report_visuals",
+        actor_id=None,
+        project_id=uuid4(),
+        model_role="visual",
+    )
+    assert attempted_models == ["google/gemini-2.5-flash", "deepseek/deepseek-v3.2"]
+    assert parsed == {"visuals": []}
+    assert used == "deepseek/deepseek-v3.2"
+
+
+def test_custom_svg_sanitizer_rejects_xss_and_external_urls_with_graceful_fallback():
+    facts = _sample_facts()
+    valid_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480">'
+        '<rect x="0" y="0" width="1200" height="480" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>'
+        '<rect x="40" y="40" width="300" height="120" rx="10" fill="#F8FAFC" stroke="#0284C7"/>'
+        '<path d="M 340 100 C 420 100, 420 100, 500 100" '
+        'fill="none" stroke="#0284C7" stroke-width="2"/>'
+        '<text x="60" y="95" font-size="16" fill="#0F172A">GroupProof 核心架构</text>'
+        "</svg>"
+    )
+    cleaned_ok = report_charts.sanitize_custom_svg(valid_svg)
+    assert cleaned_ok is not None
+    assert 'viewBox="0 0 1200 480"' in cleaned_ok
+    assert "GroupProof 核心架构" in cleaned_ok
+
+    shapes = (
+        '<rect x="0" y="0" width="100" height="100"/>'
+        '<rect x="10" y="10" width="50" height="50"/>'
+        '<text x="20" y="20">x</text>'
+    )
+    svg_open = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480">'
+    malicious_cases = [
+        # <script> tag
+        f"{svg_open}<script>alert(1)</script>{shapes}</svg>",
+        # <foreignObject>
+        f'{svg_open}<foreignObject width="100" height="100"><body/></foreignObject>{shapes}</svg>',
+        # onload event handler
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480" onload="alert(1)">'
+        f"{shapes}</svg>",
+        # javascript: URI
+        f'{svg_open}<rect x="0" y="0" width="100" height="100" fill="javascript:alert(1)"/>'
+        f"{shapes}</svg>",
+        # External URL in fill / url()
+        f'{svg_open}<rect x="0" y="0" width="100" height="100" '
+        f'fill="url(https://evil.example/a.svg#x)"/>{shapes}</svg>',
+        # DOCTYPE / XXE
+        f'<!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>{svg_open}{shapes}</svg>',
+        # Invalid tiny viewBox
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">{shapes}</svg>',
+    ]
+    for bad_svg in malicious_cases:
+        assert report_charts.sanitize_custom_svg(bad_svg) is None
+
+    # Rejected custom_svg degrades cleanly to its fallback template instead of dropping
+    specs = report_charts.sanitize_visual_specs(
+        [
+            {
+                "id": "custom_arch_ok",
+                "section_key": "overview",
+                "template": "custom_svg",
+                "fallback_template": "layered_architecture",
+                "title": "定制系统架构图",
+                "caption": "定制系统架构图",
+                "payload": {"svg": valid_svg},
+            },
+            {
+                "id": "custom_wf_xss",
+                "section_key": "workflow",
+                "template": "custom_svg",
+                "fallback_template": "process_flow",
+                "title": "研发协同流程图",
+                "caption": "研发协同流程图",
+                "payload": {"svg": malicious_cases[0]},
+            },
+        ],
+        facts,
+    )
+    assert len(specs) == 2
+    assert specs[0]["template"] == "custom_svg"
+    assert specs[1]["template"] == "process_flow"
+    assert specs[1]["degraded_from"] == "custom_svg"
+    # Both render valid SVG and 2.5x PNG
+    for sp in specs:
+        svg_out = report_charts.render_visual_spec_svg(sp, facts)
+        assert "<script" not in svg_out.lower()
+        assert svg_out.startswith("<svg ")
+        png_out = report_charts.render_visual_spec(sp, facts)
+        assert png_out.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_collect_project_facts_counts_all_formal_evidence_and_completed_outcomes(monkeypatch):
+    """Formal evidence with source_changed=True and completed outcomes must not be undercounted."""
+    project_id = uuid4()
+    tasks = [
+        SimpleNamespace(
+            id=uuid4(),
+            project_id=project_id,
+            module_id=None,
+            title=f"T-{i}",
+            status="completed",
+            progress_percent=100,
+            weight=1.0,
+        )
+        for i in range(28)
+    ]
+    ev_rows = [
+        SimpleNamespace(
+            id=uuid4(),
+            project_id=project_id,
+            task_id=tasks[i % 28].id,
+            author_id=None,
+            status="formal",
+            source_type="github",
+            source_changed=(i >= 36),  # 36 unchanged + 87 source_changed = 123 formal evidence
+            title=f"Commit evidence #{i}",
+            created_at=datetime.now(UTC),
+        )
+        for i in range(123)
+    ]
+    # 41 FormalOutcome rows covering all 28 completed tasks, invalidated after source_changed sync
+    outcome_rows = [
+        SimpleNamespace(
+            id=uuid4(),
+            project_id=project_id,
+            task_id=tasks[i % 28].id,
+            invalidated_at=datetime.now(UTC),
+        )
+        for i in range(41)
+    ]
+
+    class _FakeScalarsResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return list(self._rows)
+
+    class _FakeSession:
+        def get(self, model, _pk):
+            if model.__name__ == "Project":
+                return SimpleNamespace(
+                    id=project_id,
+                    course_id=None,
+                    name="GroupProof",
+                    description="课程协作平台",
+                    lifecycle="active",
+                    setup_status="frozen",
+                    final_deadline=None,
+                )
+            return None
+
+        def scalar(self, _stmt):
+            return None
+
+        def scalars(self, stmt):
+            sql = str(stmt)
+            if "FROM tasks" in sql:
+                return _FakeScalarsResult(tasks)
+            if "FROM evidence" in sql:
+                # Verify WHERE clause does NOT filter out source_changed=True formal evidence
+                where_part = sql.split("WHERE", 1)[1] if "WHERE" in sql else ""
+                assert "source_changed" not in where_part
+                return _FakeScalarsResult(ev_rows)
+            if "FROM formal_outcomes" in sql:
+                where_part = sql.split("WHERE", 1)[1] if "WHERE" in sql else ""
+                assert "invalidated_at" not in where_part
+                return _FakeScalarsResult(outcome_rows)
+            return _FakeScalarsResult([])
+
+    monkeypatch.setattr(reporting, "_has_table", lambda *_a, **_k: False)
+    monkeypatch.setattr(reporting, "current_frozen_snapshot", lambda *_a, **_k: None)
+
+    facts = reporting.collect_project_facts(_FakeSession(), project_id, "GroupProof")
+    assert facts["counts"]["evidence"] == 123
+    assert facts["evidence"]["total_formal"] == 123
+    assert facts["evidence"]["effective_formal"] == 36
+    assert facts["evidence"]["source_changed_count"] == 87
+    assert facts["evidence"]["tasks_with_evidence"] == 28
+    assert facts["evidence"]["formal_outcomes"] == 28
+    assert facts["evidence"]["formal_outcomes_active"] == 0
+
+    # Verify Figure 1 & Figure 4 render the real 123 / 28 numbers (never 36 / 0)
+    specs = report_charts.build_default_visual_specs(facts)
+    arch_svg = report_charts.render_visual_spec_svg(specs[0], facts)
+    ev_svg = report_charts.render_visual_spec_svg(specs[3], facts)
+    assert "正式证据 123 条" in arch_svg
+    assert "正式成果 28 项" in arch_svg
+    assert "正式证据 36 条" not in arch_svg
+    assert "共 123 条" in ev_svg
+    assert "正式成果 28 项" in ev_svg
+
+
+def test_build_report_snapshot_records_skills_loaded_and_dual_models(monkeypatch):
+    facts = _sample_facts()
+    project_id = uuid4()
+    monkeypatch.setattr(reporting, "collect_project_facts", lambda *_a, **_k: facts)
+    monkeypatch.setattr(reporting, "_resolve_target_version_no", lambda *_a, **_k: 8)
+    monkeypatch.setattr(
+        reporting,
+        "_author_report_with_ai",
+        lambda *_a, **_k: (
+            {
+                k: f"> **本章核心结论**：第 {i} 章。\n\n" + "工程实证内容。" * 20
+                for i, k in enumerate(CHAPTER_ORDER, 1)
+            },
+            "anthropic/claude-sonnet-4.5",
+        ),
+    )
+    monkeypatch.setattr(
+        reporting,
+        "_plan_report_visuals_with_ai",
+        lambda *_a, **_k: (
+            report_charts.build_default_visual_specs(facts),
+            "google/gemini-2.5-flash",
+        ),
+    )
+
+    data = reporting.build_report_snapshot_data(
+        session=SimpleNamespace(),
+        project_id=project_id,
+        project_name="GroupProof",
+        appendix=False,
+        actor_id=uuid4(),
+        use_ai=True,
+        version_no=8,
+    )
+    meta = data["meta"]
+    assert meta["authoring_mode"] == "ai"
+    assert meta["visuals_mode"] == "ai"
+    assert meta["writing_model"] == "anthropic/claude-sonnet-4.5"
+    assert meta["visual_model"] == "google/gemini-2.5-flash"
+    assert meta["skills_loaded"] == ["report_writing_skill.md", "report_visual_skill.md"]
+    assert ".svg)" in data["sections"]["overview"]
+
+
+def test_refresh_report_dispatches_background_thread_outside_pytest_sync(monkeypatch):
+    """Outside pytest/REPORT_INLINE_SYNC, /refresh returns immediately with status='generating'."""
+    project_id = uuid4()
+    user_id = uuid4()
+    report_obj = SimpleNamespace(
+        id=uuid4(),
+        project_id=project_id,
+        created_by=user_id,
+        status="draft",
+        includes_appendix=False,
+        lock_version=0,
+    )
+
+    class _FakeSession:
+        def __init__(self):
+            self.added = []
+            self.committed = False
+
+        def add(self, obj):
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid4()
+            self.added.append(obj)
+
+        def flush(self):
+            return None
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            return None
+
+        def scalar(self, _stmt):
+            return None
+
+    dispatched: list[tuple[str, bool]] = []
+    inline_called = False
+
+    def fake_bg(snapshot_id: str, appendix: bool):
+        dispatched.append((snapshot_id, appendix))
+        return SimpleNamespace(name=f"report-preview-{snapshot_id[:8]}")
+
+    def fail_if_inline(*_a, **_k):
+        nonlocal inline_called
+        inline_called = True
+        raise AssertionError("should not block synchronously outside pytest/REPORT_INLINE_SYNC")
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("REPORT_INLINE_SYNC", raising=False)
+    assert not reporting._should_run_inline_sync()
+    assert reporting.STALE_GENERATING_SECONDS >= 240
+
+    monkeypatch.setattr(
+        reporting,
+        "get_project_access",
+        lambda *_a, **_k: SimpleNamespace(
+            leader=True,
+            teacher=False,
+            project=SimpleNamespace(id=project_id, name="GroupProof", lifecycle="active"),
+        ),
+    )
+    monkeypatch.setattr(reporting, "report_for", lambda *_a, **_k: report_obj)
+    monkeypatch.setattr(reporting, "versions", lambda *_a, **_k: [])
+    monkeypatch.setattr(reporting, "current_frozen_snapshot", lambda *_a, **_k: None)
+    monkeypatch.setattr(reporting, "_should_run_inline", lambda *_a, **_k: True)
+    monkeypatch.setattr(reporting, "_run_preview_in_background_thread", fake_bg)
+    monkeypatch.setattr(reporting, "_complete_preview_inline_safe", fail_if_inline)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_request_id(request, call_next):
+        request.state.request_id = "test-async-refresh"
+        return await call_next(request)
+
+    install_exception_handlers(app)
+    app.include_router(reporting.router)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=user_id, name="组长")
+    fake_db = _FakeSession()
+    app.dependency_overrides[get_session] = lambda: fake_db
+
+    client = TestClient(app)
+    res = client.post(
+        f"/api/v1/projects/{project_id}/reports/refresh",
+        json={"includes_appendix": False},
+    )
+    assert res.status_code == 202
+    body = res.json()["data"]
+    assert body["status"] == "generating"
+    assert body["version"] == 1
+    assert fake_db.committed is True
+    assert inline_called is False
+    assert len(dispatched) == 1
+    assert dispatched[0] == (body["id"], False)
+
+
+def test_run_preview_in_background_thread_runs_and_catches_errors(monkeypatch):
+    """Background daemon thread invokes generate_preview and logs exceptions without crashing."""
+    import threading
+
+    done = threading.Event()
+    seen: list[tuple[str, bool]] = []
+
+    def fake_preview(snapshot_id: str, appendix: bool) -> None:
+        seen.append((snapshot_id, appendix))
+        done.set()
+
+    monkeypatch.setattr(report_tasks, "generate_preview", fake_preview)
+    thread = reporting._run_preview_in_background_thread("snap-12345678", True)
+    assert thread.daemon is True
+    assert thread.name == "report-preview-snap-123"
+    assert done.wait(timeout=3.0)
+    thread.join(timeout=3.0)
+    assert seen == [("snap-12345678", True)]
+
+    # Verify exceptions are safely caught & logged inside the daemon thread
+    err_done = threading.Event()
+
+    def failing_preview(_snapshot_id: str, _appendix: bool) -> None:
+        try:
+            raise RuntimeError("simulated worker boom")
+        finally:
+            err_done.set()
+
+    monkeypatch.setattr(report_tasks, "generate_preview", failing_preview)
+    t2 = reporting._run_preview_in_background_thread("snap-err12345", False)
+    assert err_done.wait(timeout=3.0)
+    t2.join(timeout=3.0)
+
+
+def test_openrouter_rejects_finish_reason_length_truncation(monkeypatch):
+    """finish_reason='length' must be rejected as truncated and never parsed as valid chapters."""
+
+    class _FakeResp:
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {
+                            "content": '{"reflection": "并在飞书协作结论「并发编辑任务触发乐"}'
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 2000, "completion_tokens": 16384},
+            }
+
+    class _FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return None
+
+        def post(self, *_a, **_k):
+            return _FakeResp()
+
+    recorded: list[dict] = []
+    monkeypatch.setattr(reporting.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(
+        reporting,
+        "record_usage",
+        lambda _ctx, **kwargs: recorded.append(kwargs),
+    )
+
+    parsed, model = reporting._call_openrouter_json_single(
+        api_key="sk-test",
+        model="anthropic/claude-sonnet-4.5",
+        system_prompt="sys",
+        user_payload={"k": 1},
+        timeout=10.0,
+        feature="generate_project_report_part3",
+        actor_id=uuid4(),
+        project_id=uuid4(),
+        max_tokens=16384,
+    )
+    assert parsed is None
+    assert model == "anthropic/claude-sonnet-4.5"
+    assert recorded and recorded[0]["success"] is False
+    assert recorded[0]["error_code"] == "OutputTruncated"
+
+
+def test_chapter_completeness_validator_catches_unclosed_quotes_and_mid_sentence_truncation():
+    base = (
+        "> **本章核心结论**：项目完成全部 28 项任务与 123 条正式证据，8 个阶段里程碑全部达成。\n\n"
+        "团队在全周期按周推进，围绕四个核心功能模块完成架构设计、PR 评审与人工验收确认，"
+        "所有交付均保留可追溯记录。"
+    )
+    assert reporting._is_chapter_complete(base)
+    assert reporting._is_chapter_complete(
+        base + "\n\n*（注：当前基于最新贡献快照 v6 编制，正式归档前将完成团队冻结确认。）*"
+    )
+    assert reporting._is_chapter_complete(
+        base + "\n\n| 指标 | 数值 |\n| --- | ---: |\n| 正式证据 | 123 |"
+    )
+    # Exact Staging v8 truncation symptom: unclosed 「 + ends mid-word
+    assert not reporting._is_chapter_complete(base + "\n\n并在飞书协作结论「并发编辑任务触发乐")
+    # Unclosed Chinese quote even with trailing period
+    assert not reporting._is_chapter_complete(base + "\n\n在「未闭合引号中结束了。")
+    # Truncated mid-table row (missing trailing pipe)
+    assert not reporting._is_chapter_complete(
+        base + "\n\n| 成员 | 贡献 |\n| --- | --- |\n| 卓子杰 | 30.0%"
+    )
+    # Truncated right after heading
+    assert not reporting._is_chapter_complete(base + "\n\n### 七、后续改进建议")
+    # Unclosed fenced code block
+    assert not reporting._is_chapter_complete(base + "\n\n```python\nprint('hi')")
+    # Mid-sentence ending without punctuation
+    assert not reporting._is_chapter_complete(base + "\n\n团队针对接口异常进行了深入排查并")

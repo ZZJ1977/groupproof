@@ -66,9 +66,45 @@ test("project settings authorizes provider binding by project membership and lea
   await expect(page.getByLabel("飞书群聊 ID")).toHaveCount(0);
 });
 
-test("C7-07 submits only the requested task scope and refreshes the applicant's own requests", async ({ page }) => {
+test("C7-07 submits only the requested task scope from account settings and keeps home clean", async ({ page }) => {
   const envelope = (data: unknown) => ({ data, meta: { request_id: "access-test" } });
+  let feishuAccount: string | null = null;
+  let version = 1;
+  const mePayload = () => ({
+    user: {
+      id: "c-url-fixture", name: "C test", username: "1240035830",
+      studentId: "1240035830", college: "创新工程学院", requestedIdentity: "student",
+      githubUsername: null, githubLogin: "ZZJ1977", feishuAccount,
+      roles: ["student"], preferredLocale: "zh-Hans", version, passwordLoginEnabled: true,
+    },
+    schoolEmail: {
+      verifiedEmail: "1240035830@student.must.edu.mo",
+      verifiedAt: "2026-11-21T00:00:00Z",
+      pendingEmail: null,
+      verified: true,
+    },
+    registration: {
+      profileComplete: true, profileFieldErrors: {}, schoolEmailVerified: true,
+      identityConfirmed: true, securityComplete: true, requiredCompletedCount: 3,
+      canEnterWorkspace: true, loginEmailVerified: true, teacherReviewStatus: null,
+      academicIdentityStatus: "verified", verificationBasis: [],
+      accountState: "active", nextAction: { type: "enter_workspace", href: "/home" },
+    },
+    teacherApplication: null,
+    studentIdRule: { pattern: "^\\S{4,20}$", emailPrefixRule: "none", confirmedBySchool: false },
+  });
   await page.route("**/api/v1/home/summary", (route) => route.fulfill({ json: envelope(summary) }));
+  await page.route("**/api/v1/me", (route) => route.fulfill({ json: { data: mePayload() } }));
+  await page.route("**/api/v1/me/identities/github", (route) => route.fulfill({ json: {
+    data: { available: true, login: "ZZJ1977", verifiedAt: "2026-11-21T00:00:00Z" },
+  } }));
+  await page.route("**/api/v1/me/profile", (route) => {
+    const body = route.request().postDataJSON();
+    expect(body).toEqual({ feishuAccount: "ou_test_feishu_01", expectedVersion: 1 });
+    feishuAccount = body.feishuAccount;
+    version += 1;
+    return route.fulfill({ json: { data: mePayload() } });
+  });
   await page.route("**/api/v1/auth/session", (route) => route.fulfill({ json: { authenticated: true, csrfToken: "access-csrf" } }));
   let submitted = false;
   const scope = { project_id: projectId, resource_type: "task", resource_id: taskId, operation: "read" };
@@ -86,6 +122,19 @@ test("C7-07 submits only the requested task scope and refreshes the applicant's 
       items: submitted ? [{ id: taskId, scope, status: "pending", reason: "查看当前任务" }] : [] }) });
   });
   await page.goto("/home");
+  await expect(page.getByText("数据库项目", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "我的访问申请" })).toHaveCount(0);
+  await expect(page.getByText("我的访问申请")).toHaveCount(0);
+  await expect(page.getByText("申请只读访问")).toHaveCount(0);
+
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/account\/profile$/);
+  await expect(page.getByRole("link", { name: "返回首页" })).toHaveAttribute("href", "/home");
+  await expect(page.getByText("@ZZJ1977", { exact: true })).toBeVisible();
+  await page.getByLabel("飞书账号", { exact: true }).fill("ou_test_feishu_01");
+  await page.getByRole("button", { name: "保存飞书", exact: true }).click();
+  await expect(page.getByText("飞书账号已保存。", { exact: true })).toBeVisible();
+
   await page.getByRole("button", { name: "我的访问申请" }).click();
   await page.getByLabel("所属项目 ID", { exact: true }).fill(projectId);
   await page.getByLabel("任务 ID", { exact: true }).fill(taskId);

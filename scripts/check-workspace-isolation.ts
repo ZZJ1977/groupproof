@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { clearMockWorkspaceStorage, mockWorkspaceStorageKey, setWorkspaceScope } from "../lib/api/mock-storage";
+import { clearMockWorkspaceStorage, mockWorkspaceStorageKey, setWorkspaceScope } from "../shared/legacy-mock/api/mock-storage";
 
 class MemoryStorage implements Storage {
   private entries = new Map<string, string>();
@@ -23,7 +23,7 @@ if (mode === "real" || mode === "mock") {
   const storage = new MemoryStorage({ "groupproof-v1-workspace:real-user": '{"courses":[{"name":"stale demo"}]}' });
   Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: storage } });
   setWorkspaceScope(mode === "real" ? "real-user" : "demo-user");
-  const { mockService } = await import("../lib/api/mock-service");
+  const { mockService } = await import("../shared/legacy-mock/api/mock-service");
   const workspace = await mockService.getWorkspace();
   if (mode === "real") {
     assert.equal(workspace.currentUserId, "real-user");

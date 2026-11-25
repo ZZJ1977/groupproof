@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildSetupCards, projectNavGroups } from "../lib/ux/student-workspace.ts";
+import { buildSetupCards, projectNavGroups } from "../student/ux/student-workspace.ts";
 
 const projectId = "00000000-0000-0000-0000-000000000123";
 const base = `/projects/${projectId}`;
@@ -7,7 +7,7 @@ const groups = projectNavGroups(projectId);
 
 assert.deepEqual(
   groups.map((group) => group.id),
-  ["overview", "plan", "collaborate", "review", "settings"],
+  ["overview", "plan", "collaborate", "review"],
   "project navigation follows the student task model",
 );
 
@@ -15,7 +15,6 @@ const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
 for (const href of [
   base,
   `${base}/requirements`,
-  `${base}/planning`,
   `${base}/tasks?view=tree`,
   `${base}/milestones`,
   `${base}/github`,
@@ -24,10 +23,9 @@ for (const href of [
   `${base}/discussions`,
   `${base}/evidence`,
   `${base}/contribution`,
-  `${base}/reports`,
-  `${base}/settings`,
 ]) assert.ok(hrefs.includes(href), `keeps existing destination ${href}`);
 assert.ok(!hrefs.includes(`${base}/setup`), "setup is reached from overview rather than a flat primary nav item");
+assert.ok(!hrefs.includes(`${base}/planning`), "planning is unified inside tasks workspace rather than a duplicate nav item");
 
 const independent = buildSetupCards({
   projectId,
