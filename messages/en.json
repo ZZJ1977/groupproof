@@ -523,17 +523,17 @@
       "settings": "Project settings"
     },
     "teacher": {
-      "overview": "Course overview",
-      "groups": "Groups",
-      "actions": "Action items",
-      "projects": "Projects",
+      "overview": "Overview",
+      "groups": "Teams & Roster",
+      "actions": "Approvals & Appeals",
+      "projects": "Projects & Reports",
       "reports": "Reports",
       "rules": "Course rules",
       "files": "Materials",
       "announcements": "Announcements",
       "appeals": "Appeals",
       "staff": "TA & permissions",
-      "settings": "Course settings"
+      "settings": "Course Settings"
     },
     "adminItems": {
       "overview": "Admin overview",
@@ -833,8 +833,17 @@
       "readState": "Read state",
       "category": "Notification category",
       "filterNotifications": "Filter notifications",
-      "states": { "all": "All", "unread": "Unread", "read": "Read" },
-      "categories": { "all": "All categories", "project": "Project", "course": "Course", "system": "System" },
+      "states": {
+        "all": "All",
+        "unread": "Unread",
+        "read": "Read"
+      },
+      "categories": {
+        "all": "All categories",
+        "project": "Project",
+        "course": "Course",
+        "system": "System"
+      },
       "loadingNotifications": "Loading notifications…",
       "summary": "All notifications {all} · {unread} unread",
       "markAllRead": "Mark all as read",
@@ -863,8 +872,22 @@
       "filterActions": "Filter action items",
       "loadingActions": "Loading action items…",
       "actionListLabel": "Action item list",
-      "actionStatuses": { "pending": "Pending", "completed": "Completed", "rejected": "Rejected", "all": "All statuses" },
-      "actionCategories": { "all": "All types", "task": "Task", "verification": "Verification", "evidence": "Evidence", "rule": "Rule", "appeal": "Appeal", "member": "Member change", "course": "Course" },
+      "actionStatuses": {
+        "pending": "Pending",
+        "completed": "Completed",
+        "rejected": "Rejected",
+        "all": "All statuses"
+      },
+      "actionCategories": {
+        "all": "All types",
+        "task": "Task",
+        "verification": "Verification",
+        "evidence": "Evidence",
+        "rule": "Rule",
+        "appeal": "Appeal",
+        "member": "Member change",
+        "course": "Course"
+      },
       "due": "Due {date}",
       "noDue": "No due date",
       "goHandle": "Go to handling page",

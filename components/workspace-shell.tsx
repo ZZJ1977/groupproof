@@ -3,10 +3,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { Activity, ArrowRight, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { Activity, ArrowRight, Bell, BookOpen, Check, CheckSquare, ChevronDown, ClipboardList, FileCheck, FileClock, FileText, Folder, FolderKanban, GitBranch, Home, ListTree, LogOut, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Avatar } from "@/components/common";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { GpThemeScopeProvider } from "@/components/ui/theme-scope";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useApp } from "@/components/app-providers";
 import { useWorkspace } from "@/lib/workspace";
@@ -24,10 +25,21 @@ import type { Role } from "@/types/domain";
 import type { components } from "@/packages/domain/api.generated";
 import { cn, formatDate } from "@/lib/utils";
 import { AdminEnvironmentSwitcher } from "@/components/admin-environment-switcher";
+import { TeacherWorkbenchProvider } from "@/features/teacher/components/TeacherWorkbenchContext";
+import { TeacherQuickSwitcher } from "@/features/teacher/components/TeacherQuickSwitcher";
 
-type NavItem = { label: string; href: string; icon: typeof Home; ignoreSearch?: boolean };
+type NavItem = {
+  label: string;
+  href: string;
+  icon: typeof Home;
+  ignoreSearch?: boolean;
+  matchPrefixes?: string[];
+  badge?: number | null;
+};
 type ProjectNavSectionGroup = Omit<ProjectNavGroup, "items"> & { items: NavItem[] };
 type AdminNavGroup = { label: string; items: NavItem[] };
+
+const TEACHER_RAIL_STORAGE_KEY = "gp:teacher-rail-collapsed";
 
 const iconByKey: Record<string, typeof Home> = {
   folder: Folder, fileClock: FileClock, fileText: FileText, clipboardList: ClipboardList,
@@ -68,12 +80,62 @@ function writeSidebarScroll(scopeKey: string, top: number): void {
   }
 }
 
-function NavLink({ item, label, pathname, search }: { item: NavItem; label: string; pathname: string; search: string }) {
+function NavLink({
+  item,
+  label,
+  pathname,
+  search,
+  collapsed = false,
+  badge,
+}: {
+  item: NavItem;
+  label: string;
+  pathname: string;
+  search: string;
+  collapsed?: boolean;
+  badge?: number | null;
+}) {
   const Icon = item.icon;
   const [hrefPath, hrefSearch] = item.href.split("?");
   const isPlanningAlias = hrefPath.endsWith("/tasks") && pathname === `${hrefPath.slice(0, -"/tasks".length)}/planning`;
-  const active = isPlanningAlias || (hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search));
-  return <Link href={item.href} className={cn("gp-nav-link", active && "active")}><Icon size={15} strokeWidth={1.9} className="shrink-0" /><span className="truncate">{label}</span></Link>;
+  const exactActive = hrefPath === pathname && (item.ignoreSearch ? true : !hrefSearch || hrefSearch === search);
+  const prefixActive = Boolean(
+    item.matchPrefixes?.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)),
+  );
+  const active = isPlanningAlias || exactActive || prefixActive;
+  const resolvedBadge = badge ?? item.badge;
+  const hasBadge = typeof resolvedBadge === "number" && resolvedBadge > 0;
+  const badgeText = hasBadge ? (resolvedBadge > 99 ? "99+" : String(resolvedBadge)) : null;
+
+  return (
+    <Link
+      href={item.href}
+      title={collapsed ? label : undefined}
+      aria-label={collapsed ? label : undefined}
+      className={cn("gp-nav-link", active && "active")}
+    >
+      <span className="relative inline-flex shrink-0">
+        <Icon size={15} strokeWidth={1.9} className="shrink-0" />
+        {hasBadge && collapsed && (
+          <span
+            aria-hidden="true"
+            className="hidden md:block absolute -right-1 -top-1 h-[7px] w-[7px] rounded-full bg-[#d93025] ring-2 ring-[var(--gp-rail-bg,#ffffff)]"
+          />
+        )}
+      </span>
+      <span className={cn("min-w-0 truncate", collapsed && "md:hidden")}>{label}</span>
+      {badgeText && (
+        <span
+          className={cn(
+            "gp-tabular ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#d93025] px-1.5 text-[10px] font-bold leading-none text-white",
+            collapsed && "md:hidden",
+          )}
+        >
+          {badgeText}
+        </span>
+      )}
+    </Link>
+  );
 }
 
 type Schema = components["schemas"];
@@ -456,10 +518,12 @@ function NotificationCenterPopover({
   );
 }
 
-export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: "student" | "teacher" | "admin" }) {
+function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "student" | "teacher" | "admin" }) {
+  const isTeacher = kind === "teacher";
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const locale = useLocale();
   const t = useTranslations("nav");
   const tc = useTranslations("common");
   const ts = useTranslations("shell");
@@ -474,6 +538,8 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     : data.notifications.filter((item) => item.userId === data.currentUserId && !item.read).length;
   const { session } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [teacherSwitcherOpen, setTeacherSwitcherOpen] = useState(false);
   const [openProjectGroups, setOpenProjectGroups] = useState<Record<string, boolean>>({ plan: true, collaborate: true, review: true });
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -486,12 +552,84 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   const user = data.users.find((item) => item.id === data.currentUserId);
   const displayName = session?.user?.name || userName || (mockWorkspace ? user?.name : null) || "—";
   const canonicalContext = resolveCanonicalRouteContext(pathname);
-  const mockShell = mockWorkspace && !canonicalContext.projectId && !canonicalContext.courseId;
+  const mockShell = mockWorkspace && !(isTeacher && apiMode("bworkspace") === "real") && !canonicalContext.projectId && !canonicalContext.courseId;
   const context = mockShell ? resolveObjectContext(data, pathname) : canonicalContext;
   const defaultCourse = mockShell ? data.courses.find((item) => item.teacherId === data.currentUserId) ?? data.courses[0] : undefined;
   const navCourseId = context.courseId ?? defaultCourse?.id;
   const projectMode = kind === "student" && pathname.startsWith("/projects/") && Boolean(context.projectId);
   const isGlobalStudentTopNav = kind === "student" && !projectMode && role !== "teacher" && role !== "ta";
+
+  useEffect(() => {
+    if (!isTeacher) return;
+    try {
+      setRailCollapsed(window.localStorage.getItem(TEACHER_RAIL_STORAGE_KEY) === "1");
+    } catch {
+      // Ignore storage access failures.
+    }
+  }, [isTeacher]);
+
+  useEffect(() => {
+    if (!isTeacher) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        if (teacherSwitcherOpen) {
+          event.preventDefault();
+          setTeacherSwitcherOpen(false);
+          return;
+        }
+        const target = event.target as HTMLElement | null;
+        const tag = target?.tagName;
+        const isEditable =
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          Boolean(target?.isContentEditable);
+        if (isEditable) return;
+        event.preventDefault();
+        setTeacherSwitcherOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isTeacher, teacherSwitcherOpen]);
+
+  const toggleRail = () => {
+    setRailCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(TEACHER_RAIL_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // Ignore storage access failures.
+      }
+      return next;
+    });
+  };
+
+  const teacherTopLinks: NavItem[] = useMemo(
+    () => [{ label: t("home"), href: "/home", icon: Home }],
+    [t],
+  );
+  const teacherTeachingLinks: NavItem[] = useMemo(() => {
+    void locale;
+    return [
+      { label: tr("教师工作台"), href: "/teacher/dashboard", icon: Activity },
+      {
+        label: tr("我的班级"),
+        href: "/teacher/courses",
+        icon: BookOpen,
+        matchPrefixes: ["/teacher/courses"],
+      },
+    ];
+  }, [locale]);
+  const teacherPersonalLinks: NavItem[] = useMemo(
+    () => [
+      { label: t("myCourses"), href: "/courses", icon: BookOpen, matchPrefixes: ["/courses/join"] },
+      { label: t("actionItems"), href: "/action-items", icon: CheckSquare },
+      { label: t("notifications"), href: "/notifications", icon: Bell, badge: unreadCount },
+      { label: t("activity"), href: "/activity", icon: Activity },
+    ],
+    [t, unreadCount],
+  );
   const topNavLinks = useMemo(
     () => [
       { href: "/home", label: t("home"), active: pathname === "/home" },
@@ -680,9 +818,12 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
   }, [data.courses, data.projects, data.tasks, mockShell, remoteSearch.data, search, ts]);
 
   const logout = async () => {
-    // 真实注销：撤销服务端会话并清理当前用户缓存，再回登录页
+    // 真实注销：先获取当前会话 CSRF token 撤销服务端会话，再清理本地状态回登录页
     try {
-      await authClient.logout(session?.csrfToken);
+      const current = await authClient.session().catch(() => null);
+      await authClient.logout(current?.csrfToken ?? session?.csrfToken);
+    } catch {
+      // 即使会话已失效仍继续清理本地状态并回登录页
     } finally {
       mockService.clearWorkspace();
       window.localStorage.removeItem("groupproof-v1-workspace");
@@ -785,11 +926,34 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     </div>
   );
 
-  return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace", isGlobalStudentTopNav && "gp-shell-topnav", kind === "admin" && "gp-shell-admin")}>
+  return <div className={cn("gp-shell", kind === "student" && "gp-student-workspace", isGlobalStudentTopNav && "gp-shell-topnav", kind === "admin" && "gp-shell-admin", isTeacher && "gp-teacher-shell")}>
     {!isGlobalStudentTopNav && mobileOpen && <button className="fixed inset-0 z-[25] bg-[#14233d]/30 md:hidden" aria-label={ts("closeMenu")} onClick={() => setMobileOpen(false)} />}
-    {!isGlobalStudentTopNav && <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open")}>
+    {!isGlobalStudentTopNav && <aside className={cn("gp-sidebar", kind === "admin" && "admin", mobileOpen && "open", isTeacher && railCollapsed && "is-collapsed")}>
       <div className="gp-sidebar-header">
-        <Link href={kind === "admin" ? "/admin" : kind === "teacher" && navCourseId ? `/teacher/courses/${navCourseId}` : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
+        {isTeacher ? (
+          <div className="gp-teacher-rail-head flex items-center justify-between gap-1 pr-2">
+            <Link
+              href="/home"
+              className="gp-brand min-w-0 flex-1"
+              onClick={() => setMobileOpen(false)}
+              title={tc("appName")}
+            >
+              <span className="gp-brand-mark shrink-0" />
+              <span className={cn("gp-brand-label truncate", railCollapsed && "md:hidden")}>{tc("appName")}</span>
+            </Link>
+            <button
+              type="button"
+              onClick={toggleRail}
+              aria-label={railCollapsed ? tr("展开导航栏") : tr("收起导航栏")}
+              title={railCollapsed ? tr("展开导航栏") : tr("收起导航栏")}
+              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[var(--gp-muted,#646a73)] transition-colors hover:bg-[var(--gp-surface-hover,#eff0f1)] hover:text-[var(--gp-ink,#1f2329)] md:inline-flex"
+            >
+              {railCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+            </button>
+          </div>
+        ) : (
+          <Link href={kind === "admin" ? "/admin" : "/home"} className="gp-brand" onClick={() => setMobileOpen(false)}><span className="gp-brand-mark" />{tc("appName")}</Link>
+        )}
         {kind === "admin" && <div className="px-[20px] pb-2 text-[11px] text-[#8fa4bf]">{t("admin")}</div>}
         {projectMode && <DropdownMenu open={switcherOpen} onOpenChange={setSwitcherOpen}>
           <DropdownMenuTrigger asChild>
@@ -834,7 +998,6 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>}
-        {kind === "teacher" && <Link href="/teacher/courses" onClick={() => setMobileOpen(false)} title={tr("我的班级")} className="mx-3 mb-2.5 flex items-center gap-2 rounded-[6px] border border-[#e5ebf3] bg-white px-2.5 py-1.5 text-[12px] text-[#52627b] hover:bg-[#f7f9fc]"><BookOpen size={14} className="shrink-0" /> <span className="truncate">{navCourseId ? (context.courseName ?? defaultCourse?.name ?? ts("courseFallback")) : tr("我的班级")}</span> <ChevronDown size={13} className="ml-auto shrink-0" /></Link>}
       </div>
       <nav
         ref={navRef}
@@ -846,7 +1009,47 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
           setMobileOpen(false);
         }}
       >
-        {kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>
+        {isTeacher ? (
+          <>
+            {teacherTopLinks.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                label={item.label}
+                pathname={pathname}
+                search={searchString}
+                collapsed={railCollapsed}
+              />
+            ))}
+            <div className={cn("gp-nav-section", railCollapsed && "md:hidden")}>
+              {tr("教学")}
+            </div>
+            {teacherTeachingLinks.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                label={item.label}
+                pathname={pathname}
+                search={searchString}
+                collapsed={railCollapsed}
+              />
+            ))}
+            <div className={cn("gp-nav-section", railCollapsed && "md:hidden")}>
+              {tr("个人")}
+            </div>
+            {teacherPersonalLinks.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                label={item.label}
+                pathname={pathname}
+                search={searchString}
+                collapsed={railCollapsed}
+                badge={item.badge}
+              />
+            ))}
+          </>
+        ) : kind === "admin" ? adminNavGroups.map((group) => <div className="gp-nav-group" key={group.label}>
           <div className="gp-nav-section" role="heading" aria-level={2}>{group.label}</div>
           {group.items.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchString} />)}
         </div>) : projectMode ? <>
@@ -886,17 +1089,31 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
     <div className="gp-main">
       <header className="gp-topbar">
         <div className={cn("gp-topbar-inner", isGlobalStudentTopNav && "gp-topbar-inner-centered")}>
-          <div className="gp-topbar-left">
+          <div className={cn("gp-topbar-left", isTeacher && "min-w-0 flex-1")}>
             <button
               type="button"
               className="gp-icon-button gp-mobile-menu"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label={mobileOpen ? ts("closeMenu") : ts("openMenu")}
+              title={mobileOpen ? ts("closeMenu") : ts("openMenu")}
               aria-expanded={mobileOpen}
             >
               {mobileOpen ? <X size={19} /> : <Menu size={19} />}
             </button>
-            {isGlobalStudentTopNav ? (
+            {isTeacher ? (
+              <button
+                type="button"
+                onClick={() => setTeacherSwitcherOpen(true)}
+                aria-label={tr("快速跳转")}
+                className="flex h-9 w-full max-w-[360px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-3 text-left text-xs text-[var(--gp-muted,#646a73)] transition-colors hover:border-[#c9ced6] hover:bg-white hover:text-[var(--gp-ink,#1f2329)]"
+              >
+                <Search size={15} className="shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">{tr("搜索班级、模块或学生...")}</span>
+                <kbd className="hidden rounded border border-[var(--gp-border,#dee0e3)] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--gp-muted,#646a73)] sm:inline">
+                  ⌘K
+                </kbd>
+              </button>
+            ) : isGlobalStudentTopNav ? (
               <>
                 <Link href="/home" className="gp-topnav-brand" onClick={() => setMobileOpen(false)}>
                   <span className="gp-brand-mark" />
@@ -919,19 +1136,36 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
               searchInputNode
             )}
           </div>
-          <div className="gp-topbar-right">
+          <div className={cn("gp-topbar-right", isTeacher && "shrink-0")}>
             {isGlobalStudentTopNav && searchInputNode}
             {kind === "admin" && <AdminEnvironmentSwitcher />}
             <LanguageSwitcher compact />
-            <span className={cn("gp-topbar-link hidden", isGlobalStudentTopNav ? "xl:inline" : "lg:inline")}>{ts("helpCenter")}</span>
-            <NotificationCenterPopover userId={userId} realInbox={realInbox} unreadCount={unreadCount} pathname={pathname} />
+            {!isTeacher && <span className={cn("gp-topbar-link hidden", isGlobalStudentTopNav ? "xl:inline" : "lg:inline")}>{ts("helpCenter")}</span>}
+            {isTeacher ? (
+              <Link
+                href="/notifications"
+                className="gp-icon-button relative"
+                aria-label={ts("notifications")}
+                title={unreadCount === null ? tr("未读数暂不可用") : tr("未读通知 {0} 条", { 0: unreadCount })}
+              >
+                <Bell size={18} />
+                {unreadCount !== null && unreadCount > 0 && (
+                  <span
+                    data-testid="unread-notification-dot"
+                    className="absolute right-[5px] top-[4px] h-[6px] w-[6px] rounded-full bg-[#ec4d5d]"
+                  />
+                )}
+              </Link>
+            ) : (
+              <NotificationCenterPopover userId={userId} realInbox={realInbox} unreadCount={unreadCount} pathname={pathname} />
+            )}
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex shrink-0 items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]">
+              <DropdownMenuTrigger aria-label={ts("accountCenter")} title={ts("accountCenter")} className="flex shrink-0 items-center gap-2 rounded-[6px] px-1 py-1 text-[12px] text-[#42526e] hover:bg-[#f5f7fb]">
                 <Avatar name={displayName} color={user?.avatarColor} size={28} />
                 <span className="hidden lg:inline">{displayName}</span>
                 <ChevronDown size={13} />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className={cn(isTeacher && "gp-teacher-portal")}>
                 <DropdownMenuItem onSelect={() => router.push("/account")}>
                   <UserRound size={14} />{ts("accountCenter")}
                 </DropdownMenuItem>
@@ -983,5 +1217,29 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
       )}
       <main className="gp-content">{children}</main>
     </div>
+    {isTeacher && (
+      <TeacherQuickSwitcher
+        open={teacherSwitcherOpen}
+        onOpenChange={setTeacherSwitcherOpen}
+        navCourseId={navCourseId}
+        mockShell={mockShell}
+        mockCourses={data.courses}
+      />
+    )}
   </div>;
+}
+
+export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: "student" | "teacher" | "admin" }) {
+  const isTeacher = kind === "teacher";
+  return (
+    <GpThemeScopeProvider scope={isTeacher ? "teacher" : "default"}>
+      {isTeacher ? (
+        <TeacherWorkbenchProvider>
+          <WorkspaceShellInner kind={kind}>{children}</WorkspaceShellInner>
+        </TeacherWorkbenchProvider>
+      ) : (
+        <WorkspaceShellInner kind={kind}>{children}</WorkspaceShellInner>
+      )}
+    </GpThemeScopeProvider>
+  );
 }

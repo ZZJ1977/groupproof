@@ -22,10 +22,6 @@ const CourseFilesApiPage = dynamic(() => import("@/features/c/CourseFilesApiPage
 const ExecutionApiPage = dynamic(() => import("@/features/c/ExecutionApiPage").then((module) => module.ExecutionApiPage));
 const RiskApiPage = dynamic(() => import("@/features/d/RiskApiPage").then((module) => module.RiskApiPage));
 const ReportApiPage = dynamic(() => import("@/features/d/ReportApiPage").then((module) => module.ReportApiPage));
-const TeacherOverviewApiPage = dynamic(() => import("@/features/d/TeacherOverviewApiPage").then((module) => module.TeacherOverviewApiPage));
-const DTeacherAppealsApiPage = dynamic(() => import("@/features/d/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
-const TeacherWorkspaceApiPage = dynamic(() => import("@/features/d/TeacherWorkspaceApiPage").then((module) => module.TeacherWorkspaceApiPage));
-const DTeacherReportsApiPage = dynamic(() => import("@/features/d/TeacherReportsApiPage").then((module) => module.TeacherReportsApiPage));
 const CourseRulesApiPage = dynamic(() => import("@/features/d/CourseRulesApiPage").then((module) => module.CourseRulesApiPage));
 const ProjectSettingsApiPage = dynamic(() => import("@/features/d/ProjectSettingsApiPage").then((module) => module.ProjectSettingsApiPage));
 const CourseReopenApiPage = dynamic(() => import("@/features/d/CourseReopenApiPage").then((module) => module.CourseReopenApiPage));
@@ -58,23 +54,23 @@ const TasksApiPage = dynamic(() => import("@/features/b/TasksApiPage").then((mod
 const MilestonesApiPage = dynamic(() => import("@/features/b/MilestonesApiPage").then((module) => module.MilestonesApiPage));
 const MilestoneDetailApiPage = dynamic(() => import("@/features/b/MilestonesApiPage").then((module) => module.MilestoneDetailApiPage));
 const LeaveGroupApiPage = dynamic(() => import("@/features/b/MembershipApiPages").then((module) => module.LeaveGroupApiPage));
-const MemberChangesApiPage = dynamic(() => import("@/features/b/MemberChangesApiPage").then((module) => module.MemberChangesApiPage));
-const TeacherClassLayout = dynamic(() => import("@/features/teacher/TeacherClassLayout").then((module) => module.TeacherClassLayout));
-const TeacherClassesApiPage = dynamic(() => import("@/features/teacher/TeacherClassesApiPage").then((module) => module.TeacherClassesApiPage));
-const TeacherClassHomeApiPage = dynamic(() => import("@/features/teacher/TeacherClassHomeApiPage").then((module) => module.TeacherClassHomeApiPage));
-const TeamPlazaApiPage = dynamic(() => import("@/features/teacher/TeamPlazaApiPage").then((module) => module.TeamPlazaApiPage));
-const TeacherGroupDetailApiPage = dynamic(() => import("@/features/teacher/TeacherGroupDetailApiPage").then((module) => module.TeacherGroupDetailApiPage));
-const TeacherStaffApiPage = dynamic(() => import("@/features/teacher/TeacherStaffApiPage").then((module) => module.TeacherStaffApiPage));
-const TeacherSettingsApiPage = dynamic(() => import("@/features/teacher/TeacherSettingsApiPage").then((module) => module.TeacherSettingsApiPage));
-const TeacherRulesApiPage = dynamic(() => import("@/features/teacher/TeacherRulesApiPage").then((module) => module.TeacherRulesApiPage));
-const TeacherActionsApiPage = dynamic(() => import("@/features/teacher/TeacherActionsApiPage").then((module) => module.TeacherActionsApiPage));
-const TeacherFilesApiPage = dynamic(() => import("@/features/teacher/TeacherFilesApiPage").then((module) => module.TeacherFilesApiPage));
+const MemberChangesApiPage = dynamic(() => import("@/features/teacher/pages/MemberChangesApiPage").then((module) => module.MemberChangesApiPage));
+const TeacherClassLayout = dynamic(() => import("@/features/teacher/components/TeacherClassLayout").then((module) => module.TeacherClassLayout));
+const TeacherClassesApiPage = dynamic(() => import("@/features/teacher/pages/TeacherClassesApiPage").then((module) => module.TeacherClassesApiPage));
+const TeacherClassHomeApiPage = dynamic(() => import("@/features/teacher/pages/TeacherClassHomeApiPage").then((module) => module.TeacherClassHomeApiPage));
+const TeamPlazaApiPage = dynamic(() => import("@/features/teacher/pages/TeamPlazaApiPage").then((module) => module.TeamPlazaApiPage));
+const TeacherGroupDetailApiPage = dynamic(() => import("@/features/teacher/pages/TeacherGroupDetailApiPage").then((module) => module.TeacherGroupDetailApiPage));
+const TeacherStaffApiPage = dynamic(() => import("@/features/teacher/pages/TeacherStaffApiPage").then((module) => module.TeacherStaffApiPage));
+const TeacherSettingsApiPage = dynamic(() => import("@/features/teacher/pages/TeacherSettingsApiPage").then((module) => module.TeacherSettingsApiPage));
+const TeacherRulesApiPage = dynamic(() => import("@/features/teacher/pages/TeacherRulesApiPage").then((module) => module.TeacherRulesApiPage));
+const TeacherActionsApiPage = dynamic(() => import("@/features/teacher/pages/TeacherActionsApiPage").then((module) => module.TeacherActionsApiPage));
+const TeacherFilesApiPage = dynamic(() => import("@/features/teacher/pages/TeacherFilesApiPage").then((module) => module.TeacherFilesApiPage));
 const StudentCourseFilesApiPage = dynamic(() => import("@/features/b/StudentCourseFilesApiPage").then((module) => module.StudentCourseFilesApiPage));
-const TeacherAnnouncementsApiPage = dynamic(() => import("@/features/teacher/TeacherAnnouncementsApiPage").then((module) => module.TeacherAnnouncementsApiPage));
-const TeacherReportsApiPage = dynamic(() => import("@/features/teacher/TeacherReportsApiPage").then((module) => module.TeacherReportsApiPage));
-const TeacherAppealsApiPage = dynamic(() => import("@/features/teacher/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
-const TeacherProjectsApiPage = dynamic(() => import("@/features/teacher/TeacherProjectsApiPage").then((module) => module.TeacherProjectsApiPage));
-const TeacherDashboardApiPage = dynamic(() => import("@/features/teacher/TeacherDashboardApiPage").then((module) => module.TeacherDashboardApiPage));
+const TeacherAnnouncementsApiPage = dynamic(() => import("@/features/teacher/pages/TeacherAnnouncementsApiPage").then((module) => module.TeacherAnnouncementsApiPage));
+const TeacherReportsApiPage = dynamic(() => import("@/features/teacher/pages/TeacherReportsApiPage").then((module) => module.TeacherReportsApiPage));
+const TeacherAppealsApiPage = dynamic(() => import("@/features/teacher/pages/TeacherAppealsApiPage").then((module) => module.TeacherAppealsApiPage));
+const TeacherProjectsApiPage = dynamic(() => import("@/features/teacher/pages/TeacherProjectsApiPage").then((module) => module.TeacherProjectsApiPage));
+const TeacherDashboardApiPage = dynamic(() => import("@/features/teacher/pages/TeacherDashboardApiPage").then((module) => module.TeacherDashboardApiPage));
 
 function AccessDenied({ message }: { message?: string }) {
   const t = useTranslations("errors");
@@ -92,10 +88,11 @@ export function RouteDispatcher() {
   const { screen, projectId, taskId, milestoneId, memberId, courseId, groupId } = route;
   const canonicalProject = resolveCanonicalRouteContext(pathname).projectId;
 
+  const teacherPersonalScreens = new Set([4, 5, 6, 30, 31, 32]);
   // 布局按路由选择；访问资格单独判断（阶段 01），最终授权由 FastAPI 在数据接口执行
   const kind = screen === 63 || (screen === 50 && pathname.startsWith("/courses/"))
     ? "student"
-    : isTeacherScreen(screen)
+    : isTeacherScreen(screen) || ((role === "teacher" || role === "ta") && teacherPersonalScreens.has(screen))
       ? "teacher"
       : screen >= 51
         ? "admin"
@@ -104,9 +101,16 @@ export function RouteDispatcher() {
   // Mount by the actual route ID; never translate seed IDs into canonical IDs.
   // Version links address C's publication history even when B provides the course files index.
   if (screen === 50 && courseId && search.has("version") && apiMode("coursefiles") === "real") {
+    const content = <CourseFilesApiPage key={`${userId}:${courseId}`} courseId={courseId} />;
     return (
       <WorkspaceShell kind={kind}>
-        <CourseFilesApiPage key={`${userId}:${courseId}`} courseId={courseId} />
+        {kind === "teacher" ? (
+          <TeacherClassLayout courseId={courseId} activeTab="files">
+            {content}
+          </TeacherClassLayout>
+        ) : (
+          content
+        )}
       </WorkspaceShell>
     );
   }
@@ -122,7 +126,13 @@ export function RouteDispatcher() {
     if (screen === 34 && courseId && groupId) realContent = <GroupDetailApiPage courseId={courseId} groupId={groupId} />;
     if (screen === 36 && courseId && groupId) realContent = <ChangeLeaderApiPage courseId={courseId} groupId={groupId} />;
     if (screen === 37 && courseId && groupId) realContent = <LeaveGroupApiPage courseId={courseId} groupId={groupId} />;
-    if (screen === 48 && courseId) realContent = <MemberChangesApiPage courseId={courseId} />;
+    if (screen === 48 && courseId) {
+      realContent = (
+        <TeacherClassLayout courseId={courseId} activeTab="member-changes">
+          <MemberChangesApiPage courseId={courseId} />
+        </TeacherClassLayout>
+      );
+    }
   }
   if (screen === 63 && (bReal || apiMode("projects") === "real" || apiMode("daily") === "real")) realContent = <MyProjectsApiPage />;
   if (bReal || apiMode("projects") === "real") {
@@ -156,11 +166,7 @@ export function RouteDispatcher() {
   if (screen === 5 && apiMode("inbox") === "real") realContent = <NotificationsApiPage />;
   if (screen === 6 && apiMode("inbox") === "real") realContent = <ActionItemsApiPage />;
   if ([27, 28].includes(screen) && projectId && apiMode("reports") === "real") realContent = <ReportApiPage projectId={projectId} exportView={screen === 28} />;
-  if (!realContent && screen === 41 && courseId && apiMode("cworkspace") === "real") realContent = <TeacherOverviewApiPage courseId={courseId} />;
-  if (!realContent && screen === 49 && courseId && apiMode("cworkspace") === "real") realContent = <DTeacherAppealsApiPage courseId={courseId} />;
-  if (!realContent && [42, 43, 44].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <TeacherWorkspaceApiPage courseId={courseId} groupId={groupId} screen={screen as 42 | 43 | 44} />;
-  if (!realContent && screen === 45 && courseId && apiMode("cworkspace") === "real") realContent = <DTeacherReportsApiPage courseId={courseId} />;
-  if (!realContent && [38, 40, 46, 47].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <CourseRulesApiPage courseId={courseId} teacher={screen >= 46} settingsView={screen === 46} />;
+  if (!realContent && [38, 40].includes(screen) && courseId && apiMode("cworkspace") === "real") realContent = <CourseRulesApiPage courseId={courseId} teacher={false} settingsView={false} />;
   if (screen === 29 && canonicalProject) realContent = <ProjectSettingsApiPage projectId={canonicalProject} reopenView={false} />;
   if ([21, 22].includes(screen) && canonicalProject) realContent = <ActivityApiPage projectId={canonicalProject} sourceType={screen === 21 ? "github" : "feishu"} />;
   if (screen === 39 && courseId && apiMode("cworkspace") === "real") realContent = <CourseReopenApiPage courseId={courseId} />;

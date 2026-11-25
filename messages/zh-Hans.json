@@ -523,10 +523,10 @@
       "settings": "项目设置"
     },
     "teacher": {
-      "overview": "课程总览",
-      "groups": "小组",
-      "actions": "待处理",
-      "projects": "项目总览",
+      "overview": "概览",
+      "groups": "组队与名单",
+      "actions": "审批与申诉",
+      "projects": "项目与报告",
       "reports": "报告",
       "rules": "课程规则",
       "files": "课程资料",
@@ -833,8 +833,17 @@
       "readState": "阅读状态",
       "category": "通知类别",
       "filterNotifications": "筛选通知",
-      "states": { "all": "全部", "unread": "未读", "read": "已读" },
-      "categories": { "all": "全部类别", "project": "项目", "course": "课程", "system": "系统" },
+      "states": {
+        "all": "全部",
+        "unread": "未读",
+        "read": "已读"
+      },
+      "categories": {
+        "all": "全部类别",
+        "project": "项目",
+        "course": "课程",
+        "system": "系统"
+      },
       "loadingNotifications": "正在读取通知…",
       "summary": "全部通知 {all} 条 · 未读 {unread} 条",
       "markAllRead": "全部标为已读",
@@ -863,8 +872,22 @@
       "filterActions": "筛选待办",
       "loadingActions": "正在读取待办…",
       "actionListLabel": "待处理事项列表",
-      "actionStatuses": { "pending": "待处理", "completed": "已完成", "rejected": "已拒绝", "all": "全部状态" },
-      "actionCategories": { "all": "全部类型", "task": "任务", "verification": "验收", "evidence": "证据", "rule": "规则", "appeal": "申诉", "member": "成员变更", "course": "课程" },
+      "actionStatuses": {
+        "pending": "待处理",
+        "completed": "已完成",
+        "rejected": "已拒绝",
+        "all": "全部状态"
+      },
+      "actionCategories": {
+        "all": "全部类型",
+        "task": "任务",
+        "verification": "验收",
+        "evidence": "证据",
+        "rule": "规则",
+        "appeal": "申诉",
+        "member": "成员变更",
+        "course": "课程"
+      },
       "due": "截止 {date}",
       "noDue": "未设置截止时间",
       "goHandle": "前往处理页面",

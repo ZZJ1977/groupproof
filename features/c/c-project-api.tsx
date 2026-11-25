@@ -2,7 +2,10 @@
 
 import { useRef } from "react";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/button";
+import { useGpThemeScope } from "@/components/ui/theme-scope";
 import { CApiError, createCClient } from "@/lib/api/c-client";
+import { TeacherFeedbackPill } from "@/features/teacher/components/TeacherFeedbackPill";
 
 export const projectApi = createCClient();
 export const apiButton = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -35,7 +38,21 @@ export function apiErrorText(error: unknown, t: PageT) {
 
 export function ApiFailure({ error, retry, label }: { error: unknown; retry?: () => void; label?: string }) {
   const t = useTranslations("pages.shared");
-  return <div role="alert" className="my-3 rounded-md border border-red-200 p-3"><p>{apiErrorText(error, t)}</p>{retry && <button className={`${apiButton} mt-2`} type="button" onClick={retry}>{label ?? t("retry")}</button>}</div>;
+  const isTeacher = useGpThemeScope() === "teacher";
+  const message = apiErrorText(error, t);
+  if (isTeacher) {
+    return (
+      <div className="my-3 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-4 shadow-[var(--gp-shadow-card)]">
+        <TeacherFeedbackPill tone="error" message={message} />
+        {retry && (
+          <Button type="button" variant="outline" size="sm" pill onClick={retry}>
+            {label ?? t("retry")}
+          </Button>
+        )}
+      </div>
+    );
+  }
+  return <div role="alert" className="my-3 rounded-md border border-red-200 p-3"><p>{message}</p>{retry && <button className={`${apiButton} mt-2`} type="button" onClick={retry}>{label ?? t("retry")}</button>}</div>;
 }
 
 /** Keep the key across uncertain failures; reset only after a confirmed write. */
@@ -62,5 +79,21 @@ export function safeHttps(value: string | null | undefined, github = false): str
 
 export function ApiPager({ page, pageSize, total, change }: { page: number; pageSize: number; total: number; change: (page: number) => void }) {
   const t = useTranslations("pages.shared");
+  const isTeacher = useGpThemeScope() === "teacher";
+  if (isTeacher) {
+    return (
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--gp-border-subtle,#ebedf0)] pt-4 text-xs text-[var(--gp-muted,#646a73)]">
+        <span className="gp-tabular">{t("pagerTotal", { total, page })}</span>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" pill disabled={page <= 1} onClick={() => change(page - 1)}>
+            {t("prev")}
+          </Button>
+          <Button type="button" variant="outline" size="sm" pill disabled={page * pageSize >= total} onClick={() => change(page + 1)}>
+            {t("next")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span>{t("pagerTotal", { total, page })}</span><div className="flex gap-2"><button className={apiButton} type="button" disabled={page <= 1} onClick={() => change(page - 1)}>{t("prev")}</button><button className={apiButton} type="button" disabled={page * pageSize >= total} onClick={() => change(page + 1)}>{t("next")}</button></div></div>;
 }

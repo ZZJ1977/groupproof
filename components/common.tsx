@@ -2,11 +2,34 @@
 
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import type { LucideIcon } from "lucide-react";
+import { Inbox, type LucideIcon } from "lucide-react";
+import { useGpThemeScope } from "@/components/ui/theme-scope";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 export function PageHeader({ title, description, eyebrow, actions, icon: Icon }: { title: string; description?: string; eyebrow?: string; actions?: ReactNode; icon?: LucideIcon }) {
+  const isTeacher = useGpThemeScope() === "teacher";
+  if (isTeacher) {
+    return (
+      <div className="gp-page-header flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          {eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}
+          <div className="flex items-center gap-3">
+            {Icon && (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[var(--gp-action-soft,#e8f0fe)] text-[var(--gp-action,#3370ff)]">
+                <Icon size={20} aria-hidden="true" />
+              </span>
+            )}
+            <div className="min-w-0">
+              <h1 className="gp-page-title break-words">{title}</h1>
+              {description && <p className="gp-page-description">{description}</p>}
+            </div>
+          </div>
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+    );
+  }
   return <div className="gp-page-header flex flex-wrap items-start justify-between gap-3"><div>{eyebrow && <div className="gp-breadcrumb">{eyebrow}</div>}<div className="flex items-center gap-3">{Icon && <span className="flex h-10 w-10 items-center justify-center rounded-[7px] bg-[var(--gp-action-soft)] text-[var(--gp-action)]"><Icon size={21} /></span>}<div><h1 className="gp-page-title">{title}</h1>{description && <p className="gp-page-description">{description}</p>}</div></div></div>{actions && <div className="flex items-center gap-2">{actions}</div>}</div>;
 }
 
@@ -64,7 +87,21 @@ export function Avatar({ name, color, size = 28 }: { name: string; color?: strin
   return <span className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-[#385273]" style={{ width: size, height: size, background: color ?? "#e5edf9", fontSize: Math.max(10, size * .36) }}>{name.slice(0, 1)}</span>;
 }
 
-export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
+export function EmptyState({ title, description, action, icon: Icon }: { title: string; description?: string; action?: ReactNode; icon?: LucideIcon }) {
+  const isTeacher = useGpThemeScope() === "teacher";
+  if (isTeacher) {
+    const EmptyIcon = Icon ?? Inbox;
+    return (
+      <div className="gp-empty flex flex-col items-center justify-center text-center">
+        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--gp-surface-subtle,#f8f9fa)] text-[var(--gp-subtle,#8f959e)] ring-1 ring-[var(--gp-border-subtle,#ebedf0)]">
+          <EmptyIcon size={20} aria-hidden="true" />
+        </span>
+        <div className="text-sm font-semibold text-[var(--gp-ink-soft,#4e5969)]">{title}</div>
+        {description && <p className="mt-1 max-w-md text-xs text-[var(--gp-muted,#646a73)]">{description}</p>}
+        {action && <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{action}</div>}
+      </div>
+    );
+  }
   return <div className="gp-empty"><div className="font-semibold text-[#52647f]">{title}</div>{description && <p className="mt-1 text-[12px]">{description}</p>}{action && <div className="mt-4">{action}</div>}</div>;
 }
 

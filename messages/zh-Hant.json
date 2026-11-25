@@ -523,10 +523,10 @@
       "settings": "專案設定"
     },
     "teacher": {
-      "overview": "課程總覽",
-      "groups": "小組",
-      "actions": "待處理",
-      "projects": "專案總覽",
+      "overview": "概覽",
+      "groups": "組隊與名單",
+      "actions": "審批與申訴",
+      "projects": "專案與報告",
       "reports": "報告",
       "rules": "課程規則",
       "files": "課程資料",
@@ -833,8 +833,17 @@
       "readState": "閱讀狀態",
       "category": "通知類別",
       "filterNotifications": "篩選通知",
-      "states": { "all": "全部", "unread": "未讀", "read": "已讀" },
-      "categories": { "all": "全部類別", "project": "專案", "course": "課程", "system": "系統" },
+      "states": {
+        "all": "全部",
+        "unread": "未讀",
+        "read": "已讀"
+      },
+      "categories": {
+        "all": "全部類別",
+        "project": "專案",
+        "course": "課程",
+        "system": "系統"
+      },
       "loadingNotifications": "正在讀取通知…",
       "summary": "全部通知 {all} 條 · 未讀 {unread} 條",
       "markAllRead": "全部標為已讀",
@@ -863,8 +872,22 @@
       "filterActions": "篩選待辦",
       "loadingActions": "正在讀取待辦…",
       "actionListLabel": "待處理事項列表",
-      "actionStatuses": { "pending": "待處理", "completed": "已完成", "rejected": "已拒絕", "all": "全部狀態" },
-      "actionCategories": { "all": "全部類型", "task": "任務", "verification": "驗收", "evidence": "證據", "rule": "規則", "appeal": "申訴", "member": "成員變更", "course": "課程" },
+      "actionStatuses": {
+        "pending": "待處理",
+        "completed": "已完成",
+        "rejected": "已拒絕",
+        "all": "全部狀態"
+      },
+      "actionCategories": {
+        "all": "全部類型",
+        "task": "任務",
+        "verification": "驗收",
+        "evidence": "證據",
+        "rule": "規則",
+        "appeal": "申訴",
+        "member": "成員變更",
+        "course": "課程"
+      },
       "due": "截止 {date}",
       "noDue": "未設定截止時間",
       "goHandle": "前往處理頁面",

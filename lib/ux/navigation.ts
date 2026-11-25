@@ -62,12 +62,6 @@ export function teacherNavItems(courseId: string): { label: string; href: string
     { label: "groups", href: `${base}/groups`, iconKey: "users" },
     { label: "actions", href: `${base}/actions`, iconKey: "checkSquare" },
     { label: "projects", href: `${base}/projects`, iconKey: "listTree" },
-    { label: "reports", href: `${base}/reports`, iconKey: "fileText" },
-    { label: "rules", href: `${base}/rules`, iconKey: "clipboardList" },
-    { label: "files", href: `${base}/files`, iconKey: "folder" },
-    { label: "announcements", href: `${base}/announcements`, iconKey: "bell" },
-    { label: "appeals", href: `${base}/appeals`, iconKey: "shieldCheck" },
-    { label: "staff", href: `${base}/staff`, iconKey: "userCog" },
     { label: "settings", href: `${base}/settings`, iconKey: "settings" },
   ];
 }
