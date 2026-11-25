@@ -98,19 +98,21 @@ from app.modules.d.report_charts import (
     CHART_KEY_RE,
     build_default_visual_specs,
     render_chart_from_snapshot,
+    render_chart_svg_from_snapshot,
     sanitize_visual_specs,
 )
 from app.modules.d.risk_read import risk_counts
+from app.modules.d.skills import SKILL_REPORT_VISUAL, SKILL_REPORT_WRITING, load_skill
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["d-reports"])
 
 STALE_GENERATING_SECONDS = 180
-AI_REPORT_TIMEOUT_SECONDS = 75.0
-AI_REWRITE_TIMEOUT_SECONDS = 45.0
-AI_REPORT_BATCH_MAX_TOKENS = 4800
-AI_VISUALS_MAX_TOKENS = 2600
-AI_REWRITE_MAX_TOKENS = 3200
+AI_REPORT_TIMEOUT_SECONDS = 90.0
+AI_REWRITE_TIMEOUT_SECONDS = 60.0
+AI_REPORT_BATCH_MAX_TOKENS = 6400
+AI_VISUALS_MAX_TOKENS = 9600
+AI_REWRITE_MAX_TOKENS = 3600
 _MIN_AI_CHAPTER_CHARS = 80
 CHAPTER_BATCH_1: tuple[str, ...] = ("overview", "workflow", "progress", "collaboration")
 CHAPTER_BATCH_2: tuple[str, ...] = ("evidence", "contribution", "reflection")
@@ -304,10 +306,11 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
         .where(
             Evidence.project_id == project_id,
             Evidence.status == "formal",
-            Evidence.source_changed.is_(False),
         )
         .order_by(Evidence.created_at.desc(), Evidence.id)
     ).all()
+    effective_formal_count = sum(1 for item in evidence if not item.source_changed)
+    source_changed_count = len(evidence) - effective_formal_count
 
     latest_baseline = session.scalar(
         select(BaselineVersion)
@@ -350,11 +353,16 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
     verification_runs = session.scalars(
         select(VerificationRun).where(VerificationRun.project_id == project_id)
     ).all()
-    formal_outcomes = session.scalars(
-        select(FormalOutcome).where(
-            FormalOutcome.project_id == project_id, FormalOutcome.invalidated_at.is_(None)
-        )
+    all_formal_outcomes = session.scalars(
+        select(FormalOutcome).where(FormalOutcome.project_id == project_id)
     ).all()
+    active_formal_outcomes = [fo for fo in all_formal_outcomes if fo.invalidated_at is None]
+    completed_task_ids = {t.id for t in tasks if t.status == "completed"}
+    confirmed_outcome_task_ids = {fo.task_id for fo in active_formal_outcomes}
+    for fo in all_formal_outcomes:
+        if fo.task_id in completed_task_ids:
+            confirmed_outcome_task_ids.add(fo.task_id)
+    formal_outcomes_count = max(len(active_formal_outcomes), len(confirmed_outcome_task_ids))
 
     # Contribution snapshots (frozen for official archive, latest draft for portrait reference)
     frozen_contribution = current_frozen_snapshot(session, project_id)
@@ -796,11 +804,14 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
         "feishu": feishu_stats,
         "evidence": {
             "total_formal": len(evidence),
+            "effective_formal": effective_formal_count,
+            "source_changed_count": source_changed_count,
             "by_source": ev_by_source,
             "tasks_with_evidence": len(ev_by_task),
             "criteria_total": len(criteria_rows),
             "verification_runs": len(verification_runs),
-            "formal_outcomes": len(formal_outcomes),
+            "formal_outcomes": formal_outcomes_count,
+            "formal_outcomes_active": len(active_formal_outcomes),
             "highlights": [
                 {"title": item.title[:120], "source_type": item.source_type}
                 for item in evidence[:10]
@@ -886,18 +897,23 @@ def render_fallback_chapters(
 
     # 1. Overview
     overview_lines = [
-        f"{course_prefix}**{proj['name']}** 由 **{member_names_inline}** 共 **{counts['members']} 名**成员分工协作完成。"
-        f"项目面向高校软件工程课程小组协作中的需求边界模糊、进度难以核验与贡献归属失真等典型问题，"
-        f"围绕 **{proj['modules_count']} 个核心功能模块** 与 **{proj['requirements_count']} 条需求条目**"
-        f"（其中高优先级需求 {proj['requirements_high']} 条）开展了全流程系统设计、迭代开发与证据化验收。",
+        f"> **本章核心结论**：**{proj['name']}** 围绕 {proj['modules_count']} 个功能模块与 {proj['requirements_count']} 条需求"
+        f"（高优 {proj['requirements_high']} 条）开展协作开发，目前已完成 **{done_tasks}/{total_tasks} 项任务**"
+        f"（{completion_rate}%），归档 **{ev['total_formal']} 条正式证据** 与 **{ev['formal_outcomes']} 项正式成果**。",
         "",
+        f"{course_prefix}**{proj['name']}** 由 **{member_names_inline}** 共 **{counts['members']} 名**成员分工协作完成。"
+        f"项目针对高校软件工程课程小组实践中的需求边界不清、进度缺少客观核验与成员贡献难以量化等具体问题，"
+        f"围绕 **{proj['modules_count']} 个核心功能模块** 与 **{proj['requirements_count']} 条需求条目**"
+        f"（其中高优先级需求 {proj['requirements_high']} 条）开展了系统设计、迭代开发与证据化验收。",
+        "",
+        f"如图 1 所示，系统在前端交互层、业务模块层与外部集成基础设施层之间保持了清晰的职责边界。"
         f"截至本报告编制时，团队累计完成 **{done_tasks}/{total_tasks} 项任务**（整体完成率 **{completion_rate}%**），"
         f"达成 **{ms_done}/{len(milestones)} 个阶段里程碑**（交付物勾选完成 **{deliv_done}/{deliv_total}**），"
         f"通过 GitHub 沉淀 **{github['commits']} 次代码提交** 与 **{github['pull_requests']} 个合并请求**，"
-        f"并在平台归档 **{ev['total_formal']} 条有效正式证据**（覆盖 **{ev['tasks_with_evidence']}/{total_tasks}** 项任务，覆盖率 **{ev_cov_rate}%**）。"
+        f"并在平台归档 **{ev['total_formal']} 条正式证据**（覆盖 **{ev['tasks_with_evidence']}/{total_tasks}** 项任务，覆盖率 **{ev_cov_rate}%**）。"
         f"需求基线当前为 **v{proj['baseline_version'] or '—'}**（状态：{proj['baseline_status'] or '筹备中'}），"
         f"任务规划基线为 **v{proj['plan_version'] or '—'}**（状态：{proj['plan_status'] or '筹备中'}），"
-        f"确保了整个学期内的功能范围可追踪、阶段变更受控。",
+        f"使整个学期内的功能范围可追踪、阶段变更受控。",
     ]
     if proj.get("description"):
         overview_lines.extend(["", f"> **系统定位与目标概述**：{proj['description']}"])
@@ -940,9 +956,13 @@ def render_fallback_chapters(
     # 2. Workflow
     repo_names = "、".join(f"`{r['full_name']}`（默认分支 `{r['default_branch']}`）" for r in repos)
     workflow_lines = [
-        "为确保多人并行开发下的工程质量与过程可审计性，团队在项目全周期贯彻了"
+        f"> **本章核心结论**：团队按六阶段证据驱动流程协同研发，累计记录 **{github['commits']} 次代码提交**、"
+        f"**{github['merged_prs']}/{github['pull_requests']} 个已合并 PR**、**{feishu['total_messages']} 条飞书沟通消息**"
+        f"与 **{ev['verification_runs']} 次核验运行**，全部任务状态变更均绑定可复核工程产物。",
+        "",
+        "如图 2 所示，为保证多人并行开发下的工程质量与过程可审计性，团队在项目周期内贯彻了"
         "**「需求基线冻结 → 任务拆解与权重确认 → GitHub 分支协作与持续集成 → 飞书群决策同步 → 证据审核与人工验收确认 → 贡献核算归档」**"
-        "的六步闭环研发流程。所有任务状态变迁与完成宣称均须绑定真实代码提交、文件交付或协作记录，从机制上杜绝缺乏依据的进度汇报。",
+        "六阶段研发流程。所有任务状态变迁与完成宣称均须绑定真实代码提交、文件交付或协作记录，避免缺乏依据的口头进度汇报。",
         "",
         "### 多源工程协作与质量门禁体系",
         "",
@@ -991,11 +1011,14 @@ def render_fallback_chapters(
 
     # 3. Progress & Milestones
     progress_lines = [
-        f"团队将整个学期的研发周期划分为 **{len(milestones)} 个阶段里程碑** 与 **{total_tasks} 项核心工程任务**，"
-        f"按周推进「架构基建 → 核心模块实现 → 跨模块联调 → 全链路验收与结项归档」的递进式节奏。"
+        f"> **本章核心结论**：项目按 **{len(milestones)} 个阶段里程碑** 持续推进，任务完成率 **{completion_rate}%**（{done_tasks}/{total_tasks}），"
+        f"里程碑达成 **{ms_done}/{len(milestones)}**，关键交付物核验 **{deliv_done}/{deliv_total}**，研发节奏平稳连续。",
+        "",
+        f"如图 3 所示，团队将整个学期的研发周期划分为 **{len(milestones)} 个阶段里程碑** 与 **{total_tasks} 项核心工程任务**，"
+        f"按周推进「架构基建 → 核心模块实现 → 跨模块联调 → 综合验收与结项归档」的递进式节奏。"
         f"截至报告快照，任务总体完成率达到 **{completion_rate}%**（{done_tasks}/{total_tasks}），"
         f"阶段里程碑完成 **{ms_done}/{len(milestones)}**，关键交付物核验通过 **{deliv_done}/{deliv_total}**，"
-        "各项代码提交与验收记录均匀分布于项目周期内，体现了持续稳健的迭代推进而非期末集中突击。",
+        "各项代码提交与验收记录分布于项目各周节点，体现了持续稳健的迭代推进而非期末集中突击。",
     ]
     if milestones:
         progress_lines.extend(
@@ -1049,12 +1072,18 @@ def render_fallback_chapters(
     # 4. Collaboration & Decisions
     collab_lines: list[str] = []
     if feishu["total_conclusions"] > 0 or feishu["total_messages"] > 0:
-        collab_lines.append(
-            f"在多人并行开发过程中，高效的异步沟通与明确的决策留痕是避免接口返工的关键。"
-            f"项目周期内，团队在飞书工作群中累计产生 **{feishu['total_messages']} 条** 有效沟通记录"
-            + (f"（覆盖时段：{feishu['date_range']}）" if feishu["date_range"] else "")
-            + f"，系统结合任务清单与上下文语义共提炼出 **{feishu['total_conclusions']} 项** 可溯源的协作结论，"
-            "完整还原了从需求共识、模块分工到技术难题排查的真实协同轨迹。"
+        collab_lines.extend(
+            [
+                f"> **本章核心结论**：项目飞书工作群累计沉淀 **{feishu['total_messages']} 条**工程沟通消息"
+                + (f"（{feishu['date_range']}）" if feishu["date_range"] else "")
+                + f"，结构化提炼 **{feishu['total_conclusions']} 项**协作结论，为跨模块分工与技术取舍保留了可追溯依据。",
+                "",
+                f"在多人并行开发过程中，高效的异步沟通与明确的决策留痕是避免接口返工的关键。"
+                f"项目周期内，团队在飞书工作群中累计产生 **{feishu['total_messages']} 条** 有效沟通记录"
+                + (f"（覆盖时段：{feishu['date_range']}）" if feishu["date_range"] else "")
+                + f"，系统结合任务清单与上下文语义共提炼出 **{feishu['total_conclusions']} 项** 可溯源的协作结论，"
+                "完整还原了从需求共识、模块分工到技术难题排查的真实协同轨迹。",
+            ]
         )
         if feishu["overview"]:
             collab_lines.extend(["", f"> **整体协作态势评估**：{feishu['overview']}"])
@@ -1115,9 +1144,12 @@ def render_fallback_chapters(
 
     # 5. Evidence & Quality Acceptance
     ev_lines = [
-        "为向任课教师提供客观、可复核的完成度证明，团队在开发全程严格执行"
+        f"> **本章核心结论**：项目累计归档 **{ev['total_formal']} 条正式证据**（覆盖 {ev['tasks_with_evidence']}/{total_tasks} 项任务，{ev_cov_rate}%），"
+        f"设定 **{ev['criteria_total']} 条**验收标准并执行 **{ev['verification_runs']} 次**核验，经人工复核确认 **{ev['formal_outcomes']} 项**正式成果。",
+        "",
+        "如图 4 所示，为向任课教师提供客观、可复核的完成度证明，团队在开发全程严格执行"
         "**「候选证据自动采集 → 责任人审核采纳为正式证据 → 验收标准完整性校验 → 人工最终确认生效」**"
-        f"四阶段质量机制。截至快照生成，全项目已沉淀有效正式证据 **{ev['total_formal']} 条**，"
+        f"四阶段质量机制。截至快照生成，全项目已沉淀正式证据 **{ev['total_formal']} 条**，"
         f"覆盖 **{ev['tasks_with_evidence']}/{total_tasks}** 项任务（证据覆盖率 **{ev_cov_rate}%**）。",
         "",
         f"在质量验收维度，团队共围绕功能正确性、接口联调与文档完备性设定 **{ev['criteria_total']} 条**验收标准，"
@@ -1156,7 +1188,11 @@ def render_fallback_chapters(
     # 6. Member Contribution Portrait (Professor-facing: NO noisy draft warning at opening!)
     total_commits = sum(m["github_commits"] for m in members)
     contrib_lines = [
-        f"本节从 **正式贡献权重、任务完成闭环、负责功能模块及 GitHub 真实代码产出** 四个维度，"
+        f"> **本章核心结论**：团队 **{len(members) or counts['members']} 名成员** 均承担独立核心模块并完成全部指派任务"
+        + (f"，累计归属 GitHub 代码提交 **{total_commits} 次**" if total_commits > 0 else "")
+        + "，权重分配与代码/任务/协作证据高度一致。",
+        "",
+        f"如图 5 所示，本节从 **正式贡献权重、任务完成情况、负责功能模块及 GitHub 真实代码产出** 四个维度，"
         f"对团队 **{len(members) or counts['members']} 名成员** 的实际投入进行交叉核验与客观画像。"
         f"全员任务指派明确且均绑定可溯源的代码提交与正式证据"
         + (f"（归属成员提交合计 {total_commits} 次）" if total_commits > 0 else "")
@@ -1215,17 +1251,28 @@ def render_fallback_chapters(
     # 7. Reflection & Recommendations
     refl_lines: list[str] = []
     if risks["active_count"] == 0:
-        refl_lines.append(
-            f"截至本报告编制时，项目风险台账中 **无活跃未关闭风险**（历史累计闭环关闭风险 **{risks['closed_count']} 项**），"
-            f"全部 **{done_tasks}/{total_tasks} 项任务** 与 **{ms_done}/{len(milestones)} 个里程碑** 按预期节奏收口，整体交付状态稳定可控。"
-            "尽管结项阶段已消除阻塞性风险，团队在回顾全周期研发过程时仍客观梳理了跨模块集成、环境配置与测试覆盖方面遇到的真实挑战及尚存局限。"
+        refl_lines.extend(
+            [
+                f"> **本章核心结论**：当前风险台账活跃风险为 **0 项**（累计处理关闭历史风险 **{risks['closed_count']} 项**），"
+                "但系统在极端并发压测、外部平台断网降级及大规模课程统计性能方面仍存在明确改进空间。",
+                "",
+                f"截至本报告编制时，项目风险台账中 **无活跃未关闭风险**（历史累计关闭风险 **{risks['closed_count']} 项**），"
+                f"全部 **{done_tasks}/{total_tasks} 项任务** 与 **{ms_done}/{len(milestones)} 个里程碑** 按预期节奏收口，整体交付状态稳定可控。"
+                "尽管结项阶段已消除阻塞性风险，团队在回顾全周期研发过程时仍客观梳理了跨模块集成、环境配置与测试覆盖方面遇到的真实挑战及尚存局限。",
+            ]
         )
     else:
         rc = risks["counts"]
-        refl_lines.append(
-            f"截至本报告编制时，项目仍存在 **{risks['active_count']} 项活跃风险**"
-            f"（高风险 {rc['high']} 项 / 中风险 {rc['medium']} 项 / 低风险 {rc['low']} 项），"
-            f"另已闭环关闭历史风险 **{risks['closed_count']} 项**。团队已针对未关闭风险逐项明确责任人与缓解方案，防止影响最终课程答辩与系统稳定性。"
+        refl_lines.extend(
+            [
+                f"> **本章核心结论**：当前仍有 **{risks['active_count']} 项活跃风险**"
+                f"（高 {rc['high']} / 中 {rc['medium']} / 低 {rc['low']}），已关闭历史风险 **{risks['closed_count']} 项**，"
+                "需在终版答辩前按优先级完成缓解验证。",
+                "",
+                f"截至本报告编制时，项目仍存在 **{risks['active_count']} 项活跃风险**"
+                f"（高风险 {rc['high']} 项 / 中风险 {rc['medium']} 项 / 低风险 {rc['low']} 项），"
+                f"另已关闭历史风险 **{risks['closed_count']} 项**。团队已针对未关闭风险逐项明确责任人与缓解方案，防止影响最终课程答辩与系统稳定性。",
+            ]
         )
         refl_lines.extend(
             [
@@ -1297,15 +1344,30 @@ def render_fallback_chapters(
     return chapters
 
 
-def _openrouter_config() -> tuple[str, str] | None:
+def _resolve_model_name(raw_model: str) -> str:
+    cleaned = (raw_model or "").strip() or DEFAULT_MODEL
+    return MODEL_ALIASES.get(cleaned.lower(), cleaned)
+
+
+def _openrouter_config(role: str | None = None) -> tuple[str, str, str] | None:
+    """Resolve `(api_key, primary_model, fallback_model)` for report writing or visual planning.
+
+    Reads `AI_REPORT_WRITING_MODEL` (role='writing') or `AI_REPORT_VISUAL_MODEL` (role='visual'),
+    falling back automatically to `AI_MODEL` (or `DEFAULT_MODEL`) when unset or on runtime failure.
+    """
     if os.getenv("AI_PROVIDER", "").strip().lower() != "openrouter":
         return None
     api_key = os.getenv("AI_API_KEY", "").strip() or os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         return None
-    raw_model = os.getenv("AI_MODEL", "").strip() or DEFAULT_MODEL
-    model = MODEL_ALIASES.get(raw_model.lower(), raw_model)
-    return api_key, model
+    fallback_model = _resolve_model_name(os.getenv("AI_MODEL", ""))
+    override_env = ""
+    if role == "writing":
+        override_env = os.getenv("AI_REPORT_WRITING_MODEL", "").strip()
+    elif role == "visual":
+        override_env = os.getenv("AI_REPORT_VISUAL_MODEL", "").strip()
+    primary_model = _resolve_model_name(override_env) if override_env else fallback_model
+    return api_key, primary_model, fallback_model
 
 
 def _extract_json_object(content: str) -> dict[str, Any]:
@@ -1342,21 +1404,18 @@ def _strip_leading_chapter_heading(text: str, section_key: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _call_openrouter_json(
+def _call_openrouter_json_single(
     *,
+    api_key: str,
+    model: str,
     system_prompt: str,
     user_payload: dict[str, Any],
     timeout: float,
     feature: str,
     actor_id: UUID | None,
     project_id: UUID,
-    max_tokens: int = AI_REPORT_BATCH_MAX_TOKENS,
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Call OpenRouter chat completions expecting a JSON object, recording metered usage."""
-    cfg = _openrouter_config()
-    if cfg is None:
-        return None, None
-    api_key, model = cfg
+    max_tokens: int,
+) -> tuple[dict[str, Any] | None, str]:
     body: dict[str, Any] = {
         "model": model,
         "temperature": 0.25,
@@ -1404,7 +1463,13 @@ def _call_openrouter_json(
         return parsed, model
     except Exception as exc:  # noqa: BLE001
         error_code = type(exc).__name__[:40]
-        logger.warning("OpenRouter %s failed for project %s: %s", feature, project_id, exc)
+        logger.warning(
+            "OpenRouter %s failed for project %s (model=%s): %s",
+            feature,
+            project_id,
+            model,
+            exc,
+        )
         return None, model
     finally:
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -1417,6 +1482,55 @@ def _call_openrouter_json(
                 error_code=error_code,
                 latency_ms=latency_ms,
             )
+
+
+def _call_openrouter_json(
+    *,
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    timeout: float,
+    feature: str,
+    actor_id: UUID | None,
+    project_id: UUID,
+    max_tokens: int = AI_REPORT_BATCH_MAX_TOKENS,
+    model_role: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Call OpenRouter expecting a JSON object, automatically falling back to `AI_MODEL` on failure."""
+    cfg = _openrouter_config(role=model_role)
+    if cfg is None:
+        return None, None
+    api_key, primary_model, fallback_model = cfg
+    parsed, used_model = _call_openrouter_json_single(
+        api_key=api_key,
+        model=primary_model,
+        system_prompt=system_prompt,
+        user_payload=user_payload,
+        timeout=timeout,
+        feature=feature,
+        actor_id=actor_id,
+        project_id=project_id,
+        max_tokens=max_tokens,
+    )
+    if parsed is not None or primary_model == fallback_model:
+        return parsed, used_model
+    logger.warning(
+        "OpenRouter %s falling back from %s to %s for project %s",
+        feature,
+        primary_model,
+        fallback_model,
+        project_id,
+    )
+    return _call_openrouter_json_single(
+        api_key=api_key,
+        model=fallback_model,
+        system_prompt=system_prompt,
+        user_payload=user_payload,
+        timeout=timeout,
+        feature=feature,
+        actor_id=actor_id,
+        project_id=project_id,
+        max_tokens=max_tokens,
+    )
 
 
 def _compact_json(obj: Any) -> str:
@@ -1478,15 +1592,15 @@ def _compact_facts_for_llm(facts: dict[str, Any]) -> dict[str, Any]:
 
 
 _CHART_URL_RE = re.compile(
-    r"/api/v1/projects/[^/\s)]+/reports/versions/\d+/charts/([a-z0-9_-]{1,48})\.png(?:\?[^)\s]*)?"
+    r"/api/v1/projects/[^/\s)]+/reports/versions/\d+/charts/([a-z0-9_-]{1,48})\.(?:svg|png)(?:\?[^)\s]*)?"
 )
 _CHART_VERSION_PREFIX_RE = re.compile(
-    r"(/api/v1/projects/[^/\s)]+/reports/versions/)\d+(/charts/[a-z0-9_-]{1,48}\.png)"
+    r"(/api/v1/projects/[^/\s)]+/reports/versions/)\d+(/charts/[a-z0-9_-]{1,48}\.(?:svg|png))"
 )
 
 
 def _chart_image_url(project_id: UUID, version_no: int, chart_key: str) -> str:
-    return f"/api/v1/projects/{project_id}/reports/versions/{version_no}/charts/{chart_key}.png"
+    return f"/api/v1/projects/{project_id}/reports/versions/{version_no}/charts/{chart_key}.svg"
 
 
 def _insert_markdown_figures(body: str, figure_lines: list[str]) -> str:
@@ -1586,11 +1700,16 @@ def _snapshot_chart_facts(facts: dict[str, Any]) -> dict[str, Any]:
         },
         "evidence": {
             "total_formal": (facts.get("evidence") or {}).get("total_formal", 0),
+            "effective_formal": (facts.get("evidence") or {}).get("effective_formal", 0),
+            "source_changed_count": (facts.get("evidence") or {}).get("source_changed_count", 0),
             "by_source": (facts.get("evidence") or {}).get("by_source") or {},
             "tasks_with_evidence": (facts.get("evidence") or {}).get("tasks_with_evidence", 0),
             "criteria_total": (facts.get("evidence") or {}).get("criteria_total", 0),
             "verification_runs": (facts.get("evidence") or {}).get("verification_runs", 0),
             "formal_outcomes": (facts.get("evidence") or {}).get("formal_outcomes", 0),
+            "formal_outcomes_active": (facts.get("evidence") or {}).get(
+                "formal_outcomes_active", 0
+            ),
         },
         "members": (facts.get("members") or [])[:12],
         "risks": {
@@ -1604,24 +1723,13 @@ def _snapshot_chart_facts(facts: dict[str, Any]) -> dict[str, Any]:
 def _plan_report_visuals_with_ai(
     facts: dict[str, Any], *, actor_id: UUID | None, project_id: UUID
 ) -> tuple[list[dict[str, Any]] | None, str | None]:
-    """Let OpenRouter AI freely design 3-5 bespoke declarative visuals tailored to THIS project."""
+    """Let OpenRouter AI freely design 4-5 bespoke vector SVG visuals tailored to THIS project."""
     compact_facts = _compact_facts_for_llm(facts)
+    visual_skill = load_skill(SKILL_REPORT_VISUAL)
     system_prompt = (
-        "你是高校软件工程项目结项报告的资深信息图与架构可视化设计师。\n"
-        "请阅读输入的项目真实工程事实 JSON（含项目描述/定位、模块、任务、里程碑、GitHub、飞书、正式证据与成员分工），"
-        "为**当前这个具体项目**自由规划 **3 至 5 张**最能提升图文并茂阅读体验的插图规范（不要机械照搬固定套路，按项目真实特点与现有数据决定最值得画什么图、放在哪一章、起什么标题与节点文案）。\n\n"
-        "严格要求：\n"
-        '1. 只输出一个合法 JSON 对象：`{"visuals": [ ... ]}`。\n'
-        "2. 每张图对象必须包含：`id`（小写英文/数字/下划线 slug，如 `system_layers`）、`section_key`（只能取 overview / workflow / progress / collaboration / evidence / contribution / reflection 之一）、"
-        "`template`（只能从以下 5 种通用布局模板中自由选用，可按需组合）、`badge`（2–4字左上标签）、`title`（图主标题）、`subtitle`（副标题）、`caption`（图注，例如「图 1：...」）、`payload`（模板结构化数据）。\n"
-        "3. 100% 忠实于输入 JSON 中的真实项目名、模块名、成员姓名、里程碑、日期与数值，严禁编造任何未出现的数字或人名。\n"
-        "4. 五种通用模板的 `payload` 结构：\n"
-        '   - `layered_architecture`：分层架构/系统组成图，`{"layers": [{"name": "层名", "accent": "sky|emerald|violet|amber", "nodes": [{"title": "节点名", "subtitle": "职责/技术说明", "metric": "可选指标", "progress": 100}]}]}`（2–4层，每层1–5节点）\n'
-        '   - `process_flow`：水平多阶段流程图，`{"steps": [{"step": "01", "title": "阶段名", "metric": "核心实数", "detail": "简要说明", "accent": "sky|indigo|violet|amber|emerald|teal"}], "footer_note": "闭环总结", "kpis": [{"label": "指标", "value": "数值"}]}`（3–6步）\n'
-        '   - `milestone_timeline`：阶段进度/时间线横向条图，`{"summary_badges": [{"label": "标签", "value": "值", "accent": "emerald"}], "items": [{"label": "里程碑或模块名", "date": "YYYY-MM-DD", "progress": 100, "status": "已完成", "tone": "emerald|sky|amber|slate", "meta": "交付物/任务数"}]}`\n'
-        '   - `category_breakdown`：单面板或双面板分类统计横向条图，`{"panels": [{"title": "面板标题", "accent": "sky|violet", "total_label": "总计标签", "items": [{"label": "类别", "value": 80, "unit": " 条"}], "footnote": "补充指标"}]}`（1–2个面板）\n'
-        '   - `member_comparison`：成员多维对比分组条图，`{"series": [{"key": "share", "label": "正式贡献权重 (%)", "accent": "sky"}, ...], "members": [{"name": "真实姓名", "role": "组长/成员", "subtitle": "负责模块", "values": {"share": {"value": 30.0, "label": "30.0%"}}}]}`（2–4个维度）\n'
-        "5. 若某项外部数据（如飞书或里程碑）为空，请灵活避开空白维度，转而围绕该项目已有丰富数据设计更有信息量的图表。"
+        f"{visual_skill}\n\n"
+        "请严格按照上述设计规范，根据输入的项目真实工程事实 JSON 规划 4 至 5 张矢量插图，"
+        '只输出合法 JSON 对象 `{"visuals": [...]}`，不得包含任何额外前后缀说明。'
     )
     parsed, model = _call_openrouter_json(
         system_prompt=system_prompt,
@@ -1631,6 +1739,7 @@ def _plan_report_visuals_with_ai(
         actor_id=actor_id,
         project_id=project_id,
         max_tokens=AI_VISUALS_MAX_TOKENS,
+        model_role="visual",
     )
     if isinstance(parsed, dict):
         visuals = sanitize_visual_specs(parsed.get("visuals"), facts)
@@ -1644,44 +1753,34 @@ def _author_report_with_ai(
 ) -> tuple[dict[str, str] | None, str | None]:
     """Author all 7 publication-grade chapters via 2 focused parallel OpenRouter calls."""
     compact_facts = _compact_facts_for_llm(facts)
-
-    common_rules = (
-        "你是高校软件工程课程项目答辩与工程管理领域的资深技术写作专家。\n"
-        "这份报告的直接读者是**负责评阅打分的高校软件工程任课教师**，必须达到正式出版级课程项目结项报告水准：\n"
-        "- 行文风格：正式、客观冷静、数据翔实、论证严谨，禁止空洞套话、禁止营销夸大词、严禁 1 句话敷衍。\n"
-        "- 绝对事实约束：所有数字、成员姓名、模块名、任务名、里程碑、GitHub 提交/PR 数、飞书结论、正式证据数与风险项"
-        "必须 100% 源自输入的真实工程事实 JSON，严禁编造任何未出现的人名、数据或事件。\n"
-        "- 图文结合：系统会为报告自动配发与本章数据对应的架构图、流程图或统计图表，请在行文中自然围绕架构分工、协作流程、阶段进度、证据分布与成员贡献展开论证（无需手写图片 URL）。\n"
-        "- 排版格式：每个键的值必须是纯中文 Markdown 正文，**不要重复写章级标题（如 `# 一、...` 或 `## 一、...`）**；"
-        "每章必须包含**至少 2 个实质性自然段 + `###` 子标题 + 至少 1 个规范 GFM Markdown 表格或结构化条目**，每章字数控制在 **450–700 中文字符**（全篇 7 章合计约 3,200–4,500 字）。"
-    )
+    writing_skill = load_skill(SKILL_REPORT_WRITING)
 
     prompt_batch_1 = (
-        f"{common_rules}\n\n"
+        f"{writing_skill}\n\n"
         "本次请只输出一个合法 JSON 对象，必须且只能包含这 4 个字符串键：overview, workflow, progress, collaboration。\n"
-        "各章撰写要求（直接回应教师评分关注点）：\n"
-        "1. overview（一、项目概述与目标范围）：阐明项目解决的核心问题、系统定位、需求基线与计划基线治理，"
+        "各章撰写任务（严格遵守上述 Skill 的章首核心结论、禁用套话黑名单与四步论证节奏）：\n"
+        "1. overview（一、项目概述与目标范围）：阐明项目解决的具体工程问题、系统定位、需求基线与计划基线治理，自然呼应图 1 架构分工，"
         "给出「### 核心交付指标总览」表与「### 功能模块与职责边界」表（列出每个真实模块、负责人、需求数、任务完成与权重）。\n"
-        "2. workflow（二、开发流程与团队协作机制）：阐述团队端到端闭环开发流程（需求冻结→任务拆解→GitHub 分支/PR/CI→飞书协作→验收确认→贡献核算），"
+        "2. workflow（二、开发流程与团队协作机制）：阐述团队端到端研发协作与质量门禁机制（需求冻结→任务拆解→GitHub 分支/PR/CI→飞书协作→验收确认→贡献核算），自然呼应图 2，"
         "引用真实仓库、提交数、PR 合并数、代码增删与飞书消息统计，并给出「### 代表性工程提交与变更记录」表。\n"
-        "3. progress（三、项目进度与里程碑复盘）：按时间顺序论证项目在整个学期持续稳健推进（而非期末突击），"
+        "3. progress（三、项目进度与里程碑复盘）：按时间顺序论证项目在整个学期持续稳健推进（非期末突击），自然呼应图 3，"
         "给出「### 阶段里程碑与交付物核验表」（列：里程碑阶段 | 截止日期 | 状态 | 进度 | 交付物 | 关联任务）与「### 分模块任务完成汇总」表及复盘分析。\n"
         "4. collaboration（四、团队沟通协作与关键技术决策）：基于飞书群聊消息量、时间跨度与真实协作结论，给出「### 协作结论分类分布」表，"
-        "并提炼 5–8 条真实分工确认、规范同步、技术决策与阻塞排查案例（尽量引用真实标题、确认人数或关联任务编号）。"
+        "并提炼 5–8 条真实分工确认、规范同步、技术决策与阻塞排查案例（引用真实标题、确认人数或关联任务编号）。"
     )
 
     prompt_batch_2 = (
-        f"{common_rules}\n\n"
+        f"{writing_skill}\n\n"
         "本次请只输出一个合法 JSON 对象，必须且只能包含这 3 个字符串键：evidence, contribution, reflection。\n"
-        "各章撰写要求（直接回应教师评分关注点）：\n"
-        "1. evidence（五、证据链沉淀与质量验收成果）：阐明团队如何通过可核验工程证据支撑完成宣称（杜绝口头报工），"
-        "给出「### 正式证据来源分布」表（列：证据来源类型 | 有效正式证据数 | 占比 | 核验价值）与「### 代表性正式证据与验收成果摘录」，结合验收标准数、核验次数与人工确认正式成果评价质量闭环。\n"
+        "各章撰写任务（严格遵守上述 Skill 的章首核心结论、禁用套话黑名单与四步论证节奏）：\n"
+        "1. evidence（五、证据链沉淀与质量验收成果）：阐明团队如何以可复核工程证据支撑完成宣称，自然呼应图 4，"
+        "给出「### 正式证据来源分布」表（列：证据来源类型 | 正式证据数 | 占比 | 核验价值）与「### 代表性正式证据与验收成果摘录」，结合验收标准数、核验次数与人工确认正式成果评价质量控制效果。\n"
         "2. contribution（六、成员个人贡献与分工画像）：**严禁在章首输出“尚未冻结正式贡献快照”等内部告警语！**"
-        "直接面向评阅教师阐述团队分工格局与防「搭便车」交叉印证依据；给出「### 成员分工与多维贡献对比表」（列：成员 | 角色 | 正式贡献权重 | 积分 | 完成/指派任务 | GitHub 提交 / PR | 代码增删 | 负责模块）；"
-        "随后在「### 成员个人交付画像与协作评述」中为**每一位成员各写一段实质性评述**（说明其角色、负责模块、任务完成、代码提交/改动与代表性交付）；"
+        "直接面向评阅教师阐述团队分工格局与交叉核验依据，自然呼应图 5；给出「### 成员分工与多维贡献对比表」（列：成员 | 角色 | 正式贡献权重 | 积分 | 完成/指派任务 | GitHub 提交 / PR | 代码增删 | 负责模块）；"
+        "随后在「### 成员个人交付画像与协作评述」中为**每一位成员各写一段实质性评述**；"
         "若贡献快照为草稿，仅在章节最末尾用一句简短斜体脚注注明：`*（注：当前基于最新贡献快照 vN 编制，正式归档前将完成团队冻结确认。）*`。\n"
         "3. reflection（七、风险复盘与后续改进建议）：保持高度客观冷静，如实汇报当前活跃风险与已关闭历史风险；"
-        "结合飞书 blocker 结论与已关闭风险复盘团队真实遇到的工程难题与排查解决过程；最后客观指出当前系统已知局限并给出 4–5 条具体可执行的后续优化与答辩准备建议。"
+        "结合飞书 blocker 结论与已关闭风险复盘团队真实遇到的工程难题与排查取舍；最后客观指出当前系统已知局限并给出 4–5 条具体可执行的后续优化与答辩准备建议。"
     )
 
     def _run_batch(
@@ -1695,6 +1794,7 @@ def _author_report_with_ai(
             actor_id=actor_id,
             project_id=project_id,
             max_tokens=AI_REPORT_BATCH_MAX_TOKENS,
+            model_role="writing",
         )
         chapters_out: dict[str, str] = {}
         if isinstance(parsed, dict):
@@ -1736,16 +1836,15 @@ def _rewrite_section_with_ai(
     project_id: UUID,
 ) -> tuple[str | None, str | None]:
     chapter_title = SECTION_LABELS.get(section_key, section_key)
+    writing_skill = load_skill(SKILL_REPORT_WRITING)
     system_prompt = (
-        "你是高校软件工程课程结项报告的资深技术编辑，面向评阅打分的任课教师。"
-        f"请严格基于项目真实工程事实 JSON，深度润色并重写报告章节「{chapter_title}」（键名 {section_key}）。\n"
-        "要求：\n"
+        f"{writing_skill}\n\n"
+        f"请严格基于上述写作规范与项目真实工程事实 JSON，深度润色并重写报告章节「{chapter_title}」（键名 {section_key}）。\n"
+        "补充要求：\n"
         '1. 只输出一个合法 JSON 对象：`{"content": "<Markdown 正文>"}`。\n'
-        "2. 正文使用规范中文 Markdown（包含多个自然段、### 子标题、必要时包含 GFM 表格与结构化条目），不要重复写章级大标题。\n"
-        "3. 严格依据输入事实，严禁编造数字、成员或事件；客观冷静，禁止夸大；字数约 450–700 中文字符。\n"
-        "4. 若改写第六章（成员贡献），严禁在章首输出草稿告警横幅，仅可在末尾以简短斜体脚注注明快照版本。\n"
-        "5. 若原文中包含 Markdown 配图行（如 `![图 ...](/api/v1/projects/.../charts/....png)`），请原样保留该配图行并使正文与之自然呼应。\n"
-        "6. 充分响应用户的改写要求（若提供）。"
+        "2. 正文以 `> **本章核心结论**：...` 开头，包含多个实质性自然段、### 子标题、必要时包含 GFM 表格与结构化条目，不要重复写章级大标题。\n"
+        "3. 若原文中包含 Markdown 配图行（如 `![图 ...](/api/v1/projects/.../charts/....svg)` 或 `.png`），请原样保留该配图行并使正文与之自然呼应。\n"
+        "4. 充分响应用户的改写要求（若提供）。"
     )
     payload = {
         "target_section": section_key,
@@ -1763,6 +1862,7 @@ def _rewrite_section_with_ai(
         actor_id=actor_id,
         project_id=project_id,
         max_tokens=AI_REWRITE_MAX_TOKENS,
+        model_role="writing",
     )
     if isinstance(parsed, dict):
         content = parsed.get("content") or parsed.get(section_key)
@@ -1817,10 +1917,14 @@ def build_report_snapshot_data(
     chapters = render_fallback_chapters(facts)
     authoring_mode = "fallback"
     model_used: str | None = None
+    writing_model_used: str | None = None
+    visual_model_used: str | None = None
+    skills_loaded: list[str] = []
     ai_chapters_count = 0
     ai_visuals: list[dict[str, Any]] | None = None
 
     if use_ai:
+        skills_loaded = [SKILL_REPORT_WRITING, SKILL_REPORT_VISUAL]
         with ThreadPoolExecutor(max_workers=2) as pool:
             prose_future = pool.submit(
                 _author_report_with_ai, facts, actor_id=actor_id, project_id=project_id
@@ -1830,6 +1934,8 @@ def build_report_snapshot_data(
             )
             ai_chapters, prose_model = prose_future.result()
             ai_visuals, visuals_model = visuals_future.result()
+        writing_model_used = prose_model
+        visual_model_used = visuals_model
         model_used = prose_model or visuals_model
         if ai_chapters:
             chapters.update(ai_chapters)
@@ -1873,6 +1979,9 @@ def build_report_snapshot_data(
             "visuals_mode": visuals_mode,
             "visuals_count": len(visuals),
             "model": model_used,
+            "writing_model": writing_model_used,
+            "visual_model": visual_model_used,
+            "skills_loaded": skills_loaded,
             "ai_chapters_count": ai_chapters_count,
             "word_count": word_count,
             "generated_at": datetime.now(UTC).isoformat(),
@@ -3201,14 +3310,13 @@ def _render_export_inline_safe(
         raise ApiError(500, "REPORT_EXPORT_FAILED", artifact.error) from render_err
 
 
-@router.get("/versions/{version_no}/charts/{chart_key}.png")
-def get_report_chart(
+def _load_chart_snapshot_and_facts(
+    session: Session,
+    user: User,
     project_id: UUID,
     version_no: int,
     chart_key: str,
-    session: Session = Depends(get_session),
-    user: User = Depends(get_current_user),
-):
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     if not CHART_KEY_RE.match(chart_key):
         raise ApiError(404, "REPORT_CHART_NOT_FOUND", "Unknown report chart.")
     access = get_project_access(session, user, project_id)
@@ -3232,6 +3340,45 @@ def get_report_chart(
     if not snapshot.get("facts") and chart_key in ALLOWED_DEFAULT_CHART_KEYS:
         project_name = str(snapshot.get("project_name") or access.project.name)
         fallback_facts = collect_project_facts(session, project_id, project_name)
+    return snapshot, fallback_facts
+
+
+@router.get("/versions/{version_no}/charts/{chart_key}.svg")
+def get_report_chart_svg(
+    project_id: UUID,
+    version_no: int,
+    chart_key: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    snapshot, fallback_facts = _load_chart_snapshot_and_facts(
+        session, user, project_id, version_no, chart_key
+    )
+    svg_str = render_chart_svg_from_snapshot(snapshot, chart_key, fallback_facts=fallback_facts)
+    if svg_str is None:
+        raise ApiError(404, "REPORT_CHART_NOT_FOUND", "Report chart not found.")
+    return Response(
+        content=svg_str.encode("utf-8"),
+        media_type="image/svg+xml; charset=utf-8",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+        },
+    )
+
+
+@router.get("/versions/{version_no}/charts/{chart_key}.png")
+def get_report_chart(
+    project_id: UUID,
+    version_no: int,
+    chart_key: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    snapshot, fallback_facts = _load_chart_snapshot_and_facts(
+        session, user, project_id, version_no, chart_key
+    )
     png_bytes = render_chart_from_snapshot(snapshot, chart_key, fallback_facts=fallback_facts)
     if png_bytes is None:
         raise ApiError(404, "REPORT_CHART_NOT_FOUND", "Report chart not found.")

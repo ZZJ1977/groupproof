@@ -57,6 +57,7 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
                 appendix,
                 actor_id=creator_id,
                 use_ai=True,
+                version_no=snapshot.version_no,
             )
             snapshot.data_snapshot = data
             contribution_id = data["contribution_snapshot_id"]
