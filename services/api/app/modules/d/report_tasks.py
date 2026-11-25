@@ -62,9 +62,15 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
                 )
             project_id = project.id
             creator_id = snapshot.created_by or report.created_by
+            active_risk_count = int((snapshot.data_snapshot.get("counts") or {}).get("risks", 0))
             session.commit()
-        with SessionLocal() as session:
-            advice = risk_advice(session, project_id, creator_id)
+        advice = None
+        if active_risk_count > 0:
+            try:
+                with SessionLocal() as session:
+                    advice = risk_advice(session, project_id, creator_id)
+            except Exception:
+                advice = None
         with SessionLocal() as session:
             snapshot = session.get(ReportSnapshot, UUID(snapshot_id))
             report = session.get(Report, snapshot.report_id)
@@ -80,6 +86,14 @@ def generate_preview(snapshot_id: str, appendix: bool) -> None:
                         + "\n".join(advice["suggestions"])
                         + "\nAI advice requires human review."
                     ),
+                }
+                snapshot.data_snapshot = data
+            elif active_risk_count == 0:
+                from app.modules.d.reporting import _deterministic_risk_explanation
+
+                data["sections"] = {
+                    **data["sections"],
+                    "risk_explanation": _deterministic_risk_explanation(data, []),
                 }
                 snapshot.data_snapshot = data
             snapshot.status = "generated"

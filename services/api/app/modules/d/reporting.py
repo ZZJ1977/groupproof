@@ -1,12 +1,19 @@
 """D4 report versions built from a single frozen database read."""
 
+import logging
 import os
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from io import BytesIO
 from secrets import token_urlsafe
+from urllib.parse import quote
 from uuid import UUID
 
+from celery.app.task import Task as CeleryTask
 from docx import Document
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
@@ -22,11 +29,14 @@ from app.api.errors import ApiError
 from app.api.responses import success
 from app.db.models import BaselineVersion, Milestone, PlanVersion, ProjectMember, Task, User
 from app.db.session import get_session
+from app.modules.a.ai import AIUsageContext, RiskExplanationInput, explain_risk
+from app.modules.a.ai.schemas import RiskRecord, TaskProgressBrief
 from app.modules.c.models import Evidence
 from app.modules.c.permissions import get_project_access
 from app.modules.d.contribution import current_frozen_snapshot
 from app.modules.d.models import (
     ContributionItem,
+    ContributionSnapshot,
     Report,
     ReportArtifact,
     ReportDownload,
@@ -37,7 +47,15 @@ from app.modules.d.models import (
 )
 from app.modules.d.risk_read import risk_counts
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["d-reports"])
+
+STALE_GENERATING_SECONDS = 120
+RISK_ADVICE_TIMEOUT_SECONDS = 6.0
+_WORKER_INSPECT_TTL_SECONDS = 15.0
+_worker_inspect_cache: dict[str, tuple[float, bool]] = {}
+_XML_ILLEGAL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_PDF_FONT_REGISTERED = False
 
 
 class RefreshInput(BaseModel):
@@ -90,7 +108,9 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
         select(Task).where(Task.project_id == project_id).order_by(Task.id)
     ).all()
     milestones = session.scalars(
-        select(Milestone).where(Milestone.project_id == project_id).order_by(Milestone.id)
+        select(Milestone)
+        .where(Milestone.project_id == project_id)
+        .order_by(Milestone.deadline.asc().nulls_last(), Milestone.title, Milestone.id)
     ).all()
     members = session.scalars(
         select(ProjectMember).where(
@@ -108,15 +128,27 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
         )
     ).all()
     contribution = current_frozen_snapshot(session, project_id)
+    draft_contribution = (
+        None
+        if contribution is not None
+        else session.scalar(
+            select(ContributionSnapshot)
+            .where(ContributionSnapshot.project_id == project_id)
+            .order_by(ContributionSnapshot.version_no.desc())
+            .limit(1)
+        )
+    )
+    display_snapshot = contribution or draft_contribution
     shares = (
         session.scalars(
             select(ContributionItem)
-            .where(ContributionItem.snapshot_id == contribution.id)
-            .order_by(ContributionItem.user_id)
+            .where(ContributionItem.snapshot_id == display_snapshot.id)
+            .order_by(ContributionItem.share.desc(), ContributionItem.user_id)
         ).all()
-        if contribution
+        if display_snapshot
         else []
     )
+    frozen_shares = shares if contribution is not None else []
     share_user_ids = {item.user_id for item in shares}
     share_names = (
         {
@@ -127,28 +159,49 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
         else {}
     )
     completed = sum(task.status == "completed" for task in tasks)
+    if contribution is not None:
+        contribution_text = (
+            "\n".join(
+                f"{share_names.get(item.user_id, item.user_id)}: {float(item.share):.1f}%"
+                for item in frozen_shares
+            )
+            or "已冻结贡献快照暂无成员记录。"
+        )
+    elif draft_contribution is not None and shares:
+        draft_lines = "\n".join(
+            f"{share_names.get(item.user_id, item.user_id)}: {float(item.share):.1f}%"
+            for item in shares
+        )
+        contribution_text = (
+            f"尚未冻结正式贡献快照（以下为最新草稿 v{draft_contribution.version_no} 参考，"
+            "正式提交前请在贡献页冻结快照）：\n"
+            f"{draft_lines}"
+        )
+    else:
+        contribution_text = "尚未冻结正式贡献快照。"
     sections = {
         "overview": (
-            f"{project_name}: {len(members)} members; {len(tasks)} tasks; {completed} completed."
+            f"{project_name}：共 {len(members)} 名活跃成员，"
+            f"{len(tasks)} 项任务（已完成 {completed} 项），"
+            f"{len(evidence)} 条有效正式证据，{len(risks)} 项活跃风险。"
         ),
         "tasks": "\n".join(
             f"{task.title}: {task.status} ({task.progress_percent}%)" for task in tasks
         )
-        or "No tasks.",
+        or "暂无任务记录。",
         "milestones": "\n".join(
             f"{item.title}: {item.status} ({item.progress_percent}%)" for item in milestones
         )
-        or "No milestones.",
-        "evidence": f"{len(evidence)} formal evidence records.",
-        "contribution": "\n".join(
-            f"{share_names.get(item.user_id, item.user_id)}: {item.share}%" for item in shares
-        )
-        or "No frozen contribution snapshot.",
-        "risks": f"{len(risks)} active risks.\n"
-        + "\n".join(f"{risk.title}: {risk.level}" for risk in risks),
+        or "暂无里程碑记录。",
+        "evidence": f"共 {len(evidence)} 条有效正式证据。",
+        "contribution": contribution_text,
+        "risks": (
+            f"当前活跃风险 {len(risks)} 项。"
+            + ("\n" + "\n".join(f"{risk.title}: {risk.level}" for risk in risks) if risks else "")
+        ),
     }
     if appendix:
-        sections["appendix"] = "\n".join(item.title for item in evidence) or "No formal evidence."
+        sections["appendix"] = "\n".join(item.title for item in evidence) or "暂无正式证据。"
     return {
         "project_name": project_name,
         "contribution_snapshot_id": str(contribution.id) if contribution else None,
@@ -158,7 +211,7 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
             "completed_tasks": completed,
             "evidence": len(evidence),
             "risks": risk_counts(risks)["total"],
-            "contribution_members": sum(1 for item in shares if item.share > 0),
+            "contribution_members": sum(1 for item in frozen_shares if item.share > 0),
         },
         "sections": sections,
         "evidence_records": [
@@ -256,6 +309,7 @@ def list_reports(
                     "version": version_by_id[row.snapshot_id],
                     "format": row.file_format,
                     "status": row.status,
+                    "error": row.error,
                     "requested_by": str(row.requested_by),
                     "requested_by_name": names.get(row.requested_by),
                     "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -293,9 +347,16 @@ def refresh_report(
             report = Report(project_id=project_id, created_by=user.id, status="draft")
             session.add(report)
             session.flush()
-        if report.status in {"generating", "submitted", "finalized"}:
-            raise ApiError(409, "REPORT_READ_ONLY", "Report is awaiting review or finalized.")
         previous = versions(session, report.id)
+        if report.status == "generating":
+            if _recover_stale_generating(report, previous):
+                session.flush()
+            else:
+                raise ApiError(
+                    409, "REPORT_GENERATING", "Report preview is already being generated."
+                )
+        if report.status in {"submitted", "finalized"}:
+            raise ApiError(409, "REPORT_READ_ONLY", "Report is awaiting review or finalized.")
         baseline = session.scalar(
             select(BaselineVersion)
             .where(BaselineVersion.project_id == project_id, BaselineVersion.status == "frozen")
@@ -325,8 +386,10 @@ def refresh_report(
         report.includes_appendix = payload.includes_appendix
         report.lock_version += 1
         session.commit()
-        if os.getenv("REPORT_INLINE_MODE", "").strip().lower() in {"1", "true", "yes"}:
-            _complete_preview_inline(
+        from app.modules.d.report_tasks import generate_preview
+
+        if _should_run_inline(generate_preview, "app.modules.d.report_tasks.generate_preview"):
+            _complete_preview_inline_safe(
                 session,
                 version=version,
                 report=report,
@@ -336,12 +399,10 @@ def refresh_report(
             )
             return success(serialize(version), request)
         try:
-            from app.modules.d.report_tasks import generate_preview
-
             generate_preview.delay(str(version.id), payload.includes_appendix)
         except Exception:
             if _allow_inline_worker_fallback():
-                _complete_preview_inline(
+                _complete_preview_inline_safe(
                     session,
                     version=version,
                     report=report,
@@ -545,6 +606,138 @@ def _allow_inline_worker_fallback() -> bool:
     return os.getenv("APP_MODE", "dev").strip().lower() != "real"
 
 
+def _is_default_celery_delay(task_obj) -> bool:
+    delay_fn = getattr(task_obj, "delay", None)
+    return getattr(delay_fn, "__func__", None) is CeleryTask.delay
+
+
+def _has_registered_report_worker(task_name: str) -> bool:
+    now = time.monotonic()
+    cached = _worker_inspect_cache.get(task_name)
+    if cached is not None and now - cached[0] < _WORKER_INSPECT_TTL_SECONDS:
+        return cached[1]
+    registered_ok = False
+    try:
+        from app.modules.d.report_tasks import celery_app
+
+        insp = celery_app.control.inspect(timeout=0.5)
+        registered = insp.registered() or {}
+        registered_ok = any(task_name in (tasks or ()) for tasks in registered.values())
+    except Exception:
+        registered_ok = False
+    _worker_inspect_cache[task_name] = (now, registered_ok)
+    return registered_ok
+
+
+def _should_run_inline(task_obj, task_name: str) -> bool:
+    flag = os.getenv("REPORT_INLINE_MODE", "").strip().lower()
+    if flag in {"1", "true", "yes"}:
+        return True
+    if flag in {"0", "false", "no"}:
+        return False
+    # Preserve unit tests that monkeypatch task.delay(...) to assert async dispatch.
+    if not _is_default_celery_delay(task_obj):
+        return False
+    return not _has_registered_report_worker(task_name)
+
+
+def _recover_stale_generating(report: Report, previous: list[ReportSnapshot]) -> bool:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(seconds=STALE_GENERATING_SECONDS)
+    generating_rows = [item for item in previous if item.status == "generating"]
+    if not generating_rows:
+        report.status = "failed"
+        return True
+    latest_gen = generating_rows[0]
+    created_at = latest_gen.created_at
+    if created_at is not None and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    if created_at is None or created_at <= cutoff:
+        for row in generating_rows:
+            row.status = "failed"
+        report.status = "failed"
+        return True
+    return False
+
+
+def _deterministic_risk_explanation(data: dict, active_risks: list[Risk]) -> str:
+    counts = data.get("counts") if isinstance(data.get("counts"), dict) else {}
+    total_tasks = int(counts.get("tasks", 0))
+    completed_tasks = int(counts.get("completed_tasks", 0))
+    evidence_count = int(counts.get("evidence", 0))
+    if not active_risks:
+        return (
+            f"当前项目无活跃风险记录，已完成 {completed_tasks}/{total_tasks} 项任务，"
+            f"有效正式证据 {evidence_count} 条，整体进展稳定。\n"
+            "建议在正式提交定稿前复核里程碑交付物、贡献度冻结快照与正式证据完整性。\n"
+            "AI advice requires human review."
+        )
+    high = sum(1 for r in active_risks if r.level == "high")
+    medium = sum(1 for r in active_risks if r.level == "medium")
+    low = sum(1 for r in active_risks if r.level == "low")
+    top_titles = "、".join(r.title for r in active_risks[:5])
+    return (
+        f"当前存在 {len(active_risks)} 项活跃风险（高 {high} / 中 {medium} / 低 {low}），"
+        f"任务完成进度 {completed_tasks}/{total_tasks}。\n"
+        f"重点关注风险：{top_titles}。\n"
+        "建议优先跟踪高/中等级风险并补充缓解说明后再提交定稿。\n"
+        "AI advice requires human review."
+    )
+
+
+def _bounded_risk_explanation(
+    session: Session, project_id: UUID, actor_id: UUID, data: dict
+) -> str:
+    active_risks = session.scalars(
+        select(Risk)
+        .where(Risk.project_id == project_id, Risk.status != "closed")
+        .order_by(Risk.created_at.desc())
+        .limit(100)
+    ).all()
+    if not active_risks:
+        return _deterministic_risk_explanation(data, [])
+    tasks = session.scalars(select(Task).where(Task.project_id == project_id).limit(500)).all()
+    payload = RiskExplanationInput(
+        project_id=project_id,
+        tasks=[
+            TaskProgressBrief(
+                id=task.id,
+                title=task.title,
+                status=task.status,
+                progress_percent=task.progress_percent,
+            )
+            for task in tasks
+        ],
+        risks=[
+            RiskRecord(kind=risk.title, description=risk.description, severity=risk.level)
+            for risk in active_risks
+        ],
+    )
+    usage = AIUsageContext(user_id=actor_id, project_id=project_id)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(explain_risk, payload, usage=usage)
+    try:
+        result = future.result(timeout=RISK_ADVICE_TIMEOUT_SECONDS)
+        advice = result.model_dump(mode="json")
+        return (
+            advice["summary"]
+            + "\n"
+            + advice["explanation"]
+            + "\n"
+            + "\n".join(advice["suggestions"])
+            + "\nAI advice requires human review."
+        )
+    except (FuturesTimeoutError, Exception):
+        logger.warning(
+            "Falling back to deterministic risk summary for project %s",
+            project_id,
+            exc_info=True,
+        )
+        return _deterministic_risk_explanation(data, active_risks)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 def _complete_preview_inline(
     session: Session,
     *,
@@ -555,7 +748,6 @@ def _complete_preview_inline(
     actor_id: UUID,
 ) -> None:
     from app.modules.d.contribution_week7 import archive_contribution
-    from app.modules.d.risk_read import risk_advice
 
     data = snapshot_data(session, project.id, project.name, appendix)
     contribution_id = data.get("contribution_snapshot_id")
@@ -568,29 +760,77 @@ def _complete_preview_inline(
             version.id,
             version.contribution_snapshot_id,
         )
-    try:
-        advice = risk_advice(session, project.id, actor_id)
-    except Exception:
-        advice = None
-    if advice:
+    risk_section = _bounded_risk_explanation(session, project.id, actor_id, data)
+    if risk_section:
         data = {
             **data,
             "sections": {
                 **data["sections"],
-                "risk_explanation": (
-                    advice["summary"]
-                    + "\n"
-                    + advice["explanation"]
-                    + "\n"
-                    + "\n".join(advice["suggestions"])
-                    + "\nAI advice requires human review."
-                ),
+                "risk_explanation": risk_section,
             },
         }
     version.data_snapshot = data
     version.status = "generated"
     report.status = "generated"
     session.commit()
+
+
+def _complete_preview_inline_safe(
+    session: Session,
+    *,
+    version: ReportSnapshot,
+    report: Report,
+    project,
+    appendix: bool,
+    actor_id: UUID,
+) -> None:
+    try:
+        _complete_preview_inline(
+            session,
+            version=version,
+            report=report,
+            project=project,
+            appendix=appendix,
+            actor_id=actor_id,
+        )
+    except Exception as exc:
+        logger.exception("Inline report preview generation failed for project %s", project.id)
+        session.rollback()
+        failed_version = session.get(ReportSnapshot, version.id)
+        failed_report = session.get(Report, report.id)
+        if failed_version is not None:
+            failed_version.status = "failed"
+        if failed_report is not None:
+            failed_report.status = "failed"
+        session.commit()
+        raise ApiError(
+            500, "REPORT_PREVIEW_FAILED", "Report preview generation failed; please retry."
+        ) from exc
+
+
+def _sanitize_text(value: object) -> str:
+    return _XML_ILLEGAL_RE.sub("", str(value or ""))
+
+
+def _content_disposition(project_name: str, version_no: int | None, file_format: str) -> str:
+    ext = "md" if file_format in {"md", "markdown"} else file_format
+    ascii_stem = f"report-v{version_no}" if version_no is not None else "report"
+    clean_name = (
+        re.sub(r'[\\/:*?"<>|\r\n]+', "-", _sanitize_text(project_name)).strip() or "GroupProof"
+    )
+    utf8_name = (
+        f"{clean_name}-结项报告-v{version_no}.{ext}"
+        if version_no is not None
+        else f"{clean_name}-结项报告.{ext}"
+    )
+    return f"attachment; filename=\"{ascii_stem}.{ext}\"; filename*=UTF-8''{quote(utf8_name)}"
+
+
+def _ensure_pdf_font() -> None:
+    global _PDF_FONT_REGISTERED
+    if not _PDF_FONT_REGISTERED:
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        _PDF_FONT_REGISTERED = True
 
 
 def _wrap_pdf_line(text: str, font_name: str, font_size: int, max_width: float) -> list[str]:
@@ -613,13 +853,49 @@ def _wrap_pdf_line(text: str, font_name: str, font_size: int, max_width: float) 
 
 
 def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
-    project_name = str(data.get("project_name") or "GroupProof")
+    project_name = _sanitize_text(data.get("project_name") or "GroupProof")
     title = f"{project_name} 项目报告 (Project Report)"
     counts = data.get("counts") if isinstance(data.get("counts"), dict) else None
     sections = data.get("sections") if isinstance(data.get("sections"), dict) else {}
     evidence_records = (
         data.get("evidence_records") if isinstance(data.get("evidence_records"), list) else []
     )
+
+    if file_format in {"md", "markdown"}:
+        lines: list[str] = [f"# {title}", ""]
+        if counts:
+            lines.extend(
+                [
+                    "| 指标 | 数值 |",
+                    "| --- | ---: |",
+                    f"| 项目成员 | {counts.get('members', 0)} |",
+                    f"| 任务完成 | {counts.get('completed_tasks', 0)} / {counts.get('tasks', 0)} |",
+                    f"| 正式证据 | {counts.get('evidence', 0)} |",
+                    f"| 活跃风险 | {counts.get('risks', 0)} |",
+                    "",
+                ]
+            )
+        for heading, body in sections.items():
+            label = SECTION_LABELS.get(heading, heading.replace("_", " ").title())
+            lines.append(f"## {label}")
+            lines.append("")
+            lines.append(_sanitize_text(body))
+            lines.append("")
+        if "appendix" in sections and evidence_records:
+            lines.extend(
+                [
+                    "### 正式证据明细表",
+                    "",
+                    "| 证据标题 | 关联任务 ID |",
+                    "| --- | --- |",
+                ]
+            )
+            for item in evidence_records:
+                ev_title = _sanitize_text(item.get("title", "")).replace("|", "\\|")
+                ev_task = _sanitize_text(item.get("task_id", "")).replace("|", "\\|")
+                lines.append(f"| {ev_title} | {ev_task} |")
+            lines.append("")
+        return "\n".join(lines).encode("utf-8"), "text/markdown; charset=utf-8"
 
     if file_format == "docx":
         document = Document()
@@ -639,8 +915,8 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
                 summary_table.cell(1, idx).text = values[idx]
         for heading, body in sections.items():
             label = SECTION_LABELS.get(heading, heading.replace("_", " ").title())
-            document.add_heading(label, level=1)
-            lines = str(body).splitlines() or [""]
+            document.add_heading(_sanitize_text(label), level=1)
+            lines = _sanitize_text(body).splitlines() or [""]
             for line in lines:
                 document.add_paragraph(line)
         if "appendix" in sections and evidence_records:
@@ -649,8 +925,8 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
             ev_table.cell(0, 0).text = "证据标题"
             ev_table.cell(0, 1).text = "关联任务 ID"
             for row_idx, item in enumerate(evidence_records, start=1):
-                ev_table.cell(row_idx, 0).text = str(item.get("title", ""))
-                ev_table.cell(row_idx, 1).text = str(item.get("task_id", ""))
+                ev_table.cell(row_idx, 0).text = _sanitize_text(item.get("title", ""))
+                ev_table.cell(row_idx, 1).text = _sanitize_text(item.get("task_id", ""))
         stream = BytesIO()
         document.save(stream)
         return (
@@ -658,7 +934,7 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
-    pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+    _ensure_pdf_font()
     stream = BytesIO()
     pdf = canvas.Canvas(stream, pagesize=A4)
     page_width, page_height = A4
@@ -701,13 +977,13 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
 
     for heading, body in sections.items():
         y -= 6
-        label = SECTION_LABELS.get(heading, heading.replace("_", " ").title())
+        label = _sanitize_text(SECTION_LABELS.get(heading, heading.replace("_", " ").title()))
         for chunk in _wrap_pdf_line(label, "STSong-Light", 13, usable_width):
             ensure_space(20)
             pdf.setFont("STSong-Light", 13)
             pdf.drawString(margin_x, y, chunk)
             y -= 20
-        for raw_line in str(body).splitlines() or [""]:
+        for raw_line in _sanitize_text(body).splitlines() or [""]:
             if not raw_line.strip():
                 y -= 8
                 continue
@@ -720,6 +996,58 @@ def render_document(data: dict, file_format: str) -> tuple[bytes, str]:
     draw_footer(page_no)
     pdf.save()
     return stream.getvalue(), "application/pdf"
+
+
+def _render_export_inline_safe(
+    session: Session, artifact: ReportArtifact, data_snapshot: dict
+) -> None:
+    try:
+        content, _ = render_document(data_snapshot, artifact.file_format)
+        artifact.content = content
+        artifact.status = "ready"
+        artifact.error = None
+        artifact.completed_at = datetime.now(UTC)
+        session.commit()
+    except Exception as render_err:
+        logger.exception("Inline report export failed for artifact %s", artifact.id)
+        artifact.status = "failed"
+        artifact.error = "Report generation failed; retry from the export page."
+        artifact.completed_at = datetime.now(UTC)
+        session.commit()
+        raise ApiError(500, "REPORT_EXPORT_FAILED", artifact.error) from render_err
+
+
+@router.get("/versions/{version_no}/markdown")
+def download_markdown(
+    project_id: UUID,
+    version_no: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    get_project_access(session, user, project_id)
+    report = session.scalar(select(Report).where(Report.project_id == project_id))
+    version = (
+        session.scalar(
+            select(ReportSnapshot).where(
+                ReportSnapshot.report_id == report.id,
+                ReportSnapshot.version_no == version_no,
+            )
+        )
+        if report
+        else None
+    )
+    if version is None:
+        raise ApiError(404, "REPORT_VERSION_NOT_FOUND", "Report version not found.")
+    if version.status not in {"generated", "finalized"}:
+        raise ApiError(409, "REPORT_NOT_READY", "Wait for report preview to finish.")
+    content, mime = render_document(version.data_snapshot, "md")
+    project_name = str((version.data_snapshot or {}).get("project_name") or "GroupProof")
+    disposition = _content_disposition(project_name, version.version_no, "md")
+    return Response(
+        content=content,
+        media_type=mime,
+        headers={"Content-Disposition": disposition},
+    )
 
 
 @router.post("/exports", status_code=202)
@@ -754,34 +1082,17 @@ def request_export(
     )
     session.add(artifact)
     session.commit()
-    if os.getenv("REPORT_INLINE_MODE", "").strip().lower() in {"1", "true", "yes"}:
-        content, _ = render_document(version.data_snapshot, artifact.file_format)
-        artifact.content = content
-        artifact.status = "ready"
-        artifact.error = None
-        artifact.completed_at = datetime.now(UTC)
-        session.commit()
+    from app.modules.d.report_tasks import generate_export
+
+    if _should_run_inline(generate_export, "app.modules.d.report_tasks.generate_export"):
+        _render_export_inline_safe(session, artifact, version.data_snapshot)
         return success({"id": str(artifact.id), "status": artifact.status}, request)
     try:
-        from app.modules.d.report_tasks import generate_export
-
         generate_export.delay(str(artifact.id))
     except Exception:
         if _allow_inline_worker_fallback():
-            try:
-                content, _ = render_document(version.data_snapshot, artifact.file_format)
-                artifact.content = content
-                artifact.status = "ready"
-                artifact.error = None
-                artifact.completed_at = datetime.now(UTC)
-                session.commit()
-                return success({"id": str(artifact.id), "status": artifact.status}, request)
-            except Exception as render_err:
-                artifact.status = "failed"
-                artifact.error = "Report generation failed; retry from the export page."
-                artifact.completed_at = datetime.now(UTC)
-                session.commit()
-                raise ApiError(500, "REPORT_EXPORT_FAILED", artifact.error) from render_err
+            _render_export_inline_safe(session, artifact, version.data_snapshot)
+            return success({"id": str(artifact.id), "status": artifact.status}, request)
         artifact.status = "failed"
         artifact.error = "Report worker is unavailable; retry the export."
         session.commit()
@@ -854,6 +1165,11 @@ def download_export(
         )
     )
     session.commit()
+    snapshot = session.get(ReportSnapshot, artifact.snapshot_id)
+    project_name = str(
+        ((snapshot.data_snapshot or {}) if snapshot else {}).get("project_name") or "GroupProof"
+    )
+    version_no = snapshot.version_no if snapshot else None
     mime = (
         "application/pdf"
         if artifact.file_format == "pdf"
@@ -863,8 +1179,8 @@ def download_export(
         content=artifact.content,
         media_type=mime,
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="report-{artifact.id}.{artifact.file_format}"'
+            "Content-Disposition": _content_disposition(
+                project_name, version_no, artifact.file_format
             )
         },
     )
