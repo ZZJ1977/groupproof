@@ -1,6 +1,29 @@
 # GroupProof V1 前端交付状态
 
-更新日期：2026-11-22
+更新日期：2026-11-25
+
+## 2026-11-25 Lucian UI 改版
+
+- **分支与回滚点**：改动位于分支 `feat/ui-lucian-redesign`，改版前基线提交与标签为 `checkpoint-pre-ui-redesign-2026-11-25`（可用 `git reset --hard checkpoint-pre-ui-redesign-2026-11-25` 或 `git switch develop` 回滚至改版前）。
+- **设计令牌与公共动效底座**：新增 `shared/styles/lux-tokens.css` 并在 `app/layout.tsx`（`./globals.css` 之后）引入，提供全站浅色 `--ux-*` 语义映射、`@layer base` 包裹的 `.ux` 基础规则（保证 Tailwind v4 `@layer utilities` 如 `.text-white` 不被覆盖）以及 `@property --gp-rainbow-angle` 驱动的 `.gp-rainbow-ring` 霓虹流光边框（支持 `prefers-reduced-motion: reduce` 静态降级）。
+- **移植的 Lucian UX/UI 组件与交互升级**：
+  - **#378 `ParticleWordmark` + #025 `FloatingField` + 登录页升级**：`shared/auth/lux/ParticleWordmark.{tsx,css}` 在登录页主标题上方渲染自适应 `GroupProof` 浅色柔和粒子画布（支持悬停驱散、点击重聚与减弱动效静态绘制）；`shared/components/lux/FloatingField.{tsx,css}` 为登录输入框提供蓝线缺口浮动标签与 `@` 邮箱失焦校验提示（并同步三语词条）；`shared/auth/LoginPage.tsx` 调整卡片间距并接入 `.gp-rainbow-ring` 与卡片悬停动效。
+  - **#448 `LanguagePicker`**：`shared/components/language-switcher.tsx` 与 `shared/components/lux/language-picker.css` 实现蓝地球旋转动效、Portal 弹出列表、完整 ARIA/键盘导航与三语原生语种名展示（`简体中文` / `繁體中文` / `English`），窄屏紧凑模式下隐藏文字标签。
+  - **#412 统一工作区壳层与侧栏动效**：`shared/components/workspace-shell.tsx` 与 `shared/styles/lux-shell.css` 统一教师与学生侧栏为浅色工作台模板，新增激活滑块与左侧蓝条、错峰入场、学生项目分组网格平滑展开（`inert` 隔离）、两道杠↔叉号折叠图标、教师侧栏 `224px ↔ 64px` 收缩、学生顶栏滑动下划线及全局 `Escape` 关闭移动抽屉并恢复焦点。
+  - **#354 `MorphNav` + #416 `JellyActionRow` + 教师/学生交互打磨**：`shared/components/lux/MorphNav.{tsx,css}` 驱动教师班级 5-Hub 悬浮变形导航与跨 Hub 内容滑动；`shared/components/lux/JellyActionRow.{tsx,css}` 为 `shared/daily-inbox/DailyApiPages.tsx` 首页快捷动作行提供弹性果冻高亮与方向键导航，并补充「刷新统计」旋转与统计卡刷新动效、`Button` `.gp-rainbow-ring` 与按压反馈、学生端 Dialog/Sheet 开关动效、输入框聚焦光晕与 `lux-student.css`/`lux-teacher.css` 浅色交互统一。
+- **涉及修改/新增文件清单**（`git diff --name-only checkpoint-pre-ui-redesign-2026-11-25..HEAD`，共 31 项）：
+  - `app/layout.tsx`
+  - `docs/testing/2026-11-25-ui-redesign-selfcheck.md`
+  - `shared/auth/LoginPage.tsx`、`shared/auth/lux/ParticleWordmark.css`、`shared/auth/lux/ParticleWordmark.tsx`
+  - `shared/components/ConfirmDialog.tsx`、`shared/components/common.tsx`、`shared/components/language-switcher.tsx`、`shared/components/workspace-shell.tsx`
+  - `shared/components/lux/FloatingField.css`、`shared/components/lux/FloatingField.tsx`、`shared/components/lux/JellyActionRow.css`、`shared/components/lux/JellyActionRow.tsx`、`shared/components/lux/MorphNav.css`、`shared/components/lux/MorphNav.tsx`、`shared/components/lux/language-picker.css`
+  - `shared/components/ui/button.tsx`、`shared/components/ui/dialog.tsx`、`shared/components/ui/dropdown-menu.tsx`、`shared/components/ui/input.tsx`、`shared/components/ui/sheet.tsx`、`shared/components/ui/tabs.tsx`、`shared/components/ui/textarea.tsx`
+  - `shared/daily-inbox/DailyApiPages.tsx`
+  - `shared/i18n/catalog/en.ts`、`shared/i18n/catalog/zh-Hant.ts`
+  - `shared/styles/lux-shell.css`、`shared/styles/lux-student.css`、`shared/styles/lux-teacher.css`、`shared/styles/lux-tokens.css`
+  - `teacher/components/TeacherClassLayout.tsx`
+- **验证摘要**：提交后实跑 `npm run lint`、`npm run typecheck`、`npm run check:i18n`（`zh-Hans` / `zh-Hant` / `en` 共 1243 键）、`CHECK_HTTP=1 npm run check:routes`（56 页 + `/projects`、`/admin`）与 `npm run build` 均退出 `0`；Playwright UX 自检在 `1440px`/`1024px`/`768px`/`375px` 与 `reducedMotion: "reduce"` 下 **24/24 全部通过**（含修复 `UX-BUG-01` `.ux` 按钮对比度与 `UX-BUG-02` 375px 抽屉全局 `Escape` 关闭与焦点恢复），详见 [Playwright UX 自检报告](docs/testing/2026-11-25-ui-redesign-selfcheck.md)。
+- **已知限制与范围外观察**：全站仅保留浅色模式，因此 `--ux-*` 仅包含浅色变量而未启用暗色主题；未在真实物理触屏设备上实测；自检过程中记录了两项改版前既有的范围外问题：`app/globals.css:571` 教师 `--gp-action: #3370ff` 白字对比度为 `4.28:1`，以及 `teacher/pages/TeacherClassHomeApiPage.tsx:98-140` 在 `375px` 窄屏下课程标题与操作区并排换行。
 
 ## 2026-11-22 原工作区统一与全流程上线闭环完善
 
