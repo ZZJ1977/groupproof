@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, Sparkles, X } from "lucide-react";
 import {
   Avatar,
   DetailDrawer,
@@ -145,6 +145,9 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const selectedEnabled = enabled && Boolean(selectedId && isUuid(selectedId)) && context.isSuccess && !context.isFetching;
   const detail = useQuery({ queryKey: ["c-project-activity", userId, projectId, sourceType, selectedId], queryFn: () => projectApi.activity(projectId, sourceType, selectedId!), enabled: selectedEnabled, ...queryPolicy });
   const history = useQuery({ queryKey: ["c-project-activity-history", userId, projectId, sourceType, selectedId], queryFn: () => projectApi.activityHistory(projectId, sourceType, selectedId!), enabled: selectedEnabled, ...queryPolicy });
+  const filterId = useId();
+  const urlQ = filters.q ?? "";
+  const [searchInput, setSearchInput] = useState(urlQ);
   const [command, setCommand] = useState<Command | null>(null);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -231,6 +234,20 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     : [];
   const hasPendingServerSummaries = sourceType === "github"
     && (summaries.data ?? []).some((item) => item.status === "pending");
+
+  useEffect(() => {
+    setSearchInput(urlQ);
+  }, [urlQ]);
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === urlQ) return;
+    const timer = window.setTimeout(() => {
+      applyFilter({ q: trimmed || null });
+    }, 300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput, urlQ]);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -321,6 +338,19 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const targetTask = command && access?.tasks.find((task) => task.id === command.taskId);
   const taskName = (taskId: string | null) => access?.tasks.find((task) => task.id === taskId)?.title ?? "未关联任务";
   const canChange = Boolean(record && access?.permissions.can_manage_activity && record.availability === "available" && record.kind !== "sync");
+
+  function applyFilter(patch: Record<string, string | null>) {
+    const legacyGroup = sourceType === "feishu" && !query.has("group_id") ? query.get("group") : null;
+    updateQuery({
+      ...(sourceType !== "feishu"
+        ? { group_id: null, group: null }
+        : { ...(legacyGroup ? { group_id: legacyGroup } : {}), group: null }),
+      ...patch,
+      page: null,
+      record: null,
+    });
+    setCommand(null);
+  }
 
   function fail(error: unknown) {
     setOperationError(error);
@@ -687,22 +717,150 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
             })}
           </div>
         )}
-        <form key={`${filters.q}:${filters.status}:${filters.task_id}:${filters.author_id}:${filters.since}:${filters.until}:${filters.group_id}:${filters.kind}`} className="gp-toolbar mb-5" onSubmit={(event) => {
-          event.preventDefault();
-          const form = new FormData(event.currentTarget);
-          const fields = Object.fromEntries(["q", "status", "task", "author", "date_from", "date_to", "kind"].map((field) => [field, String(form.get(field) ?? "").trim() || null]));
-          updateQuery({ ...fields, group_id: sourceType === "feishu" ? String(form.get("group_id") ?? "") || null : null, group: null, page: null, record: null });
-          setCommand(null);
-        }}>
-          <label>搜索记录<input className={`${apiInput} block`} name="q" maxLength={200} defaultValue={filters.q ?? ""} placeholder="标题或关键字" /></label>
-          {sourceType === "feishu" && <label>来源群组<select className={`${apiInput} block max-w-xs`} name="group_id" defaultValue={filters.group_id ?? ""}><option value="">全部群组</option>{filters.group_id && <option value={filters.group_id}>{groups.includes(filters.group_id) ? filters.group_id : "当前 URL 群组筛选（待来源核对）"}</option>}{groups.filter((group) => group !== filters.group_id).map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
-          <label>记录类型<select className={`${apiInput} block`} name="kind" defaultValue={filters.kind ?? ""}><option value="">全部类型</option>{filters.kind && <option value={filters.kind}>{Object.hasOwn(kindLabels, filters.kind) ? kindLabels[filters.kind] : kinds.includes(filters.kind) ? filters.kind : "当前 URL 类型筛选（待来源核对）"}</option>}{kinds.filter((kind) => kind !== filters.kind).map((kind) => <option key={kind} value={kind}>{Object.hasOwn(kindLabels, kind) ? kindLabels[kind] : kind}</option>)}</select></label>
-          <label>处理状态<select className={`${apiInput} block`} name="status" defaultValue={filters.status ?? ""}><option value="">全部状态</option>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label>关联任务<select className={`${apiInput} block`} name="task" defaultValue={filters.task_id ?? ""}><option value="">全部任务</option>{access.tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
-          <label>记录作者<select className={`${apiInput} block`} name="author" defaultValue={filters.author_id ?? ""}><option value="">全部作者</option>{filters.author_id && !authors.some(([id]) => id === filters.author_id) && <option value={filters.author_id}>当前 URL 作者筛选（待来源核对）</option>}{authors.map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></label>
-          <label>开始日期<input className={`${apiInput} block`} type="date" name="date_from" defaultValue={query.get("date_from") ?? ""} /></label>
-          <label>结束日期<input className={`${apiInput} block`} type="date" name="date_to" defaultValue={query.get("date_to") ?? ""} /></label>
-          <div className="flex flex-wrap gap-2"><button className={apiButton} type="submit">查询活动</button><button className={apiButton} type="button" onClick={() => { updateQuery({ q: null, status: null, task: null, author: null, date_from: null, date_to: null, group_id: null, group: null, kind: null, page: null, record: null }); setCommand(null); }}>重置</button></div>
+        <form
+          className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200/70 bg-white/85 px-3 py-2 shadow-xs sm:grid-cols-4 lg:flex lg:flex-nowrap lg:items-center lg:gap-2 lg:overflow-x-auto"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyFilter({ q: searchInput.trim() || null });
+          }}
+        >
+          <div className="relative col-span-2 min-w-0 sm:col-span-2 lg:min-w-[140px] lg:flex-[1.3_1_0%]">
+            <label className="sr-only" htmlFor={`${filterId}-q`}>搜索记录</label>
+            <input
+              id={`${filterId}-q`}
+              type="text"
+              name="q"
+              maxLength={200}
+              aria-label="搜索记录"
+              placeholder="搜索标题或关键字"
+              value={searchInput}
+              className={`h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15 ${searchInput ? "pr-7" : ""}`}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSearchInput(value);
+                if (value === "" && urlQ !== "") {
+                  applyFilter({ q: null });
+                }
+              }}
+            />
+            {searchInput && (
+              <button
+                type="button"
+                aria-label="清空搜索"
+                title="清空搜索"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 transition-colors hover:text-slate-600"
+                onClick={() => {
+                  setSearchInput("");
+                  if (urlQ !== "") {
+                    applyFilter({ q: null });
+                  }
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {sourceType === "feishu" && (
+            <div className="min-w-0 lg:flex-1">
+              <label className="sr-only" htmlFor={`${filterId}-group`}>来源群组</label>
+              <select
+                id={`${filterId}-group`}
+                name="group_id"
+                aria-label="来源群组"
+                className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+                value={filters.group_id ?? ""}
+                onChange={(event) => applyFilter({ group_id: event.target.value || null })}
+              >
+                <option value="">全部群组</option>
+                {filters.group_id && <option value={filters.group_id}>{groups.includes(filters.group_id) ? filters.group_id : "当前 URL 群组筛选（待来源核对）"}</option>}
+                {groups.filter((group) => group !== filters.group_id).map((group) => <option key={group} value={group}>{group}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="min-w-0 lg:flex-1">
+            <label className="sr-only" htmlFor={`${filterId}-kind`}>记录类型</label>
+            <select
+              id={`${filterId}-kind`}
+              name="kind"
+              aria-label="记录类型"
+              className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+              value={filters.kind ?? ""}
+              onChange={(event) => applyFilter({ kind: event.target.value || null })}
+            >
+              <option value="">全部类型</option>
+              {filters.kind && <option value={filters.kind}>{Object.hasOwn(kindLabels, filters.kind) ? kindLabels[filters.kind] : kinds.includes(filters.kind) ? filters.kind : "当前 URL 类型筛选（待来源核对）"}</option>}
+              {kinds.filter((kind) => kind !== filters.kind).map((kind) => <option key={kind} value={kind}>{Object.hasOwn(kindLabels, kind) ? kindLabels[kind] : kind}</option>)}
+            </select>
+          </div>
+          <div className="min-w-0 lg:flex-1">
+            <label className="sr-only" htmlFor={`${filterId}-status`}>处理状态</label>
+            <select
+              id={`${filterId}-status`}
+              name="status"
+              aria-label="处理状态"
+              className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+              value={filters.status ?? ""}
+              onChange={(event) => applyFilter({ status: event.target.value || null })}
+            >
+              <option value="">全部状态</option>
+              {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <div className="min-w-0 lg:flex-1">
+            <label className="sr-only" htmlFor={`${filterId}-task`}>关联任务</label>
+            <select
+              id={`${filterId}-task`}
+              name="task"
+              aria-label="关联任务"
+              className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+              value={filters.task_id ?? ""}
+              onChange={(event) => applyFilter({ task: event.target.value || null })}
+            >
+              <option value="">全部任务</option>
+              {access.tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+            </select>
+          </div>
+          <div className="min-w-0 lg:flex-1">
+            <label className="sr-only" htmlFor={`${filterId}-author`}>记录作者</label>
+            <select
+              id={`${filterId}-author`}
+              name="author"
+              aria-label="记录作者"
+              className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+              value={filters.author_id ?? ""}
+              onChange={(event) => applyFilter({ author: event.target.value || null })}
+            >
+              <option value="">全部作者</option>
+              {filters.author_id && !authors.some(([id]) => id === filters.author_id) && <option value={filters.author_id}>当前 URL 作者筛选（待来源核对）</option>}
+              {authors.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+            </select>
+          </div>
+          <div className="min-w-0 lg:w-[132px] lg:shrink-0">
+            <label className="sr-only" htmlFor={`${filterId}-date-from`}>开始日期</label>
+            <input
+              id={`${filterId}-date-from`}
+              type="date"
+              name="date_from"
+              title="开始日期"
+              aria-label="开始日期"
+              className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+              value={query.get("date_from") ?? ""}
+              onChange={(event) => applyFilter({ date_from: event.target.value || null })}
+            />
+          </div>
+          <div className="min-w-0 lg:w-[132px] lg:shrink-0">
+            <label className="sr-only" htmlFor={`${filterId}-date-to`}>结束日期</label>
+            <input
+              id={`${filterId}-date-to`}
+              type="date"
+              name="date_to"
+              title="结束日期"
+              aria-label="结束日期"
+              className="h-9 w-full min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-sm text-slate-900 outline-none transition-all focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+              value={query.get("date_to") ?? ""}
+              onChange={(event) => applyFilter({ date_to: event.target.value || null })}
+            />
+          </div>
         </form>
         {list.isFetching && <StateBlock tone="loading" title="正在读取活动" />}
         {list.isError && <ApiFailure error={list.error} retry={() => void refresh()} />}
