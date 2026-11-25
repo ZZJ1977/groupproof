@@ -12,7 +12,7 @@ from app.api.errors import ApiError
 from app.db.models import FunctionalModule, Task
 from app.modules.a import ai, feishu_insights
 from app.modules.a.ai.provider import FakeProvider
-from app.modules.a.models import FeishuAttachment, FeishuMessage
+from app.modules.a.models import ActivitySummary, FeishuAttachment, FeishuMessage
 
 db = fixtures.db
 scope = fixtures.scope
@@ -252,3 +252,161 @@ def test_ai_function_analyze_feishu_collaboration_unit():
     assert res.needs_human_review is True
     assert res.items
     assert res.items[0].message_ids == [msg_id]
+
+
+def test_sender_label_map_prefers_known_member_names_and_falls_back_sequentially():
+    now = datetime(2026, 10, 8, 14, 0, tzinfo=UTC)
+    pid = uuid4()
+
+    def msg(open_id: str | None, sender_type: str = "user") -> FeishuMessage:
+        return FeishuMessage(
+            id=uuid4(),
+            project_id=pid,
+            chat_id="oc_1",
+            message_id=f"om_{uuid4().hex[:8]}",
+            sender_open_id=open_id,
+            sender_type=sender_type,
+            msg_type="text",
+            text="hi",
+            content_hash="h",
+            occurred_at=now,
+        )
+
+    m_bot = msg("cli_bot", sender_type="app")
+    m_z = msg(" ou_zhuo ")
+    m_unknown_1 = msg("ou_other_1")
+    m_y = msg("ou_yang")
+    m_blank_name = msg("ou_blank")
+    m_empty = msg(None)
+
+    labels = feishu_insights._sender_label_map(
+        [m_bot, m_z, m_unknown_1, m_y, m_blank_name, m_empty],
+        known_names={
+            "ou_zhuo": " 卓子杰 ",
+            " ou_yang ": "杨凯景",
+            "ou_blank": "   ",
+        },
+    )
+    assert labels == {
+        "ou_zhuo": "卓子杰",
+        "ou_other_1": "群成员 A",
+        "ou_yang": "杨凯景",
+        "ou_blank": "群成员 B",
+    }
+    assert feishu_insights._label_for(m_bot, labels) == "群机器人"
+    assert feishu_insights._label_for(m_z, labels) == "卓子杰"
+    assert feishu_insights._label_for(m_unknown_1, labels) == "群成员 A"
+    assert feishu_insights._label_for(m_y, labels) == "杨凯景"
+    assert feishu_insights._label_for(m_blank_name, labels) == "群成员 B"
+    assert feishu_insights._label_for(m_empty, labels) == "飞书成员"
+
+
+def test_feishu_insights_resolves_real_member_names_and_falls_back_for_unmapped(db, scope):
+    _, m1, m2, m3 = _seed_messages(db, scope.project.id)
+    leader = scope.users["leader"]
+    member = scope.users["member"]
+    outsider = scope.users["outsider"]
+
+    leader.name = "卓子杰"
+    leader.feishu_account = " ou_member_1 "
+    member.name = "杨凯景"
+    member.feishu_account = "ou_member_2"
+    # 项目外用户即使绑定了相同 open_id，也不应被本项目匹配
+    outsider.name = "外组同学"
+    outsider.feishu_account = "ou_member_3"
+    db.flush()
+
+    seen_sender_labels: list[str] = []
+
+    class CaptureProvider:
+        name = "stub"
+        model = "stub-v1"
+        is_placeholder = False
+        last_usage = None
+
+        def generate(self, feature, payload, *, timeout):
+            seen_sender_labels.extend(m["sender_label"] for m in payload["messages"])
+            return {
+                "overview": "卓子杰与杨凯景已完成分工确认。",
+                "items": [
+                    {
+                        "title": "项目分工确认",
+                        "category": "division_confirm",
+                        "status": "completed",
+                        "summary": "卓子杰发出分工表后，杨凯景与未绑定成员回复确认。",
+                        "judgment_basis": "两位成员明确回复收到与 OK。",
+                        "task_codes": [],
+                        "confirmed_count": 2,
+                        "message_ids": [str(m1.id), str(m2.id), str(m3.id)],
+                        "confidence": 0.95,
+                    }
+                ],
+            }
+
+    result = feishu_insights.analyze_collaboration_insights(
+        db, leader, scope.project.id, provider=CaptureProvider()
+    )
+    assert seen_sender_labels == ["卓子杰", "杨凯景", "群成员 A"]
+    assert [m["sender_label"] for m in result["items"][0]["messages"]] == [
+        "卓子杰",
+        "杨凯景",
+        "群成员 A",
+    ]
+    assert result["stale"] is False
+
+    cached = feishu_insights.get_collaboration_insights(db, member, scope.project.id)
+    assert cached["stale"] is False
+    assert [m["sender_label"] for m in cached["items"][0]["messages"]] == [
+        "卓子杰",
+        "杨凯景",
+        "群成员 A",
+    ]
+
+
+def test_feishu_insights_returns_over_fifty_cached_conclusions_without_truncation(db, scope):
+    _, m1, m2, _ = _seed_messages(db, scope.project.id)
+    leader = scope.users["leader"]
+    leader.name = "卓子杰"
+    leader.feishu_account = "ou_member_1"
+    db.flush()
+
+    ctx = feishu_insights._load_project_context(db, scope.project.id)
+    items = [
+        {
+            "title": f"协作结论 #{idx}",
+            "category": "task_progress",
+            "status": "completed",
+            "summary": f"卓子杰同步了第 {idx} 项进展。",
+            "judgment_basis": "群内确认记录。",
+            "task_codes": [],
+            "confirmed_count": 2,
+            "message_ids": [str(m1.id), str(m2.id)],
+            "confidence": 0.9,
+        }
+        for idx in range(1, 56)
+    ]
+    db.add(
+        ActivitySummary(
+            id=uuid4(),
+            project_id=scope.project.id,
+            source_type=feishu_insights.SOURCE_TYPE,
+            source_id=scope.project.id,
+            source_revision=ctx["source_revision"],
+            prompt_version=feishu_insights.PROMPT_VERSION,
+            input_hash=ctx["input_hash"],
+            status="ready",
+            result_json={"overview": "共 55 条协作结论。", "items": items},
+            provider="stub",
+            model="stub-v1",
+            is_placeholder=False,
+            needs_human_review=True,
+            generated_at=datetime.now(UTC),
+        )
+    )
+    db.flush()
+
+    fetched = feishu_insights.get_collaboration_insights(db, leader, scope.project.id)
+    assert fetched["status"] == "ready"
+    assert fetched["stale"] is False
+    assert len(fetched["items"]) == 55
+    assert fetched["items"][0]["messages"][0]["sender_label"] == "卓子杰"
