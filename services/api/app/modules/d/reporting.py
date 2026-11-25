@@ -158,7 +158,7 @@ def snapshot_data(session: Session, project_id: UUID, project_name: str, appendi
             "completed_tasks": completed,
             "evidence": len(evidence),
             "risks": risk_counts(risks)["total"],
-            "contribution_members": len(shares),
+            "contribution_members": sum(1 for item in shares if item.share > 0),
         },
         "sections": sections,
         "evidence_records": [
