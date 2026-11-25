@@ -1,0 +1,135 @@
+/* Lucian UX/UI Prompt theme tokens · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/ */
+
+:root {
+  color-scheme: light;
+  --ux-page: #f6f8fc;
+  --ux-surface: var(--gp-surface, #ffffff);
+  --ux-surface-2: var(--gp-surface-tint, #f4f8fc);
+  --ux-surface-3: #e9eff7;
+  --ux-ink: var(--gp-ink, #0f172a);
+  --ux-ink-2: var(--gp-ink-soft, #475569);
+  --ux-ink-3: var(--gp-muted, #64748b);
+  --ux-line: var(--gp-border, #e2e8f0);
+  --ux-line-2: rgba(15, 23, 42, 0.16);
+  --ux-accent: var(--gp-action, #246bfa);
+  --ux-accent-2: #3d8bff;
+  --ux-accent-soft: var(--gp-action-soft, #e0f2fe);
+  --ux-accent-ink: #ffffff;
+  --ux-mint: var(--gp-success, #0f766e);
+  --ux-warn: var(--gp-warning, #b45309);
+  --ux-danger: var(--gp-danger, #b91c1c);
+  --ux-glass: rgba(255, 255, 255, 0.72);
+  --ux-glass-line: rgba(255, 255, 255, 0.88);
+  --ux-shadow: rgba(15, 23, 42, 0.1);
+  --ux-shadow-strong: rgba(15, 23, 42, 0.22);
+  --ux-grad: linear-gradient(120deg, #7b61ff, #3d8bff 55%, #1fb89a);
+  --ux-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ux-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
+}
+
+.ux,
+.ux *,
+.ux *::before,
+.ux *::after {
+  box-sizing: border-box;
+}
+
+.ux {
+  font-family: inherit;
+  color: var(--ux-ink);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+  -webkit-tap-highlight-color: transparent;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+:where(.ux) :is(button, input, textarea, select) {
+  font: inherit;
+  color: inherit;
+}
+
+:where(.ux) button {
+  cursor: pointer;
+}
+
+.ux :focus-visible {
+  outline: 2px solid var(--ux-accent);
+  outline-offset: 3px;
+}
+
+.ux [hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ux,
+  .ux *,
+  .ux *::before,
+  .ux *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@property --gp-rainbow-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes gp-rainbow-spin {
+  to {
+    --gp-rainbow-angle: 360deg;
+  }
+}
+
+:where(.gp-rainbow-ring) {
+  position: relative;
+  isolation: isolate;
+}
+
+.gp-rainbow-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--gp-rainbow-angle),
+    #246bfa,
+    #7b61ff,
+    #3d8bff,
+    #1fb89a,
+    #f59e0b,
+    #246bfa
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity var(--gp-dur, 180ms) var(--gp-ease, ease-out);
+  animation: gp-rainbow-spin 3s linear infinite;
+}
+
+.gp-rainbow-ring:hover::before,
+.gp-rainbow-ring:focus-within::before,
+.gp-rainbow-ring:focus-visible::before {
+  opacity: 0.92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-rainbow-ring::before {
+    animation: none;
+    --gp-rainbow-angle: 135deg;
+  }
+}

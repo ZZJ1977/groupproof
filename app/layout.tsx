@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getLocale, getMessages, getTimeZone } from "next-intl/server";
 import { AppProviders } from "@/shared/components/app-providers";
 import "./globals.css";
+import "@/shared/styles/lux-tokens.css";
 
 export const metadata: Metadata = {
   title: "GroupProof",
