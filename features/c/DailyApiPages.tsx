@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
+import { Activity, ArrowRight, BookOpen, CheckSquare, Folder, Plus, RefreshCw } from "lucide-react";
 import { EmptyState, ListRow, PageHeader, ProgressBar, Section, Stat, StatusBadge } from "@/components/common";
 import { buttonVariants } from "@/components/ui/button";
 import { projectRequest } from "@/features/github-binding/integration-request";
 import { AnnouncementBanner } from "@/features/b/AnnouncementBanner";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/lib/api/c-client";
+import { tr } from "@/lib/i18n/tr";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { useUrlQuery } from "./use-url-query";
 import { MyAccessRequests } from "./GovernanceApiPages";
+import { HomeInboxPanel } from "./HomeInboxPanel";
 
 const client = createCClient();
 const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -50,19 +52,41 @@ function ProjectIntegrationStatus({ projectId, userId }: { projectId: string; us
     : repos.isError
       ? "GitHub 状态暂不可用"
       : repos.data.length > 0
-        ? `GitHub 已连接 · ${repos.data.length} 个仓库`
+        ? tr("GitHub 已连接 · {0} 个仓库", { 0: repos.data.length })
         : "GitHub 未连接";
   const feishuLabel = chats.isPending
     ? "飞书状态读取中"
     : chats.isError
       ? "飞书状态暂不可用"
       : chats.data.length > 0
-        ? `飞书已接入 · ${chats.data.length} 个群`
+        ? tr("飞书已接入 · {0} 个群", { 0: chats.data.length })
         : "飞书未接入";
-  return <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
-    <Link className="gp-link" href={`/projects/${encodeURIComponent(projectId)}/settings#github-integration`}>{githubLabel}</Link>
-    <Link className="gp-link" href={`/projects/${encodeURIComponent(projectId)}/settings#feishu-integration`}>{feishuLabel}</Link>
-  </div>;
+  const githubConnected = repos.isSuccess && repos.data.length > 0;
+  const feishuConnected = chats.isSuccess && chats.data.length > 0;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+      <Link
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition ${
+          githubConnected
+            ? "border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100/80"
+            : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
+        }`}
+        href={`/projects/${encodeURIComponent(projectId)}/settings#github-integration`}
+      >
+        {githubLabel}
+      </Link>
+      <Link
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition ${
+          feishuConnected
+            ? "border-sky-200 bg-sky-50/80 text-sky-800 hover:bg-sky-100/80"
+            : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
+        }`}
+        href={`/projects/${encodeURIComponent(projectId)}/settings#feishu-integration`}
+      >
+        {feishuLabel}
+      </Link>
+    </div>
+  );
 }
 
 /** Canonical queries only; workspace data and demo roles are never a data source. */
@@ -72,45 +96,428 @@ export function HomeApiPage() {
   const t = useTranslations("core.home");
   const result = useQuery({ queryKey: ["c-home-summary", userId], queryFn: () => client.homeSummary(), staleTime: 0, gcTime: 0, retry: false });
   const data = result.isSuccess && !result.isFetching ? result.data : undefined;
-  return <>
-    <AnnouncementBanner />
-    <PageHeader title={t("title")} description="根据你当前的课程、项目和任务计算。" actions={<div className="flex flex-wrap items-center gap-2">
-      {isTeacher && <Link href="/teacher/courses" className={buttonVariants()}>我的班级 / 创建班级</Link>}
-      <Link href="/projects/new" className={buttonVariants(isTeacher ? { variant: "outline" } : undefined)}><Plus size={16} />{t("createProject")}</Link>
-      <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>
-      <button className={buttonVariants({ variant: "ghost" })} type="button" disabled={result.isFetching} onClick={() => void result.refetch()}><RefreshCw size={15} />刷新统计</button>
-    </div>} />
-    {result.isFetching && <p role="status">正在读取首页…</p>}
-    {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
-    {data && <>
-      <div className="gp-grid-4 mb-5">
-        <Stat label={t("myCourses")} value={data.course_count} icon={BookOpen} />
-        <Stat label={t("myProjects")} value={data.project_count} icon={Folder} />
-        <Stat label="我的已完成任务" value={data.my_completed_tasks} icon={CheckSquare} />
-        <Stat label={t("pending")} value={data.pending_action_items ?? "—"} />
-      </div>
-      <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
-        <Link className="gp-pill hover:bg-sky-100/80" href="/notifications">未读通知：{data.unread_notifications ?? "暂不可用"}</Link>
-        <Link className="gp-pill hover:bg-sky-100/80" href="/action-items">待处理事项：{data.pending_action_items ?? "暂不可用"}</Link>
-        <Link className="gp-pill hover:bg-sky-100/80" href="/activity">查看个人动态 →</Link>
-      </div>
-      <div className="gp-grid-2">
-        <Section title={t("myProjects")} description="最近更新的项目" surface>
-          <div className="gp-list">{data.projects.map((project) => <ListRow key={project.id} title={<span className="inline-flex flex-wrap items-center gap-2"><span>{project.name}</span> <StatusBadge status={project.lifecycle} /></span>} meta={project.progress === null ? "尚未规划任务 · 进入项目开始拆解任务" : `任务进度：${project.progress}%`} actions={<Link className="gp-link text-sm" href={`/projects/${encodeURIComponent(project.id)}`}>{t("enterProject")}</Link>}>
-            {project.progress !== null && <div className="mt-2"><ProgressBar value={project.progress} /></div>}
-            <ProjectIntegrationStatus projectId={project.id} userId={userId} />
-          </ListRow>)}</div>
-          {!data.projects.length && <EmptyState title={t("emptyProjects")} description={t("emptyProjectHint")} action={<Link href="/projects/new" className={buttonVariants()}><Plus size={16} />{t("createProject")}</Link>} />}
-        </Section>
-        <Section title={t("myCourses")} description="最近更新的课程" surface>
-          {isTeacher && <Link className="gp-link mb-3 inline-block text-sm font-medium" href="/teacher/courses">管理我的班级与学生组队广场 →</Link>}
-          <div className="gp-list">{data.courses.map((course) => <ListRow key={course.id} title={<span className="inline-flex flex-wrap items-center gap-2"><span>{course.name}</span> <StatusBadge status={course.status} /></span>} actions={<Link className="gp-link text-sm" href={course.href}>查看课程</Link>} />)}</div>
-          {!data.courses.length && <EmptyState title={t("emptyCourses")} description={t("emptyCourseHint")} action={<Link href="/courses/join" className={buttonVariants({ variant: "outline" })}><BookOpen size={16} />{t("joinCourse")}</Link>} />}
-        </Section>
-      </div>
-    </>}
-    <MyAccessRequests key={userId} />
-  </>;
+  const recentActivity = useQuery({
+    queryKey: ["c-home-recent-activity", userId],
+    queryFn: () => client.personalActivity({ category: "all", page: 1, page_size: 4 }),
+    enabled: Boolean(data),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+
+  const activeProjects = data ? data.projects.filter((project) => project.lifecycle === "active").length : 0;
+  const activeCourses = data ? data.courses.filter((course) => course.status === "active").length : 0;
+  const taskTotal = data ? Math.max(1, data.my_task_count) : 1;
+
+  return (
+    <div className="space-y-5">
+      <AnnouncementBanner />
+      <PageHeader
+        title={t("title")}
+        description="聚焦当前课程、项目进度与待办通知，快速进入协作。"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {isTeacher && <Link href="/teacher/courses" className={buttonVariants()}>我的班级 / 创建班级</Link>}
+            <Link href="/projects/new" className={buttonVariants(isTeacher ? { variant: "outline" } : undefined)}>
+              <Plus size={16} />
+              {t("createProject")}
+            </Link>
+            <Link href="/courses/join" className={buttonVariants({ variant: "outline" })}>
+              <BookOpen size={16} />
+              {t("joinCourse")}
+            </Link>
+            <button
+              className={buttonVariants({ variant: "ghost" })}
+              type="button"
+              disabled={result.isFetching}
+              onClick={() => void result.refetch()}
+            >
+              <RefreshCw size={15} className={result.isFetching ? "animate-spin" : ""} />
+              刷新统计
+            </button>
+          </div>
+        }
+      />
+
+      {result.isFetching && <p role="status" className="text-sm text-slate-500">正在读取首页…</p>}
+      {result.isError && <QueryFailure error={result.error} retry={() => void result.refetch()} />}
+
+      {data && (
+        <>
+          {/* 紧凑核心指标概览条 */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Stat
+              label={t("myProjects")}
+              value={data.project_count}
+              sub={tr("进行中 {0} 个", { 0: activeProjects })}
+              icon={Folder}
+              className="!min-h-0 !px-4 !py-3.5"
+            />
+            <Stat
+              label={t("myCourses")}
+              value={data.course_count}
+              sub={tr("进行中 {0} 门", { 0: activeCourses })}
+              icon={BookOpen}
+              accent="#0f766e"
+              className="!min-h-0 !px-4 !py-3.5"
+            />
+            <Stat
+              label="我的已完成任务"
+              value={data.my_completed_tasks}
+              sub={
+                data.my_task_count > 0
+                  ? tr("共 {0} 项 · 进行中 {1} · 待验收 {2}", {
+                      0: data.my_task_count,
+                      1: data.task_counts.in_progress,
+                      2: data.task_counts.pending_verification,
+                    })
+                  : "暂未分配任务"
+              }
+              icon={CheckSquare}
+              accent="#0369a1"
+              className="!min-h-0 !px-4 !py-3.5"
+            />
+            <Stat
+              label={t("pending")}
+              value={data.pending_action_items ?? "—"}
+              sub={
+                data.unread_notifications !== null && data.unread_notifications !== undefined
+                  ? tr("未读通知 {0} 条", { 0: data.unread_notifications })
+                  : "未读通知暂不可用"
+              }
+              accent="#b45309"
+              className="!min-h-0 !px-4 !py-3.5"
+            />
+          </div>
+
+          {/* 非对称双栏主工作台 */}
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,1fr)]">
+            {/* 左栏：项目与课程独立分区 */}
+            <div className="min-w-0 space-y-5">
+              {/* 我的项目分区 */}
+              <section
+                aria-label={t("myProjects")}
+                className="rounded-2xl border border-slate-200/85 bg-white p-5 shadow-xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
+                      <Folder size={18} />
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold tracking-tight text-slate-900">{t("myProjects")}</h2>
+                        <span className="gp-pill">{data.project_count}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">项目任务推进、代码与飞书协作同步</p>
+                    </div>
+                  </div>
+                  <Link href="/projects/new" className="text-xs font-semibold text-[var(--gp-action)] hover:underline">
+                    + {t("createProject")}
+                  </Link>
+                </div>
+
+                {data.projects.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    {data.projects.map((project) => {
+                      const baseHref = `/projects/${encodeURIComponent(project.id)}`;
+                      return (
+                        <div
+                          key={project.id}
+                          className="rounded-xl border border-slate-200/80 bg-slate-50/45 p-4 transition hover:border-sky-200 hover:bg-white"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-base font-semibold text-slate-900">{project.name}</span>
+                                <StatusBadge status={project.lifecycle} />
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {project.progress === null
+                                  ? "尚未规划任务 · 进入项目开始拆解任务"
+                                  : tr("任务进度：{0}%", { 0: project.progress })}
+                              </p>
+                            </div>
+                            <Link
+                              href={baseHref}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--gp-action)] px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[var(--gp-action-hover)]"
+                            >
+                              {t("enterProject")}
+                            </Link>
+                          </div>
+
+                          {project.progress !== null && (
+                            <div className="mt-2.5">
+                              <ProgressBar value={project.progress} />
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+                            <Link
+                              href={`${baseHref}/tasks?view=tree`}
+                              className="rounded-md border border-slate-200/80 bg-white px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              任务
+                            </Link>
+                            <Link
+                              href={`${baseHref}/github`}
+                              className="rounded-md border border-slate-200/80 bg-white px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              GitHub
+                            </Link>
+                            <Link
+                              href={`${baseHref}/collaboration`}
+                              className="rounded-md border border-slate-200/80 bg-white px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              协作记录
+                            </Link>
+                            <Link
+                              href={`${baseHref}/evidence`}
+                              className="rounded-md border border-slate-200/80 bg-white px-2.5 py-1 font-medium text-slate-600 transition hover:border-sky-300 hover:text-sky-700"
+                            >
+                              证据中心
+                            </Link>
+                          </div>
+
+                          <ProjectIntegrationStatus projectId={project.id} userId={userId} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">{t("emptyProjects")}</div>
+                      <p className="mt-0.5 text-xs text-slate-500">{t("emptyProjectHint")}</p>
+                    </div>
+                    <Link href="/projects/new" className={buttonVariants()}>
+                      <Plus size={15} />
+                      {t("createProject")}
+                    </Link>
+                  </div>
+                )}
+              </section>
+
+              {/* 我的课程分区（与项目完全独立） */}
+              <section
+                aria-label={t("myCourses")}
+                className="rounded-2xl border border-slate-200/85 bg-white p-5 shadow-xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
+                      <BookOpen size={18} />
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold tracking-tight text-slate-900">{t("myCourses")}</h2>
+                        <span className="gp-pill">{data.course_count}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">已加入课程、规则基线与班级组队入口</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
+                    <Link href="/courses" className="text-slate-600 hover:text-[var(--gp-action)] hover:underline">
+                      全部课程
+                    </Link>
+                    <Link href="/courses/join" className="text-[var(--gp-action)] hover:underline">
+                      + {t("joinCourse")}
+                    </Link>
+                  </div>
+                </div>
+
+                {isTeacher && (
+                  <div className="mt-3">
+                    <Link className="gp-link inline-block text-xs font-medium" href="/teacher/courses">
+                      管理我的班级与学生组队广场 →
+                    </Link>
+                  </div>
+                )}
+
+                {data.courses.length > 0 ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {data.courses.map((course) => (
+                      <div
+                        key={course.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/45 p-3.5 transition hover:border-teal-200 hover:bg-white"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="truncate text-sm font-semibold text-slate-900">{course.name}</div>
+                          <StatusBadge status={course.status} />
+                        </div>
+                        <Link
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-teal-300 hover:text-teal-700"
+                          href={course.href}
+                        >
+                          查看课程
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3.5">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-700">{t("emptyCourses")}</div>
+                      <p className="mt-0.5 text-xs text-slate-500">{t("emptyCourseHint")}</p>
+                    </div>
+                    <Link href="/courses/join" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                      <BookOpen size={14} />
+                      {t("joinCourse")}
+                    </Link>
+                  </div>
+                )}
+              </section>
+
+              {/* 个人任务分布概览（仅在有分配任务时展示） */}
+              {data.my_task_count > 0 && (
+                <section
+                  aria-label="我的任务状态分布"
+                  className="rounded-2xl border border-slate-200/85 bg-white p-5 shadow-xs"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-bold text-slate-900">我的任务状态分布</h2>
+                    <span className="text-xs text-slate-500">{tr("共 {0} 项任务", { 0: data.my_task_count })}</span>
+                  </div>
+                  <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    {data.task_counts.completed > 0 && (
+                      <div
+                        className="bg-emerald-500"
+                        style={{ width: `${(data.task_counts.completed / taskTotal) * 100}%` }}
+                      />
+                    )}
+                    {data.task_counts.pending_verification > 0 && (
+                      <div
+                        className="bg-amber-500"
+                        style={{ width: `${(data.task_counts.pending_verification / taskTotal) * 100}%` }}
+                      />
+                    )}
+                    {data.task_counts.pending_submission > 0 && (
+                      <div
+                        className="bg-violet-500"
+                        style={{ width: `${(data.task_counts.pending_submission / taskTotal) * 100}%` }}
+                      />
+                    )}
+                    {data.task_counts.in_progress > 0 && (
+                      <div
+                        className="bg-sky-500"
+                        style={{ width: `${(data.task_counts.in_progress / taskTotal) * 100}%` }}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-medium text-emerald-700">
+                      {tr("已完成 {0}", { 0: data.task_counts.completed })}
+                    </span>
+                    <span className="rounded-full bg-amber-50 px-2.5 py-0.5 font-medium text-amber-800">
+                      {tr("待验收 {0}", { 0: data.task_counts.pending_verification })}
+                    </span>
+                    <span className="rounded-full bg-violet-50 px-2.5 py-0.5 font-medium text-violet-700">
+                      {tr("待提交 {0}", { 0: data.task_counts.pending_submission })}
+                    </span>
+                    <span className="rounded-full bg-sky-50 px-2.5 py-0.5 font-medium text-sky-700">
+                      {tr("进行中 {0}", { 0: data.task_counts.in_progress })}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600">
+                      {tr("未开始 {0}", { 0: data.task_counts.not_started })}
+                    </span>
+                  </div>
+                </section>
+              )}
+            </div>
+
+            {/* 右栏：待办与通知合并细分中心 + 最近个人动态 */}
+            <div className="min-w-0 space-y-5">
+              <HomeInboxPanel
+                userId={userId}
+                pendingCount={data.pending_action_items}
+                unreadCount={data.unread_notifications}
+                onCountsChanged={() => void result.refetch()}
+              />
+
+              <section
+                aria-label="最近个人动态"
+                className="rounded-2xl border border-slate-200/85 bg-white p-5 shadow-xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                      <Activity size={18} />
+                    </span>
+                    <div>
+                      <h2 className="text-base font-bold tracking-tight text-slate-900">最近个人动态</h2>
+                      <p className="text-xs text-slate-500">提交、证据与讨论的时间线摘要</p>
+                    </div>
+                  </div>
+                  <Link
+                    href="/activity"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--gp-action)] hover:underline"
+                  >
+                    查看个人动态 →
+                  </Link>
+                </div>
+
+                <div className="mt-4 space-y-2.5">
+                  {recentActivity.isPending && (
+                    <div className="space-y-2">
+                      <div className="h-12 animate-pulse rounded-xl bg-slate-100" />
+                      <div className="h-12 animate-pulse rounded-xl bg-slate-100" />
+                    </div>
+                  )}
+
+                  {recentActivity.isSuccess && recentActivity.data.items.length > 0 && (
+                    <div className="divide-y divide-slate-100">
+                      {recentActivity.data.items.map((item) => {
+                        const prefix = `/projects/${item.project_id}/`;
+                        const safeHref =
+                          item.href.startsWith(prefix) && !/[\\\u0000-\u001f]/.test(item.href)
+                            ? item.href
+                            : null;
+                        return (
+                          <div key={item.id} className="py-2.5 first:pt-0 last:pb-0">
+                            {safeHref ? (
+                              <Link href={safeHref} className="block truncate text-sm font-medium text-slate-800 hover:text-[var(--gp-action)] hover:underline">
+                                {item.title}
+                              </Link>
+                            ) : (
+                              <div className="truncate text-sm font-medium text-slate-800">{item.title}</div>
+                            )}
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                              <span>{activityLabels[item.event_type] ?? categoryLabels[item.category]}</span>
+                              <span>·</span>
+                              <span>{item.project_name}</span>
+                              <span>·</span>
+                              <span>{formatDate(item.occurred_at, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {recentActivity.isSuccess && recentActivity.data.items.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-4 text-center text-xs text-slate-500">
+                      暂无最近动态，开始推进任务或同步 GitHub 后将在此展示。
+                    </div>
+                  )}
+
+                  {recentActivity.isError && (
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3.5 py-3 text-xs text-slate-500">
+                      <span>动态摘要暂不可用</span>
+                      <Link href="/activity" className="font-semibold text-[var(--gp-action)] hover:underline">
+                        前往个人动态 <ArrowRight size={12} className="inline" />
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </>
+      )}
+
+      <MyAccessRequests key={userId} />
+    </div>
+  );
 }
 
 export function ActivityApiPage() {
