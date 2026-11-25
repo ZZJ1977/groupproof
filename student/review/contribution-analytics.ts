@@ -1,5 +1,6 @@
 "use client";
 
+import { CApiError } from "@/shared/daily-inbox/c-client";
 import { projectApi } from "@/shared/lib/c-project-api";
 import type { FeishuCollaborationInsights, FeishuInsightItem } from "@/student/execution/FeishuCollaborationInsights";
 import type { GithubActivityStats } from "@/student/execution/GithubStatsChart";
@@ -644,7 +645,14 @@ export async function contributionRequest<T>(url: string, method = "GET"): Promi
     }),
   );
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body?.error?.message ?? "读取贡献失败");
+  if (!response.ok) {
+    throw new CApiError(
+      response.status,
+      typeof body?.error?.code === "string" ? body.error.code : "INVALID_API_RESPONSE",
+      typeof body?.error?.message === "string" ? body.error.message : "读取贡献失败",
+      response.headers.get("X-Request-Id"),
+    );
+  }
   return body.data as T;
 }
 
@@ -708,7 +716,9 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
   ]);
 
   if (snapshotRes.status === "rejected") {
-    throw snapshotRes.reason instanceof Error ? snapshotRes.reason : new Error("读取贡献数据失败");
+    throw snapshotRes.reason instanceof Error
+      ? snapshotRes.reason
+      : new CApiError(500, "INVALID_API_RESPONSE", "读取贡献数据失败", null);
   }
 
   const snapshot = snapshotRes.value;

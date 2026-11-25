@@ -8,6 +8,7 @@ import { Feedback, StatusBadge } from "@/shared/components/common";
 import { bTasksApi } from "@/student/api/b-tasks";
 import type { CriterionRecheck } from "@/student/api/c-criterion-rechecks";
 import type { components } from "@/packages/domain/api.generated";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { apiButton, projectApi, safeHttps } from "@/shared/lib/c-project-api";
 
 type EvidenceItem = components["schemas"]["EvidenceDTO"];
@@ -92,7 +93,7 @@ export function TaskCriteriaPanel({
         text: `已批量采纳 ${res.count} 条正式证据；若全部交付标准均已确认达标，可直接点击「全部标准达标 · 提交并完成任务」。`,
       });
     } catch (err) {
-      setNotice({ tone: "error", text: err instanceof Error ? err.message : "批量采纳证据失败，请刷新后重试。" });
+      setNotice({ tone: "error", text: apiErrorText(err) });
     } finally {
       setBusyId(null);
     }
@@ -112,7 +113,7 @@ export function TaskCriteriaPanel({
       await onChanged();
       setNotice({ tone: "success", text: `已采纳代码证据「${ev.title}」为正式证据，对应交付标准已确认达标。` });
     } catch (err) {
-      setNotice({ tone: "error", text: err instanceof Error ? err.message : "采纳证据失败，请刷新后重试。" });
+      setNotice({ tone: "error", text: apiErrorText(err) });
     } finally {
       setBusyId(null);
     }
@@ -139,7 +140,7 @@ export function TaskCriteriaPanel({
             : "已记录你的验收确认，等待其余任务负责人完成确认后正式办结。",
       });
     } catch (err) {
-      setNotice({ tone: "error", text: err instanceof Error ? err.message : "完成确认失败，请检查是否所有标准均已覆盖有效证据。" });
+      setNotice({ tone: "error", text: apiErrorText(err) });
     } finally {
       setBusyId(null);
     }

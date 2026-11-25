@@ -9,6 +9,7 @@ import { projectApi } from "@/shared/lib/c-project-api";
 import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
 import { CApiError } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 
 type EvidenceRef = { id: string; version: number };
 type Criterion = {
@@ -152,7 +153,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
       setVerification(null);
       setHistory([]);
     }
-    setError(failure instanceof Error ? failure.message : "请求失败，请重试。");
+    setError(apiErrorText(failure));
   }, []);
 
   const refresh = useCallback(
@@ -253,7 +254,9 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
     setNotice("");
     try {
       const value = share.trim() === "" ? null : Number(share);
-      if (decision === "confirmed" && (value === null || !Number.isFinite(value))) throw new Error("请填写实际承担比例");
+      if (decision === "confirmed" && (value === null || !Number.isFinite(value))) {
+        throw new CApiError(422, "SHARE_REQUIRED", "请填写实际承担比例", null);
+      }
       const result = await request<{ status: string; share_total?: number }>(
         `${base}/verification/decision`,
         "POST",

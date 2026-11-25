@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CApiError } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
 
@@ -16,8 +18,15 @@ async function api<T>(path: string, payload?: unknown): Promise<T> {
     headers: payload ? { "Content-Type": "application/json" } : undefined,
     body: payload ? JSON.stringify(payload) : undefined,
   }));
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message ?? "请求失败");
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new CApiError(
+      response.status,
+      typeof result?.error?.code === "string" ? result.error.code : "INVALID_API_RESPONSE",
+      typeof result?.error?.message === "string" ? result.error.message : "请求失败",
+      response.headers.get("X-Request-Id"),
+    );
+  }
   return result.data as T;
 }
 
@@ -41,11 +50,11 @@ export function CourseRulesApiPage({ courseId, teacher, settingsView }: { course
     setDeadline(next.course.project_deadline?.slice(0, 16) ?? "");
     setFormation(next.course.formation_deadline?.slice(0, 16) ?? "");
   }, [courseId]);
-  useEffect(() => { void refresh().catch((failure) => setError(failure.message)); }, [refresh]);
+  useEffect(() => { void refresh().catch((failure) => setError(apiErrorText(failure))); }, [refresh]);
   async function send(path: string, payload: unknown) {
     setBusy(true); setError("");
     try { await api(path, payload); await refresh(); setReason(""); }
-    catch (failure) { setError((failure as Error).message); }
+    catch (failure) { setError(apiErrorText(failure)); }
     finally { setBusy(false); }
   }
   const latest = data?.versions[0];

@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { EmptyState, ProgressBar, StatusBadge } from "@/shared/components/common";
+import { useConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { tr } from "@/shared/i18n/tr";
 import { useWorkspace } from "@/shared/lib/workspace";
 import { formatDate } from "@/shared/lib/utils";
 import { EvidenceCapturePanel } from "@/student/execution/EvidenceCapturePanel";
@@ -145,6 +147,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
   const [prepareVersion, setPrepareVersion] = useState<number | null>(null);
   const [evidenceDirty, setEvidenceDirty] = useState(false);
   const [showAdvancedSubmission, setShowAdvancedSubmission] = useState(false);
+  const [confirm, dialogElement] = useConfirmDialog();
 
   // B conceals a hidden project or task with a named 404. A generic 404
   // indicates that the individual optional route is unavailable.
@@ -240,7 +243,19 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
       setNotice("任务说明的标题和正文不能为空。");
       return;
     }
-    if (openCheck && evidenceDirty && !window.confirm("候选证据还有未保存的内容。放弃这些输入并进入完整性检查？")) return;
+    if (
+      openCheck &&
+      evidenceDirty &&
+      !(await confirm({
+        title: tr("放弃未保存的候选证据"),
+        description: tr("候选证据还有未保存的内容。放弃这些输入并进入完整性检查？"),
+        confirmLabel: tr("放弃并继续"),
+        tone: "warning",
+      }))
+    ) {
+      return;
+    }
+    if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -983,6 +998,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
           {!submission && tab === "discussion" && <DiscussionsApiPage projectId={projectId} taskId={taskId} visible={Boolean(state)} />}
         </>
       )}
+      {dialogElement}
     </div>
   );
 }

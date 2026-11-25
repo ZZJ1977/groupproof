@@ -14,6 +14,7 @@ import { CreateProjectModal } from "@/student/projects/CreateProjectModal";
 import { TeacherFeedbackPill } from "@/teacher/components/TeacherFeedbackPill";
 import { TeacherSegmentedTabs } from "@/teacher/components/TeacherSegmentedTabs";
 import { CApiError, createCClient, type DailyActivityQuery } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { tr } from "@/shared/i18n/tr";
 import { useWorkspace } from "@/shared/lib/workspace";
 import { cn, formatDate } from "@/shared/lib/utils";
@@ -48,7 +49,7 @@ function QueryFailure({ error, retry }: { error: Error; retry: () => void }) {
     ? "当前登录身份暂时无法读取此服务，请重新登录或稍后重试。"
     : error instanceof CApiError && error.status === 403
       ? "你目前没有权限读取这些数据。"
-      : error instanceof CApiError ? error.message : "数据暂不可用，请重试。";
+      : error instanceof CApiError ? apiErrorText(error) : "数据暂不可用，请重试。";
   if (isTeacher) {
     return (
       <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-3")}>

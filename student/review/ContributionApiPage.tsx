@@ -27,6 +27,7 @@ import {
   StatusBadge,
 } from "@/shared/components/common";
 import { useUrlQuery } from "@/shared/lib/use-url-query";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { ContributionWeek7Panel } from "@/student/review/ContributionWeek7Panel";
 import {
   ContributionDistributionBar,
@@ -188,7 +189,7 @@ export function ContributionApiPage({
       setAnalytics(next);
       setError("");
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setLoading(false);
     }
@@ -207,7 +208,7 @@ export function ContributionApiPage({
       await refresh();
       setNotice("已根据当前正式成果重新计算贡献草稿，已包含全部在组项目成员。");
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusy(false);
     }
@@ -222,7 +223,7 @@ export function ContributionApiPage({
       await refresh();
       setNotice("贡献快照已确认冻结，可用于正式结项报告与项目归档。");
     } catch (failure) {
-      setError((failure as Error).message);
+      setError(apiErrorText(failure));
     } finally {
       setBusy(false);
     }

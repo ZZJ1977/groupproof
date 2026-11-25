@@ -8,10 +8,17 @@ import zhHant from "@/shared/i18n/catalog/zh-Hant";
  */
 const catalogs: Record<string, Record<string, string>> = { en, "zh-Hant": zhHant };
 let active: Record<string, string> | null = null;
+let activeLocale = "zh-Hans";
 
 /** Called by AppProviders on every render with the request/UI locale. */
 export function setUiLocale(locale: string) {
-  active = catalogs[locale] ?? null;
+  activeLocale = locale || "zh-Hans";
+  active = catalogs[activeLocale] ?? null;
+}
+
+/** Return the active UI locale ("zh-Hans" by default). */
+export function getUiLocale(): string {
+  return activeLocale;
 }
 
 const HAN = /[㐀-鿿]/;

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, FileArchive, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Upload, X } from "lucide-react";
 import { CApiError } from "@/shared/daily-inbox/c-client";
+import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { courseFilesApi } from "@/shared/daily-inbox/c-course-files-client";
 import { DirectPutFallbackError, sendFile, sendFileDirect, uploadAccept, verifyFile } from "@/shared/daily-inbox/c-storage-upload";
 import { formatBytes } from "@/student/execution/file-preview";
@@ -178,9 +179,19 @@ export function FileUploadForm({ scope, scopeId, target, saved, denied, onCancel
         if (["UPLOAD_NOT_FOUND", "UPLOAD_NOT_RECEIVED", "UPLOAD_REJECTED", "UPLOAD_RECEIPT_INVALID", "UPLOAD_RECEIPT_EXPIRED"].includes(failure.code)) {
           receipt.current = null;
         }
-        setError(failure.status === 404 || failure.status === 503 ? "上传服务暂不可用，请稍后重试。" : failure.message);
+        setError(
+          failure.status === 404 || failure.status === 503
+            ? apiErrorText(new CApiError(failure.status, "UPLOAD_SERVICE_UNAVAILABLE", "上传服务暂不可用，请稍后重试。", null))
+            : apiErrorText(failure),
+        );
       } else {
-        setError(failure instanceof Error ? failure.message : "上传失败，请重试。");
+        setError(
+          apiErrorText(
+            failure instanceof Error
+              ? failure
+              : new CApiError(500, "UPLOAD_FAILED", "上传失败，请重试。", null),
+          ),
+        );
       }
     } finally {
       operation.current = null;

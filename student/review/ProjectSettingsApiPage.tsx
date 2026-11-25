@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Archive, ArrowLeft, History, Plug, RotateCcw, Save, SlidersHorizontal } from "lucide-react";
 import { Feedback, StateBlock, StatusBadge } from "@/shared/components/common";
+import { useConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { tr } from "@/shared/i18n/tr";
 import { button, dangerButton, secondary } from "@/shared/lib/b-ui";
 import { FeishuChatBinding } from "@/student/review/FeishuChatBinding";
 import { GithubRepoBinding } from "@/student/review/GithubRepoBinding";
@@ -67,6 +69,7 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirm, dialogElement] = useConfirmDialog();
 
   const refresh = useCallback(async () => {
     const [next, versions] = await Promise.all([
@@ -100,6 +103,21 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleArchive() {
+    if (!writable || busy || settings?.lifecycle !== "active") return;
+    if (
+      !(await confirm({
+        title: tr("归档项目"),
+        description: tr("确认归档？报告、任务和贡献必须已定稿。"),
+        confirmLabel: tr("确认归档"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
+    await save(`${base}/archive`, "POST");
   }
 
   if (context.isError) return <ApiFailure error={context.error} retry={() => void context.refetch()} />;
@@ -351,9 +369,7 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
                     type="button"
                     className={`${dangerButton} h-9 px-3 text-xs`}
                     disabled={!writable || busy || settings?.lifecycle !== "active"}
-                    onClick={() => {
-                      if (window.confirm("确认归档？报告、任务和贡献必须已定稿。")) void save(`${base}/archive`, "POST");
-                    }}
+                    onClick={() => void handleArchive()}
                   >
                     <Archive size={14} aria-hidden="true" />
                     确认归档项目
@@ -391,6 +407,7 @@ export function ProjectSettingsApiPage({ projectId, reopenView }: { projectId: s
           <div className="min-w-0 space-y-3.5">{reopenHistoryCard}</div>
         </div>
       )}
+      {dialogElement}
     </div>
   );
 }

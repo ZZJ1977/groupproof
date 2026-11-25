@@ -1,3 +1,5 @@
+import { apiErrorText } from "@/shared/i18n/api-error-text";
+
 /** Shared class names for B/D student workspace pages (modern rounded controls, soft borders). */
 export const button = "inline-flex shrink-0 whitespace-nowrap min-h-9 items-center justify-center gap-2 rounded-lg border border-transparent bg-[var(--gp-action)] px-4 py-2 text-sm font-semibold text-white shadow-xs transition-all hover:bg-[var(--gp-action-hover)] hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50";
 export const secondary = "inline-flex shrink-0 whitespace-nowrap min-h-9 items-center justify-center gap-2 rounded-lg border border-slate-200/90 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50";
@@ -9,5 +11,4 @@ export const card = "rounded-2xl border border-slate-200/75 bg-white/95 p-5 shad
 export const dateOnly = (value: string | null | undefined, fallback = "未设置") => (value ? value.slice(0, 10) : fallback);
 export const dateTime = (value: string | null | undefined, fallback = "未设置") =>
   value ? value.slice(0, 16).replace("T", " ") : fallback;
-export const errorText = (error: unknown): string =>
-  error instanceof Error && error.message ? error.message : "操作失败，请稍后重试。";
+export const errorText = (error: unknown): string => apiErrorText(error);
