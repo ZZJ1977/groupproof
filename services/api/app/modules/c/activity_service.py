@@ -10,7 +10,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
-from app.db.models import PlanVersion, SourceReference, Task, User
+from app.db.models import PlanVersion, ProjectMember, SourceReference, Task, User
 from app.modules.c.activity_models import ActivityRecordDecision, ActivityRecordState
 from app.modules.c.activity_ports import (
     ActivityKind,
@@ -223,17 +223,37 @@ def load_states_and_latest(session, project_id, kind, source_ids):
     return {row.source_id: row for row in rows}, {item.record_id: item for item in latest}
 
 
-def activity_data(project_id, kind, item, tasks, codes, row, latest) -> dict:
+def _active_member_names(session: Session, project_id: UUID) -> dict[UUID, str]:
+    rows = session.execute(
+        select(User.id, User.name)
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.left_at.is_(None),
+            User.status == "active",
+        )
+    ).all()
+    return {uid: cleaned for uid, name in rows if (cleaned := (name or "").strip())}
+
+
+def activity_data(
+    project_id, kind, item, tasks, codes, row, latest, member_names: dict[UUID, str] | None = None
+) -> dict:
     if row and row.source_identity != item.source.identity:
         raise ApiError(
             409, "SOURCE_IDENTITY_CONFLICT", "An existing source identity cannot be replaced."
         )
+    resolved_author_name = (
+        member_names.get(item.author_id)
+        if kind == "github" and member_names and item.author_id is not None
+        else None
+    ) or item.author_name
     return {
         **state_data(row, project_id, kind, item.id),
         "title": item.title,
         "summary": item.summary,
         "author_id": str(item.author_id) if item.author_id else None,
-        "author_name": item.author_name,
+        "author_name": resolved_author_name,
         "occurred_at": item.occurred_at.isoformat(),
         "kind": item.kind,
         "group_id": item.group_id,
@@ -374,6 +394,7 @@ def query_activities(
         if kind == "github"
         else []
     )
+    member_names = _active_member_names(session, project_id) if kind == "github" else {}
     codes = frozen_task_codes(access.latest_plan) if kind == "github" else {}
     states, latest = load_states_and_latest(
         session, project_id, kind, [item.id for item in result.items]
@@ -388,6 +409,7 @@ def query_activities(
                 codes,
                 states.get(item.id),
                 latest.get(states[item.id].id) if item.id in states else None,
+                member_names=member_names,
             )
             for item in result.items
         ],
@@ -406,6 +428,7 @@ def get_activity(session, user, project_id, kind, source_id, port):
         if kind == "github"
         else []
     )
+    member_names = _active_member_names(session, project_id) if kind == "github" else {}
     states, latest = load_states_and_latest(session, project_id, kind, [item.id])
     row = states.get(item.id)
     return activity_data(
@@ -416,6 +439,7 @@ def get_activity(session, user, project_id, kind, source_id, port):
         frozen_task_codes(access.latest_plan),
         row,
         latest.get(row.id) if row else None,
+        member_names=member_names,
     )
 
 

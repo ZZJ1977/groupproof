@@ -600,3 +600,143 @@ def test_github_activity_stats_merges_homoglyph_and_typo_git_aliases(github_db):
     assert by_name["alex03"]["author_user_id"] is None
     assert by_name["alex03"]["commits"] == 1
     assert len(stats["contributors"]) == 3
+
+
+def test_multibranch_sync_imports_all_branches_beyond_ten_and_deduplicates_commits(github_db):
+    leader, project = _seed_project(github_db)
+    shared = _commit("shared0000000001", "shared baseline", "2026-11-20T08:00:00Z")
+    branch_commits = {"main": [shared]}
+    for idx in range(1, 15):
+        name = f"feat/branch-{idx:02d}"
+        branch_commits[name] = [
+            _commit(f"branch{idx:02d}commit001", f"work on {name}", f"2026-11-21T{idx:02d}:00:00Z"),
+            shared,
+        ]
+    client = MultiBranchFakeGithub(branch_commits)
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    totals = github_sync.sync_project_repos(github_db, leader, project.id, client)
+    assert totals["commits"] == 15
+
+    stored = {
+        row.external_id: row
+        for row in github_db.scalars(
+            select(GithubActivity).where(
+                GithubActivity.project_id == project.id,
+                GithubActivity.kind == "commit",
+            )
+        )
+    }
+    assert len(stored) == 15
+    assert "branch14commit001" in stored
+    assert stored["branch14commit001"].detail["branch"] == "feat/branch-14"
+    assert len(stored["shared0000000001"].detail["branches"]) == 15
+
+
+def test_github_activity_port_unifies_real_member_names_and_filters_seamlessly(github_db):
+    from app.auth.models import VerifiedGithubIdentity
+    from app.modules.a import github_activity
+    from app.modules.c.activity_ports import ActivitySourceQuery
+
+    now = datetime.now(UTC)
+    leader, project = _seed_project(github_db)
+    leader.name = "卓子杰"
+    teammate = _user(github_db, tag="zyt", role="student", index=2, now=now)
+    teammate.name = "郑元泰"
+    teammate.github_username = "M0tasy"
+    github_db.add(
+        ProjectMember(id=uuid4(), project_id=project.id, user_id=teammate.id, role="member")
+    )
+    github_db.flush()
+
+    commit_zzj = {
+        "sha": "1" * 40,
+        "html_url": f"https://github.com/acme/demo/commit/{'1' * 40}",
+        "commit": {
+            "message": "feat: unify names",
+            "author": {
+                "name": "ZZJ1977",
+                "email": "182423636+ZZJ1977@users.noreply.github.com",
+                "date": "2026-11-22T09:00:00Z",
+            },
+        },
+        "author": {"id": 182423636, "login": "ZZJ1977"},
+    }
+    commit_alias = {
+        "sha": "2" * 40,
+        "html_url": f"https://github.com/acme/demo/commit/{'2' * 40}",
+        "commit": {
+            "message": "fix: homoglyph alias",
+            "author": {
+                "name": "Motasy",
+                "email": "motasy@local",
+                "date": "2026-11-22T08:00:00Z",
+            },
+        },
+        "author": None,
+    }
+    pr_zzj = {
+        "number": 12,
+        "title": "Unify author labels",
+        "body": "desc",
+        "state": "open",
+        "merged_at": None,
+        "user": {"id": 182423636, "login": "ZZJ1977"},
+        "html_url": "https://github.com/acme/demo/pull/12",
+        "head": {"ref": "feat"},
+        "base": {"ref": "develop"},
+        "updated_at": "2026-11-22T09:10:00Z",
+        "created_at": "2026-11-22T09:05:00Z",
+    }
+    ci_zzj = {
+        "id": 9001,
+        "name": "CI",
+        "run_number": 5,
+        "status": "completed",
+        "conclusion": "success",
+        "event": "push",
+        "head_branch": "develop",
+        "head_sha": "1" * 40,
+        "actor": {"id": 182423636, "login": "ZZJ1977"},
+        "html_url": "https://github.com/acme/demo/actions/runs/9001",
+        "created_at": "2026-11-22T09:15:00Z",
+    }
+
+    client = MultiBranchFakeGithub(
+        {"main": [commit_zzj, commit_alias]}, pulls=[pr_zzj], runs=[ci_zzj]
+    )
+    github_sync.link_repo(github_db, leader, project.id, "https://github.com/acme/demo", client)
+    # 同步在绑定 OAuth 之前执行，验证绑定后无需重新同步即可匹配与显示真实姓名
+    github_sync.sync_project_repos(github_db, leader, project.id, client)
+    identity = VerifiedGithubIdentity(
+        user_id=leader.id,
+        github_user_id=182423636,
+        login="ZZJ1977",
+        verified_at=now,
+    )
+    github_db.add(identity)
+    github_db.flush()
+
+    port = github_activity.DatabaseGithubActivityPort(lambda: github_activity._Reuse(github_db))
+    base = dict(project_id=project.id, actor_id=leader.id, source_type="github")
+
+    filtered = port.query(**base, query=ActivitySourceQuery(author_id=leader.id))
+    assert filtered.total == 3
+    assert {item.kind for item in filtered.items} == {"commit", "pull_request", "ci_run"}
+    assert all(item.author_id == leader.id for item in filtered.items)
+    assert all(item.author_name == "卓子杰" for item in filtered.items)
+    assert all(item.source.content["author_login"] == "ZZJ1977" for item in filtered.items)
+
+    everything = port.query(**base, query=ActivitySourceQuery())
+    by_identity = {item.source.identity: item for item in everything.items}
+    assert by_identity[f"commit:{'1' * 40}"].author_name == "卓子杰"
+    assert by_identity[f"commit:{'2' * 40}"].author_name == "郑元泰"
+    assert by_identity[f"commit:{'2' * 40}"].author_id is None
+    assert port.get(**base, source_id=by_identity["ci_run:9001"].id).author_name == "卓子杰"
+
+    # 替换 verified_github_identity 到另一账号后，原账号活动不再归属且不误显示为卓子杰
+    identity.github_user_id = 999999
+    github_db.flush()
+    assert port.query(**base, query=ActivitySourceQuery(author_id=leader.id)).total == 0
+    after_replace = port.get(**base, source_id=by_identity["ci_run:9001"].id)
+    assert after_replace.author_id is None
+    assert after_replace.author_name == "ZZJ1977"

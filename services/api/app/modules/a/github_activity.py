@@ -39,8 +39,7 @@ logger = logging.getLogger("groupproof.a.github_activity")
 
 KINDS = ("commit", "pull_request", "ci_run")
 MAX_VERIFY_PER_SYNC = 30
-MAX_BRANCHES_PER_SYNC = 10
-MAX_NON_DEFAULT_BRANCH_COMMITS = 30
+MAX_NON_DEFAULT_BRANCH_COMMITS = 100
 MAX_COMMIT_DETAIL_PER_SYNC = 80
 MAX_COMMIT_FILES = 80
 MAX_PATCH_CHARS = 6000
@@ -193,7 +192,6 @@ def _verified_author_id():
         _verified_member_identities(GithubActivity.project_id)
         .with_only_columns(VerifiedGithubIdentity.user_id)
         .where(
-            VerifiedGithubIdentity.user_id == GithubActivity.author_user_id,
             cast(VerifiedGithubIdentity.github_user_id, String)
             == GithubActivity.detail[_ACTOR_ACCOUNT_ID].as_string(),
         )
@@ -284,7 +282,7 @@ def _upsert(
 
 
 def _discover_branches(client, owner: str, repo: str, default_branch: str, inst: int) -> list[str]:
-    """发现要同步提交的分支：默认分支优先，其次 develop 等活跃分支。"""
+    """发现要同步提交的全部分支：默认分支优先，其次 develop 等常用分支，覆盖仓库全部分支。"""
     ordered: list[str] = [default_branch]
     reader = getattr(client, "branches", None)
     if not callable(reader):
@@ -304,7 +302,7 @@ def _discover_branches(client, owner: str, repo: str, default_branch: str, inst:
         (name for name in dict.fromkeys(names) if name != default_branch),
         key=lambda name: (priority.get(name.lower(), 10), name.lower()),
     )
-    return (ordered + extras)[:MAX_BRANCHES_PER_SYNC]
+    return ordered + extras
 
 
 def _fetch_branch_commits(
@@ -595,7 +593,21 @@ class _Reuse:
 # ---------------------------------------------------------------- C 的活动页读取
 
 
-def _record(row: GithubActivity, author_id: UUID | None) -> ActivitySourceRecord:
+def _row_actor_account_id(row: GithubActivity) -> int | None:
+    detail = row.detail if isinstance(row.detail, dict) else None
+    raw = detail.get(_ACTOR_ACCOUNT_ID) if detail else None
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return None
+
+
+def _record(
+    row: GithubActivity,
+    author_id: UUID | None,
+    author_name: str | None = None,
+) -> ActivitySourceRecord:
     if row.deleted:
         title, summary = f"[已删除] {row.kind} {row.external_id[:12]}", ""
         content = {"deleted": True, "kind": row.kind, "external_id": row.external_id}
@@ -611,12 +623,13 @@ def _record(row: GithubActivity, author_id: UUID | None) -> ActivitySourceRecord
         }
         if row.kind == "commit":
             content["message"] = row.summary
+    resolved_name = (author_name or "").strip() or row.author_name or row.author_login or "未知作者"
     return ActivitySourceRecord(
         id=row.id,
         title=title or f"{row.kind} {row.external_id[:12]}",
         summary=summary,
         author_id=author_id,
-        author_name=row.author_name or row.author_login or "未知作者",
+        author_name=resolved_name[:240],
         occurred_at=row.occurred_at,
         kind=row.kind,
         source=VerifiedSource(
@@ -640,12 +653,7 @@ def _escape_like(value: str) -> str:
 def github_filters(project_id: UUID, query: ActivitySourceQuery) -> list:
     filters = [GithubActivity.project_id == project_id]
     if query.author_id is not None:
-        filters.extend(
-            (
-                GithubActivity.author_user_id == query.author_id,
-                _verified_author_id() == query.author_id,
-            )
-        )
+        filters.append(_verified_author_id() == query.author_id)
     if query.record_kind:
         filters.append(GithubActivity.kind == query.record_kind)
     if query.since is not None:
@@ -696,8 +704,21 @@ class DatabaseGithubActivityPort:
                 .offset((query.page - 1) * query.page_size)
                 .limit(query.page_size)
             ).all()
+            directory = (
+                _load_project_member_directory(session, project_id, active_only=True)
+                if rows
+                else None
+            )
             return ActivitySourcePage(
-                items=tuple(_record(row, author_id) for row, author_id in rows), total=total or 0
+                items=tuple(
+                    _record(
+                        row,
+                        author_id,
+                        directory.display_name_for_row(row, author_id) if directory else None,
+                    )
+                    for row, author_id in rows
+                ),
+                total=total or 0,
             )
 
     def get(
@@ -713,7 +734,8 @@ class DatabaseGithubActivityPort:
             if result is None:
                 raise ApiError(404, "ACTIVITY_NOT_FOUND", "记录不存在。")
             row, author_id = result
-            return _record(row, author_id)
+            directory = _load_project_member_directory(session, project_id, active_only=True)
+            return _record(row, author_id, directory.display_name_for_row(row, author_id))
 
 
 class CompositeActivityPort:
@@ -903,6 +925,197 @@ def _occurred_utc(value: datetime) -> datetime:
     return (value if value.tzinfo is not None else value.replace(tzinfo=UTC)).astimezone(UTC)
 
 
+class _ProjectMemberDirectory:
+    """项目成员姓名与 GitHub 标识映射，用于把活动/统计作者统一展示为成员真实姓名。"""
+
+    def __init__(
+        self,
+        *,
+        user_names: dict[UUID, str],
+        user_logins: dict[UUID, str],
+        uid_to_verified_account_id: dict[UUID, int],
+        login_to_uid: dict[str, UUID],
+        email_to_uid: dict[str, UUID],
+        name_to_uid: dict[str, UUID],
+        handle_to_uid: dict[str, UUID],
+        member_handles: list[tuple[str, UUID]],
+    ) -> None:
+        self.user_names = user_names
+        self.user_logins = user_logins
+        self.uid_to_verified_account_id = uid_to_verified_account_id
+        self.login_to_uid = login_to_uid
+        self.email_to_uid = email_to_uid
+        self.name_to_uid = name_to_uid
+        self.handle_to_uid = handle_to_uid
+        self.member_handles = member_handles
+
+    def resolve_member_uid(
+        self,
+        verified_uid: UUID | None,
+        login: str | None,
+        raw_name: str,
+        email_norm: str,
+        *,
+        actor_account_id: int | None = None,
+    ) -> UUID | None:
+        if verified_uid is not None:
+            return verified_uid
+
+        def _accept(candidate: UUID | None) -> UUID | None:
+            if candidate is None:
+                return None
+            if actor_account_id is not None:
+                verified_id = self.uid_to_verified_account_id.get(candidate)
+                if verified_id is not None and verified_id != actor_account_id:
+                    return None
+            return candidate
+
+        if login:
+            hit = _accept(self.login_to_uid.get(login.lower()))
+            if hit is not None:
+                return hit
+        if email_norm:
+            hit = _accept(self.email_to_uid.get(email_norm))
+            if hit is not None:
+                return hit
+            noreply = _NOREPLY_EMAIL_RE.match(email_norm)
+            if noreply:
+                hit = _accept(self.login_to_uid.get(noreply.group(1).lower()))
+                if hit is not None:
+                    return hit
+        if raw_name:
+            raw_lower = raw_name.lower()
+            hit = _accept(self.login_to_uid.get(raw_lower) or self.name_to_uid.get(raw_lower))
+            if hit is not None:
+                return hit
+        for cand in [login, raw_name, *_email_handle_candidates(email_norm)]:
+            cand_h = _normalize_handle(cand)
+            if len(cand_h) >= 4:
+                hit = _accept(self.handle_to_uid.get(cand_h))
+                if hit is not None:
+                    return hit
+        for cand in (login, raw_name):
+            cand_h = _normalize_handle(cand)
+            if len(cand_h) >= 6 and cand_h.isascii():
+                matched_uids = {
+                    uid for mh, uid in self.member_handles if _is_edit_distance_one(cand_h, mh)
+                }
+                if len(matched_uids) == 1:
+                    hit = _accept(next(iter(matched_uids)))
+                    if hit is not None:
+                        return hit
+        return None
+
+    def display_name_for_row(self, row: GithubActivity, verified_uid: UUID | None) -> str:
+        if verified_uid is not None:
+            member_name = self.user_names.get(verified_uid)
+            if member_name:
+                return member_name[:240]
+        elif not _is_excluded_bot_author(row.author_login, row.author_name, row.author_email):
+            matched_uid = self.resolve_member_uid(
+                None,
+                (row.author_login or "").strip() or None,
+                (row.author_name or "").strip(),
+                (row.author_email or "").strip().lower(),
+                actor_account_id=_row_actor_account_id(row),
+            )
+            if matched_uid is not None:
+                member_name = self.user_names.get(matched_uid)
+                if member_name:
+                    return member_name[:240]
+        return ((row.author_name or "").strip() or row.author_login or "未知作者")[:240]
+
+
+def _load_project_member_directory(
+    session: Session, project_id: UUID, *, active_only: bool = True
+) -> _ProjectMemberDirectory:
+    stmt = (
+        select(
+            User.id,
+            User.name,
+            User.email,
+            User.github_username,
+            VerifiedGithubIdentity.login,
+            VerifiedGithubIdentity.github_user_id,
+            GithubUserLink.login,
+            SchoolEmailBinding.school_email_normalized,
+            PasswordCredential.login_email_normalized,
+        )
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .outerjoin(VerifiedGithubIdentity, VerifiedGithubIdentity.user_id == User.id)
+        .outerjoin(GithubUserLink, GithubUserLink.user_id == User.id)
+        .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
+        .outerjoin(PasswordCredential, PasswordCredential.user_id == User.id)
+        .where(ProjectMember.project_id == project_id, ProjectMember.left_at.is_(None))
+    )
+    if active_only:
+        stmt = stmt.where(User.status == "active")
+    member_rows = session.execute(stmt).all()
+
+    user_names: dict[UUID, str] = {}
+    user_logins: dict[UUID, str] = {}
+    uid_to_verified_account_id: dict[UUID, int] = {}
+    login_to_uid: dict[str, UUID] = {}
+    ambiguous_logins: set[str] = set()
+    email_to_uid: dict[str, UUID] = {}
+    ambiguous_emails: set[str] = set()
+    name_to_uid: dict[str, UUID] = {}
+    ambiguous_names: set[str] = set()
+    handle_to_uid: dict[str, UUID] = {}
+    ambiguous_handles: set[str] = set()
+    member_handle_pairs: set[tuple[str, UUID]] = set()
+
+    for (
+        uid,
+        name,
+        email,
+        gh_username,
+        verified_login,
+        verified_account_id,
+        linked_login,
+        school_email,
+        login_email,
+    ) in member_rows:
+        cleaned_name = (name or "").strip()
+        if cleaned_name:
+            user_names[uid] = cleaned_name
+            _put_unique(name_to_uid, ambiguous_names, cleaned_name.lower(), uid)
+            name_handle = _normalize_handle(cleaned_name)
+            if len(name_handle) >= 4:
+                _put_unique(handle_to_uid, ambiguous_handles, name_handle, uid)
+                if len(name_handle) >= 6 and name_handle.isascii():
+                    member_handle_pairs.add((name_handle, uid))
+        if verified_account_id is not None:
+            uid_to_verified_account_id[uid] = verified_account_id
+        canonical_login = (verified_login or gh_username or linked_login or "").strip()
+        if canonical_login:
+            user_logins[uid] = canonical_login
+        for cand_login in (verified_login, gh_username, linked_login):
+            l_key = (cand_login or "").strip().lower()
+            if l_key:
+                _put_unique(login_to_uid, ambiguous_logins, l_key, uid)
+            l_handle = _normalize_handle(cand_login)
+            if len(l_handle) >= 4:
+                _put_unique(handle_to_uid, ambiguous_handles, l_handle, uid)
+                if len(l_handle) >= 6 and l_handle.isascii():
+                    member_handle_pairs.add((l_handle, uid))
+        for cand_email in (email, school_email, login_email):
+            e_key = (cand_email or "").strip().lower()
+            if e_key:
+                _put_unique(email_to_uid, ambiguous_emails, e_key, uid)
+
+    return _ProjectMemberDirectory(
+        user_names=user_names,
+        user_logins=user_logins,
+        uid_to_verified_account_id=uid_to_verified_account_id,
+        login_to_uid=login_to_uid,
+        email_to_uid=email_to_uid,
+        name_to_uid=name_to_uid,
+        handle_to_uid=handle_to_uid,
+        member_handles=sorted(member_handle_pairs),
+    )
+
+
 def get_activity_stats(
     session: Session,
     actor: User,
@@ -926,111 +1139,10 @@ def get_activity_stats(
     ).all()
 
     # 加载项目成员及其绑定信息，保证同一成员的不同 Git 别名合并为同一贡献者
-    member_rows = session.execute(
-        select(
-            User.id,
-            User.name,
-            User.email,
-            User.github_username,
-            VerifiedGithubIdentity.login,
-            GithubUserLink.login,
-            SchoolEmailBinding.school_email_normalized,
-            PasswordCredential.login_email_normalized,
-        )
-        .join(ProjectMember, ProjectMember.user_id == User.id)
-        .outerjoin(VerifiedGithubIdentity, VerifiedGithubIdentity.user_id == User.id)
-        .outerjoin(GithubUserLink, GithubUserLink.user_id == User.id)
-        .outerjoin(SchoolEmailBinding, SchoolEmailBinding.user_id == User.id)
-        .outerjoin(PasswordCredential, PasswordCredential.user_id == User.id)
-        .where(ProjectMember.project_id == project_id, ProjectMember.left_at.is_(None))
-    ).all()
-
-    user_names: dict[UUID, str] = {}
-    user_logins: dict[UUID, str] = {}
-    login_to_uid: dict[str, UUID] = {}
-    ambiguous_logins: set[str] = set()
-    email_to_uid: dict[str, UUID] = {}
-    ambiguous_emails: set[str] = set()
-    name_to_uid: dict[str, UUID] = {}
-    ambiguous_names: set[str] = set()
-    handle_to_uid: dict[str, UUID] = {}
-    ambiguous_handles: set[str] = set()
-    member_handle_pairs: set[tuple[str, UUID]] = set()
-
-    for (
-        uid,
-        name,
-        email,
-        gh_username,
-        verified_login,
-        linked_login,
-        school_email,
-        login_email,
-    ) in member_rows:
-        if name:
-            user_names[uid] = name
-            _put_unique(name_to_uid, ambiguous_names, name.strip().lower(), uid)
-            name_handle = _normalize_handle(name)
-            if len(name_handle) >= 4:
-                _put_unique(handle_to_uid, ambiguous_handles, name_handle, uid)
-                if len(name_handle) >= 6 and name_handle.isascii():
-                    member_handle_pairs.add((name_handle, uid))
-        canonical_login = (verified_login or gh_username or linked_login or "").strip()
-        if canonical_login:
-            user_logins[uid] = canonical_login
-        for cand_login in (verified_login, gh_username, linked_login):
-            l_key = (cand_login or "").strip().lower()
-            if l_key:
-                _put_unique(login_to_uid, ambiguous_logins, l_key, uid)
-            l_handle = _normalize_handle(cand_login)
-            if len(l_handle) >= 4:
-                _put_unique(handle_to_uid, ambiguous_handles, l_handle, uid)
-                if len(l_handle) >= 6 and l_handle.isascii():
-                    member_handle_pairs.add((l_handle, uid))
-        for cand_email in (email, school_email, login_email):
-            e_key = (cand_email or "").strip().lower()
-            if e_key:
-                _put_unique(email_to_uid, ambiguous_emails, e_key, uid)
-    member_handles = sorted(member_handle_pairs)
-
-    def _resolve_member_uid(
-        verified_uid: UUID | None, login: str | None, raw_name: str, email_norm: str
-    ) -> UUID | None:
-        if verified_uid is not None:
-            return verified_uid
-        if login:
-            hit = login_to_uid.get(login.lower())
-            if hit is not None:
-                return hit
-        if email_norm:
-            hit = email_to_uid.get(email_norm)
-            if hit is not None:
-                return hit
-            noreply = _NOREPLY_EMAIL_RE.match(email_norm)
-            if noreply:
-                hit = login_to_uid.get(noreply.group(1).lower())
-                if hit is not None:
-                    return hit
-        if raw_name:
-            raw_lower = raw_name.lower()
-            hit = login_to_uid.get(raw_lower) or name_to_uid.get(raw_lower)
-            if hit is not None:
-                return hit
-        for cand in [login, raw_name, *_email_handle_candidates(email_norm)]:
-            cand_h = _normalize_handle(cand)
-            if len(cand_h) >= 4:
-                hit = handle_to_uid.get(cand_h)
-                if hit is not None:
-                    return hit
-        for cand in (login, raw_name):
-            cand_h = _normalize_handle(cand)
-            if len(cand_h) >= 6 and cand_h.isascii():
-                matched_uids = {
-                    uid for mh, uid in member_handles if _is_edit_distance_one(cand_h, mh)
-                }
-                if len(matched_uids) == 1:
-                    return next(iter(matched_uids))
-        return None
+    directory = _load_project_member_directory(session, project_id, active_only=False)
+    user_names = directory.user_names
+    user_logins = directory.user_logins
+    _resolve_member_uid = directory.resolve_member_uid
 
     # 先收集全部非机器人提交，确定项目最早/最晚提交日期
     non_bot_rows: list[tuple[GithubActivity, UUID | None, datetime]] = []

@@ -26,6 +26,7 @@ const levelMeta: Record<string, { label: string; tone: "red" | "amber" | "blue" 
 
 const statusMeta: Record<string, { label: string; tone: "amber" | "blue" | "green" | "gray" }> = {
   open: { label: "待处理", tone: "amber" },
+  mitigating: { label: "缓解中", tone: "blue" },
   mitigated: { label: "已缓解", tone: "blue" },
   closed: { label: "已关闭", tone: "green" },
 };
@@ -67,7 +68,7 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [notesById, setNotesById] = useState<Record<string, string>>({});
-  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "mitigated" | "closed">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "mitigating" | "closed">("all");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -170,7 +171,12 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
     }
   }
 
-  const visibleRisks = statusFilter === "all" ? risks : risks.filter((r) => r.status === statusFilter);
+  const visibleRisks =
+    statusFilter === "all"
+      ? risks
+      : statusFilter === "mitigating"
+        ? risks.filter((r) => r.status === "mitigating" || r.status === "mitigated")
+        : risks.filter((r) => r.status === statusFilter);
   const summary = riskSummary ?? { total: 0, high: 0, medium: 0, low: 0 };
 
   return (
@@ -237,7 +243,7 @@ export function RiskApiPage({ projectId, embedded = false }: { projectId: string
                   [
                     ["all", "全部"],
                     ["open", "待处理"],
-                    ["mitigated", "已缓解"],
+                    ["mitigating", "缓解中"],
                     ["closed", "已关闭"],
                   ] as const
                 ).map(([key, text]) => (
