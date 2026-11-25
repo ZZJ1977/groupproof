@@ -438,7 +438,7 @@ export function ProjectDiscussionPreviewPage({
             <StatusBadge label="功能开发中" tone="amber" />
             <StatusBadge label="飞书同步已可用" tone="green" />
           </div>
-          <p className="mt-0.5 truncate text-xs text-slate-500">
+          <p className="gp-page-description mt-0.5 truncate text-xs text-slate-500">
             {displayProjectName
               ? tr("{0} · 站内群聊为界面预览，当前请通过飞书群聊同步协作记录。", { 0: displayProjectName })
               : "站内群聊为界面预览，当前请通过飞书群聊同步协作记录。"}
