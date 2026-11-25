@@ -505,11 +505,11 @@ export function OverviewLeftTabsCard({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="min-w-0">
+          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
+            <div className="h-full min-w-0">
               <GithubRepoBinding projectId={projectId} userId={userId} canManage={writableSettings} />
             </div>
-            <div className="min-w-0">
+            <div className="h-full min-w-0">
               <FeishuChatBinding projectId={projectId} userId={userId} canManage={writableSettings} />
             </div>
           </div>
@@ -598,11 +598,11 @@ export function ProjectSettingsModal({
             onSaved={onSaved}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="min-w-0">
+          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
+            <div className="h-full min-w-0">
               <GithubRepoBinding projectId={projectId} userId={userId} canManage={writable} />
             </div>
-            <div className="min-w-0">
+            <div className="h-full min-w-0">
               <FeishuChatBinding projectId={projectId} userId={userId} canManage={writable} />
             </div>
           </div>

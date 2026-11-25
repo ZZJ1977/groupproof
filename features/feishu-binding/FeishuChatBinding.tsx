@@ -94,7 +94,7 @@ export function FeishuChatBinding({ projectId, userId, canManage }: {
   );
 
   return (
-    <section aria-labelledby="feishu-binding-title" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs">
+    <section aria-labelledby="feishu-binding-title" className="flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/85 bg-white shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
         <h3 id="feishu-binding-title" className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <MessageSquare size={14} className="text-slate-600" aria-hidden="true" />
@@ -116,7 +116,7 @@ export function FeishuChatBinding({ projectId, userId, canManage }: {
         ) : null}
       </div>
 
-      <div className="min-w-0 space-y-3 p-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
         {linked.isPending && <p role="status" className="text-xs text-slate-500">正在读取飞书群绑定…</p>}
         {linked.isError && (
           <Feedback tone="error">
@@ -129,15 +129,20 @@ export function FeishuChatBinding({ projectId, userId, canManage }: {
 
         {connected && entries && (
           <>
-            <ul className="space-y-2">
+            <ul className="min-w-0 space-y-2">
               {entries.map((chat) => (
                 <li
                   key={chat.chat_id}
-                  className="rounded-xl border border-emerald-200/75 bg-emerald-50/35 px-3 py-2.5"
+                  className="min-w-0 rounded-xl border border-emerald-200/75 bg-emerald-50/35 px-3 py-2.5"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-                    <p className="break-all text-sm font-semibold text-slate-900">群 {chat.chat_id}</p>
+                    <p
+                      title={chat.chat_id}
+                      className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900"
+                    >
+                      群 {chat.chat_id}
+                    </p>
                   </div>
                   <p className="mt-1 pl-4 text-xs text-slate-500">
                     {chat.linked_at
@@ -148,7 +153,7 @@ export function FeishuChatBinding({ projectId, userId, canManage }: {
               ))}
             </ul>
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 {writable && (
                   <Button
@@ -198,7 +203,7 @@ export function FeishuChatBinding({ projectId, userId, canManage }: {
         {entries?.length === 0 && (
           <>
             <p className="text-xs text-slate-500">项目还没有绑定飞书群。同步项目群中的协作消息。</p>
-            {writable && bindForm}
+            {writable && <div className="mt-auto">{bindForm}</div>}
           </>
         )}
 
