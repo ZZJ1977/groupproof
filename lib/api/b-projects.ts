@@ -34,6 +34,15 @@ export type BProjectTemplate = {
   lock_version: number;
 };
 
+export type BAttachCourseResult = {
+  project_id: string;
+  course_id: string;
+  group_id: string;
+  group_name: string;
+  members_synced: number;
+  already_attached: boolean;
+};
+
 type UploadTicket = { receipt_id: string; upload_url: string; method: string; expires_at: string };
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -80,6 +89,8 @@ export const bProjectsApi = {
     bRequest<{ project_id: string; name: string; kind: "personal" }>({ method: "POST", path: "/api/v1/a/projects", body, idempotencyKey }),
   create: (groupId: string, body: { name: string; project_type?: string; description?: string; expected_group_version?: number; expected_course_rule_version_id?: string }, idempotencyKey?: string) =>
     bRequest<{ project_id: string; href: string }>({ method: "POST", path: `/api/v1/groups/${id(groupId)}/projects`, body, idempotencyKey }),
+  attachCourse: (projectId: string, body: { course_id: string; group_id?: string | null }, idempotencyKey: string = newIdempotencyKey()) =>
+    bRequest<BAttachCourseResult>({ method: "POST", path: `/api/v1/projects/${id(projectId)}/attach-course`, body, idempotencyKey }),
   overview: (projectId: string) => bRequest<BProjectOverview>({ path: `/api/v1/projects/${id(projectId)}/overview` }),
   setup: (projectId: string) => bRequest<BProjectSetup>({ path: `/api/v1/projects/${id(projectId)}/setup` }),
   saveBasic: (projectId: string, body: BBasicInfo, expectedVersion: number) =>

@@ -19,6 +19,7 @@ import { bRequirementsApi } from "@/lib/api/b-requirements";
 import { bTasksApi } from "@/lib/api/b-tasks";
 import { useWorkspace } from "@/lib/workspace";
 import { useBErrorMessage } from "@/features/b/use-b-error";
+import { AttachCourseControl } from "@/features/b/AttachCourseControl";
 import { ProjectSetupCenter } from "@/features/b/ProjectSetupCenter";
 import {
   OverviewLeftTabsCard,
@@ -341,6 +342,14 @@ export function ProjectOverviewApiPage({ projectId }: { projectId: string }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {!project.course_id && isLeader && project.lifecycle === "active" && (
+              <AttachCourseControl
+                projectId={projectId}
+                projectName={project.name}
+                variant="button"
+                onAttached={() => void handleSettingsSaved()}
+              />
+            )}
             <button
               type="button"
               onClick={() => setSettingsModalOpen(true)}
@@ -539,6 +548,17 @@ export function ProjectSetupApiPage({ projectId }: { projectId: string }) {
     <PageHeader title={data.name} description={`${tr("项目设置中心")} · ${tr(setupLabel[data.setup_status]) ?? data.setup_status}`} actions={<Link href={`/projects/${projectId}`} className={secondary}>{tr("项目总览")}</Link>} />
     <ProjectSetupCenter projectId={projectId} overview={overview.data} initialSetup={data} />
     <div className="mx-auto mt-5 max-w-[960px] space-y-4">
+      {!courseId && overview.data.is_leader && overview.data.lifecycle === "active" && (
+        <AttachCourseControl
+          projectId={projectId}
+          projectName={data.name}
+          variant="card"
+          onAttached={() => {
+            void overview.refetch();
+            void setup.refetch();
+          }}
+        />
+      )}
       {!data.can_edit && <Feedback tone="info">{data.setup_status === "frozen" ? tr("需求基线已冻结，项目信息只能查看。") : data.setup_status === "pending_confirmation" ? tr("基线正在等待组员确认，暂时不能修改。") : tr("你可以查看项目信息，但不能修改。")}</Feedback>}
       {courseId && frozenCourseFiles.length > 0 && (
         <Panel title={tr("基线冻结引用的课程资料")}>
