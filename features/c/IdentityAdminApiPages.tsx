@@ -456,7 +456,6 @@ function IdentityAdminContent({ teachers, userId }: { teachers: boolean; userId:
     <div className={`${styles.page} ${styles.identityPage}`}>
       <PageHeader
         title={teachers ? "教师审核" : "用户管理"}
-        description={teachers ? "核验提交快照与学校邮箱域，处理教师身份申请并追溯历史结果。" : "全校师生身份目录、批量导入、会话安全治理与停用/恢复管理。"}
         actions={
           !teachers ? (
             <div className={styles.identityHeaderActions}>

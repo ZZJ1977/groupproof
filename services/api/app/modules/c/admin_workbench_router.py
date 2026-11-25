@@ -22,6 +22,7 @@ from app.modules.c.admin_workbench_schemas import (
     AiDiagnosticsFilters,
     CourseMetricsRequest,
     CourseMetricsResponseDTO,
+    OverviewFilters,
     ResolveLabelsDTO,
     ResolveLabelsRequest,
     RevokeUserSessionsDTO,
@@ -45,8 +46,13 @@ router = APIRouter(
 
 
 @router.get("/overview", response_model=SuccessResponse[AdminOverviewDTO])
-def get_overview(request: Request, session: Database, user: CurrentUser):
-    return success(workbench.admin_overview(session, user), request)
+def get_overview(
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    filters: Annotated[OverviewFilters, Query()],
+):
+    return success(workbench.admin_overview(session, user, window=filters.window), request)
 
 
 @router.get("/users/{user_id}/profile", response_model=SuccessResponse[AdminUserProfile360DTO])

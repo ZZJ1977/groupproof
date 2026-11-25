@@ -235,21 +235,68 @@ def test_workbench_overview_aggregates_and_hides_private_bodies(http, db, scope)
             linked_at=now - timedelta(days=1),
         )
     )
-    db.add(
-        FeishuMessage(
-            id=uuid4(),
-            project_id=scope.project.id,
-            chat_id="oc_overview_secret_chat_01",
-            message_id="om_1",
-            sender_type="user",
-            msg_type="text",
-            text="TOP_SECRET_FEISHU_CHAT_BODY",
-            content_hash="hash1",
-            occurred_at=now - timedelta(hours=3),
-            deleted=False,
-            version_no=1,
-            synced_at=now,
-        )
+    db.add_all(
+        [
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_overview_secret_chat_01",
+                message_id="om_1",
+                sender_type="user",
+                msg_type="text",
+                text="TOP_SECRET_FEISHU_CHAT_BODY",
+                content_hash="hash1",
+                occurred_at=now - timedelta(hours=3),
+                deleted=False,
+                version_no=1,
+                synced_at=now,
+            ),
+            # Historical message imported/synced today: counts in both total and 7d
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_overview_secret_chat_01",
+                message_id="om_hist_imported",
+                sender_type="user",
+                msg_type="text",
+                text="HISTORICAL_IMPORTED_FEISHU_BODY",
+                content_hash="hash_hist_imp",
+                occurred_at=now - timedelta(days=30),
+                deleted=False,
+                version_no=1,
+                synced_at=now - timedelta(hours=1),
+            ),
+            # Older historical message synced > 30d ago: counts in total only
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_overview_secret_chat_01",
+                message_id="om_hist_old",
+                sender_type="user",
+                msg_type="text",
+                text="OLDER_HISTORICAL_FEISHU_BODY",
+                content_hash="hash_hist_old",
+                occurred_at=now - timedelta(days=45),
+                deleted=False,
+                version_no=1,
+                synced_at=now - timedelta(days=40),
+            ),
+            # Deleted message: excluded from both total and 7d
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_overview_secret_chat_01",
+                message_id="om_deleted",
+                sender_type="user",
+                msg_type="text",
+                text="",
+                content_hash="hash_del",
+                occurred_at=now - timedelta(hours=1),
+                deleted=True,
+                version_no=2,
+                synced_at=now,
+            ),
+        ]
     )
     db.add_all(
         [
@@ -359,6 +406,37 @@ def test_workbench_overview_aggregates_and_hides_private_bodies(http, db, scope)
                 output_tokens=0,
                 latency_ms=420,
             ),
+            # 20 days ago: inside 30d and all, outside 7d
+            AiUsageEvent(
+                id=uuid4(),
+                occurred_at=now - timedelta(days=20),
+                user_id=author.id,
+                project_id=scope.project.id,
+                feature="chat",
+                provider="openrouter",
+                model="openai/gpt-4o",
+                success=True,
+                input_tokens=500,
+                output_tokens=100,
+                cost=Decimal("0.0050"),
+                currency="USD",
+                latency_ms=300,
+            ),
+            # 40 days ago: inside all only
+            AiUsageEvent(
+                id=uuid4(),
+                occurred_at=now - timedelta(days=40),
+                user_id=author.id,
+                project_id=scope.project.id,
+                feature="chat",
+                provider="openrouter",
+                model="openai/gpt-4o",
+                success=False,
+                error_code="TIMEOUT",
+                input_tokens=50,
+                output_tokens=0,
+                latency_ms=500,
+            ),
         ]
     )
     db.add(
@@ -393,11 +471,16 @@ def test_workbench_overview_aggregates_and_hides_private_bodies(http, db, scope)
     assert data["teaching"]["formal_evidences_total"] >= 1
 
     pp = data["proof_pipeline"]
+    assert data["window"] == "all"
     assert pp["github_repo_links"] >= 2
     assert pp["github_synced_24h"] >= 1
     assert pp["github_stale_links"] >= 1
     assert pp["feishu_chat_links"] >= 1
-    assert pp["feishu_messages_7d"] >= 1
+    assert pp["feishu_messages_total"] == 3
+    assert pp["feishu_messages_window"] == 3
+    assert pp["feishu_messages_7d"] == 2
+    assert sum(day["feishu_messages"] for day in data["activity_7d"]) == 2
+    assert sum(day["feishu_messages"] for day in data["activity_series"]) == 3
     assert pp["upload_completed_count"] >= 1
     assert pp["upload_total_bytes"] >= 2048
     assert pp["upload_rejected_count"] >= 1
@@ -405,14 +488,23 @@ def test_workbench_overview_aggregates_and_hides_private_bodies(http, db, scope)
     assert pp["email_challenges_failed_7d"] >= 1
     assert pp["notification_emails_failed_7d"] >= 1
 
-    ai = data["ai_7d"]
-    assert ai["requests"] >= 2
-    assert ai["succeeded"] >= 1
-    assert ai["failed"] >= 1
-    assert ai["cost_by_currency"]["USD"] == "0.0125"
-    assert any(err["error_code"] == "RATE_LIMIT" and err["count"] >= 1 for err in ai["top_errors"])
+    ai_all = data["ai"]
+    assert ai_all["requests"] == 4
+    assert ai_all["succeeded"] == 2
+    assert ai_all["failed"] == 2
+    assert ai_all["cost_by_currency"]["USD"] == "0.0175"
+
+    ai_7d = data["ai_7d"]
+    assert ai_7d["requests"] == 2
+    assert ai_7d["succeeded"] == 1
+    assert ai_7d["failed"] == 1
+    assert ai_7d["cost_by_currency"]["USD"] == "0.0125"
+    assert any(
+        err["error_code"] == "RATE_LIMIT" and err["count"] >= 1 for err in ai_7d["top_errors"]
+    )
 
     assert len(data["activity_7d"]) == 7
+    assert 40 <= len(data["activity_series"]) <= 60
     assert len(data["recent_users"]) >= 1
     assert {item["key"] for item in data["system_health"]} == {
         "identity_db",
@@ -420,6 +512,28 @@ def test_workbench_overview_aggregates_and_hides_private_bodies(http, db, scope)
         "ai_gateway",
         "proof_integrations",
     }
+
+    # Verify 30d and 7d range windows
+    resp_30d = http.client.get("/api/v1/admin/workbench/overview?window=30d")
+    assert resp_30d.status_code == 200, resp_30d.text
+    data_30d = resp_30d.json()["data"]
+    assert data_30d["window"] == "30d"
+    assert data_30d["proof_pipeline"]["feishu_messages_total"] == 3
+    assert data_30d["proof_pipeline"]["feishu_messages_window"] == 2
+    assert data_30d["ai"]["requests"] == 3
+    assert data_30d["ai"]["failed"] == 1
+    assert len(data_30d["activity_series"]) == 30
+    assert len(data_30d["activity_7d"]) == 7
+
+    resp_7d = http.client.get("/api/v1/admin/workbench/overview?window=7d")
+    assert resp_7d.status_code == 200, resp_7d.text
+    data_7d = resp_7d.json()["data"]
+    assert data_7d["window"] == "7d"
+    assert data_7d["proof_pipeline"]["feishu_messages_total"] == 3
+    assert data_7d["proof_pipeline"]["feishu_messages_window"] == 2
+    assert data_7d["ai"]["requests"] == 2
+    assert data_7d["ai"] == data_7d["ai_7d"]
+    assert len(data_7d["activity_series"]) == 7
 
 
 def test_user_profile_360_and_force_revoke_sessions(http, db, scope):
@@ -775,21 +889,65 @@ def test_integrations_status_enforces_strict_privacy_masking(http, db, scope):
         )
     )
     msg_row_id = uuid4()
-    db.add(
-        FeishuMessage(
-            id=msg_row_id,
-            project_id=scope.project.id,
-            chat_id="oc_secret_chat_12345678",
-            message_id="msg-priv-1",
-            sender_type="user",
-            msg_type="text",
-            text="PRIVATE_TEAM_DISCUSSION_CONTENT",
-            content_hash="h-priv",
-            occurred_at=now - timedelta(hours=1),
-            deleted=False,
-            version_no=1,
-            synced_at=now,
-        )
+    db.add_all(
+        [
+            FeishuMessage(
+                id=msg_row_id,
+                project_id=scope.project.id,
+                chat_id="oc_secret_chat_12345678",
+                message_id="msg-priv-1",
+                sender_type="user",
+                msg_type="text",
+                text="PRIVATE_TEAM_DISCUSSION_CONTENT",
+                content_hash="h-priv",
+                occurred_at=now - timedelta(hours=1),
+                deleted=False,
+                version_no=1,
+                synced_at=now,
+            ),
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_secret_chat_12345678",
+                message_id="msg-priv-hist-imported",
+                sender_type="user",
+                msg_type="text",
+                text="PRIVATE_TEAM_DISCUSSION_CONTENT",
+                content_hash="h-priv-imp",
+                occurred_at=now - timedelta(days=25),
+                deleted=False,
+                version_no=1,
+                synced_at=now - timedelta(minutes=30),
+            ),
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_secret_chat_12345678",
+                message_id="msg-priv-hist-old",
+                sender_type="user",
+                msg_type="text",
+                text="PRIVATE_TEAM_DISCUSSION_CONTENT",
+                content_hash="h-priv-old",
+                occurred_at=now - timedelta(days=30),
+                deleted=False,
+                version_no=1,
+                synced_at=now - timedelta(days=20),
+            ),
+            FeishuMessage(
+                id=uuid4(),
+                project_id=scope.project.id,
+                chat_id="oc_secret_chat_12345678",
+                message_id="msg-priv-deleted",
+                sender_type="user",
+                msg_type="text",
+                text="",
+                content_hash="h-priv-del",
+                occurred_at=now - timedelta(minutes=20),
+                deleted=True,
+                version_no=2,
+                synced_at=now,
+            ),
+        ]
     )
     db.flush()
     db.add(
@@ -838,8 +996,12 @@ def test_integrations_status_enforces_strict_privacy_masking(http, db, scope):
     health_map = {item["repo_full_name"]: item["health"] for item in data["github"]["links"]}
     assert health_map["must-se/alpha"] == "healthy"
     assert health_map["must-se/beta-never"] == "never_synced"
+    assert data["feishu"]["messages_total"] == 3
+    assert data["feishu"]["messages_7d"] == 2
+    assert data["feishu"]["deleted_messages_7d"] == 1
     assert data["feishu"]["attachments_total"] >= 1
     assert data["feishu"]["links"][0]["chat_id_masked"].endswith("5678")
+    assert data["feishu"]["links"][0]["message_count"] == 3
     assert data["email_delivery"]["challenges_failed_7d"] >= 1
     assert any(
         f["recipient_domain"] == "student.must.edu.mo"
@@ -1075,6 +1237,48 @@ def test_workbench_projects_standalone_detail_privacy_and_lifecycle(http, db, sc
                 chat_id="oc_standalone_secret_998877",
                 linked_at=now,
             ),
+            FeishuMessage(
+                id=uuid4(),
+                project_id=standalone.id,
+                chat_id="oc_standalone_secret_998877",
+                message_id="om_standalone_hist",
+                sender_type="user",
+                msg_type="text",
+                text="SECRET_STANDALONE_FEISHU_BODY",
+                content_hash="h_st_1",
+                occurred_at=now - timedelta(days=30),
+                deleted=False,
+                version_no=1,
+                synced_at=now - timedelta(days=15),
+            ),
+            FeishuMessage(
+                id=uuid4(),
+                project_id=standalone.id,
+                chat_id="oc_standalone_secret_998877",
+                message_id="om_standalone_recent",
+                sender_type="user",
+                msg_type="text",
+                text="SECRET_STANDALONE_FEISHU_BODY",
+                content_hash="h_st_2",
+                occurred_at=now - timedelta(hours=2),
+                deleted=False,
+                version_no=1,
+                synced_at=now,
+            ),
+            FeishuMessage(
+                id=uuid4(),
+                project_id=standalone.id,
+                chat_id="oc_standalone_secret_998877",
+                message_id="om_standalone_deleted",
+                sender_type="user",
+                msg_type="text",
+                text="",
+                content_hash="h_st_del",
+                occurred_at=now - timedelta(hours=1),
+                deleted=True,
+                version_no=2,
+                synced_at=now,
+            ),
             AiUsageEvent(
                 id=uuid4(),
                 occurred_at=now - timedelta(hours=1),
@@ -1125,6 +1329,8 @@ def test_workbench_projects_standalone_detail_privacy_and_lifecycle(http, db, sc
     assert detail["members"][0]["role"] == "leader"
     assert detail["feishu"]["linked"] is True
     assert detail["feishu"]["chat_id_masked"].endswith("8877")
+    assert detail["feishu"]["message_count"] == 2
+    assert "SECRET_STANDALONE_FEISHU_BODY" not in detail_resp.text
     assert detail["ai_30d"]["cost_by_currency"]["USD"] == "0.005"
 
     # Archive project with optimistic version check

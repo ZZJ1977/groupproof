@@ -172,10 +172,71 @@ def _daily_counts(
     return {str(day): int(cnt or 0) for day, cnt in rows if day}
 
 
-def admin_overview(session: Session, user: User, *, now: datetime | None = None) -> dict:
+def _ai_overview_summary(session: Session, ai_where: list) -> dict:
+    ai_row = session.execute(
+        select(
+            func.count(AiUsageEvent.id).label("requests"),
+            func.sum(case((AiUsageEvent.success.is_(True), 1), else_=0)).label("succeeded"),
+            func.sum(case((AiUsageEvent.success.is_(False), 1), else_=0)).label("failed"),
+            func.coalesce(func.sum(AiUsageEvent.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(AiUsageEvent.output_tokens), 0).label("output_tokens"),
+            func.sum(
+                case(
+                    (or_(AiUsageEvent.cost.is_(None), AiUsageEvent.currency.is_(None)), 1),
+                    else_=0,
+                )
+            ).label("unpriced"),
+        ).where(*ai_where)
+    ).one()
+    ai_requests = int(ai_row.requests or 0)
+    ai_succeeded = int(ai_row.succeeded or 0)
+    ai_failed = int(ai_row.failed or 0)
+    ai_costs = session.execute(
+        select(AiUsageEvent.currency, func.sum(AiUsageEvent.cost))
+        .where(*ai_where, AiUsageEvent.cost.is_not(None), AiUsageEvent.currency.is_not(None))
+        .group_by(AiUsageEvent.currency)
+    ).all()
+    p95_map = _latency_percentiles(session, ai_where, (0.95,))
+    err_code_expr = func.coalesce(AiUsageEvent.error_code, literal_column("'UNKNOWN_ERROR'"))
+    err_rows = session.execute(
+        select(
+            err_code_expr.label("code"),
+            func.count().label("cnt"),
+            func.max(AiUsageEvent.occurred_at).label("last_seen"),
+        )
+        .where(*ai_where, AiUsageEvent.success.is_(False))
+        .group_by(err_code_expr)
+        .order_by(func.count().desc())
+        .limit(5)
+    ).all()
+    return {
+        "requests": ai_requests,
+        "succeeded": ai_succeeded,
+        "failed": ai_failed,
+        "success_rate": round((ai_succeeded / ai_requests) * 100, 1) if ai_requests else None,
+        "input_tokens": int(ai_row.input_tokens or 0),
+        "output_tokens": int(ai_row.output_tokens or 0),
+        "p95_latency_ms": p95_map[0.95],
+        "cost_by_currency": _costs_map(ai_costs),
+        "unpriced_requests": int(ai_row.unpriced or 0),
+        "top_errors": [
+            {
+                "error_code": str(code),
+                "count": int(cnt or 0),
+                "last_seen_at": utc(last_seen) if last_seen else None,
+            }
+            for code, cnt, last_seen in err_rows
+        ],
+    }
+
+
+def admin_overview(
+    session: Session, user: User, *, window: str = "all", now: datetime | None = None
+) -> dict:
     require_auth_audit_admin(session, user)
     now = utc(now or datetime.now(UTC))
     since_7d = datetime.combine(now.date() - timedelta(days=6), datetime.min.time(), UTC)
+    since_30d = datetime.combine(now.date() - timedelta(days=29), datetime.min.time(), UTC)
     since_24h = now - timedelta(hours=24)
     stale_cutoff = now - timedelta(hours=48)
 
@@ -280,14 +341,42 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
     github_synced_24h = sum(1 for ts in github_links if ts is not None and utc(ts) >= since_24h)
     github_stale_links = sum(1 for ts in github_links if ts is None or utc(ts) < stale_cutoff)
     feishu_chat_links = session.scalar(select(func.count()).select_from(FeishuChatLink)) or 0
+    feishu_messages_total = (
+        session.scalar(
+            select(func.count()).select_from(FeishuMessage).where(FeishuMessage.deleted.is_(False))
+        )
+        or 0
+    )
     feishu_messages_7d = (
         session.scalar(
             select(func.count())
             .select_from(FeishuMessage)
-            .where(FeishuMessage.occurred_at >= since_7d)
+            .where(
+                FeishuMessage.deleted.is_(False),
+                or_(FeishuMessage.occurred_at >= since_7d, FeishuMessage.synced_at >= since_7d),
+            )
         )
         or 0
     )
+    if window == "7d":
+        feishu_messages_window = feishu_messages_7d
+    elif window == "30d":
+        feishu_messages_window = (
+            session.scalar(
+                select(func.count())
+                .select_from(FeishuMessage)
+                .where(
+                    FeishuMessage.deleted.is_(False),
+                    or_(
+                        FeishuMessage.occurred_at >= since_30d,
+                        FeishuMessage.synced_at >= since_30d,
+                    ),
+                )
+            )
+            or 0
+        )
+    else:
+        feishu_messages_window = feishu_messages_total
     upload_row = session.execute(
         select(
             func.sum(case((UploadReceipt.status == "completed", 1), else_=0)).label("completed"),
@@ -315,50 +404,50 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
         or 0
     )
 
-    # 5. AI 7d diagnostics summary
-    ai_where = [AiUsageEvent.occurred_at >= since_7d]
-    ai_row = session.execute(
-        select(
-            func.count(AiUsageEvent.id).label("requests"),
-            func.sum(case((AiUsageEvent.success.is_(True), 1), else_=0)).label("succeeded"),
-            func.sum(case((AiUsageEvent.success.is_(False), 1), else_=0)).label("failed"),
-            func.coalesce(func.sum(AiUsageEvent.input_tokens), 0).label("input_tokens"),
-            func.coalesce(func.sum(AiUsageEvent.output_tokens), 0).label("output_tokens"),
-            func.sum(
-                case(
-                    (or_(AiUsageEvent.cost.is_(None), AiUsageEvent.currency.is_(None)), 1),
-                    else_=0,
-                )
-            ).label("unpriced"),
-        ).where(*ai_where)
-    ).one()
-    ai_requests = int(ai_row.requests or 0)
-    ai_succeeded = int(ai_row.succeeded or 0)
-    ai_failed = int(ai_row.failed or 0)
-    ai_costs = session.execute(
-        select(AiUsageEvent.currency, func.sum(AiUsageEvent.cost))
-        .where(*ai_where, AiUsageEvent.cost.is_not(None), AiUsageEvent.currency.is_not(None))
-        .group_by(AiUsageEvent.currency)
-    ).all()
-    p95_map = _latency_percentiles(session, ai_where, (0.95,))
-    err_code_expr = func.coalesce(AiUsageEvent.error_code, literal_column("'UNKNOWN_ERROR'"))
-    err_rows = session.execute(
-        select(
-            err_code_expr.label("code"),
-            func.count().label("cnt"),
-            func.max(AiUsageEvent.occurred_at).label("last_seen"),
-        )
-        .where(*ai_where, AiUsageEvent.success.is_(False))
-        .group_by(err_code_expr)
-        .order_by(func.count().desc())
-        .limit(5)
-    ).all()
+    # 5. AI diagnostics summary (both 7d for backward compatibility and selected window)
+    ai_7d_summary = _ai_overview_summary(session, [AiUsageEvent.occurred_at >= since_7d])
+    if window == "7d":
+        ai_window_summary = ai_7d_summary
+    elif window == "30d":
+        ai_window_summary = _ai_overview_summary(session, [AiUsageEvent.occurred_at >= since_30d])
+    else:
+        ai_window_summary = _ai_overview_summary(session, [])
 
-    # 6. 7-day activity series
-    new_users_daily = _daily_counts(session, User.created_at, [], since_7d)
-    audit_daily = _daily_counts(session, AuditEvent.occurred_at, [], since_7d)
-    github_daily = _daily_counts(session, GithubActivity.occurred_at, [], since_7d)
-    feishu_daily = _daily_counts(session, FeishuMessage.occurred_at, [], since_7d)
+    # 6. Activity series (daily buckets for 7d / 30d / all active history capped at 60 days)
+    if window == "7d":
+        series_start_date = since_7d.date()
+    elif window == "30d":
+        series_start_date = since_30d.date()
+    else:
+        min_candidates = [
+            session.scalar(select(func.min(AuditEvent.occurred_at))),
+            session.scalar(select(func.min(AiUsageEvent.occurred_at))),
+            session.scalar(select(func.min(GithubActivity.occurred_at))),
+            session.scalar(
+                select(
+                    func.min(func.coalesce(FeishuMessage.synced_at, FeishuMessage.occurred_at))
+                ).where(FeishuMessage.deleted.is_(False))
+            ),
+        ]
+        earliest_dates = [utc(ts).date() for ts in min_candidates if ts is not None]
+        earliest = min(earliest_dates) if earliest_dates else since_7d.date()
+        max_lookback = now.date() - timedelta(days=59)
+        series_start_date = max(max_lookback, min(earliest, since_7d.date()))
+
+    series_since = datetime.combine(series_start_date, datetime.min.time(), UTC)
+    series_days = (now.date() - series_start_date).days + 1
+
+    new_users_daily = _daily_counts(session, User.created_at, [], series_since)
+    audit_daily = _daily_counts(session, AuditEvent.occurred_at, [], series_since)
+    github_daily = _daily_counts(session, GithubActivity.occurred_at, [], series_since)
+    # Use synced_at (falling back to occurred_at) so recently imported historical
+    # messages appear in the sync pulse while staying PostgreSQL GROUP BY safe.
+    feishu_daily = _daily_counts(
+        session,
+        func.coalesce(FeishuMessage.synced_at, FeishuMessage.occurred_at),
+        [FeishuMessage.deleted.is_(False)],
+        series_since,
+    )
     ai_day_expr = _utc_day_expr(session, AiUsageEvent.occurred_at)
     ai_daily_rows = session.execute(
         select(
@@ -366,17 +455,17 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
             func.count().label("total"),
             func.sum(case((AiUsageEvent.success.is_(False), 1), else_=0)).label("failed"),
         )
-        .where(AiUsageEvent.occurred_at >= since_7d)
+        .where(AiUsageEvent.occurred_at >= series_since)
         .group_by(ai_day_expr)
     ).all()
     ai_daily_total = {str(d): int(t or 0) for d, t, _ in ai_daily_rows if d}
     ai_daily_failed = {str(d): int(f or 0) for d, _, f in ai_daily_rows if d}
 
-    activity_7d = []
-    for offset in range(7):
-        day_obj = since_7d.date() + timedelta(days=offset)
+    activity_series = []
+    for offset in range(series_days):
+        day_obj = series_start_date + timedelta(days=offset)
         key = day_obj.isoformat()
-        activity_7d.append(
+        activity_series.append(
             {
                 "date": day_obj,
                 "new_users": new_users_daily.get(key, 0),
@@ -387,6 +476,7 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
                 "feishu_messages": feishu_daily.get(key, 0),
             }
         )
+    activity_7d = activity_series[-7:]
 
     # 7. Recent users
     recent_rows = session.execute(
@@ -411,6 +501,9 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
     ]
 
     # 8. Real system health probes
+    ai_requests = ai_window_summary["requests"]
+    ai_succeeded = ai_window_summary["succeeded"]
+    ai_failed = ai_window_summary["failed"]
     ai_fail_rate = (ai_failed / ai_requests) if ai_requests else 0.0
     ai_health = (
         "degraded"
@@ -419,6 +512,7 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
         if ai_requests >= 3 and ai_fail_rate >= 0.2
         else "healthy"
     )
+    window_label = {"7d": "近 7 日", "30d": "近 30 日", "all": "累计"}.get(window, "累计")
     email_failed_total = int(email_row.failed or 0) + int(notif_email_failed or 0)
     system_health = [
         {
@@ -440,9 +534,10 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
             "label": "OpenRouter AI 模型通道",
             "status": ai_health,
             "detail": (
-                f"7 日共 {ai_requests} 次调用，成功率 {round((ai_succeeded / ai_requests) * 100)}%"
+                f"{window_label}共 {ai_requests} 次调用，"
+                f"成功率 {round((ai_succeeded / ai_requests) * 100)}%"
                 if ai_requests
-                else "最近 7 日暂无 AI 调用记录"
+                else f"{window_label}暂无 AI 调用记录"
             ),
         },
         {
@@ -461,6 +556,7 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
 
     return {
         "generated_at": now,
+        "window": window,
         "users": {
             "total": total_users,
             "active": int(user_row.active or 0),
@@ -501,7 +597,9 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
             "github_synced_24h": github_synced_24h,
             "github_stale_links": github_stale_links,
             "feishu_chat_links": int(feishu_chat_links),
+            "feishu_messages_total": int(feishu_messages_total),
             "feishu_messages_7d": int(feishu_messages_7d),
+            "feishu_messages_window": int(feishu_messages_window),
             "upload_completed_count": int(upload_row.completed or 0),
             "upload_total_bytes": int(upload_row.bytes or 0),
             "upload_rejected_count": int(upload_row.rejected or 0),
@@ -509,25 +607,9 @@ def admin_overview(session: Session, user: User, *, now: datetime | None = None)
             "email_challenges_failed_7d": int(email_row.failed or 0),
             "notification_emails_failed_7d": int(notif_email_failed),
         },
-        "ai_7d": {
-            "requests": ai_requests,
-            "succeeded": ai_succeeded,
-            "failed": ai_failed,
-            "success_rate": round((ai_succeeded / ai_requests) * 100, 1) if ai_requests else None,
-            "input_tokens": int(ai_row.input_tokens or 0),
-            "output_tokens": int(ai_row.output_tokens or 0),
-            "p95_latency_ms": p95_map[0.95],
-            "cost_by_currency": _costs_map(ai_costs),
-            "unpriced_requests": int(ai_row.unpriced or 0),
-            "top_errors": [
-                {
-                    "error_code": str(code),
-                    "count": int(cnt or 0),
-                    "last_seen_at": utc(last_seen) if last_seen else None,
-                }
-                for code, cnt, last_seen in err_rows
-            ],
-        },
+        "ai": ai_window_summary,
+        "ai_7d": ai_7d_summary,
+        "activity_series": activity_series,
         "activity_7d": activity_7d,
         "recent_users": recent_users,
         "system_health": system_health,
@@ -1197,14 +1279,22 @@ def integrations_status(session: Session, user: User, *, now: datetime | None = 
                 FeishuMessage.chat_id,
                 func.count(),
                 func.max(FeishuMessage.occurred_at),
-            ).group_by(FeishuMessage.project_id, FeishuMessage.chat_id)
+            )
+            .where(FeishuMessage.deleted.is_(False))
+            .group_by(FeishuMessage.project_id, FeishuMessage.chat_id)
         ).all()
     }
+    fs_messages_total = (
+        session.scalar(
+            select(func.count()).select_from(FeishuMessage).where(FeishuMessage.deleted.is_(False))
+        )
+        or 0
+    )
     fs_msg_row = session.execute(
         select(
-            func.count(FeishuMessage.id).label("total"),
-            func.sum(case((FeishuMessage.deleted.is_(True), 1), else_=0)).label("deleted"),
-        ).where(FeishuMessage.occurred_at >= since_7d)
+            func.sum(case((FeishuMessage.deleted.is_(False), 1), else_=0)).label("active_7d"),
+            func.sum(case((FeishuMessage.deleted.is_(True), 1), else_=0)).label("deleted_7d"),
+        ).where(or_(FeishuMessage.occurred_at >= since_7d, FeishuMessage.synced_at >= since_7d))
     ).one()
     fs_attachments = session.scalar(select(func.count()).select_from(FeishuAttachment)) or 0
     fs_total_links = session.scalar(select(func.count()).select_from(FeishuChatLink)) or 0
@@ -1368,8 +1458,9 @@ def integrations_status(session: Session, user: User, *, now: datetime | None = 
         },
         "feishu": {
             "total_links": int(fs_total_links),
-            "messages_7d": int(fs_msg_row.total or 0),
-            "deleted_messages_7d": int(fs_msg_row.deleted or 0),
+            "messages_total": int(fs_messages_total),
+            "messages_7d": int(fs_msg_row.active_7d or 0),
+            "deleted_messages_7d": int(fs_msg_row.deleted_7d or 0),
             "attachments_total": int(fs_attachments),
             "links": fs_links_dto,
         },
@@ -1822,7 +1913,9 @@ def project_detail(
     if fs_link:
         fs_stat = session.execute(
             select(func.count(), func.max(FeishuMessage.occurred_at)).where(
-                FeishuMessage.project_id == proj.id, FeishuMessage.chat_id == fs_link.chat_id
+                FeishuMessage.project_id == proj.id,
+                FeishuMessage.chat_id == fs_link.chat_id,
+                FeishuMessage.deleted.is_(False),
             )
         ).one()
         fs_msg_cnt = int(fs_stat[0] or 0)

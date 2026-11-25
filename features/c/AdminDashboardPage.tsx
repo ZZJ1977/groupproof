@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -66,11 +67,20 @@ function healthText(status: "healthy" | "warning" | "degraded"): string {
   return status === "healthy" ? "正常" : status === "warning" ? "需关注" : "异常";
 }
 
+type OverviewWindow = "all" | "30d" | "7d";
+
+const windowOptions: readonly { value: OverviewWindow; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "30d", label: "近 30 天" },
+  { value: "7d", label: "近 7 天" },
+];
+
 export function AdminDashboardPage() {
   const { userId } = useWorkspace();
+  const [windowRange, setWindowRange] = useState<OverviewWindow>("all");
   const overview = useQuery({
-    queryKey: ["admin-workbench-overview", userId],
-    queryFn: () => governance.workbenchOverview(),
+    queryKey: ["admin-workbench-overview", userId, windowRange],
+    queryFn: () => governance.workbenchOverview({ window: windowRange }),
     staleTime: 20_000,
     retry: false,
   });
@@ -81,7 +91,7 @@ export function AdminDashboardPage() {
   const queues = data?.queues;
   const teaching = data?.teaching;
   const proof = data?.proof_pipeline;
-  const ai = data?.ai_7d;
+  const ai = data?.ai ?? data?.ai_7d;
 
   const onlyAdmin = Boolean(users && users.total === 1 && teaching && teaching.courses_total === 0);
   const verifiedRate = users && users.total > 0 ? `${Math.round((users.verified_school_email / users.total) * 100)}%` : "—";
@@ -101,22 +111,49 @@ export function AdminDashboardPage() {
     { label: "已结束", value: teaching?.courses_ended ?? 0, color: "#64748b" },
   ];
 
-  const activitySeries = data?.activity_7d ?? [];
+  const activitySeries = data?.activity_series ?? data?.activity_7d ?? [];
+  const compactPulse = activitySeries.length > 14;
+  const pulseLabelStride =
+    activitySeries.length <= 7 ? 1 : activitySeries.length <= 15 ? 2 : activitySeries.length <= 35 ? 5 : 10;
   const maxPulse = Math.max(
     1,
     ...activitySeries.map((day) => Math.max(day.audit_events, day.ai_requests, day.github_activities + day.feishu_messages)),
   );
+  const aiCardLabel =
+    windowRange === "all" ? "教学 AI（全部）" : windowRange === "30d" ? "教学 AI（近 30 天）" : "教学 AI（近 7 天）";
+  const pulseTitle =
+    windowRange === "all" ? "全部平台活动脉搏" : windowRange === "30d" ? "近 30 天平台活动脉搏" : "近 7 天平台活动脉搏";
+  const aiFailTitle =
+    windowRange === "all"
+      ? `累计 AI 调用失败 ${ai?.failed ?? 0} 次`
+      : windowRange === "30d"
+        ? `30 日 AI 调用失败 ${ai?.failed ?? 0} 次`
+        : `7 日 AI 调用失败 ${ai?.failed ?? 0} 次`;
 
   return (
     <main className={styles.page}>
       <Header
         title="管理总览"
-        description="GroupProof 平台身份、课程治理、过程证明链与 OpenRouter AI 运行态势。"
         action={
-          <button type="button" className={styles.button} disabled={loading} onClick={() => void overview.refetch()}>
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            {loading ? "刷新中…" : "刷新数据"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={styles.usageTrendTabs} role="group" aria-label="总览统计时间范围">
+              {windowOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={styles.usageTrendTab}
+                  aria-pressed={windowRange === opt.value}
+                  onClick={() => setWindowRange(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className={styles.button} disabled={loading} onClick={() => void overview.refetch()}>
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+              {loading ? "刷新中…" : "刷新数据"}
+            </button>
+          </div>
         }
       />
 
@@ -199,9 +236,15 @@ export function AdminDashboardPage() {
             <span className="inline-flex items-center gap-1.5"><MessageSquare size={15} className="text-indigo-600" />飞书群聊追踪</span>
             <Badge tone="blue">{proof ? `${proof.feishu_chat_links} 群` : "—"}</Badge>
           </div>
-          <div className={styles.proofStripValue}>{proof ? `${proof.feishu_messages_7d} 条/7日` : "—"}</div>
+          <div className={styles.proofStripValue}>
+            {proof ? `${windowRange === "all" ? proof.feishu_messages_total : proof.feishu_messages_window} 条` : "—"}
+          </div>
           <div className={styles.proofStripMeta}>
-            {proof ? `仅统计元数，管理员不可见群聊正文` : "读取中…"}
+            {proof
+              ? windowRange === "all"
+                ? `近 7 日 ${proof.feishu_messages_7d} 条 · 仅统计元数据，管理员不可见群聊正文`
+                : `累计 ${proof.feishu_messages_total} 条 · 仅统计元数据，管理员不可见群聊正文`
+              : "读取中…"}
           </div>
         </Link>
 
@@ -218,7 +261,7 @@ export function AdminDashboardPage() {
 
         <Link href="/admin/ai-usage" className={styles.proofStripCard}>
           <div className={styles.proofStripHead}>
-            <span className="inline-flex items-center gap-1.5"><Activity size={15} className="text-violet-600" />教学 AI（近 7 天）</span>
+            <span className="inline-flex items-center gap-1.5"><Activity size={15} className="text-violet-600" />{aiCardLabel}</span>
             <Badge tone={ai && ai.requests >= 3 && (ai.success_rate ?? 100) < 80 ? "red" : "purple"}>
               {ai?.success_rate !== null && ai?.success_rate !== undefined ? `成功率 ${ai.success_rate}%` : "暂无调用"}
             </Badge>
@@ -232,7 +275,7 @@ export function AdminDashboardPage() {
 
       <div className={styles.twoColumns}>
         <Box
-          title="近 7 天平台活动脉搏"
+          title={pulseTitle}
           action={<Link className="gp-link inline-flex items-center gap-1 text-xs" href="/admin/logs">查看系统日志 <ArrowRight size={13} /></Link>}
         >
           <div className={styles.panelBody}>
@@ -240,12 +283,18 @@ export function AdminDashboardPage() {
               <Empty>暂无近期时间序列</Empty>
             ) : (
               <>
-                <div className={styles.pulseChart} role="img" aria-label="近 7 天审计事件、AI 调用和集成同步活动趋势">
-                  {activitySeries.map((day) => {
+                <div
+                  className={compactPulse ? `${styles.pulseChart} ${styles.pulseChartCompact}` : styles.pulseChart}
+                  style={{ gridTemplateColumns: `repeat(${activitySeries.length}, minmax(0, 1fr))` }}
+                  role="img"
+                  aria-label={`${pulseTitle}：审计事件、AI 调用和集成同步活动趋势`}
+                >
+                  {activitySeries.map((day, idx) => {
                     const syncCount = day.github_activities + day.feishu_messages;
                     const hAudit = day.audit_events ? Math.max(8, Math.round((day.audit_events / maxPulse) * 110)) : 3;
                     const hAi = day.ai_requests ? Math.max(8, Math.round((day.ai_requests / maxPulse) * 110)) : 3;
                     const hSync = syncCount ? Math.max(8, Math.round((syncCount / maxPulse) * 110)) : 3;
+                    const showLabel = idx % pulseLabelStride === 0 || idx === activitySeries.length - 1;
                     return (
                       <div
                         className={styles.pulseDayCol}
@@ -257,7 +306,9 @@ export function AdminDashboardPage() {
                           <div className={styles.pulseBar} style={{ height: `${hAi}px`, background: day.ai_failed > 0 ? "#dc2626" : "#7c3aed" }} />
                           <div className={styles.pulseBar} style={{ height: `${hSync}px`, background: "#059669" }} />
                         </div>
-                        <span className="text-[11px] text-slate-500">{String(day.date).slice(5)}</span>
+                        <span className="h-[16px] whitespace-nowrap text-[11px] text-slate-500">
+                          {showLabel ? String(day.date).slice(5) : ""}
+                        </span>
                       </div>
                     );
                   })}
@@ -301,7 +352,7 @@ export function AdminDashboardPage() {
                 <span className="flex items-center gap-3 min-w-0">
                   <AlertTriangle size={18} className="shrink-0 text-rose-600" />
                   <span className="min-w-0">
-                    <strong className="block text-sm">7 日 AI 调用失败 {ai.failed} 次</strong>
+                    <strong className="block text-sm">{aiFailTitle}</strong>
                     <span className="block truncate text-xs text-rose-700">
                       主要错误：{ai.top_errors.map((e) => `${e.error_code}(${e.count})`).join("、") || "详见故障诊断"}
                     </span>

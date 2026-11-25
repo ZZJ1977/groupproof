@@ -1668,6 +1668,16 @@
             "title": "Activity 7D",
             "type": "array"
           },
+          "activity_series": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewActivityDayDTO"
+            },
+            "title": "Activity Series",
+            "type": "array"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/OverviewAiDTO"
+          },
           "ai_7d": {
             "$ref": "#/components/schemas/OverviewAiDTO"
           },
@@ -1701,15 +1711,27 @@
           },
           "users": {
             "$ref": "#/components/schemas/OverviewUsersDTO"
+          },
+          "window": {
+            "enum": [
+              "7d",
+              "30d",
+              "all"
+            ],
+            "title": "Window",
+            "type": "string"
           }
         },
         "required": [
           "generated_at",
+          "window",
           "users",
           "queues",
           "teaching",
           "proof_pipeline",
+          "ai",
           "ai_7d",
+          "activity_series",
           "activity_7d",
           "recent_users",
           "system_health"
@@ -8862,6 +8884,11 @@
             "title": "Messages 7D",
             "type": "integer"
           },
+          "messages_total": {
+            "minimum": 0.0,
+            "title": "Messages Total",
+            "type": "integer"
+          },
           "total_links": {
             "minimum": 0.0,
             "title": "Total Links",
@@ -8870,6 +8897,7 @@
         },
         "required": [
           "total_links",
+          "messages_total",
           "messages_7d",
           "deleted_messages_7d",
           "attachments_total",
@@ -11591,6 +11619,16 @@
             "title": "Feishu Messages 7D",
             "type": "integer"
           },
+          "feishu_messages_total": {
+            "minimum": 0.0,
+            "title": "Feishu Messages Total",
+            "type": "integer"
+          },
+          "feishu_messages_window": {
+            "minimum": 0.0,
+            "title": "Feishu Messages Window",
+            "type": "integer"
+          },
           "github_repo_links": {
             "minimum": 0.0,
             "title": "Github Repo Links",
@@ -11632,7 +11670,9 @@
           "github_synced_24h",
           "github_stale_links",
           "feishu_chat_links",
+          "feishu_messages_total",
           "feishu_messages_7d",
+          "feishu_messages_window",
           "upload_completed_count",
           "upload_total_bytes",
           "upload_rejected_count",
@@ -23264,6 +23304,21 @@
       "get": {
         "operationId": "get_overview_api_v1_admin_workbench_overview_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "7d",
+                "30d",
+                "all"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "X-Demo-User-Id",

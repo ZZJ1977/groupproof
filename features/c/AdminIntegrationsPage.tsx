@@ -36,7 +36,6 @@ export function AdminIntegrationsPage() {
     <main className={styles.page}>
       <Header
         title="过程证明与集成运维"
-        description="集中排查 GitHub 仓库同步、飞书群聊追踪、学校邮箱投递、文件存储及限流状态；严守隐私边界，不展示项目或群聊正文。"
         action={
           <button type="button" className={styles.button} disabled={query.isFetching} onClick={() => void query.refetch()}>
             <RefreshCw size={15} className={query.isFetching ? "animate-spin" : ""} />
@@ -66,8 +65,8 @@ export function AdminIntegrationsPage() {
         <Metric
           label="飞书群聊追踪"
           value={fs ? fs.total_links : "—"}
-          hint={fs ? `近 7 日消息 ${fs.messages_7d} 条（含撤回 ${fs.deleted_messages_7d}）` : "正在读取"}
-          trend={fs ? `附件指纹 ${fs.attachments_total} 份` : undefined}
+          hint={fs ? `累计消息 ${fs.messages_total} 条 · 近 7 日 ${fs.messages_7d} 条` : "正在读取"}
+          trend={fs ? `附件指纹 ${fs.attachments_total} 份 · 近 7 日撤回 ${fs.deleted_messages_7d} 条` : undefined}
           icon={MessageSquare}
           tone="purple"
         />

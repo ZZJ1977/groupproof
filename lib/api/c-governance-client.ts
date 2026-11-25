@@ -9,6 +9,7 @@ export type AuditQuery = paths["/api/v1/admin/audit-logs"]["get"]["parameters"][
 export type AuthAuditQuery = paths["/api/v1/admin/auth-audit-logs"]["get"]["parameters"]["query"];
 export type SharedAuditQuery = paths["/api/v1/admin/shared-audit-events"]["get"]["parameters"]["query"];
 export type UsageQuery = paths["/api/v1/admin/ai-usage"]["get"]["parameters"]["query"];
+export type WorkbenchOverviewQuery = paths["/api/v1/admin/workbench/overview"]["get"]["parameters"]["query"];
 export type WorkbenchAccessGrantQuery = paths["/api/v1/admin/workbench/access-grants"]["get"]["parameters"]["query"];
 export type WorkbenchAiDiagnosticsQuery = paths["/api/v1/admin/workbench/ai-diagnostics"]["get"]["parameters"]["query"];
 export type WorkbenchProjectsQuery = paths["/api/v1/admin/workbench/projects"]["get"]["parameters"]["query"];
@@ -86,8 +87,8 @@ export function createGovernanceClient(client = createApiClient()) {
     async usage(query: UsageQuery = {}) {
       return unwrap(await client.GET("/api/v1/admin/ai-usage", { params: { query } }));
     },
-    async workbenchOverview() {
-      return unwrap(await client.GET("/api/v1/admin/workbench/overview"));
+    async workbenchOverview(query: WorkbenchOverviewQuery = {}) {
+      return unwrap(await client.GET("/api/v1/admin/workbench/overview", { params: { query } }));
     },
     async workbenchUserProfile(userId: string) {
       return unwrap(await client.GET("/api/v1/admin/workbench/users/{user_id}/profile", {

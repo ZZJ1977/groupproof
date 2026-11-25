@@ -13,6 +13,13 @@ class WorkbenchDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+OverviewWindow = Literal["7d", "30d", "all"]
+
+
+class OverviewFilters(WorkbenchDTO):
+    window: OverviewWindow = "all"
+
+
 class AiErrorCountDTO(WorkbenchDTO):
     error_code: str
     count: int = Field(ge=0)
@@ -57,7 +64,9 @@ class OverviewProofPipelineDTO(WorkbenchDTO):
     github_synced_24h: int = Field(ge=0)
     github_stale_links: int = Field(ge=0)
     feishu_chat_links: int = Field(ge=0)
+    feishu_messages_total: int = Field(ge=0)
     feishu_messages_7d: int = Field(ge=0)
+    feishu_messages_window: int = Field(ge=0)
     upload_completed_count: int = Field(ge=0)
     upload_total_bytes: int = Field(ge=0)
     upload_rejected_count: int = Field(ge=0)
@@ -110,11 +119,14 @@ class SystemHealthItemDTO(WorkbenchDTO):
 
 class AdminOverviewDTO(WorkbenchDTO):
     generated_at: AwareDatetime
+    window: OverviewWindow
     users: OverviewUsersDTO
     queues: OverviewQueuesDTO
     teaching: OverviewTeachingDTO
     proof_pipeline: OverviewProofPipelineDTO
+    ai: OverviewAiDTO
     ai_7d: OverviewAiDTO
+    activity_series: list[OverviewActivityDayDTO]
     activity_7d: list[OverviewActivityDayDTO]
     recent_users: list[OverviewRecentUserDTO]
     system_health: list[SystemHealthItemDTO]
@@ -358,6 +370,7 @@ class FeishuLinkHealthDTO(WorkbenchDTO):
 
 class FeishuIntegrationStatusDTO(WorkbenchDTO):
     total_links: int = Field(ge=0)
+    messages_total: int = Field(ge=0)
     messages_7d: int = Field(ge=0)
     deleted_messages_7d: int = Field(ge=0)
     attachments_total: int = Field(ge=0)

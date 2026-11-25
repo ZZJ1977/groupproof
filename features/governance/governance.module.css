@@ -1765,6 +1765,19 @@
   transition: height 180ms ease;
 }
 
+.pulseChartCompact {
+  gap: 3px;
+}
+
+.pulseChartCompact .pulseBars {
+  gap: 1px;
+}
+
+.pulseChartCompact .pulseBar {
+  width: 3px;
+  border-radius: 2px 2px 0 0;
+}
+
 .pulseLegend {
   display: flex;
   flex-wrap: wrap;

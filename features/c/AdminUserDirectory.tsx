@@ -38,7 +38,7 @@ export function AdminUserDirectory() {
   const detail = useQuery({ queryKey: ["c-admin-user", userId, selectedId], queryFn: () => client.adminUser(selectedId!), enabled: Boolean(selectedId) && list.isSuccess && !list.isFetching, staleTime: 0, gcTime: 0, retry: false });
   const result = list.isSuccess && !list.isFetching ? list.data : undefined;
   return <div className={styles.page}>
-    <Header title="用户管理" description="按服务器权限查询用户基本资料，每页 10 条。" />
+    <Header title="用户管理" />
     <form key={query.toString()} className={styles.filters} onSubmit={(event) => {
       event.preventDefault(); const input = new FormData(event.currentTarget);
       const next = Object.fromEntries(["q", "name", "email", "student_id", "college", "role", "status"].map((key) => [key, String(input.get(key) ?? "").trim() || null]));

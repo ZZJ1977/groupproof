@@ -17,7 +17,7 @@ export function Header({
   actions,
 }: {
   title: string;
-  description: string;
+  description?: string;
   breadcrumb?: string;
   /** New name for breadcrumb; breadcrumb remains supported by existing pages. */
   eyebrow?: string;

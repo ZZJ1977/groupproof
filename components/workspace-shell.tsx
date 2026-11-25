@@ -333,7 +333,6 @@ export function WorkspaceShell({ children, kind }: { children: ReactNode; kind: 
           })}
         </> : nav.map((item) => <NavLink key={item.href} item={item} label={item.label} pathname={pathname} search={searchParams.toString()} />)}
       </nav>
-      <div className="gp-sidebar-footer">{ts("footer")}</div>
     </aside>
     <div className="gp-main">
       <header className="gp-topbar">

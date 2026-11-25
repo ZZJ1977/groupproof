@@ -6161,6 +6161,9 @@ export interface components {
         AdminOverviewDTO: {
             /** Activity 7D */
             activity_7d: components["schemas"]["OverviewActivityDayDTO"][];
+            /** Activity Series */
+            activity_series: components["schemas"]["OverviewActivityDayDTO"][];
+            ai: components["schemas"]["OverviewAiDTO"];
             ai_7d: components["schemas"]["OverviewAiDTO"];
             /**
              * Generated At
@@ -6175,6 +6178,11 @@ export interface components {
             system_health: components["schemas"]["SystemHealthItemDTO"][];
             teaching: components["schemas"]["OverviewTeachingDTO"];
             users: components["schemas"]["OverviewUsersDTO"];
+            /**
+             * Window
+             * @enum {string}
+             */
+            window: "7d" | "30d" | "all";
         };
         /** AdminProjectAuditItemDTO */
         AdminProjectAuditItemDTO: {
@@ -8815,6 +8823,8 @@ export interface components {
             links: components["schemas"]["FeishuLinkHealthDTO"][];
             /** Messages 7D */
             messages_7d: number;
+            /** Messages Total */
+            messages_total: number;
             /** Total Links */
             total_links: number;
         };
@@ -9910,6 +9920,10 @@ export interface components {
             feishu_chat_links: number;
             /** Feishu Messages 7D */
             feishu_messages_7d: number;
+            /** Feishu Messages Total */
+            feishu_messages_total: number;
+            /** Feishu Messages Window */
+            feishu_messages_window: number;
             /** Github Repo Links */
             github_repo_links: number;
             /** Github Stale Links */
@@ -14808,7 +14822,9 @@ export interface operations {
     };
     get_overview_api_v1_admin_workbench_overview_get: {
         parameters: {
-            query?: never;
+            query?: {
+                window?: "7d" | "30d" | "all";
+            };
             header?: {
                 "X-Demo-User-Id"?: string | null;
             };

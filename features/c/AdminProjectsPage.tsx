@@ -464,7 +464,6 @@ export function AdminProjectsPage() {
     <div className={styles.page}>
       <Header
         title="项目管理"
-        description="统一查看与治理全平台项目（覆盖未加入课程的独立项目与课程项目），严守元数据隔离边界。"
         action={
           <button
             type="button"

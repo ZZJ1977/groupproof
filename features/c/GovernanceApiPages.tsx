@@ -277,7 +277,6 @@ function CoursesPage() {
   return <>
     <Header
       title="课程管理"
-      description="管理课程草稿、发布和结束，掌握各班师生与项目规模，所有状态流转记录完整历史。"
       action={
         <div className={styles.actions}>
           <button type="button" className={styles.button} onClick={refresh}>刷新课程</button>
@@ -545,7 +544,6 @@ function AccessPage() {
   return <>
     <Header
       title="访问审批"
-      description="审批精确的项目、任务或证据只读范围；不会扩大申请范围，支持对已生效授权提前吊销。"
       action={tab === "requests" ? <button type="button" className={styles.button} onClick={refresh}>刷新申请</button> : null}
     />
     <div className={styles.segmentedTabs} role="tablist" aria-label="访问治理视图">
@@ -666,7 +664,7 @@ function BusinessLogsPage() {
     enabled: Boolean(data?.items.length),
   });
   if (denied) return <ErrorBox error={denied} retry={() => window.location.reload()} label="重新验证管理权限" />;
-  return <><Header title="全站业务日志" description="查询全站业务审计服务提供的操作、历史角色、对象与变更摘要；来源未接通时显示不可用。" action={<button className={styles.button} type="button" onClick={() => void list.refetch()}>刷新日志</button>} />
+  return <><Header title="全站业务日志" action={<button className={styles.button} type="button" onClick={() => void list.refetch()}>刷新日志</button>} />
     <CompactUserSelect label="操作人" value={filters.actor_id ?? ""} onUnauthorized={block} onChange={(value) => updateQuery({ actor: value || null, page: null, log: null })} />
     <form key={formKey} className={styles.filters} onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget); const targetType = inputValue(input, "target_type"); updateQuery({ action: inputValue(input, "action") || null, actor_role: inputValue(input, "actor_role") || null, target_type: targetType || null, target_id: targetType === (filters.target_type ?? "") ? filters.target_id ?? null : null, result: inputValue(input, "result") || null, since: isoTime(inputValue(input, "since")) || null, until: isoTime(inputValue(input, "until")) || null, page: null, log: null }); }}>
       <Field label="操作时角色"><select className={styles.select} name="actor_role" aria-label="操作时角色" defaultValue={filters.actor_role ?? ""}><option value="">全部角色</option>{Object.entries(auditRoles).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="对象类型"><select className={styles.select} name="target_type" aria-label="对象类型" defaultValue={filters.target_type ?? ""}><option value="">全部对象</option>{Object.entries(targetTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
@@ -759,7 +757,7 @@ function AuthLogsPage() {
   }
   const updateFilters = (patch: Record<string, string | null>) => updateQuery({ ...patch, auth_page: null, auth_log: null });
   return <>
-    <Header title="认证日志" description="来源：认证服务已保存的认证、注册和账号管理事件；不包含全站业务操作。" action={<button className={styles.button} type="button" disabled={list.isFetching || detail.isFetching} onClick={() => void refresh()}>刷新认证日志</button>} />
+    <Header title="认证日志" action={<button className={styles.button} type="button" disabled={list.isFetching || detail.isFetching} onClick={() => void refresh()}>刷新认证日志</button>} />
     <Notice>认证来源只记录事件、结果和变更字段名；操作时角色、操作理由、变更前后值均未记录。</Notice>
     <ErrorBox error={denied ?? list.error} retry={() => void refresh()} />
     {list.isFetching && <p role="status">正在读取认证日志…</p>}
@@ -846,7 +844,7 @@ function SharedLogsPage() {
       shared_since: since || null, shared_until: until || null, shared_page: null});
   }
   return <>
-    <Header title="共享服务操作记录" description="按操作时角色和执行结果查询共享服务的操作记录。"
+    <Header title="共享服务操作记录"
       action={<button className={styles.button} type="button" disabled={result.isFetching} onClick={() => void refresh()}>刷新操作记录</button>} />
     <ErrorBox error={denied ?? result.error} retry={() => void refresh()} />
     {result.isFetching && <p role="status">正在读取操作记录…</p>}
@@ -1147,7 +1145,6 @@ function UsagePage() {
   return <>
     <Header
       title="AI 使用情况"
-      description="OpenRouter 模型调用看板：结合真实用量、失败错误码归因、P50/P95 延迟与课程/用户消耗排行排查故障。"
       action={<button className={styles.button} type="button" onClick={() => { void result.refetch(); void diagnostics.refetch(); }}><RefreshCw size={15} aria-hidden="true" />刷新用量</button>}
     />
     <Box className={styles.usageFilterPanel} title="查询范围" action={<span className={styles.muted}>数据来源：OpenRouter 用量记录</span>}>
