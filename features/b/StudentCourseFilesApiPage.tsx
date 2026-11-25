@@ -83,11 +83,6 @@ export function StudentCourseFilesApiPage({ courseId }: { courseId: string }) {
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
       <PageHeader
         title={tr("课程文件")}
-        description={
-          data.is_grouped
-            ? tr("当前已加入课程小组，可查看全班公开资料与仅分组可见资料。")
-            : tr("当前尚未加入课程小组，仅显示全班公开资料；加入小组后可查看分组资料。")
-        }
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href={`/courses/${encodeURIComponent(courseId)}/rules`} className={`${secondary} !min-h-9 !px-3 !text-xs`}>

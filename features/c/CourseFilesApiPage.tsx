@@ -138,7 +138,7 @@ function CourseFilesPage({ courseId, userId, query, updateQuery, selectedId, ver
   }
   if (!enabled) return <EmptyState title="课程地址无效" description="请从已授权课程入口打开资料页。" />;
   return <>
-    <PageHeader title="课程资料" description="查看课程提供的资料与允许访问的版本历史。" actions={<button type="button" className={apiButton} disabled={busy || list.isFetching} onClick={() => void refresh()}>刷新课程资料</button>} />
+    <PageHeader title="课程资料" actions={<button type="button" className={apiButton} disabled={busy || list.isFetching} onClick={() => void refresh()}>刷新课程资料</button>} />
 
     {denial ? <CourseFailure error={denial} retry={() => void refresh()} /> : <>
       {rows?.can_write && (!selectedId || file) && (!versionId || referencedVersion) && <FileUploadForm key={selectedId ?? "new"} scope="course" scopeId={courseId} target={file} denied={fail} saved={() => { setNotice("课程资料草稿版本已保存。"); void refresh(); }} />}

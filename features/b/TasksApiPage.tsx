@@ -38,10 +38,10 @@ const filterSchema = {
   page: { kind: "int", default: 1, min: 1 },
   collapsed: { kind: "list" },
 } as const;
-const titles: Record<BTaskView, [string, string]> = {
-  tree: ["任务列表", "按交付标准与真实代码证据追踪进度；支持父子层级展开、筛选及一键进入验收与证据核对。"],
-  board: ["任务看板", "按状态分列。拖动卡片会先确认，再交给任务执行接口处理。"],
-  list: ["任务列表", "按交付标准与真实代码证据追踪进度；支持父子层级展开、筛选及一键进入验收与证据核对。"],
+const titles: Record<BTaskView, string> = {
+  tree: "任务列表",
+  board: "任务看板",
+  list: "任务列表",
 };
 
 const cardClass = "rounded-2xl border border-slate-200/85 bg-white shadow-xs";
@@ -189,7 +189,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     }
   };
 
-  const [title, description] = titles[view];
+  const title = titles[view];
   const items = page.data?.items ?? [];
   const rootItems = items.filter((r) => !r.parent_task_id);
   const weightSum = rootItems.reduce((s, r) => s + Math.max(1, r.weight), 0);
@@ -209,7 +209,6 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   return <div className="space-y-3">
     <PageHeader
       title={tr(title)}
-      description={tr(description)}
       actions={<div className="flex flex-wrap items-center gap-2">
         {myAiPassedTasks.length > 0 && (
           <button

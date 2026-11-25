@@ -94,7 +94,7 @@ export function GroupsApiPage({ courseId }: { courseId: string }) {
         description={
           data
             ? tr("组队截止 {0}{1}", { 0: dateOnly(data.formation_deadline, tr("未设置")), 1: data.formation_open ? "" : tr("（已截止）") })
-            : tr("查看小组、创建或加入小组。")
+            : undefined
         }
         actions={
           data && !data.my_group_id && data.formation_open ? (

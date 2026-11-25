@@ -379,7 +379,6 @@ export function FeishuCollaborationInsightsPanel({
           <div className="space-y-4">
             <Section
               title="AI 协作判断依据"
-              description="结论由 AI 基于下方真实群聊记录提炼，仅供参考，不自动替代人工任务验收。"
               surface
             >
               <div className="space-y-2.5 text-xs">

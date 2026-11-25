@@ -395,7 +395,6 @@ function EvidencePage({ userId, projectId }: { userId: string; projectId: string
   return <>
     <PageHeader
       title="项目证据"
-      description={access?.project.name ?? "正在验证项目权限…"}
       actions={<div className="flex flex-wrap items-center gap-2">
         {selectedTask && <Link className={apiButton} href={`/projects/${projectId}/tasks`}>返回任务列表</Link>}
         {access?.permissions.can_capture_evidence && (

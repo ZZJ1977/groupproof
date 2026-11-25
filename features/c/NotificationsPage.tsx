@@ -56,7 +56,7 @@ export function NotificationsPage() {
   if (!localWorkspace) {
     return (
       <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
-        <PageHeader title={t("title")} description={t("description")} />
+        <PageHeader title={t("title")} />
         <Panel><p role="status">{td("notificationsNotConnected")}</p></Panel>
       </div>
     );
@@ -66,7 +66,6 @@ export function NotificationsPage() {
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
       <PageHeader
         title={t("title")}
-        description={t("description")}
         actions={
           <Button
             variant="outline"

@@ -342,7 +342,6 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
           <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">
             {submission ? "证据确认与任务验收" : (task?.title ?? "任务执行")}
           </h1>
-          <p className="mt-0.5 text-xs text-slate-500">{access?.project.name ?? "正在验证项目权限…"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link className={compactBtn} href={`/projects/${projectId}/tasks`}>

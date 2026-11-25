@@ -98,7 +98,7 @@ function DiscussionsPage({ projectId, userId, fixedTaskId, visible }: { projectI
   if (!visible) return null;
   if (!enabled) return <EmptyState title="项目地址无效" />;
   return <>
-    <PageHeader title="项目讨论" description={access?.project.name ?? "正在验证项目权限…"} actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新讨论</button>} />
+    <PageHeader title="项目讨论" actions={<button className={apiButton} disabled={busy || context.isFetching || list.isFetching} onClick={() => void refresh()}>刷新讨论</button>} />
     {denial ? <ApiFailure error={denial} retry={() => void refresh()} /> : <>
       {context.isFetching && <p role="status">正在验证项目权限…</p>}{context.isError && <ApiFailure error={context.error} retry={() => void refresh()} />}
       {access && <>

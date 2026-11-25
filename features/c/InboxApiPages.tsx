@@ -137,7 +137,6 @@ function Notifications({ userId }: { userId: string }) {
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
       <PageHeader
         title={t("notificationsTitle")}
-        description={t("notificationsDesc")}
         actions={
           <button type="button" className={compactBtn} disabled={busy || list.isFetching} onClick={() => void refresh()}>
             <RefreshCw size={13} className={list.isFetching ? "animate-spin" : ""} />
@@ -343,7 +342,6 @@ function ActionItems({ userId }: { userId: string }) {
     <div className="space-y-3.5 [&_.gp-page-header]:!mb-0">
       <PageHeader
         title={t("actionsTitle")}
-        description={t("actionsDesc")}
         actions={
           <button className={compactBtn} type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>
             <RefreshCw size={13} className={list.isFetching ? "animate-spin" : ""} />

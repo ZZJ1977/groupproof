@@ -188,7 +188,6 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
               <span className="text-xs text-slate-400">{tr("基于需求基线 v{0}", { 0: data.baseline_version_no })}</span>
             )}
           </div>
-          <p className="gp-page-description">{tr("与队友一起拆解任务、写明验收标准并分配负责人；全员确认并冻结计划后，即可进入任务执行与提交验收。")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {data.can_lead && data.status === "draft" && (
@@ -964,13 +963,12 @@ function ConfirmationsSection({
   const confirmedCount = plan.confirmations.filter((c) => c.state === "confirmed").length;
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-900">{tr("分配确认")}</h2>
         <span className="text-xs tabular-nums text-slate-400">
           {confirmedCount}/{plan.confirmations.length}
         </span>
       </div>
-      <p className="mb-2.5 text-[11px] text-slate-500">{tr("每位组员确认分给自己的任务；任务改动后，相关的人需要重新确认。")}</p>
       {plan.confirmations.length === 0 ? (
         <p className="text-xs text-slate-400">{tr("暂无")}</p>
       ) : (
@@ -1423,10 +1421,7 @@ function SuggestionsSection({
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">{tr("AI 任务建议")}</h2>
-          <p className="text-[11px] text-slate-400">{tr("建议只列在这里，不会自动进入计划，也不会改动已有任务；逐条采纳或忽略。")}</p>
-        </div>
+        <h2 className="text-sm font-semibold text-slate-900">{tr("AI 任务建议")}</h2>
         {plan.can_edit && (
           <button type="button" className={compactSecondary} disabled={generate.isPending} onClick={() => generate.mutate()}>
             <Sparkles size={13} />{generate.isPending ? tr("生成中…") : tr("生成建议")}
