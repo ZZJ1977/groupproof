@@ -15,7 +15,6 @@ import { tr } from "@/lib/i18n/tr";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate } from "@/lib/utils";
 import { useUrlQuery } from "./use-url-query";
-import { MyAccessRequests } from "./GovernanceApiPages";
 import { HomeInboxPanel } from "./HomeInboxPanel";
 
 const client = createCClient();
@@ -570,7 +569,6 @@ export function HomeApiPage() {
         </>
       )}
 
-      <MyAccessRequests key={userId} />
       <CreateProjectModal open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );

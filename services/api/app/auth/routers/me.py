@@ -14,7 +14,13 @@ from ..db import get_db
 from ..envelope import EnvelopeRoute, JSONResponse
 from ..errors import AppError
 from ..guard import AuthContext, check_csrf, require_session
-from ..models import AcademicIdentityCheck, AuthIdentity, TeacherApplication, utcnow
+from ..models import (
+    AcademicIdentityCheck,
+    AuthIdentity,
+    TeacherApplication,
+    VerifiedGithubIdentity,
+    utcnow,
+)
 from ..security import check_email_format, email_domain_allowed, within_recent_auth
 from ..services import (
     acceptance,
@@ -95,6 +101,7 @@ def _me_payload(context: AuthContext, db: DbSession) -> dict:
     )
     latest = max(apps, key=lambda a: a.created_at) if apps else None
     google_identity = next((i for i in user.identities if i.provider == "google"), None)
+    verified_github = db.get(VerifiedGithubIdentity, user.id)
     return {
         "user": {
             "id": user.id,
@@ -103,6 +110,7 @@ def _me_payload(context: AuthContext, db: DbSession) -> dict:
             "studentId": user.student_id,
             "college": user.college,
             "githubUsername": user.github_username,
+            "githubLogin": verified_github.login if verified_github else None,
             "feishuAccount": user.feishu_account,
             "requestedIdentity": user.requested_identity,
             "roles": list(user.roles or []),  # 只读：实际角色由服务端授予
@@ -187,8 +195,12 @@ def patch_profile(
     check_csrf(request, context)
     if context.facts["accountState"] == "disabled":
         raise AppError("ACCOUNT_DISABLED", 403)
-    payload = body.model_dump(exclude_none=False, exclude={"expectedVersion"})
-    payload = {key: value for key, value in payload.items() if value is not None}
+    raw = body.model_dump(exclude_unset=True, exclude={"expectedVersion"})
+    payload = {
+        key: value
+        for key, value in raw.items()
+        if value is not None or key in {"studentId", "college", "githubUsername", "feishuAccount"}
+    }
     accounts.update_profile(
         db,
         context.user,

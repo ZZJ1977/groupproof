@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { CheckCircle2, LogOut, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, CheckCircle2, LogOut, Mail, RotateCw, ShieldCheck, UserRound } from "lucide-react";
 import { Avatar } from "@/components/common";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { AccountSessionProvider, useAccountSession } from "@/components/account-session";
 import { authClient, ApiError, type SessionDTO } from "@/lib/api/auth-client";
@@ -17,12 +17,12 @@ import { returnTargetFromSearch } from "@/lib/auth/return-to";
 import { cn } from "@/lib/utils";
 
 const STEPS = [
-  { id: "profile", icon: UserRound, href: "/account/profile", labelKey: "profile", screen: 101, optional: false },
-  { id: "email", icon: Mail, href: "/account/email", labelKey: "email", screen: 102, optional: false },
-  { id: "identity", icon: CheckCircle2, href: "/account/status", labelKey: "review", screen: 103, optional: false },
-  { id: "security", icon: ShieldCheck, href: "/account/security", labelKey: "security", screen: 104, optional: true },
+  { id: "profile", icon: UserRound, href: "/account/profile", labelKey: "profile", shortKey: "profile", screen: 101, optional: false },
+  { id: "email", icon: Mail, href: "/account/email", labelKey: "email", shortKey: "email", screen: 102, optional: false },
+  { id: "identity", icon: CheckCircle2, href: "/account/status", labelKey: "review", shortKey: "reviewShort", screen: 103, optional: false },
+  { id: "security", icon: ShieldCheck, href: "/account/security", labelKey: "security", shortKey: "security", screen: 104, optional: true },
 ] as const;
-const pageWidth = "mx-auto w-full max-w-[1160px] px-4 sm:px-8";
+const pageWidth = "mx-auto w-full max-w-[1160px] px-4 sm:px-6";
 
 /** 注册受限布局：只有本人资料、语言与退出；不挂载工作区导航、搜索、通知 */
 export function AccountShell({ session, screen, children }: { session: SessionDTO; screen: number; children: ReactNode }) {
@@ -61,20 +61,25 @@ function AccountChrome({ screen, children }: { screen: number; children: ReactNo
   return (
     <div className="min-h-screen bg-[var(--gp-canvas)]">
       <header className="border-b border-border bg-white">
-        <div className={`${pageWidth} flex min-h-16 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2`}>
-        <Link href="/account" className="text-xl font-bold tracking-tight">GroupProof</Link>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <LanguageSwitcher compact />
-          <span className="hidden items-center gap-2 px-2 text-[12px] text-[#53637d] sm:inline-flex"><Avatar name={displayName} size={28} />{displayName}</span>
-          <Button variant="ghost" size="sm" onClick={() => void logout()} loading={loggingOut}>
-            <LogOut size={15} />{t("logout")}
-          </Button>
-        </div>
+        <div className={`${pageWidth} flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5`}>
+          <Link href="/home" className="text-lg font-bold tracking-tight text-[var(--gp-ink)] hover:text-primary">
+            GroupProof
+          </Link>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <LanguageSwitcher compact />
+            <span className="hidden items-center gap-2 px-2 text-xs text-[#53637d] sm:inline-flex">
+              <Avatar name={displayName} size={26} />
+              {displayName}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => void logout()} loading={loggingOut}>
+              <LogOut size={14} />{t("logout")}
+            </Button>
+          </div>
         </div>
       </header>
-      <main className={`${pageWidth} pb-12 pt-6 sm:pt-8`}>
+      <main className={`${pageWidth} pb-8 pt-4 sm:pt-5`}>
         <RegistrationNavigation screen={screen} />
-        <div className="mt-8 min-w-0 sm:mt-10">{children}</div>
+        <div className="mt-4 min-w-0">{children}</div>
       </main>
     </div>
   );
@@ -125,14 +130,66 @@ function RegistrationNavigation({ screen }: { screen: number }) {
     return step ? t(`steps.${step.labelKey}`) : "";
   });
 
+  const isActiveWorkspace = session.accountState === "active" && session.sessionScope === "full";
+
+  if (isActiveWorkspace) {
+    return (
+      <section aria-label={t("menuAccount")} className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-border bg-white px-3.5 py-2 shadow-2xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-sm font-semibold text-[var(--gp-ink)]">{t("menuAccount")}</h2>
+            <ProgressStatusChip statusKey={progress.statusKey} statusTone={progress.statusTone} />
+          </div>
+          <nav aria-label={t("menuAccount")} className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-100/90 p-1">
+            {STEPS.map((step) => {
+              const selected = step.screen === screen;
+              return (
+                <Link
+                  key={step.href}
+                  href={step.href}
+                  aria-current={selected ? "page" : undefined}
+                  className={cn(
+                    "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                    selected
+                      ? "bg-white font-semibold text-[var(--gp-action)] shadow-2xs"
+                      : "text-[var(--gp-ink-soft)] hover:text-[var(--gp-ink)]",
+                  )}
+                >
+                  {t(`steps.${step.shortKey}`)}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="flex items-center gap-2">
+            {progress.loadFailed && (
+              <Button variant="outline" size="sm" onClick={() => void refetch()}>
+                <RotateCw size={13} />{t("progress.retry")}
+              </Button>
+            )}
+            <Link href="/home" className={buttonVariants({ size: "sm" })}>
+              <ArrowLeft size={14} aria-hidden="true" />
+              {t("backToHome")}
+            </Link>
+          </div>
+        </div>
+        {progress.loginEmailPending && (
+          <p className="text-xs leading-5 text-[var(--gp-warning)]">
+            {t("progress.loginEmailHint")}{" "}
+            <Link href="/account/security" className="gp-link">{t("steps.security")}</Link>
+          </p>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section aria-label={t("steps.title")}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-[var(--gp-ink-soft)]">{session.accountState === "active" ? t("menuAccount") : t("steps.title")}</h2>
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2.5">
+        <h2 className="text-sm font-medium text-[var(--gp-ink-soft)]">{t("steps.title")}</h2>
         <ProgressStatusChip statusKey={progress.statusKey} statusTone={progress.statusTone} />
       </div>
       <nav aria-label={t("menuAccount")}>
-      <ol className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+      <ol className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
         {STEPS.map((step) => {
           const stage = progress.stages.find((item) => item.id === step.id);
           const selected = step.screen === screen;
@@ -142,14 +199,14 @@ function RegistrationNavigation({ screen }: { screen: number }) {
               <Link
                 href={step.href}
                 aria-current={selected ? "page" : undefined}
-                className={cn("flex h-full min-h-20 items-center gap-3 rounded-xl border p-3 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:p-4",
+                className={cn("gp-stage-row flex h-full min-h-14 items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                   selected ? "border-primary bg-[var(--gp-action-soft)]" : "border-border bg-white hover:bg-slate-50")}
                 data-tone={stage?.tone ?? "unknown"}
               >
-                <span className={cn("hidden size-9 shrink-0 place-items-center rounded-full sm:grid", stage?.complete ? "bg-teal-50 text-[var(--gp-success)]" : "bg-slate-100 text-[var(--gp-ink-soft)]")} aria-hidden="true"><Icon size={18} /></span>
-                <span className="min-w-0 text-sm">
-                  <span className="block font-medium text-[var(--gp-ink)]">{t(`steps.${step.labelKey}`)}</span>
-                  <span className={cn("mt-1 block text-xs", stage?.complete ? "text-[var(--gp-success)]" : "text-[var(--gp-ink-soft)]")}>
+                <span className={cn("hidden size-8 shrink-0 place-items-center rounded-full sm:grid", stage?.complete ? "bg-teal-50 text-[var(--gp-success)]" : "bg-slate-100 text-[var(--gp-ink-soft)]")} aria-hidden="true"><Icon size={16} /></span>
+                <span className="min-w-0 text-xs">
+                  <span className="block font-semibold text-[var(--gp-ink)]">{t(`steps.${step.labelKey}`)}</span>
+                  <span className={cn("gp-stage-state mt-0.5 block text-[11px]", stage?.complete ? "text-[var(--gp-success)]" : "text-[var(--gp-ink-soft)]")}>
                     {step.optional ? t("progress.optionalTag") : stage?.stateKey ? t(`progress.${stage.stateKey}`) : ""}
                   </span>
                 </span>
@@ -159,14 +216,14 @@ function RegistrationNavigation({ screen }: { screen: number }) {
         })}
       </ol>
       </nav>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--gp-ink-soft)]">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2.5 text-sm text-[var(--gp-ink-soft)]">
         {progress.loadFailed && (
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
             <RotateCw size={13} />{t("progress.retry")}
           </Button>
         )}
         {progress.canEnter && <Button
-          className="ml-auto"
+          className="gp-enter-button ml-auto"
           size="sm"
           disabled={!progress.canEnter || entering}
           aria-busy={entering || undefined}

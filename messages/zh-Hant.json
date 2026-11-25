@@ -238,11 +238,29 @@
       "reauth": "請重新登入 GroupProof，再管理 GitHub 綁定。"
     },
     "backToLogin": "返回登入",
+    "backToHome": "返回首頁",
+    "collaboration": {
+      "title": "外部協作帳號",
+      "subtitle": "關聯 GitHub 與飛書帳號後，可自動比對程式碼提交、群聊實名與貢獻統計。",
+      "githubNotBound": "未綁定",
+      "githubDeclared": "已填寫（未 OAuth 驗證）",
+      "githubManage": "管理綁定",
+      "githubBind": "前往綁定",
+      "feishuTitle": "飛書帳號",
+      "feishuLinked": "已關聯",
+      "feishuNotLinked": "未關聯",
+      "feishuPlaceholder": "輸入飛書 Open ID（如 ou_...）或飛書帳號",
+      "feishuHint": "用於自動關聯飛書群聊實名與貢獻統計",
+      "feishuSave": "儲存飛書",
+      "feishuSaved": "飛書帳號已儲存。",
+      "feishuCleared": "已清除飛書帳號關聯。"
+    },
     "steps": {
       "title": "註冊進度",
       "profile": "基本資料",
       "email": "學校信箱",
       "review": "身分確認（學生/教師）",
+      "reviewShort": "身分確認",
       "security": "帳號安全"
     },
     "menuAccount": "個人中心",
@@ -416,6 +434,7 @@
       "code": "驗證碼",
       "verify": "驗證",
       "googleTitle": "Google 帳號",
+      "linkedAccountsTitle": "第三方與協作帳號關聯",
       "googleLinked": "已綁定",
       "googleBoundEmail": "已綁定 Google 信箱：{email}",
       "googleUnboundNote": "尚未關聯 Google 帳號。關聯後可用 Google 登入進入本帳戶。",

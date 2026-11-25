@@ -238,11 +238,29 @@
       "reauth": "Sign in to GroupProof again to manage the GitHub connection."
     },
     "backToLogin": "Back to sign in",
+    "backToHome": "Back to Home",
+    "collaboration": {
+      "title": "Connected collaboration accounts",
+      "subtitle": "Connect GitHub and Feishu to attribute commits, chat activity, and contributions to you.",
+      "githubNotBound": "Not connected",
+      "githubDeclared": "Self-declared (unverified)",
+      "githubManage": "Manage",
+      "githubBind": "Connect",
+      "feishuTitle": "Feishu account",
+      "feishuLinked": "Connected",
+      "feishuNotLinked": "Not set",
+      "feishuPlaceholder": "Enter Feishu Open ID (e.g. ou_...) or account",
+      "feishuHint": "Used to match your real name and contributions in Feishu group chats.",
+      "feishuSave": "Save Feishu",
+      "feishuSaved": "Feishu account saved.",
+      "feishuCleared": "Feishu account cleared."
+    },
     "steps": {
       "title": "Registration progress",
       "profile": "Basic profile",
       "email": "School email",
       "review": "Identity confirmation (student/teacher)",
+      "reviewShort": "Identity",
       "security": "Account security"
     },
     "menuAccount": "Account center",
@@ -416,6 +434,7 @@
       "code": "Code",
       "verify": "Verify",
       "googleTitle": "Google account",
+      "linkedAccountsTitle": "Third-party & collaboration accounts",
       "googleLinked": "Linked",
       "googleBoundEmail": "Linked Google email: {email}",
       "googleUnboundNote": "No Google account linked yet. Link it to sign in to this account with Google.",

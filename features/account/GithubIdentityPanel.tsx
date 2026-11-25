@@ -4,11 +4,20 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { GitBranch } from "lucide-react";
 import { Feedback, Panel, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { ApiError, authClient } from "@/lib/api/auth-client";
 
-export function GithubIdentityPanel({ userId, csrfToken }: { userId: string; csrfToken: string }) {
+export function GithubIdentityPanel({
+  userId,
+  csrfToken,
+  embedded = false,
+}: {
+  userId: string;
+  csrfToken: string;
+  embedded?: boolean;
+}) {
   const t = useTranslations("account.githubIdentity");
   const search = useSearchParams();
   const queryClient = useQueryClient();
@@ -47,27 +56,66 @@ export function GithubIdentityPanel({ userId, csrfToken }: { userId: string; csr
     }
   }
 
+  const content = (
+    <div className="space-y-2">
+      {embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <GitBranch size={15} className="shrink-0 text-slate-700" aria-hidden="true" />
+            <span className="text-xs font-semibold text-[var(--gp-ink)]">{t("title")}</span>
+            {identity?.login && <StatusBadge status="verified" label={t("verified")} />}
+          </div>
+          {identity?.login && (
+            <span className="break-all font-mono text-xs font-semibold text-[var(--gp-ink)]">@{identity.login}</span>
+          )}
+        </div>
+      )}
+      <p className="text-xs leading-5 text-[var(--gp-ink-soft)]">{t("description")}</p>
+      {status.isPending && <p className="text-xs text-[var(--gp-muted)]" role="status">{t("loading")}</p>}
+      {status.isError && (
+        <div className="space-y-2">
+          <Feedback tone="error">{t("loadFailed")}</Feedback>
+          <Button variant="outline" size="sm" onClick={() => void status.refetch()}>{t("retry")}</Button>
+        </div>
+      )}
+      {identity?.login ? (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {!embedded && (
+            <>
+              <StatusBadge status="verified" label={t("verified")} />
+              <span className="break-all text-xs font-semibold">@{identity.login}</span>
+            </>
+          )}
+          <Button variant="outline" size="sm" loading={pending} disabled={!csrfToken} onClick={() => void change("unlink")}>
+            {t("unlink")}
+          </Button>
+        </div>
+      ) : identity?.available ? (
+        <Button size="sm" loading={pending} disabled={!csrfToken} onClick={() => void change("link")}>
+          {t("link")}
+        </Button>
+      ) : identity && (
+        <p className="text-xs text-[var(--gp-muted)]" role="status">{t("unavailable")}</p>
+      )}
+      {feedback && (feedback !== "unavailable" || identity?.available) && (
+        <Feedback tone={feedback === "linked" || feedback === "unlinked" ? "success" : feedback === "cancelled" ? "info" : "error"}>
+          {t(feedback)}
+        </Feedback>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div id="github-identity" className="scroll-mt-6">
+        {content}
+      </div>
+    );
+  }
+
   return (
     <div id="github-identity" className="scroll-mt-6">
-      <Panel title={t("title")}>
-        <p className="text-sm leading-6 text-[var(--gp-ink-soft)]">{t("description")}</p>
-        {status.isPending && <p className="mt-3 text-sm" role="status">{t("loading")}</p>}
-        {status.isError && <div className="mt-3 space-y-3"><Feedback tone="error">{t("loadFailed")}</Feedback><Button variant="outline" onClick={() => void status.refetch()}>{t("retry")}</Button></div>}
-        {identity?.login ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <StatusBadge status="verified" label={t("verified")} />
-            <span className="break-all text-sm font-medium">@{identity.login}</span>
-            <Button variant="outline" loading={pending} disabled={!csrfToken} onClick={() => void change("unlink")}>{t("unlink")}</Button>
-          </div>
-        ) : identity?.available ? (
-          <Button className="mt-3" loading={pending} disabled={!csrfToken} onClick={() => void change("link")}>{t("link")}</Button>
-        ) : identity && (
-          <p className="mt-3 text-sm text-[var(--gp-muted)]" role="status">{t("unavailable")}</p>
-        )}
-        {feedback && (feedback !== "unavailable" || identity?.available) && (
-          <Feedback className="mt-3" tone={feedback === "linked" || feedback === "unlinked" ? "success" : feedback === "cancelled" ? "info" : "error"}>{t(feedback)}</Feedback>
-        )}
-      </Panel>
+      <Panel title={t("title")}>{content}</Panel>
     </div>
   );
 }
