@@ -412,7 +412,7 @@ export function LanguageSwitcher({ compact = false, className }: { compact?: boo
           portalTarget,
         )}
 
-      <p className="u448-live" role="status" aria-live="polite">
+      <p className="u448-live" aria-live="polite" aria-atomic="true">
         {liveText}
       </p>
     </div>

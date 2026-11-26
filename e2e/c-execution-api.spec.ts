@@ -411,8 +411,11 @@ test("C2 completeness check saves the draft before opening page 16 and restores 
   const candidateTitle = page.getByRole("textbox", { name: "证据标题", exact: true });
   await candidateTitle.fill("仍在编辑的候选证据");
   const check = page.getByRole("button", { name: "检查完整性", exact: true });
-  page.once("dialog", (dialog) => dialog.dismiss());
   await check.click();
+  const discardDialog = page.getByRole("dialog", { name: "放弃未保存的候选证据" });
+  await expect(discardDialog).toBeVisible();
+  await discardDialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(discardDialog).toHaveCount(0);
   expect(writes).toHaveLength(0);
   await expect(candidateTitle).toHaveValue("仍在编辑的候选证据");
   await candidateTitle.fill("");

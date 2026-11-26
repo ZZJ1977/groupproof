@@ -166,7 +166,7 @@ test("侧边栏我的项目页分离独立/课程项目，支持弹窗轻量化�
   });
 
   await page.goto("/home");
-  const projectsNav = page.locator('nav a[href="/projects"]');
+  const projectsNav = page.locator('nav:not([aria-hidden="true"]) a[href="/projects"]');
   await expect(projectsNav).toBeVisible();
   await expect(projectsNav).toContainText("我的项目");
   await projectsNav.click();
