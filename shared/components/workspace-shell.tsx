@@ -1,8 +1,8 @@
 "use client";
 
-/* WorkspaceShell — unified sidebar, topbar & mobile drawer with Lucian UX/UI Prompt #412 motion language */
+/* WorkspaceShell — unified sidebar, topbar & mobile drawer with Lucian UX/UI Prompt #412 motion language & #429 search autocomplete */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -30,6 +30,7 @@ import { AdminEnvironmentSwitcher } from "@/admin/components/admin-environment-s
 import { TeacherWorkbenchProvider } from "@/teacher/components/TeacherWorkbenchContext";
 import { TeacherQuickSwitcher } from "@/teacher/components/TeacherQuickSwitcher";
 import "@/shared/styles/lux-shell.css";
+import "@/shared/components/lux/search-autocomplete.css";
 
 type NavItem = {
   label: string;
@@ -54,6 +55,62 @@ const iconByKey: Record<string, typeof Home> = {
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const SIDEBAR_SCROLL_STORAGE_PREFIX = "gp-sidebar-scroll:";
 const sidebarScrollMemory = new Map<string, number>();
+
+type SearchDisplayItem = {
+  id: string;
+  kind: SearchItemKind;
+  label: string;
+  subtitle: string | null;
+  type: string;
+  href: string;
+};
+
+type SearchFoldSnapshot = {
+  query: string;
+  loading: boolean;
+  error: boolean;
+  results: SearchDisplayItem[];
+  activeIndex: number;
+};
+
+function renderHighlightedMatch(text: string, query: string): ReactNode {
+  const needle = query.trim();
+  if (!needle) return text;
+  const lowerText = text.toLowerCase();
+  const lowerNeedle = needle.toLowerCase();
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let matchIdx = lowerText.indexOf(lowerNeedle, cursor);
+  let keyIdx = 0;
+  while (matchIdx !== -1) {
+    if (matchIdx > cursor) {
+      parts.push(text.slice(cursor, matchIdx));
+    }
+    parts.push(
+      <strong key={keyIdx++} className="u429-hl">
+        {text.slice(matchIdx, matchIdx + needle.length)}
+      </strong>,
+    );
+    cursor = matchIdx + needle.length;
+    matchIdx = lowerText.indexOf(lowerNeedle, cursor);
+  }
+  if (parts.length === 0) return text;
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+  return parts;
+}
+
+function renderSearchKindIcon(itemKind: SearchItemKind): ReactNode {
+  switch (itemKind) {
+    case "course": return <BookOpen size={14} aria-hidden="true" />;
+    case "project": return <FolderKanban size={14} aria-hidden="true" />;
+    case "task": return <CheckSquare size={14} aria-hidden="true" />;
+    case "evidence": return <FileCheck size={14} aria-hidden="true" />;
+    case "file": return <FileText size={14} aria-hidden="true" />;
+    case "user": return <UserRound size={14} aria-hidden="true" />;
+  }
+}
 
 type NavPillRect = { top: number; left: number; width: number; height: number };
 const lastPillRectMemory = new Map<string, NavPillRect>();
@@ -567,7 +624,20 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [shortcutHint, setShortcutHint] = useState("⌘K");
+  const [searchFoldSnapshot, setSearchFoldSnapshot] = useState<SearchFoldSnapshot | null>(null);
+  const [searchPill, setSearchPill] = useState<{
+    top: number;
+    height: number;
+    visible: boolean;
+    animate: boolean;
+  }>({ top: 0, height: 40, visible: false, animate: false });
+  const searchBaseId = useId();
   const searchBoxRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchOptionRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const lastSearchNavRef = useRef<"keyboard" | "mouse">("keyboard");
+  const hadVisibleSearchPillRef = useRef(false);
   const sidebarRef = useRef<HTMLElement | null>(null);
   const mobileMenuBtnRef = useRef<HTMLButtonElement | null>(null);
   const topNavRef = useRef<HTMLElement | null>(null);
@@ -612,9 +682,17 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
   }, [isTeacher]);
 
   useEffect(() => {
-    if (!isTeacher) return;
+    if (typeof navigator === "undefined") return;
+    const platform = navigator.platform || navigator.userAgent || "";
+    if (!/Mac|iPhone|iPad|iPod/i.test(platform)) {
+      setShortcutHint("Ctrl K");
+    }
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      if (isTeacher) {
         if (teacherSwitcherOpen) {
           event.preventDefault();
           setTeacherSwitcherOpen(false);
@@ -630,6 +708,26 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
         if (isEditable) return;
         event.preventDefault();
         setTeacherSwitcherOpen(true);
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isEditable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        Boolean(target?.isContentEditable);
+      if (isEditable) return;
+
+      const input = searchInputRef.current;
+      if (!input || input.getClientRects().length === 0) return;
+      event.preventDefault();
+      input.focus({ preventScroll: true });
+      input.select();
+      if (input.value.trim()) {
+        setSearchFoldSnapshot(null);
+        setSearchOpen(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1015,16 +1113,6 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
-        setSearchOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, []);
-
   const searchKindLabel = (itemKind: SearchItemKind): string => {
     switch (itemKind) {
       case "course": return ts("searchTypeCourse");
@@ -1044,11 +1132,12 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     retry: false,
   });
 
-  const searchResults = useMemo(() => {
+  const searchResults = useMemo<SearchDisplayItem[]>(() => {
     if (!search.trim()) return [];
     if (!mockShell) {
       return (remoteSearch.data?.items ?? []).map((item) => ({
         id: `${item.kind}-${item.id}`,
+        kind: item.kind,
         label: item.title,
         subtitle: item.subtitle ?? null,
         type: searchKindLabel(item.kind),
@@ -1057,12 +1146,89 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     }
     const term = search.toLowerCase();
     return [
-      ...data.projects.filter((item) => item.name.toLowerCase().includes(term)).map((item) => ({ id: `project-${item.id}`, label: item.name, subtitle: null, type: ts("searchTypeProject"), href: `/projects/${item.id}` })),
-      ...data.tasks.filter((item) => item.title.toLowerCase().includes(term)).map((item) => ({ id: `task-${item.id}`, label: item.title, subtitle: null, type: ts("searchTypeTask"), href: `/projects/${item.projectId}/tasks/${item.id}` })),
-      ...data.courses.filter((item) => item.name.toLowerCase().includes(term)).map((item) => ({ id: `course-${item.id}`, label: item.name, subtitle: null, type: ts("searchTypeCourse"), href: "/courses" })),
+      ...data.projects.filter((item) => item.name.toLowerCase().includes(term)).map((item) => ({ id: `project-${item.id}`, kind: "project" as SearchItemKind, label: item.name, subtitle: null, type: ts("searchTypeProject"), href: `/projects/${item.id}` })),
+      ...data.tasks.filter((item) => item.title.toLowerCase().includes(term)).map((item) => ({ id: `task-${item.id}`, kind: "task" as SearchItemKind, label: item.title, subtitle: null, type: ts("searchTypeTask"), href: `/projects/${item.projectId}/tasks/${item.id}` })),
+      ...data.courses.filter((item) => item.name.toLowerCase().includes(term)).map((item) => ({ id: `course-${item.id}`, kind: "course" as SearchItemKind, label: item.name, subtitle: null, type: ts("searchTypeCourse"), href: "/courses" })),
     ].slice(0, 8);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.courses, data.projects, data.tasks, mockShell, remoteSearch.data, search, ts]);
+
+  const isSearchDropdownOpen = Boolean(searchOpen && search.trim());
+  const isSearchLoading = !mockShell && (debouncedSearch !== search.trim() || remoteSearch.isFetching);
+  const isSearchError = !mockShell && remoteSearch.isError;
+  const searchListboxId = `${searchBaseId}-search-listbox`;
+
+  const closeSearchDropdown = useCallback(
+    (clearQuery: boolean) => {
+      if (searchOpen && search.trim()) {
+        setSearchFoldSnapshot({
+          query: search,
+          loading: !mockShell && (debouncedSearch !== search.trim() || remoteSearch.isFetching),
+          error: !mockShell && remoteSearch.isError,
+          results: searchResults,
+          activeIndex,
+        });
+      }
+      setSearchOpen(false);
+      setActiveIndex(-1);
+      if (clearQuery) {
+        setSearch("");
+        setDebouncedSearch("");
+      }
+    },
+    [activeIndex, debouncedSearch, mockShell, remoteSearch.isError, remoteSearch.isFetching, search, searchOpen, searchResults],
+  );
+
+  useEffect(() => {
+    if (!searchFoldSnapshot) return;
+    const timer = window.setTimeout(() => setSearchFoldSnapshot(null), 220);
+    return () => window.clearTimeout(timer);
+  }, [searchFoldSnapshot]);
+
+  useEffect(() => {
+    if (!isSearchDropdownOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
+        closeSearchDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [closeSearchDropdown, isSearchDropdownOpen]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (!isSearchDropdownOpen) {
+      if (!searchFoldSnapshot) {
+        hadVisibleSearchPillRef.current = false;
+        setSearchPill((prev) => (prev.visible ? { ...prev, visible: false, animate: false } : prev));
+      }
+      return;
+    }
+    if (activeIndex < 0 || activeIndex >= searchResults.length) {
+      hadVisibleSearchPillRef.current = false;
+      setSearchPill((prev) => (prev.visible ? { ...prev, visible: false, animate: false } : prev));
+      return;
+    }
+    const activeEl = searchOptionRefs.current[activeIndex];
+    if (!activeEl) {
+      hadVisibleSearchPillRef.current = false;
+      setSearchPill((prev) => (prev.visible ? { ...prev, visible: false, animate: false } : prev));
+      return;
+    }
+    const top = activeEl.offsetTop;
+    const height = activeEl.offsetHeight;
+    const animate = hadVisibleSearchPillRef.current;
+    hadVisibleSearchPillRef.current = true;
+    setSearchPill({ top, height, visible: true, animate });
+  }, [isSearchDropdownOpen, searchFoldSnapshot, activeIndex, searchResults.length, debouncedSearch]);
+
+  useEffect(() => {
+    if (!isSearchDropdownOpen || lastSearchNavRef.current !== "keyboard" || activeIndex < 0) return;
+    const activeEl = searchOptionRefs.current[activeIndex];
+    if (activeEl && typeof activeEl.scrollIntoView === "function") {
+      activeEl.scrollIntoView({ block: "nearest" });
+    }
+  }, [isSearchDropdownOpen, activeIndex, searchResults.length]);
 
   const logout = async () => {
     // 真实注销：先获取当前会话 CSRF token 撤销服务端会话，再清理本地状态回登录页
@@ -1079,97 +1245,185 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     }
   };
 
+  const activeSearchView = isSearchDropdownOpen
+    ? {
+        query: search,
+        loading: isSearchLoading,
+        error: isSearchError,
+        results: searchResults,
+        activeIndex,
+      }
+    : searchFoldSnapshot;
+
   const searchInputNode = (
-    <div ref={searchBoxRef} className="gp-search relative min-w-0 flex-1">
-      <Search size={15} className="shrink-0" />
-      <input
-        value={search}
-        onFocus={() => setSearchOpen(true)}
-        onChange={(event) => {
-          setSearch(event.target.value);
-          setSearchOpen(true);
-          setActiveIndex(-1);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setSearchOpen(false);
-            setActiveIndex(-1);
-          } else if (event.key === "ArrowDown" && searchResults.length) {
-            event.preventDefault();
-            setSearchOpen(true);
-            setActiveIndex((prev) => (prev + 1) % searchResults.length);
-          } else if (event.key === "ArrowUp" && searchResults.length) {
-            event.preventDefault();
-            setSearchOpen(true);
-            setActiveIndex((prev) => (prev <= 0 ? searchResults.length - 1 : prev - 1));
-          } else if (event.key === "Enter" && activeIndex >= 0 && searchResults[activeIndex]) {
-            event.preventDefault();
-            const chosen = searchResults[activeIndex];
-            setSearch("");
-            setSearchOpen(false);
-            setActiveIndex(-1);
-            router.push(chosen.href);
+    <div ref={searchBoxRef} className={cn("ux u429", isSearchDropdownOpen && "is-open")}>
+      <div
+        className="gp-search u429-f"
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest("button")) {
+            searchInputRef.current?.focus();
           }
         }}
-        placeholder={ts("searchPlaceholder")}
-        aria-label={ts("searchLabel")}
-      />
-      {search && (
-        <button
-          type="button"
-          className="rounded p-0.5 text-[#8b99aa] hover:text-[#42526e]"
-          aria-label={tc("close")}
+      >
+        <Search size={16} aria-hidden="true" />
+        <input
+          ref={searchInputRef}
+          className="u429-in"
+          type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isSearchDropdownOpen}
+          aria-controls={searchListboxId}
+          aria-activedescendant={
+            isSearchDropdownOpen && activeIndex >= 0 && searchResults[activeIndex]
+              ? `${searchBaseId}-opt-${activeIndex}`
+              : undefined
+          }
+          autoComplete="off"
+          spellCheck={false}
+          value={search}
+          onFocus={() => {
+            setSearchFoldSnapshot(null);
+            setSearchOpen(true);
+          }}
           onClick={() => {
-            setSearch("");
-            setDebouncedSearch("");
+            if (!searchOpen && search.trim()) {
+              setSearchFoldSnapshot(null);
+              setSearchOpen(true);
+            }
+          }}
+          onChange={(event) => {
+            setSearchFoldSnapshot(null);
+            setSearch(event.target.value);
+            setSearchOpen(true);
             setActiveIndex(-1);
           }}
-        >
-          <X size={13} />
-        </button>
-      )}
-      {searchOpen && search.trim() && (
-        <div
-          role="listbox"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              if (isSearchDropdownOpen) {
+                event.preventDefault();
+                event.stopPropagation();
+                closeSearchDropdown(false);
+              }
+            } else if (event.key === "ArrowDown" && searchResults.length) {
+              event.preventDefault();
+              lastSearchNavRef.current = "keyboard";
+              setSearchFoldSnapshot(null);
+              setSearchOpen(true);
+              setActiveIndex((prev) => (prev + 1) % searchResults.length);
+            } else if (event.key === "ArrowUp" && searchResults.length) {
+              event.preventDefault();
+              lastSearchNavRef.current = "keyboard";
+              setSearchFoldSnapshot(null);
+              setSearchOpen(true);
+              setActiveIndex((prev) => (prev <= 0 ? searchResults.length - 1 : prev - 1));
+            } else if (event.key === "Enter" && isSearchDropdownOpen && activeIndex >= 0 && searchResults[activeIndex]) {
+              event.preventDefault();
+              const chosen = searchResults[activeIndex];
+              closeSearchDropdown(true);
+              router.push(chosen.href);
+            }
+          }}
+          placeholder={ts("searchPlaceholder")}
           aria-label={ts("searchLabel")}
-          className={cn(
-            "absolute top-10 z-40 max-h-[360px] w-[min(380px,88vw)] overflow-y-auto rounded-[8px] border border-[#dfe6ee] bg-white p-1.5 shadow-lg",
-            isGlobalStudentTopNav ? "right-0" : "left-0",
-          )}
+        />
+        {search ? (
+          <button
+            type="button"
+            className="u429-clear"
+            aria-label={tc("close")}
+            onClick={() => {
+              closeSearchDropdown(true);
+              searchInputRef.current?.focus({ preventScroll: true });
+            }}
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        ) : (
+          <kbd className="u429-kb hidden sm:inline-grid" aria-hidden="true">
+            {shortcutHint}
+          </kbd>
+        )}
+      </div>
+      <div
+        className={cn(
+          "u429-dd",
+          isGlobalStudentTopNav ? "is-align-right" : "is-align-left",
+        )}
+        aria-hidden={!isSearchDropdownOpen}
+        onMouseDown={(event) => event.preventDefault()}
+      >
+        <div
+          id={searchListboxId}
+          role={isSearchDropdownOpen ? "listbox" : undefined}
+          aria-label={isSearchDropdownOpen ? ts("searchLabel") : undefined}
+          className="u429-lb"
         >
-          {!mockShell && (debouncedSearch !== search.trim() || remoteSearch.isFetching) ? (
-            <div className="px-3 py-2 text-[12px] text-[#8b99aa]" role="status">{ts("searching")}</div>
-          ) : !mockShell && remoteSearch.isError ? (
-            <div className="px-3 py-2 text-[12px] text-[#b91c1c]" role="alert">{ts("searchError")}</div>
-          ) : searchResults.length ? (
-            searchResults.map((result, index) => (
-              <Link
-                key={result.id}
-                role="option"
-                aria-selected={index === activeIndex}
-                href={result.href}
-                onClick={() => {
-                  setSearch("");
-                  setSearchOpen(false);
-                  setActiveIndex(-1);
-                }}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-[5px] px-3 py-2 text-[12px] hover:bg-[#eef4ff]",
-                  index === activeIndex && "bg-[#eef4ff]",
-                )}
-              >
-                <span className="shrink-0 rounded bg-[#f2f5fa] px-1.5 py-0.5 text-[11px] font-medium text-[#53637d]">{result.type}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-[#17243c]">{result.label}</span>
-                  {result.subtitle && <span className="block truncate text-[11px] text-[#7b899e]">{result.subtitle}</span>}
-                </span>
-              </Link>
-            ))
-          ) : (
-            <div className="px-3 py-2 text-[12px] text-[#8b99aa]">{ts("searchNoResult")}</div>
-          )}
+          {activeSearchView ? (
+            activeSearchView.loading ? (
+              <div className="u429-no" role="status">{ts("searching")}</div>
+            ) : activeSearchView.error ? (
+              <div className="u429-no is-error" role="alert">{ts("searchError")}</div>
+            ) : activeSearchView.results.length ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className={cn("u429-pill", !searchPill.animate && "is-instant")}
+                  style={
+                    {
+                      "--py": `${searchPill.top}px`,
+                      "--ph": `${searchPill.height}px`,
+                      "--po": searchPill.visible ? 1 : 0,
+                    } as CSSProperties
+                  }
+                />
+                {activeSearchView.results.map((result, index) => {
+                  const isActive = index === activeSearchView.activeIndex;
+                  return (
+                    <Link
+                      key={result.id}
+                      ref={(el) => {
+                        searchOptionRefs.current[index] = el;
+                      }}
+                      id={`${searchBaseId}-opt-${index}`}
+                      role="option"
+                      aria-selected={isActive}
+                      href={result.href}
+                      style={{ "--i": Math.min(index, 10) } as CSSProperties}
+                      onMouseEnter={() => {
+                        lastSearchNavRef.current = "mouse";
+                        setActiveIndex(index);
+                      }}
+                      onClick={() => {
+                        closeSearchDropdown(true);
+                      }}
+                      className="u429-o"
+                    >
+                      <span className="u429-ic" aria-hidden="true">
+                        {renderSearchKindIcon(result.kind)}
+                      </span>
+                      <span className="u429-text">
+                        <span className="u429-t">
+                          {renderHighlightedMatch(result.label, activeSearchView.query)}
+                        </span>
+                        {result.subtitle && (
+                          <span className="u429-sub">
+                            {renderHighlightedMatch(result.subtitle, activeSearchView.query)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="u429-m">{result.type}</span>
+                      <span className="u429-en" aria-hidden="true">↵</span>
+                    </Link>
+                  );
+                })}
+              </>
+            ) : (
+              <div className="u429-no">{ts("searchNoResult")}</div>
+            )
+          ) : null}
         </div>
-      )}
+      </div>
     </div>
   );
 
@@ -1415,7 +1669,7 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
     <div className="gp-main">
       <header className="gp-topbar">
         <div className={cn("gp-topbar-inner", isGlobalStudentTopNav && "gp-topbar-inner-centered")}>
-          <div className={cn("gp-topbar-left", isTeacher && "min-w-0 flex-1")}>
+          <div className={cn("gp-topbar-left", (isTeacher || !isGlobalStudentTopNav) && "min-w-0 flex-1")}>
             <button
               ref={mobileMenuBtnRef}
               type="button"
@@ -1433,12 +1687,12 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
                 type="button"
                 onClick={() => setTeacherSwitcherOpen(true)}
                 aria-label={tr("快速跳转")}
-                className="flex h-9 w-full max-w-[360px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface-subtle,#f8f9fa)] px-3 text-left text-xs text-[var(--gp-muted,#646a73)] transition-colors hover:border-[#c9ced6] hover:bg-white hover:text-[var(--gp-ink,#1f2329)] active:scale-[0.99]"
+                className="ux u429-trigger u429-f"
               >
-                <Search size={15} className="shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{tr("搜索班级、模块或学生...")}</span>
-                <kbd className="hidden rounded border border-[var(--gp-border,#dee0e3)] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--gp-muted,#646a73)] sm:inline">
-                  ⌘K
+                <Search size={16} aria-hidden="true" />
+                <span className="u429-trigger-text">{tr("搜索班级、模块或学生...")}</span>
+                <kbd className="u429-kb hidden sm:inline-grid" aria-hidden="true">
+                  {shortcutHint}
                 </kbd>
               </button>
             ) : isGlobalStudentTopNav ? (
@@ -1490,7 +1744,7 @@ function WorkspaceShellInner({ children, kind }: { children: ReactNode; kind: "s
               searchInputNode
             )}
           </div>
-          <div className={cn("gp-topbar-right", isTeacher && "shrink-0")}>
+          <div className={cn("gp-topbar-right", (isTeacher || !isGlobalStudentTopNav) && "shrink-0")}>
             {isGlobalStudentTopNav && searchInputNode}
             {kind === "admin" && <AdminEnvironmentSwitcher />}
             <LanguageSwitcher compact />
