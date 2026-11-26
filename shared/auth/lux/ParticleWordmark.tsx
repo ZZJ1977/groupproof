@@ -19,12 +19,20 @@ interface Particle {
 const WORD = "GroupProof";
 const MARGIN = 3;
 
-function buildTargets(word: string, width: number, height: number): Array<[number, number]> {
+function getDotSize(width: number): number {
+  return width < 480 ? 2.6 : 3.2;
+}
+
+function buildTargets(
+  word: string,
+  width: number,
+  height: number,
+): { pts: Array<[number, number]>; step: number } {
   const offscreen = document.createElement("canvas");
   offscreen.width = width;
   offscreen.height = height;
   const ctx = offscreen.getContext("2d");
-  if (!ctx) return [];
+  if (!ctx) return { pts: [], step: width < 480 ? 3 : 4 };
 
   const maxW = width * 0.88;
   const maxH = height * 0.66;
@@ -67,9 +75,9 @@ function buildTargets(word: string, width: number, height: number): Array<[numbe
     return out;
   };
 
-  let step = width < 480 ? 2 : 3;
+  let step = width < 480 ? 3 : 4;
   let pts = sample(step);
-  while (pts.length > 1350 && step < 6) {
+  while (pts.length > 1850 && step < 6) {
     step += 1;
     pts = sample(step);
   }
@@ -80,7 +88,7 @@ function buildTargets(word: string, width: number, height: number): Array<[numbe
     pts[k] = pts[j];
     pts[j] = tmp;
   }
-  return pts;
+  return { pts, step };
 }
 
 function clamp(val: number, min: number, max: number): number {
@@ -120,7 +128,9 @@ export function ParticleWordmark({ className }: { className?: string }) {
     };
 
     const assign = (scatterInitial: boolean) => {
-      const pts = buildTargets(WORD, W, H);
+      const { pts, step } = buildTargets(WORD, W, H);
+      const dot = getDotSize(W);
+      const jitter = Math.max(0, (step - dot) * 0.75);
       let minX = W;
       let maxX = 0;
       for (let i = 0; i < pts.length; i++) {
@@ -139,8 +149,8 @@ export function ParticleWordmark({ className }: { className?: string }) {
         let h: number;
 
         if (i < pts.length) {
-          tx = clamp(pts[i][0] + (Math.random() - 0.5) * 1.2, MARGIN, W - MARGIN);
-          ty = clamp(pts[i][1] + (Math.random() - 0.5) * 1.2, MARGIN, H - MARGIN);
+          tx = clamp(pts[i][0] + (Math.random() - 0.5) * jitter, MARGIN, W - MARGIN);
+          ty = clamp(pts[i][1] + (Math.random() - 0.5) * jitter, MARGIN, H - MARGIN);
           on = true;
           h = clamp(((tx - minX) / span) * 300, 0, 300);
         } else {
@@ -180,16 +190,16 @@ export function ParticleWordmark({ className }: { className?: string }) {
     const draw = () => {
       cx.clearRect(0, 0, W, H);
       cx.globalCompositeOperation = "source-over";
-      const dot = W < 480 ? 2.1 : 2.5;
+      const dot = getDotSize(W);
       const half = dot * 0.5;
 
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         const sp = Math.min(1, Math.hypot(p.vx, p.vy) / 300);
         const hue = Math.max(0, Math.min(315, p.h + sp * 15));
-        const sat = (65 + sp * 10).toFixed(0);
-        const light = (60 - sp * 6).toFixed(0);
-        const alpha = p.on ? 0.85 : 0.14;
+        const sat = (82 + sp * 8).toFixed(0);
+        const light = (48 - sp * 6).toFixed(0);
+        const alpha = p.on ? 1 : 0.3;
         cx.fillStyle = `hsla(${hue.toFixed(0)},${sat}%,${light}%,${alpha})`;
         cx.fillRect(p.x - half, p.y - half, dot, dot);
       }

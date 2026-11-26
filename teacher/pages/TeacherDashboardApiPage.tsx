@@ -13,6 +13,7 @@ import { useWorkspace } from "@/shared/lib/workspace";
 
 const feishuCard =
   "rounded-[12px] border border-[var(--gp-border,#dee0e3)] bg-[var(--gp-surface,#ffffff)] p-5 shadow-[var(--gp-shadow-card)]";
+const feishuCardInteractive = `${feishuCard} gp-card-interactive hover:border-[var(--gp-action,#3370ff)]/50`;
 
 export function TeacherDashboardApiPage() {
   const { userId } = useWorkspace();
@@ -37,7 +38,7 @@ export function TeacherDashboardApiPage() {
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      <div className={cn(feishuCard, "flex flex-wrap items-center justify-between gap-3")}>
+      <div className={cn(feishuCardInteractive, "flex flex-wrap items-center justify-between gap-3")}>
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-semibold text-[var(--gp-ink,#1f2329)]">
             <Activity size={20} className="shrink-0 text-[var(--gp-action,#3370ff)]" />
@@ -89,7 +90,7 @@ export function TeacherDashboardApiPage() {
         data && (
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className={cn(feishuCard, "min-w-0")}>
+              <div className={cn(feishuCardInteractive, "min-w-0")}>
                 <div className="text-xs font-medium text-[var(--gp-muted,#646a73)]">
                   {tr("跨班待处理事项")}
                 </div>
@@ -97,7 +98,7 @@ export function TeacherDashboardApiPage() {
                   {data.total_pending_actions}
                 </div>
               </div>
-              <div className={cn(feishuCard, "min-w-0")}>
+              <div className={cn(feishuCardInteractive, "min-w-0")}>
                 <div className="text-xs font-medium text-[var(--gp-muted,#646a73)]">
                   {tr("我管理的班级")}
                 </div>
@@ -111,7 +112,7 @@ export function TeacherDashboardApiPage() {
                   })}
                 </div>
               </div>
-              <div className={cn(feishuCard, "min-w-0")}>
+              <div className={cn(feishuCardInteractive, "min-w-0")}>
                 <div className="text-xs font-medium text-[var(--gp-muted,#646a73)]">
                   {tr("在研项目总数")}
                 </div>
@@ -119,7 +120,7 @@ export function TeacherDashboardApiPage() {
                   {data.total_projects}
                 </div>
               </div>
-              <div className={cn(feishuCard, "min-w-0")}>
+              <div className={cn(feishuCardInteractive, "min-w-0")}>
                 <div className="text-xs font-medium text-[var(--gp-muted,#646a73)]">
                   {tr("全局风险队伍")}
                 </div>
@@ -135,7 +136,7 @@ export function TeacherDashboardApiPage() {
               </div>
             </div>
 
-            <div className={cn(feishuCard, "min-w-0 space-y-4")}>
+            <div className={cn(feishuCardInteractive, "min-w-0 space-y-4")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-base font-semibold text-[var(--gp-ink,#1f2329)]">
                   {tr("授课班级概览")}
@@ -198,7 +199,7 @@ export function TeacherDashboardApiPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              <div className={cn(feishuCard, "min-w-0 space-y-3")}>
+              <div className={cn(feishuCardInteractive, "min-w-0 space-y-3")}>
                 <div className="flex items-center gap-2 text-base font-semibold text-[var(--gp-ink,#1f2329)]">
                   <CheckSquare size={17} className="shrink-0 text-[var(--gp-action,#3370ff)]" />
                   <span>{tr("跨班级待处理事项")}</span>
@@ -251,7 +252,7 @@ export function TeacherDashboardApiPage() {
                 )}
               </div>
 
-              <div className={cn(feishuCard, "min-w-0 space-y-3")}>
+              <div className={cn(feishuCardInteractive, "min-w-0 space-y-3")}>
                 <div className="flex items-center gap-2 text-base font-semibold text-[var(--gp-ink,#1f2329)]">
                   <AlertTriangle size={17} className="shrink-0 text-[var(--gp-warning,#d97706)]" />
                   <span>{tr("全局风险与近期动态")}</span>

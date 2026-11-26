@@ -534,13 +534,7 @@ export function LoginPage() {
         <div className="absolute bottom-[-220px] left-1/3 h-[520px] w-[520px] rounded-full bg-[#5fe0d0]/25 blur-[120px]" />
         <div className="absolute inset-0 bg-[radial-gradient(#14213b14_1px,transparent_1px)] [background-size:26px_26px] [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
       </div>
-      <header className="relative z-10 flex h-[68px] items-center justify-between gap-2 px-4 sm:px-[max(24px,4vw)]">
-        <div className="flex shrink-0 items-center gap-2.5 text-[19px] font-extrabold tracking-tight text-[#14213b] sm:text-[22px]">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#246bfa] to-[#7c5cff] text-white shadow-[0_8px_18px_-6px_rgba(36,107,250,0.7)]">
-            <ShieldCheck size={19} />
-          </span>
-          GroupProof
-        </div>
+      <header className="relative z-10 flex h-[68px] items-center justify-end gap-2 px-4 sm:px-[max(24px,4vw)]">
         <div className="flex items-center gap-3 text-[12px] text-[#66748b] sm:gap-5">
           <span className="hidden whitespace-nowrap sm:inline">{t("helpCenter")}</span>
           <span className="hidden whitespace-nowrap sm:inline">{t("about")}</span>
