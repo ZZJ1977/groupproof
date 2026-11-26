@@ -24,6 +24,20 @@ e2e/ · scripts/   Playwright 端到端测试、工程契约校验与 Railway �
 
 完整目录树、核心领域不变量与 OpenAPI 同步流程见 [开发与架构设计](docs/guide/ARCHITECTURE.md)。
 
+## 分支分工与协作流程
+
+| 分支 | 负责人 / 定位 | 说明 |
+| --- | --- | --- |
+| `A_task` | **卓子杰（组长）** | 基础底座、认证、GitHub/飞书/AI 集成与架构整合 |
+| `B_task` | **郑元泰** | 课程、小组、需求基线、任务规划与教师端工作台 |
+| `C_task` | **杨凯景** | 任务执行、证据中心、活动记录、讨论区与文件管理 |
+| `D_task` | **林星妤** | 自动验收、贡献核算、风险巡检与项目报告 |
+| `admin-backend` | 独立部署分支 | 管理后台独立部署 |
+| `develop` | 测试集成主干 | 集成开发分支变更，自动部署 Staging |
+| `main` | 生产发布主干 | 稳定发布分支，自动部署 Production |
+
+**开发与合入规范**：每位成员均在各自对应的开发分支（`A_task` / `B_task` / `C_task` / `D_task`）上进行开发，完成后向 `develop` 提交 Pull Request；通过自动化 CI 检查并由组长（卓子杰）审查批准后合并至 `develop`（触发 Staging 测试环境部署），经验证无误后由组长同步推送至 `main` 发布生产环境。
+
 ## 快速开始
 
 需要 Node.js 20–24、Python 3.12（`services/api/.venv`）与 Docker：
