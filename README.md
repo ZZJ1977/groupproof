@@ -49,10 +49,15 @@ flowchart LR
   WORKER --> EXT
 ```
 
-## 当前版本状态
+## 当前版本状态与在线地址
 
-- **Staging 与 Production 已上线**：Web / API / Worker 全链路已部署运行，**管理员治理控制台 (`admin/`)** 独立部署并在线可用。
-- **全量能力落地**：核心认证（含 Google OIDC 与高校邮箱验证）、双轨项目协作、GitHub / 飞书实时同步、AI 验收与贡献核算 v2 均已接入真实后端（Alembic 迁移头 `0047`）。
+- **全链路已上线**：Web / API / Worker 已部署运行，核心认证（Google OIDC + 高校邮箱验证）、双轨项目协作、GitHub / 飞书实时同步、AI 验收与贡献核算 v2 均已接入真实后端（Alembic 迁移头 `0047`）。
+
+| 端 / 环境 | 访问地址 | 对应分支 | 说明 |
+| --- | --- | --- | --- |
+| **生产环境（学生端 / 教师端）** | https://groupproof-production-production.up.railway.app | `main` | 正式环境，含学生工作台与教师 5-Hub 工作台 |
+| **测试环境（学生端 / 教师端）** | https://groupproof-staging-production.up.railway.app | `develop` | 集成预发环境，供功能联调与回归验收 |
+| **管理员治理控制台（Admin）** | https://web-production-650d4574.up.railway.app/admin | `admin-backend` | 独立部署，支持用户/教师审核、AI 用量监控与环境切换 |
 
 ## 技术栈与快速入口
 
