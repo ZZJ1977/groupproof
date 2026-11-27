@@ -61,4 +61,4 @@ npm run dev                # 自动拉起后端容器 + alembic 迁移，启动 
 | [前端页面地图](docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md) | 全站路由与 56 个设计页 + 教师/管理端扩展页映射 |
 | [系统技术方案](docs/architecture/TECHNICAL_PLAN.md) | 系统架构设计与后端模块边界说明 |
 | [部署架构文档](docs/architecture/DEPLOYMENT.md) | Staging / Production 环境与基础设施部署参考 |
-| [并发压力测试报告](docs/testing/STRESS_TEST_REPORT.md) | 本地 PG16 读写/锁竞争与 Railway Staging 公网并发实测数据及瓶颈分析 |
+| [并发压力测试与 AI 成本测算报告](docs/testing/STRESS_TEST_REPORT.md) | 本地 PG16 读写/锁竞争、Staging 公网并发与 OpenRouter 全流程 AI 成本实测 |
