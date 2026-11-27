@@ -1,304 +1,231 @@
-# 开发与发布流程
+# 开发与协作流程
 
-## 环境要求
+> 更新日期：2026-11-27 · 代码基线：`origin/develop == origin/main`（Alembic 迁移头 `0047`）  
+> 返回 [项目首页](../../README.md) · 另见 [本地开发、测试与部署指引](../guide/LOCAL_AND_DEPLOY.md) · [部署基线](DEPLOYMENT.md)
 
-- Node.js >=20 <25
-- npm 10 或兼容版本
-- Docker Desktop（本地构建容器时需要）
+## 1. 环境要求
+
+- **Node.js**：`>=20 <25`
+- **npm**：10 或兼容版本
+- **Python**：`3.12`（建议在 `services/api/.venv` 安装依赖）
+- **Docker Desktop**：运行本地 PostgreSQL（`pgvector/pgvector:pg16` 或 PG 18）与 Redis 容器
 
 检查版本：
 
-~~~bash
+```bash
 node --version
 npm --version
-~~~
+python3 --version
+```
 
-## 本地开发
+## 2. 本地全栈开发
 
-~~~bash
+当前前端默认运行在**真实 API 模式**（`NEXT_PUBLIC_APP_MODE=real`、`NEXT_PUBLIC_ENABLE_MOCKS=false`），通过 `/api/v1/*` 同源代理连接本地 FastAPI 后端与 PostgreSQL。
+
+```bash
 git clone git@github.com:ZZJ1977/groupproof.git
 cd groupproof
 npm ci
-cp .env.example .env.local
-npm run dev
-~~~
-
-打开 http://localhost:3000。当前前端默认使用 Mock 数据，不需要启动后端、数据库或 Redis。
-
-要启动 A1 的全套本地环境（Web、FastAPI、worker、PostgreSQL/pgvector 和 Redis）：
-
-~~~bash
 cp .env.example .env
+docker compose up -d postgres redis
+npm run dev
+```
+
+- `npm run dev` 会自动调用 `scripts/dev-backend.sh`（执行 `alembic upgrade head` 并启动 Uvicorn `:8000`）同时启动 Next.js 开发服（`:3000`）。
+- **严禁执行 `source .env`**：bash/zsh 会吞掉反斜杠（破坏 `STUDENT_ID_PATTERN=^\S{4,20}$` 等正则值）。Pydantic 会自动读取仓库根目录 `.env`。
+- 如需一键拉起包含 Worker 与调度的全套 Docker 容器（Web、API、worker、risk-scheduler、report-worker、PostgreSQL、Redis）：
+
+```bash
 docker compose up --build
-~~~
+```
 
-服务地址：Web `http://localhost:3000`，API 健康检查 `http://localhost:8000/healthz`，PostgreSQL `localhost:5432`，Redis `localhost:6379`。停止并删除本地数据卷：
+服务地址：Web `http://localhost:3000`（健康检查 `/healthz`），API `http://localhost:8000`（就绪检查 `/readyz`），PostgreSQL `localhost:5432`，Redis `localhost:6379`。停止并清理本地数据卷：
 
-~~~bash
+```bash
 docker compose down -v
-~~~
+```
 
-## 环境变量
+## 3. 环境变量约定
 
-模板文件为 .env.example：
+模板文件为 `.env.example`（所有真实密钥只放在被 gitignore 的 `.env`、Railway Variables 或 GitHub Secrets 中，切勿提交到仓库）：
 
-~~~env
+```env
 NEXT_PUBLIC_APP_ENV=development
-NEXT_PUBLIC_ENABLE_MOCKS=true
+NEXT_PUBLIC_APP_MODE=real
+NEXT_PUBLIC_ENABLE_MOCKS=false
 NEXT_PUBLIC_API_FEATURES=
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 API_INTERNAL_URL=http://localhost:8000
-NEXT_PUBLIC_ADMIN_URL=http://localhost:3002
 DATABASE_URL=postgresql://groupproof:groupproof-local@localhost:5432/groupproof
 DATABASE_TIMEZONE=Asia/Shanghai
-~~~
+MAIL_MODE=capture
+AI_PROVIDER=fake
+```
 
-NEXT_PUBLIC_ 变量会进入浏览器包，只能放公开地址和功能开关。数据库连接串、JWT 密钥、OAuth secret、对象存储密钥、AI 密钥和 Railway token 只能放在 .env.local、Railway Variables 或 GitHub Secrets。
+- `NEXT_PUBLIC_*` 变量会打包进浏览器，只能存放公开配置与开关。
+- 本地开发默认 `MAIL_MODE=capture`（验证码写入数据库 `email_outbox` 表）与 `AI_PROVIDER=fake`；联调真实外部能力时在 `.env` 中填入 Brevo/Resend/SMTP、Google OIDC、GitHub App/OAuth、飞书、OpenRouter 与 Supabase Storage 变量即可。
+- 仅在需要运行隔离前端夹具/旧 Mock 回归时，才会通过测试配置显式启用 `shared/legacy-mock/`；Staging 与 Production 无条件关闭 Mock。
 
-接入真实 API 后，将 `NEXT_PUBLIC_ENABLE_MOCKS` 改为 `false`，并设置 API 地址。后端只完成部分功能时，可以按功能切换，例如 `NEXT_PUBLIC_API_FEATURES=projects=real,evidence=mock`。支持的功能名包括 `auth`、`courses`、`groups`、`projects`、`tasks`、`evidence`、`verification`、`contributions`、`reports`、`admin` 和 `workspace`。未列出的功能遵循全局开关；当前默认值保持 Mock。
+## 4. OpenAPI 契约与类型生成
 
-## OpenAPI 客户端
+`services/api` 是前后端接口契约的唯一权威来源。修改 FastAPI 路由或 Pydantic Schema 后，必须重新导出快照并重新生成 TypeScript 类型：
 
-前端 API 类型和调用客户端从 OpenAPI 生成。默认使用仓库中的基线快照；后端服务运行后，可以从 FastAPI 的 `/openapi.json` 重新生成：
+```bash
+# 1. 导出最新 OpenAPI 快照到 packages/domain/openapi.json
+cd services/api && PYTHONPATH=. python scripts/export_openapi.py
 
-~~~bash
+# 2. 在仓库根目录生成 packages/domain/api.generated.ts
+cd ../..
 npm run api:generate
-OPENAPI_URL=http://localhost:8000/openapi.json npm run api:generate
 npm run test:api-config
 npm run test:api-client
-~~~
+```
 
-生成文件是 `packages/domain/api.generated.ts`，调用封装在 `lib/api/client.ts` 和 `lib/api/real-service.ts`。不要直接编辑生成文件；后端接口变更后先更新 OpenAPI，再重新生成并检查类型。
+- 不要手改 `packages/domain/api.generated.ts`。
+- 共享客户端封装位于 `shared/lib/api-client.ts` 与各角色端 `student/api/`、`teacher/api/`、`admin/api/`；CI 会执行 `git diff --exit-code packages/domain/api.generated.ts` 校验无漂移。
 
-当前后端只提供项目示例接口，因此 `projects=real` 仅用于验证 OpenAPI 客户端链路，并要求使用后端的 UUID 和登录会话；`workspace`、`tasks`、`evidence`、`verification` 在对应 API 完成前继续使用 Mock。
+## 5. 本地校验与测试
 
-## 本地检查
+### 前端与契约检查
 
-提交到测试环境前执行：
-
-~~~bash
+```bash
 npm run lint
 npm run typecheck
 npm run check:routes
+npm run check:i18n
+npm run check:ui-catalog
+npm run test:api-config
+npm run check:workspace-isolation
 npm run build
-~~~
+```
 
-后端检查：
+启动开发服务器或 standalone 服务后，可执行 HTTP 鉴权语义路由检查：
 
-~~~bash
+```bash
+CHECK_HTTP=1 npm run check:routes
+CHECK_AUTH_API=1 npm run check:auth
+```
+
+### 后端格式、迁移与 pytest
+
+```bash
+cd services/api
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r services/api/requirements.txt -r services/api/requirements-dev.txt
-cd services/api
+python -m pip install -r requirements.txt -r requirements-dev.txt
+
 ruff format --check app migrations scripts tests
 ruff check app migrations scripts tests
-pytest -q
-~~~
 
-数据库迁移和演示数据：
-
-~~~bash
-cd services/api
-export APP_ENV=development
-export DATABASE_URL=postgresql://groupproof:groupproof-local@localhost:5432/groupproof
-export DATABASE_TIMEZONE=Asia/Shanghai
 alembic upgrade head
-APP_ENV=development python -m scripts.seed_core
 alembic check
-~~~
+PYTHONPATH=. pytest -q
+```
 
-迁移文件的唯一目录是 `services/api/migrations/`。每次结构变化都要新增迁移并在干净 PostgreSQL 上执行；`seed_core` 会覆盖核心工作流的演示数据，并在 `APP_ENV` 不是 `development` 或 `test` 时拒绝执行，只用于本地和测试环境。
+- 迁移文件唯一目录为 `services/api/migrations/versions/`（当前 head 为 `0047`）。每次表结构改动都必须新增迁移并在干净 PostgreSQL 上验证 `alembic upgrade head` 与 `alembic check`。
+- 运行完整后端集成测试需配置 `DATABASE_URL`、`C_TEST_DATABASE_URL`、`C_EXECUTION_TEST_DATABASE_URL`、`B_TEST_DATABASE_URL` 指向本地 PostgreSQL。
+- 后端测试编写规范见 [services/api/tests/README.md](../../services/api/tests/README.md)。
 
-前端页面测试：
+### Playwright 端到端测试
 
-首次运行需要安装 Chromium 浏览器：
+```bash
+npx playwright install chromium    # 首次运行安装
+npm run test:e2e                   # 默认 E2E 套件
+npm run test:e2e:teacher           # 教师 5-Hub 工作台套件 (t1–t5)
+npm run test:workspace-real        # 真实模式工作区隔离回归
+```
 
-~~~bash
-npx playwright install chromium
-~~~
+端到端测试说明见 [e2e/README.md](../../e2e/README.md)。
 
-之后运行 Playwright 示例：
+## 6. 界面多语言（简体 / 繁體 / English）
 
-~~~bash
-npm run test:e2e
-~~~
+- 页面可直接用简体中文编写界面文本。`tsconfig.json` 的 `jsxImportSource` 指向 `shared/i18n`，渲染时按当前语言将中文映射至 `shared/i18n/catalog/en.ts` 或 `shared/i18n/catalog/zh-Hant.ts`（涵盖 children 及 DOM 属性 `placeholder` / `title` / `aria-label` / `alt`）。
+- 带变量的句子不要直接拼接模板字符串，应使用 `tr("组队截止 {0}", { 0: date })`（`@/shared/i18n/tr`）；`window.confirm` 等非渲染文案同样包裹 `tr()`。
+- 新增或修改中文文案后，同步补齐 `shared/i18n/catalog/en.ts` 与 `zh-Hant.ts`，并运行 `npm run check:ui-catalog`。
+- 登录、账号、壳层与错误码等使用 `next-intl` 键值文件（`shared/i18n/messages/{zh-Hans,zh-Hant,en}.json`），由 `npm run check:i18n` 校验三语键与插值参数一致。
+- 用户输入的业务实体数据（姓名、课程名、项目名、证据正文等）保持原文不翻译。
 
-示例位于 `e2e/home.spec.ts`，覆盖从登录页点击“使用 Google 登录”进入首页的流程。新增页面测试时，复制该文件到 `e2e/`，修改 `page.goto`、可访问名称和断言即可。后端测试的复制说明见 `services/api/tests/README.md`；页面测试的详细说明见 `e2e/README.md`。
+## 7. 本地生产构建与 Docker
 
-启动开发服务器后，检查 56 个页面的 HTTP 状态：
-
-~~~bash
-CHECK_HTTP=1 npm run check:routes
-~~~
-
-## 界面多语言（简体 / 繁体 / English）
-
-- 页面可以直接用简体中文写界面文字。`tsconfig.json` 的 `jsxImportSource` 指向 `lib/i18n`，渲染时会按当前语言把整段中文换成 `lib/i18n/catalog/en.ts` 或 `zh-Hant.ts` 里的译文（children，以及 DOM 元素的 placeholder / title / aria-label / alt）。
-- 带变量的句子不要写成模板字符串或 `文字{变量}文字` 的 JSX 拼接，改用 `tr("组队截止 {0}", { 0: date })`（`@/lib/i18n/tr`），否则无法整句翻译。`window.confirm` 等非渲染出口也要包 `tr()`。
-- 新增或修改中文文案后，在两个目录文件里补上对应词条，并运行 `npm run check:ui-catalog`；缺词条会列出文件和行号。
-- 账号、登录等使用 next-intl 键值（`messages/*.json`）的页面保持原方式，`npm run check:i18n` 继续检查这部分。
-- 演示数据（`mocks/seed.ts` 的人名、课程名、任务名）属于内容，不翻译。
-
-## 本地生产启动
-
-普通 Next.js 生产服务器：
-
-~~~bash
+```bash
+# 普通生产构建与启动
 npm run build
 npm run start
-~~~
 
-Railway 使用的 standalone 服务器：
-
-~~~bash
+# Railway 同款 standalone 启动
 npm run build
 HOSTNAME=0.0.0.0 PORT=3000 npm run start:standalone
-~~~
 
-健康检查地址为 http://localhost:3000/healthz。
-
-## Docker
-
-构建并运行生产镜像：
-
-~~~bash
+# Docker 镜像构建与本地验证
 docker build -t groupproof-web:local .
-docker run --rm --name groupproof-web \
-  --env-file .env.local \
-  -p 3000:3000 \
-  groupproof-web:local
-~~~
-
-如果没有 .env.local，先执行 cp .env.example .env.local。容器启动后检查：
-
-~~~bash
+docker run --rm --name groupproof-web --env-file .env -p 3000:3000 groupproof-web:local
 curl --fail http://localhost:3000/healthz
-curl --fail http://localhost:3000/
-~~~
+```
 
-## 目录边界
+## 8. 代码目录与模块所有权边界
 
 | 目录 | 责任边界 |
 | --- | --- |
-| 根目录 `app/`、`components/`、`features/`、`lib/` | 当前 Next.js Web 应用，后续迁移入口为 `apps/web` |
-| `services/api/app/modules/a` | A 的认证、平台和外部接入 API |
-| `services/api/app/modules/b` | B 的课程、项目初始化和任务计划 API |
-| `services/api/app/modules/c` | C 的活动、证据和管理后台 API |
-| `services/api/app/modules/d` | D 的验收、贡献、报告和教师端 API |
-| `services/worker/app/tasks/a-d` | 对应成员的后台任务 |
-| `packages/domain` | 前后端共用契约和生成类型 |
-| `infra` | Compose、迁移和运维配置 |
+| `app/` | Next.js App Router 路由、全局样式（`globals.css`）与 `/api/v1` 同源代理 |
+| `student/` | 学生工作台（课程、项目、执行、评审、API 客户端） |
+| `teacher/` | 教师 5-Hub 工作台（页面、组件、图表、助教权限 Hook、API 客户端） |
+| `admin/` | 管理员治理控制台（页面、环境切换器、API 客户端） |
+| `shared/` | 跨角色壳层、基础与 Lucian UI 组件、认证、首页/收件箱、i18n、工具、领域类型与 `legacy-mock/` |
+| `services/api/app/auth` | 统一认证与会话安全（Argon2id、Cookie/CSRF、邮件 OTP、Google OIDC） |
+| `services/api/app/modules/a` | A 模块：共享审计、通知、对象存储回执、GitHub/飞书接入、AI 用量与活动摘要 |
+| `services/api/app/modules/b` | B 模块：课程、小组、项目初始化、需求基线、计划、里程碑、教师工作台 API |
+| `services/api/app/modules/c` | C 模块：任务执行、证据中心、讨论区、项目/课程文件、治理与访问审批 API |
+| `services/api/app/modules/d` | D 模块：完整性校验、AI 验收、贡献分析 v2、风险巡检与 7 章节报告导出 API |
+| `services/worker/` | 后台异步任务消费者脚手架 |
+| `packages/domain/` | 前后端共享 OpenAPI 快照与生成的 TS 类型 |
 
-目录只表示代码所有权，不改变功能线分工。需要别人的数据时调用对方接口，不直接修改对方的表或模块。
+跨模块需要对方数据时通过服务接口或领域端口调用，不直接越权改写对方专有数据表。
 
-## 组员协作
+## 9. 分支规范与团队协作（7 分支体系）
 
-仓库为私有仓库。负责人在 GitHub 的 Settings → Collaborators → Add people 中邀请成员，普通开发成员使用 Write 权限。
+仓库（`ZZJ1977/groupproof` 与 `MUST-Workspace/D3-team2-project`）维护 7 条长期分支：
 
-仓库长期只保留两条共享分支和每名成员一条个人分支：
-
-| 分支 | 用途 | 规则 |
+| 分支 | 负责人 / 定位 | 规则 |
 | --- | --- | --- |
-| `main` | Production | 只接收经过 Staging 验收的 `develop`，禁止直接推送 |
-| `develop` | 集成和 Staging | 所有个人分支的 PR 目标，禁止直接推送 |
-| `<成员>_task` | 成员个人开发 | 每名成员只保留一条；可以连续完成多个任务，不按任务重复建分支 |
+| `A_task` | **卓子杰（组长）** | 基础底座、认证、GitHub/飞书/AI 集成与架构整合 |
+| `B_task` | **郑元泰** | 课程、小组、需求基线、任务规划与教师 5-Hub 工作台 |
+| `C_task` | **杨凯景** | 任务执行、证据中心、活动记录、讨论区与文件管理 |
+| `D_task` | **林星妤** | 自动验收、贡献核算 v2、风险巡检与 7 章节报告 |
+| `admin-backend` | 独立部署分支 | 管理员双环境控制台独立部署 |
+| `develop` | 测试集成主干（Staging） | 所有个人分支 PR 的唯一目标，禁止直接推送 |
+| `main` | 生产发布主干（Production） | 仅接收经 Staging 验收的 `develop` 同步，禁止直接推送 |
 
-个人分支从最新 `develop` 创建，新分支按成员标识命名为 `A_task`、`B_task`、`C_task` 或 `D_task`。已有个人分支可以继续使用，是否重命名由对应成员决定。任务编号写在提交信息、PR 标题和 PR 描述中，不再写入每个任务分支名：
+### 同步与提交示例
 
-~~~bash
-git fetch origin
-git switch develop
-git pull --ff-only origin develop
-git switch -c <成员>_task
-~~~
-
-开始新的任务前，以及提交 PR 前，先同步个人分支：
-
-~~~bash
+```bash
+# 同步最新 develop 到个人分支
 git fetch origin
 git switch <成员>_task
-git rebase origin/develop
-~~~
+git rebase origin/develop   # 若分支已多人协作可改用 git merge origin/develop
 
-如果个人分支已经被其他成员提交，或者 rebase 会影响正在进行的协作，可以改用 `git merge origin/develop`；冲突解决后必须重新运行本地检查。
-
-提交应保持一个清晰目的，并使用 `<type>(<任务编号>): <动作>` 格式。常用类型为 `feat`、`fix`、`test`、`docs`、`refactor` 和 `chore`：
-
-~~~bash
-git add .
-git commit -m "feat(A2-02): add core database migrations"
-git commit -m "fix(B-03): validate task progress"
-git commit -m "docs(workflow): update branch policy"
+# 提交信息遵循 <type>(<scope>): <subject>
+git commit -m "feat(B-03): validate task progress"
+git commit -m "fix(contribution): tighten cross-task code attribution"
 git push --set-upstream origin <成员>_task
-~~~
+```
 
-同一个任务可以有多个提交，但每个提交都要能说明改了什么；不要使用 `update`、`修改一下` 或 `临时提交` 等无法识别内容的描述。
+### Pull Request 规则
 
-本地检查通过后，使用个人分支向 `develop` 提 PR。组员不得直接推送或合并 `develop`，也不得直接推送 `main`：
+1. 目标分支固定为 `develop`，选择对应负责人标签（`A` / `B` / `C` / `D`）。
+2. 在标题与描述中注明任务范围、正常路径、权限失败路径与本地测试结果。
+3. 必须通过 GitHub Actions 全量 CI 检查并经组长（卓子杰）审查批准后方可合入 `develop`。
 
-PR 必须：
+## 10. 测试到生产发布链路
 
-1. 选择一个负责人标签：`A`、`B`、`C` 或 `D`。
-2. 在标题和描述中写任务编号。
-3. 填写仓库中的 PR 模板，并说明正常路径、权限失败路径和测试结果。
-4. 至少一名成员审查后才能合并；默认由 A 审查，A 的 PR 由 B/C/D 之一审查。
-5. 目标分支只能是 `develop`。测试环境验收通过后，由 A 将 `develop` 快进同步到 `main`。
+```text
+成员个人分支 (A_task / B_task / C_task / D_task) 本地校验
+  ↓ Pull Request + 组长审查
+合入 develop
+  ↓ GitHub Actions 6 项 CI/CD（quality / backend / e2e / c-integration / docker -> deploy）
+自动部署 Railway Staging（https://groupproof-staging-production.up.railway.app）
+  ↓ Staging 验收通过
+由组长快进同步 develop -> main
+  ↓ GitHub Actions 6 项 CI/CD
+自动部署 Railway Production（https://groupproof-production-production.up.railway.app）
+```
 
-个人分支合并后继续保留，用于该成员的下一项工作；不再为每个任务创建或保留新的分支。个人分支必须定期同步 `develop`，长期不再使用的分支由负责人确认后删除。其他成员的个人分支不能由未经确认的人删除。
-
-当前 GitHub 分支保护已将 CI 的 `Lint, typecheck, build, and route smoke test`、`Backend format and tests`、`Playwright end-to-end tests` 和 `Build and smoke test Docker image` 设为 `develop`/`main` 的必需检查，并禁止直接推送。仓库中的 `.github/labels.yml` 是 A/B/C/D 标签的版本化定义；重新创建仓库时按该文件恢复标签。
-
-不要提交 .env.local、数据库密码、OAuth secret、AI key 或 Railway token。
-
-## 测试到生产
-
-发布链路固定为：
-
-~~~text
-功能分支本地测试
-  ↓
-推送 develop
-  ↓
-GitHub Actions 质量检查和 Docker 检查
-  ↓
-Railway Staging 自动部署
-  ↓
-测试环境验收
-  ↓
-develop 同步到 main
-  ↓
-GitHub Actions 质量检查和 Docker 检查
-  ↓
-Railway Production 自动部署
-~~~
-
-测试环境通过后，由负责人同步到 main：
-
-~~~bash
-git switch main
-git pull --ff-only origin main
-git merge --ff-only origin/develop
-git push origin main
-~~~
-
-测试环境：
-
-https://groupproof-staging-production.up.railway.app
-
-生产环境：
-
-https://groupproof-production-production.up.railway.app
-
-## CI/CD
-
-工作流文件为 `.github/workflows/ci-cd.yml`，在目标分支的 PR 和 `develop`/`main` 推送时执行：
-
-1. 安装锁定依赖。
-2. 执行 lint、TypeScript 和路由检查。
-3. 执行 Python 格式检查、lint、编译检查和 pytest。
-4. 构建并启动 standalone 服务。
-5. 检查首页、健康检查和全部 56 个页面。
-6. 构建 Docker 镜像并检查容器和 Compose 配置。
-7. 推送到 `develop` 或 `main` 且全部检查通过后，才部署到对应的 Railway 项目。
-
-当前由 GitHub Actions 负责质量门禁和部署：`develop` 部署到 Staging，`main` 部署到 Production。Railway 服务自身的 GitHub 自动部署已断开，避免检查尚未通过时提前部署或重复部署。组员无需持有 Railway Token；部署凭据保存在 GitHub Actions Secret 中。
+管理后台独立部署于 <https://web-production-650d4574.up.railway.app/admin>（分支 `admin-backend`），支持在界面顶部按需切换查看 Staging 与 Production 数据。完整 CI/CD 与环境配置细节见 [部署基线](DEPLOYMENT.md)。

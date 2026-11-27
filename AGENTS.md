@@ -2,13 +2,13 @@
 
 ## 适用范围与工作原则
 
-本文件适用于本仓库的所有目录、分支及在这些目录中工作的 AI 编码助手。开始任务时读取本文件和与任务有关的现有文档，依据用户最新要求推进工作。
+本文件适用于本仓库的所有目录、分支及在这些目录中工作的 AI 编码助手。开始任务时先读取本文件与任务相关的现有文档，依据最新代码和用户要求推进工作。
 
 - 按“产品需求 → 页面结构 → 设计体系 → 代码实现 → 体验验证”的顺序建立依据，使界面、交互与业务目标一致。
-- UX Rules 贯穿需求、线框、组件、编码和验收。Business Logic 从需求阶段开始定义，在实现阶段落实。
-- 按改动范围使用流程：新功能或大幅改版完成相关阶段；局部修复复用已有依据，补充受影响的设计与验证。无需为小改动重新制作全部文档。
-- 复用已有设计、组件、数据契约和项目结构；将重要假设、范围变化、验证结果记录在可共享文件中。
-- 遇到缺失且影响结果的信息时，先查阅现有资料；仍无法判断时询问用户，同时继续不依赖该信息的工作。
+- UX Rules 贯穿需求、线框、组件、编码和验收；Business Logic 从需求阶段开始定义，在实现阶段落实。
+- 按改动范围裁剪流程：新功能或大幅改版走完整设计/契约/验证环节；局部修复复用已有依据，补充受影响的测试与文档。
+- 复用已有设计令牌、共享组件、OpenAPI 契约与目录结构；将重要假设、范围变化与验证结果同步到文档。
+- 遇到缺失且影响结果的信息时，先查阅现有代码与文档；仍无法判断时询问用户，同时推进不依赖该信息的工作。
 
 ## 产品到实现的主流程
 
@@ -37,7 +37,7 @@ Design Tokens                            │
   ▼                                      │
 UI Components ◀──────────────────────────┤
   │                                      │
-  ├── shadcn / ReactBits / Custom         │
+  ├── shadcn / Lucian UI / Custom        │
   │                                      │
   ▼                                      │
 AI Coding ◀──────────────────────────────┤
@@ -51,166 +51,57 @@ Responsive / A11y / UX Review ────────────┘
   └── 将发现的问题反馈到相关设计和实现阶段
 ```
 
-图中的顺序表示主要产出的推进关系。业务对象、权限、状态和操作规则应在需求及线框阶段定义；最终 Review 形成反馈闭环。
+## 各阶段的目标与完成标准
 
-## 各阶段的目标、产出与完成标准
+1. **Product Requirement**：明确目标用户、业务对象、角色权限（Student / Leader / Teacher / TA / Admin）、核心操作、异常路径与可验证验收标准。
+2. **Information Architecture & Screen Map**：按角色任务组织导航与路由；同步维护 [前端页面地图](docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md) 与 `shared/lib/routes.ts`，保持 56 个核心设计页与扩展页（`57–63`）的路由与门禁一致。
+3. **Wireframe & UX Rules**：覆盖加载、空数据、错误、成功、无权限与禁用态；支持键盘操作、可见焦点、减少动效（`prefers-reduced-motion: reduce`）与明确反馈；禁止重复提交与无反馈写操作。
+4. **Design Tokens & UI Components**：优先复用 `app/globals.css`、`shared/styles/lux-*.css`、`shared/components/ui/` 与 `shared/components/lux/`；避免在不同页面为同一语义重复定义硬编码色值。
+5. **AI Coding & Business Logic**：遵循服务端 Contextual RBAC、乐观锁 `lock_version` 与 `Idempotency-Key`；页面层通过角色 `api/` 客户端和 `/api/v1/*` 代理调用统一 FastAPI 后端，不得在前端散落伪造状态或绕过服务端校验。
+6. **Responsive / A11y / UX Review**：检查桌面与窄屏（如 `1440px` / `1024px` / `768px` / `375px`）、焦点管理、对比度与跨视图数据一致性，使用真实测试结果记录发现并复查。
 
-### 1. Product Requirement：产品需求
+## 当前系统基线与上线状态（2026-11-27）
 
-- 明确目标用户、使用场景、用户需要完成的任务、产品目标、范围与约束。
-- 定义主要业务对象、角色权限、核心操作、成功与失败条件，以及可检查的验收标准。
-- 产出：需求清单、关键用户流程、业务规则、验收标准。
-- 完成标准：能说明“谁在什么场景完成什么任务”，每项核心需求都有可验证的结果。
+- **全栈已上线（Staging / Production / Admin Console）**：
+  - Staging（`develop`）：<https://groupproof-staging-production.up.railway.app>
+  - Production（`main`）：<https://groupproof-production-production.up.railway.app>
+  - Admin Console（`admin-backend`，支持 Staging/Production 双环境切换）：<https://web-production-650d4574.up.railway.app/admin>
+- **统一后端与数据库**：唯一后端为 `services/api/`（FastAPI + SQLAlchemy 2 + Alembic 头 **`0047`**），早期 `server/` 目录已退役移除；Railway 托管 **PostgreSQL 18.6**（`pgvector`、`pgcrypto`）+ Redis + Celery Worker（`report-worker`、`risk-scheduler`、`services/worker/`）。
+- **100% 真实认证与集成**：Argon2id 密码认证、HttpOnly Session Cookie + CSRF、Brevo / Resend / SMTP 学校邮箱 OTP、Google OIDC 登录与账号关联、GitHub App & OAuth 多分支同步、飞书机器人协作洞察、OpenRouter 双模型 AI（`deepseek/deepseek-v3.2` + `google/gemini-2.5-flash` + `a_ai_usage_events`）、Supabase Storage + PostgreSQL LOB 回退、贡献分析 v2（`formal-task-weight-cross-task-equal-split-v2`，5 维呈现，提交数与飞书聊天 0% 权重）以及独立项目移入课程（`POST /api/v1/projects/{id}/attach-course`）均已上线。
+- **阶段记录入口**：架构与运行指引见 [README.md](README.md)、[开发与架构设计](docs/guide/ARCHITECTURE.md)、[本地开发、测试与部署指引](docs/guide/LOCAL_AND_DEPLOY.md)；交付状态与客观限制见 [FRONTEND_STATUS.md](FRONTEND_STATUS.md)；历史分阶段索引见 [docs/development-stages/README.md](docs/development-stages/README.md)；压测与 AI 成本实测见 [STRESS_TEST_REPORT.md](docs/testing/STRESS_TEST_REPORT.md)。
 
-### 2. Information Architecture：信息架构
+## GroupProof 工程与运行约定
 
-- 按用户任务组织内容、功能、导航与层级，明确工作区及不同角色的入口。
-- 保持相同对象的命名、归属和入口一致，说明列表、详情与相关对象之间的关系。
-- 产出：信息架构、导航结构、功能分组及对象关系。
-- 完成标准：核心任务都有清晰入口，内容分组和权限边界与需求一致。
+### 目录职责
 
-### 3. Screen Map：页面地图
+- `app/`：Next.js 15 App Router 路由入口、全局样式（`globals.css`）与 `/api/v1/*` 同源运行时代理。
+- `student/`：学生工作台（课程、独立/课程项目、执行、评审、API 客户端与导航状态）。
+- `teacher/`：教师 5-Hub 工作台（页面、组件、图表、助教细粒度权限 Hook 与 API 客户端）。
+- `admin/`：管理员治理控制台（双环境切换器、身份与平台治理页面及 API 客户端）。
+- `shared/`：跨角色基础组件与壳层（`shared/components/`、`shared/components/ui/`、`shared/components/lux/`）、认证与账户中心（`shared/auth/`、`shared/auth/lux/`）、首页/动态/通知收件箱（`shared/daily-inbox/`）、Lucian UI 样式（`shared/styles/`）、三语目录（`shared/i18n/`）、路由与共享客户端（`shared/lib/`）、领域类型（`shared/types/`），以及**仅用于隔离测试与静态断言**的 `shared/legacy-mock/`（Staging 与 Production 强制关闭）。
+- `services/`：统一 FastAPI 后端（`services/api/`，含 `app/auth`、`app/modules/{a,b,c,d}`、`migrations/versions/` `0001–0047`、`tests/`）与异步 Worker（`services/worker/`）。
+- `packages/domain/`：后端导出的 OpenAPI 快照（`openapi.json`）与生成的 TypeScript 类型（`api.generated.ts`）。
+- `e2e/` 与 `scripts/`：Playwright 端到端测试、契约校验脚本与 Railway 部署脚本。
 
-- 列出页面、路由、入口、跳转、返回路径及适用角色。
-- 标记跨页面流程、弹窗、抽屉和必要状态，区分独立页面与同一数据的不同视图。
-- 产出：页面清单、路由映射、页面之间的连接关系。
-- 完成标准：核心用户流程可以从入口走到完成，并且不存在遗漏的页面或无法返回的路径。
+### 核心业务不变量（不可破坏）
 
-### 4. Wireframe：线框与交互结构
+- **权限边界**：团队共同编辑并确认责任，组长推进发布；同课程其他小组仅只读课程公开项目的总览 DTO；助教默认只读，由所属课程教师按操作细粒度授权；所有写权限最终由 FastAPI 服务端校验。
+- **版本与证据**：正式版本与草稿分离，成员确认严格绑定版本号；任务树/看板/列表共享同一 Task 数据；进度 100% 不自动提交；AI 验收通过仍需人工确认；正式证据按规则撤回或作废并在同事务失效关联验收。
+- **贡献核算 v2**：正式贡献比例仅基于人工确认的任务权重与跨任务分工核算；代码提交次数与飞书群聊讨论权重为 `0%`，仅作过程参考。
 
-- 确定页面信息层级、布局、主要操作、次要操作与内容优先级。
-- 设计加载、空数据、错误、成功、无权限及禁用状态；涉及表单时定义校验和反馈。
-- 提前考虑窄屏布局、长文本和密集数据，验证交互是否满足业务规则。
-- 产出：关键页面线框、组件区域、交互及状态说明。
-- 完成标准：无需依赖颜色和装饰，也能理解页面任务并完成主要操作。
+### 本地运行与测试避坑约定
 
-### 5. Design Skill：设计方法与视觉方向
-
-- 在已有设计体系上确定视觉方向、布局节奏、字体层级、信息密度及动效原则。
-- 使用当前任务适用且可用的设计技能或设计资料，并将实际采用的决策落实到共享规范。
-- 产出：视觉原则、关键页面设计及可复用的设计决策。
-- 完成标准：设计方向服务于产品场景，页面之间保持一致，决策可以转化为 Tokens 和组件。
-
-### 6. UX Rules：贯穿全流程的体验规则
-
-- 统一导航、命名、操作位置、状态反馈、错误处理和表单交互。
-- 对重要操作提供清晰后果、确认或恢复路径；避免重复提交和无反馈操作。
-- 支持键盘操作、可见焦点、可理解的标签及反馈，保证信息不只依靠颜色表达。
-- 将业务权限和状态限制落实到交互说明；演示权限和真实服务端鉴权分别记录。
-- 产出：交互规则、状态规则、无障碍要求及体验验收项。
-- 完成标准：相同操作遵循相同规则，核心流程有明确的引导、反馈和恢复方式。
-
-### 7. Design Tokens：设计变量
-
-- 定义并复用语义化的颜色、字体、间距、圆角、阴影、层级、断点和动效变量。
-- 优先使用已有变量体系，集中管理可复用值，避免不同页面为相同用途定义不同数值。
-- 如需主题或模式切换，使用语义变量表达同一用途在不同模式中的取值。
-- 产出：Tokens 定义、命名和使用约定。
-- 完成标准：关键视觉规则能够通过统一变量表达和调整，并保持足够对比度与可读性。
-
-### 8. UI Components：组件体系与来源
-
-- 先检查已有组件，再选择复用、扩展或新增；明确组件接口、变体和状态。
-- **shadcn**：按项目现有约定使用基础控件，并统一到项目 Tokens。
-- **ReactBits**：在功能确有需要且与项目兼容时用于视觉或动效组件；采用前检查交互、性能和减少动效的行为。
-- **Custom**：为现有组件无法覆盖的业务交互编写自定义组件，遵循同一套 Tokens 和 UX Rules。
-- 三种来源属于实现选项，无需在每个页面中同时使用；当前项目未使用的库无需仅因本流程而引入。
-- 产出：可复用组件、接口及状态约定、必要的使用说明。
-- 完成标准：组件可以组合为线框中的页面，并覆盖对应的交互、响应式与无障碍要求。
-
-### 9. AI Coding：界面实现
-
-- 根据需求、页面地图、线框、Tokens、组件与 UX Rules 编码，遵循现有技术栈和目录职责。
-- 先完成可走通的核心流程，再补齐状态、交互与细节；保持共享组件和业务页面边界清晰。
-- 对照设计检查实际页面，保留必要的实现说明，并明确 Mock 与真实服务的边界。
-- 产出：可运行页面、组件组合、路由及状态交互。
-- 完成标准：需求能够追溯到对应页面和操作，关键流程可以实际运行，必要的工程检查通过。
-
-### 10. Business Logic：业务逻辑实现
-
-- 落实前期定义的领域对象、权限、状态转换、数据校验和操作契约。
-- 将共享规则集中管理，使列表、详情和不同视图读取一致的数据及状态。
-- 覆盖异步请求、失败恢复、重复提交和必要的并发约束；真实权限校验由服务端承担。
-- 保持页面与服务适配层的边界，避免将重要规则分散在多个展示组件中。
-- 产出：业务操作、数据契约、服务适配与关键规则的验证证据。
-- 完成标准：合法操作得到预期结果，非法操作受到明确限制，数据变更在相关视图中保持一致。
-
-### 11. Responsive / A11y / UX Review：综合体验验收
-
-- **Responsive**：检查窄屏和桌面布局、导航、表格、弹窗、长文本及溢出；保证核心操作在各尺寸下可用。
-- **A11y**：检查语义结构、键盘操作、焦点管理、标签、对比度和减少动效的行为。
-- **UX Review**：按用户流程走查入口、步骤、反馈、错误恢复、权限状态和跨页面一致性。
-- 使用真实运行结果与必要的截图或交互证据记录问题，修复后复查受影响的流程。
-- 产出：验收记录、问题及修复结果、剩余限制。
-- 完成标准：核心流程符合需求验收标准，发现的问题已有处理结果，未验证或未完成项明确说明。
-
-## 当前迭代：先功能、后视觉与动效
-
-- 用户已确定本次先沿用现有 UI 完成功能与接口，再进行专业教学管理台视觉改版，最后补充动效；基础反馈、错误处理、键盘操作和必要响应式随功能完成。原流程图用于说明产出关系，本次功能完善复用已有设计体系。
-- 功能开发入口为 [分阶段开发索引](docs/development-stages/README.md)，产品与架构背景见 [PROJECT_CONTEXT](docs/architecture/TECHNICAL_PLAN.md)。新 agent 按索引读取背景、指定阶段、依赖文档及相关源码。
-- 01–13 为成员 B 功能与后端接口交付；14–15 在功能验收后交付全项目视觉与动效规范，其他成员的组件及页面代码由对应负责人实现。各阶段当前状态以索引和实际代码证据共同判断。
-- 权限按目标项目/课程关系判断：团队共同编辑并确认责任，组长推进发布；同课程其他小组只读课程公开项目的总览；助教默认只读，由所属教师按具体操作授权。
-- 正式版本与草稿分开，确认绑定版本，课程变更按真实差异处理。当前仍是 Mock 前端与接口设计，真实服务接入状态必须明确。
-- 阶段文档是实施规格，不是已经实现的功能。按用户指定范围推进，阶段验收后记录实际变更、检查结果、限制和下一阶段接口。
-
-## 任务进度：Google 登录打通（2026-10-18，分支 feat/google-login）
-
-执行依据：`~/GroupProof/docs/plans/2026-10-18-google-login-agent-guide.md`（只读）。基线 GitHub `develop`（22c0d1a）；认证后端在 `services/api/app/auth/`，`server/` 仅参考不改。
-
-**已完成（提交均在 feat/google-login；每次完成后跑 ruff format/check、pytest、npm lint/typecheck/build，当前 892 passed / 0 skipped 全绿）**：
-
-- 第 2 节本地配置：`.env.example` 回调默认值改同源 `:3000`；本地 `.env` 存 Google 凭据（已确认 gitignore）；真实 Google 登录冒烟通过。
-- 3.1 回调地址启动检查（`25da628`）：`google_configured` 时校验 `GOOGLE_REDIRECT_URI == APP_ORIGIN + /api/v1/auth/google/callback`；real 模式失败、dev 告警。
-- 3.2 回调失败统一回登录页（`0acf31d`）：`error=access_denied`→cancelled；state/验签 401 类→failed；503 类→unavailable；失败路径统一审计 `auth.google.failed` 并清 state Cookie；`google_start` 未配置也 302。
-- 3.3 邮箱冲突不自动建号（`c5cfcec`）：已验证登录/学校邮箱冲突→`/login?error=account_exists`（审计 `auth.google.account_exists`）；未验证邮箱不算冲突。
-- 3.4 账户安全关联/解除（`876ee4b`）：迁移 0014（`oauth_transactions.purpose/user_id`，PG 上验证 upgrade/check/downgrade）；`POST /api/v1/me/identities/google/link`（近期认证，否则 `REAUTH_REQUIRED`）；`DELETE /api/v1/me/identities/google`（无密码或登录邮箱未验证→`LAST_SIGN_IN_METHOD`）；回调 purpose=link 只建绑定不换会话；`GET /api/v1/me` 增 `googleEmail`；前端 AccountView 关联面板、三语文案、openapi 重新导出。
-- 3.5 测试（`7a0c09f`）：`tests/oidc_stub.py` + `tests/test_auth_google.py` 18 用例覆盖指南九组场景；顺带修复 `users.email` 唯一约束导致的建号 503（`8b5051a`，邮箱镜像尽力而为）。
-
-**联调期间定位并修复的坑（均已提交 + 回归测试）**：
-
-- `73aafc8`/`d494b60`：学号误拒根因是启动时用 `source .env`——bash 会吃掉反斜杠（`^\S{4,20}$` 变 `^S{4,20}$`），且环境变量优先于 .env；前端 `fieldError` 原查 `account.profile.<code>` 改查 `errors.<code>`，并补齐三语错误文案。
-- `fb97791`：`config.py` 的 `_REPO_ROOT` 少上溯一层指向 `services/`，pydantic 读不到根 `.env`（Google 登录“服务暂不可用”的根因）。
-
-**运行约定**：
-
-- 本地启动 API 一律用 `scripts/dev-backend.sh` 或直接 `uvicorn app.main:app`（pydantic 自读仓库根 `.env`）；**禁止 `source .env`**（反斜杠值会被 bash 破坏）。
-- 后端测试需本地 PostgreSQL（`docker compose up -d postgres redis`）并设置 `DATABASE_URL`、`C_TEST_DATABASE_URL`、`C_EXECUTION_TEST_DATABASE_URL`，否则部分用例跳过。
-- capture 模式的验证码写 `email_outbox` 表（不是 `.mail-capture/` 目录）。
-
-**第 4 节本地联调（四项全部通过 ✅，负责人浏览器实操 + 库/日志核验；按负责人决定未留截图）**：
-
-1. 新 Google 账号→学生入台 ✅（含学号 1240025428 保存、学校邮箱验证、进入工作台）；
-2. 教师流程 ✅（教师资料 + @must.edu.mo 测试邮箱、教师申请、服务端 bootstrap_admin + 审核接口 approve）；
-3. 密码账号关联 Google ✅（scratchuser01 关联后 Google 登录进入同一账号）；
-4. Google 取消/回调重放 ✅（分别提示“已取消登录”/“登录失败”，不再返回 JSON）。
-
-联调辅助约定：每个场景开始前删除绑定负责人 Google 账号的本地测试用户（报 ID 后删，连同附属记录），同一 Google 账号可复测。
-
-**已完成收尾**：阶段报告 `docs/development-stages/stage-reports/2026-10-18-google-login.md`（含验证结果、约定、遗留项）。
-
-**待办**：
-
-- 第 5 节：提交已按阶段拆分（配置检查/回调失败/冲突检测/关联功能/测试），PR → `develop` 由 compare 链接交付（本机无 gh CLI），CI 绿后负责人审查。
-- 第 6 节 Staging（须负责人同意后操作 Railway）：API 服务设 `GOOGLE_*`（与本地同一对凭据）、核对 `APP_ORIGIN`、重部署并验收；已知限制 `MAIL_PUBLIC_ENABLED=false` 会卡学校邮箱验证，如实记录。
-- 第 7 节生产（本次不执行，仅记录）：Web 自定义域名与 Authorized domains、同意屏幕发布、生产客户端与回调、`APP_MODE=real` 配置检查、`bootstrap_admin --google-sub` 建管理员。
-- 阶段报告：✅ 已写入 `docs/development-stages/stage-reports/2026-10-18-google-login.md`（含检查结果、联调四项、未完成项）。
-
-## GroupProof 当前工程约定
-
-- 当前工程统一以原工作区 `/Users/zhuozijie/Desktop/项目/groupproof`（`develop` 分支，迁移头 `0047`）为准，采用 Next.js App Router、React、TypeScript、Tailwind CSS 前端与 `services/api` 统一 FastAPI 认证及业务后端。当前交付范围和限制见 `README.md`、`docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md`、`FRONTEND_STATUS.md`。
-- `docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md` 包含现有 56 页路由映射（另含 `/admin` 管理工作台入口 `screen=62` 及教师扩展页 `57–61`）。修改页面或导航时同步相关映射；记录实际实现状态时更新 `FRONTEND_STATUS.md`。
-- 目录职责：`app/` 放 Next.js App Router 路由、全局样式与同源 API 代理；`student/` 放学生端课程、项目、执行、评审页面与 API 客户端；`teacher/` 放教师 5-Hub 工作台页面、组件、图表、权限 Hook 与 API 客户端；`admin/` 放管理员治理工作台页面、环境切换器与客户端；`shared/` 放通用基础组件与壳层（`shared/components/`、`shared/components/ui/`）、认证与账户中心（`shared/auth/`）、首页/动态/通知收件箱（`shared/daily-inbox/`）、国际化词条与目录（`shared/i18n/`）、共享工具与路由表（`shared/lib/`）、领域类型（`shared/types/`）及兼容 Mock 视图（`shared/legacy-mock/`）；`services/` 放统一 FastAPI 后端（`services/api`）与异步 Worker（`services/worker`）；`packages/domain/` 放 OpenAPI 快照与生成类型；`scripts/` 放工程检查与部署脚本。
-- 修改 Tokens 时先检查 `app/globals.css`；新增基础控件时先检查 `shared/components/ui/`。保持现有角色工作区、路由和业务实体关联一致。
-- 已有前端 Mock、浏览器存储及模拟第三方交互的范围以状态文档为准。接入真实服务时明确更新相关边界和验证结果。
-- 保留现有业务约束：任务树、看板和列表共享 Task 数据；AI 验收通过仍需人工确认；100% 进度不自动提交任务；正式证据按现有规则撤回或作废。
-- 运行环境和启动方式以 `README.md` 为准。当前工程检查包括 `npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:routes`；开发服务器运行后可使用 `CHECK_HTTP=1 npm run check:routes` 检查页面响应。按改动范围执行必要检查，纯文档改动核对内容、链接和变更范围即可。
+- **严禁执行 `source .env`**：bash/zsh 会吞掉值中的反斜杠（例如 `STUDENT_ID_PATTERN` 中的 `\S{4,20}` 会被破坏为 `S{4,20}`，导致学号校验误拒）。启动后端请始终使用 `npm run dev`、`scripts/dev-backend.sh` 或直接运行 `uvicorn app.main:app`（Pydantic 自动读取仓库根目录 `.env`）。
+- **后端测试环境**：完整 `pytest` 需运行本地 PostgreSQL（`docker compose up -d postgres redis`）并设置 `DATABASE_URL`、`C_TEST_DATABASE_URL`、`C_EXECUTION_TEST_DATABASE_URL`、`B_TEST_DATABASE_URL`。
+- **本地邮件捕获**：`MAIL_MODE=capture` 下的验证码写入 PostgreSQL `email_outbox` 表。
+- **OpenAPI 契约同步**：修改 `services/api` 路由或 Pydantic Schema 后，必须运行 `cd services/api && PYTHONPATH=. python scripts/export_openapi.py` 与根目录 `npm run api:generate`，CI 会强制检查无漂移。
+- **路由表守卫**：修改页面或导航时须同步 `shared/lib/routes.ts` 与 `docs/architecture/FRONTEND_IMPLEMENTATION_PLAN.md`（保留 01–56 行结构），并运行 `npm run check:routes`（启动服务后可加 `CHECK_HTTP=1`）。
+- **常规工程检查**：前端执行 `npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:routes`、`npm run check:i18n`；后端执行 `ruff format --check`、`ruff check`、`alembic check`、`pytest -q`。纯文档改动核对事实准确、相对链接有效与 `npm run check:routes` 即可。
 
 ## 分支与聊天共享规则
 
-- 本文件放在仓库根目录并纳入版本管理，作为各分支可读取的项目规范。新分支从包含本文件的提交创建；已有分支通过合并或仅同步本文件的提交获得相同规范。
-- 使用独立工作树或独立克隆时，确认其根目录也包含本文件；不要依赖其他工作树中的未提交文件。
-- 使用同一项目目录的聊天读取同一份根目录文件。已启动的聊天若尚未加载新规范，应显式重新读取本文件或在正确项目目录启动新会话。
-- 新增目录级 `AGENTS.md` 或 `AGENTS.override.md` 时，明确其局部适用范围及与根目录规则的关系，避免无意覆盖共享流程。
-- 更新本规范时记录最终决策并同步相关分支，保持规范可追溯；不要把共享约定只留在某次聊天中。
+- 仓库维护 7 条长期分支：`A_task`（卓子杰/组长）、`B_task`（郑元泰）、`C_task`（杨凯景）、`D_task`（林星妤）、`admin-backend`、`develop`（Staging）、`main`（Production）。个人分支通过 PR 合入 `develop`（须通过 6 项 CI 并由组长审查），经 Staging 验收后同步 `main` 发布生产。
+- 本文件纳入版本管理并放在仓库根目录，作为各分支可读取的项目规范。使用独立工作树或克隆时，确保不依赖其他工作树中的未提交文件。
+- 更新共享规范或重要架构决策时须提交同步到相关分支，不要把约定仅留在某次聊天中。
 
 读取范围参考：[OpenAI 官方 AGENTS.md 文档](https://learn.chatgpt.com/docs/agent-configuration/agents-md)。

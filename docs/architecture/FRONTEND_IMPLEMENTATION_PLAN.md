@@ -1,34 +1,29 @@
-# GroupProof V1 前端实施计划
+# GroupProof 前端页面地图与路由规范
 
-## 当前仓库与依据
+> 更新日期：2026-11-27 · 代码基线：`origin/develop == origin/main`（Alembic 迁移头 `0047`）  
+> 返回 [项目首页](../../README.md) · 另见 [开发与架构设计](../guide/ARCHITECTURE.md) · [前端实现状态](../../FRONTEND_STATUS.md)
 
-- 仓库在实施前为空目录，无现有代码、依赖或 CodeGraph 索引。
-- 页面布局、导航、文案和视觉以《GroupProof UI 设计合集 56 页》为依据；业务状态、权限与 V1 边界以《完整系统设计与实现方案 V1.0》为依据。
-- 本阶段只交付可运行的 Mock 前端。OAuth、FastAPI、数据库、存储、GitHub、飞书、AI 与 SSE 保留适配边界，不接入真实服务。
+## 1. 当前前端架构与目录职责
 
-## 技术与结构
+GroupProof 前端已完成全量真实后端接线并上线至 Staging、Production 与 Admin Console，技术栈为 **Next.js 15 App Router、React 19、TypeScript、Tailwind CSS v4、Radix UI / shadcn 风格组件、Lucian UI 动效底座、TanStack Query、next-intl（简 / 繁 / 英三语）**。
 
-- Next.js App Router、TypeScript strict、Tailwind CSS、shadcn/ui 风格的本地组件。
-- TanStack Query 管理服务层查询与更新；React Hook Form + Zod 处理关键表单；next-intl 管理中文默认文案。
-- `app/` 放路由入口；`components/` 放布局和基础控件；`features/` 放业务页面；`types/` 放领域模型；`mocks/` 放关联样本；`lib/api/` 放异步 Mock Adapter 与查询 Hook。
-- 全局布局分学生工作区、项目工作区、教师课程区和 Admin 后台。教师导航固定为课程总览、小组、待处理、报告、课程设置；Admin 保持用户、教师审核、课程、系统日志、AI 使用与异常访问的紧凑治理视图。
-- 共用 `PageHeader`、Breadcrumb、状态标记、进度条、表格/筛选、空/加载/错误状态、Dialog、Drawer、操作反馈。任务树、看板、列表只读取同一 Task 数据集。
+- **`app/`**：App Router 入口（`app/[[...slug]]/page.tsx` 服务端鉴权门禁）、全局样式（`app/globals.css`）、`/api/v1/*` 同源运行时代理、`/api/locale`、`/api/admin-environment` 与 `/healthz`。
+- **`student/`**：学生工作台（课程、独立/课程项目、需求基线、计划、任务三视图、证据中心、GitHub/飞书协作、验收、贡献分析 v2、7 章节报告与导出）。
+- **`teacher/`**：教师 5-Hub 工作台（`.gp-teacher-shell` 独立作用域，将课程治理整合为 **概览 / 组队与名单 / 审批与申诉 / 项目与报告 / 课程设置** 5 大中心，内置 `Cmd/Ctrl+K` 快速跳转与花名册抽屉，兼容全部历史路由）。
+- **`admin/`**：管理员治理控制台（`.gp-shell-admin` 独立作用域，含 Staging / Production 环境切换器、用户目录、教师审核、课程治理、审计日志、OpenRouter AI 用量看板与异常访问审批）。
+- **`shared/`**：跨角色共享壳层（`shared/components/workspace-shell.tsx`）、路由分发器、基础控件（`shared/components/ui/`）、Lucian UI 组件与样式（`shared/auth/lux/`、`shared/components/lux/`、`shared/styles/lux-*.css`）、认证与账户中心（`shared/auth/`）、首页/动态/通知收件箱（`shared/daily-inbox/`）、三语目录（`shared/i18n/`）、路由解析与 API 客户端（`shared/lib/routes.ts`、`shared/lib/api-client.ts`）以及仅用于隔离测试的 `shared/legacy-mock/`（线上强制关闭）。
 
-## Mock 数据与交互
+## 2. 核心业务与交互契约
 
-- 稳定 ID 关联 `Course → Group → Project → Requirement → FunctionalModule → Task/Subtask → AcceptanceCriterion → Evidence → Verification → Contribution → Report`；里程碑、通知、待处理、GitHub/飞书记录引用同一实体 ID。
-- 状态机包含 Task 五态、Verification 四种判断、Evidence 四态、Project 生命周期和 Action Item 四态。AI 的 Passed 仍需人工确认；正式证据只可撤回/作废；100% 进度不自动提交任务。
-- Mock API 以 Promise 返回结构化数据和 `version`；变更通过 Query 失效更新相关视图。未来 FastAPI 替换 Adapter 时保留页面调用约定。
-- Mock 当前用户可切换 student、leader、teacher、ta、admin；导航与动作按上下文权限展示。Admin 默认只显示元数据和审计信息。
-- 核心变更：资料导入与基线确认、任务规划与状态、证据提交和确认、逐项 AI 验收与人工确认、课程组队与审批、教师处理、Admin 教师审核。筛选、Tab、Dialog、Drawer、下拉菜单和表单可操作。
+- 所有业务请求经 `/api/v1/*` 同源代理直连 `services/api`（HttpOnly Session Cookie + CSRF + 服务端 Contextual RBAC），不再使用 `localStorage` 演示鉴权或前端 Mock 数据源。
+- 领域实体通过真实 PostgreSQL UUID 贯通 `Course → Group → Project → Requirement → FunctionalModule → Task/Subtask → AcceptanceCriterion → Evidence → Verification → Contribution v2 → Report`。
+- 保留核心业务不变量：任务树/看板/列表共享同一份 Task 数据；进度 100% 不自动提交；AI 验收通过仍需人工确认；正式证据按规则撤回或作废并在同事务失效关联验收。
+- 路由解析与门禁分类统一维护在 `shared/lib/routes.ts`（`resolveRoute` / `classifyPath`），并由 `scripts/check-routes.mjs` 在本地与 CI 中自动核验。
 
 ## 56 页路由映射
 
-> UX 改版说明（阶段 14）：任务树/看板/列表在工作区导航中合并为单一“任务”入口（默认 `?view=tree`），页内切换视图；下列 11–13 旧链接（`?view=tree|board|list`）保持有效并继续映射到同一任务数据集。项目/课程导航与横幅名称跟随当前对象（不再固定 project-1/course-1 示例）。
-
-演示 ID 使用 `project-1`、`course-1`、`group-1`、`task-1` 和 `member-1`；列表与详情仍使用参数化路由。任务三视图共享一个路由和数据源。
-
-> 2026-10-08 登录鉴权迭代：页 01 登录仅保留 Google 入口（“完善个人资料/验证邮箱”入口已移除）；页 02/03 的 `/onboarding/*` 为旧链接兼容别名，统一跳转个人中心并经相同门禁。个人中心等新增系统页列于表后，不冒充原 56 个设计页。
+> **脚本解析约束**：下表 01–56 行由 `scripts/check-routes.mjs` 解析校验（校验全部 56 个核心设计页的路由映射与匿名重定向鉴权语义），请勿更改表格列结构或增删两位编号行。  
+> **视图与兼容说明**：任务树/看板/列表在导航中合并为单一“任务”入口（默认 `?view=tree`），11–13 历史查询参数保持有效；02/03 的 `/onboarding/*` 为兼容别名，经门禁重定向至 `/account/profile` 与 `/account/email`；表中 `project-1` / `course-1` / `group-1` / `task-1` / `milestone-1` / `member-1` 为路由模式占位符，线上全部使用真实 UUID。
 
 | 页 | 设计页 | 前端路由 |
 |---:|---|---|
@@ -60,9 +55,9 @@
 | 26 | 成员贡献详情 | `/projects/project-1/contribution/member-1` |
 | 27 | 报告预览 | `/projects/project-1/reports` |
 | 28 | 报告导出 | `/projects/project-1/reports/export` |
-| 29 | 项目设置（真实项目含 GitHub 仓库与飞书群聊集成） | `/projects/project-1/settings` |
+| 29 | 项目设置（含 GitHub 仓库、飞书群聊集成与移入课程） | `/projects/project-1/settings` |
 | 30 | 个人动态 / 我的记录 | `/activity` |
-| 31 | 我的课程（真实分页列表；?intent=create-project 选择项目课程） | `/courses` |
+| 31 | 我的课程（真实分页列表；`?intent=create-project` 选择课程） | `/courses` |
 | 32 | 加入课程（真实邀请码预览、确认加入或申请审批） | `/courses/join` |
 | 33 | 课程内组队 | `/courses/course-1/groups` |
 | 34 | 小组成员管理 | `/courses/course-1/groups/group-1` |
@@ -89,52 +84,48 @@
 | 55 | AI 使用情况 | `/admin/ai-usage` |
 | 56 | 异常 / 访问审批 | `/admin/access-requests` |
 
-> 2026-11-22：`/admin` 是新增的 Admin 工作台总览入口，解析为运行页面 57，作为原 56 个设计页之外的运营首页；其余 Admin 治理页仍沿用 51–56 的 URL 与页面编号。
-> 2026-11-25：`/projects` 是新增的学生“我的项目”总览入口（分离独立项目与课程项目，支持快捷创建独立项目），解析为运行页面 63。
+## 3. 扩展工作台页面（57–63）与别名入口
 
-## 新增系统页（2026-10-08，用户账户与注册审核）
+在原 56 个设计页之外，按 `shared/lib/routes.ts` 扩展了以下业务工作台与入口路由（其中 `/admin` 与 `/projects` 由 `scripts/check-routes.mjs` 单独显式断言）：
+
+| 页面名称 | 前端路由 | 运行编号 | 说明 |
+| --- | --- | --- | --- |
+| 教师课程列表 | `/teacher/courses` | `screen=57` | 教师名下全部课程与班级入口 |
+| 教师跨班仪表盘 | `/teacher/dashboard` | `screen=58` | 跨课程总体进度、风险与待审批聚合总览 |
+| 教师教学团队与助教授权 | `/teacher/courses/:courseId/staff` | `screen=59` | 课程助教关联与细粒度操作权限配置 |
+| 教师课程公告 | `/teacher/courses/:courseId/announcements` | `screen=60` | 课程公告发布与阅读回执 |
+| 教师班级项目总览 | `/teacher/courses/:courseId/projects` | `screen=61` | 班级内全部小组项目与移入课程项目一览 |
+| Admin 工作台总览 | `/admin` | `screen=62` | 管理端运营首页与 Staging / Production 双环境切换 |
+| 学生我的项目 | `/projects` | `screen=63` | 分离展示独立项目与课程项目，支持新建独立项目与一键移入课程 |
+| 新建独立项目 | `/projects/new` | `screen=35`（独立模式） | 无需绑定课程或小组即可直接立项，后续可移入课程 |
+| 学生课程资料只读页 | `/courses/:courseId/files` | `screen=50`（学生只读） | 按文件夹/版本浏览与下载教师发布的课程资料 |
+
+## 4. 账户与系统页
 
 | 页面 | 路由 | 门禁 | 说明 |
-|---|---|---|---|
-| 个人中心入口 | `/account` | 有会话 | 跳本人当前步骤；已激活默认到资料页 |
-| 个人中心基本资料 | `/account/profile` | 有会话且未停用 | 与注册页统一宽屏布局；姓名、身份、学号及学院；显示真实邮箱验证状态；已有密码在账号安全管理；只操作本人，字段白名单 + expectedVersion |
-| 学校邮箱绑定/验证/更换 | `/account/email` | 有会话且未停用 | 发送前需满足资料要求；换绑独立流程 |
-| 身份确认（学生/教师）（2026-10-10 更名，原“完成 / 教师审核”） | `/account/status` | 有会话 | 只显示本人必要信息与核验摘要；含教师审核进度与刷新入口 |
-| 账号安全（登录邮箱补验、改密、GitHub 授权） | `/account/security` | 有会话 | 补验历史账号的登录邮箱。已激活账号可选绑定个人 GitHub，以关联项目活动 |
-| 密码重置 | `/reset-password` | 公开 | 邮件链接 fragment 令牌，页面内即刻清除后经 POST 提交（2026-10-09） |
-| 旧资料页别名 | `/onboarding/profile` | 同门禁 | 重定向 `/account/profile` |
-| 旧邮箱验证页别名 | `/onboarding/email-verification` | 同门禁 | 重定向 `/account/email` |
-| 语言 Cookie 接口 | `POST /api/locale` | 公开 | 服务端写 `gp_locale`（白名单值） |
-| 旧 GitHub 仓库绑定入口 | `/github/<项目 UUID>` | 同项目门禁 | 跳转项目设置的 GitHub 仓库面板 |
-| 旧飞书群聊绑定入口 | `/feishu/<项目 UUID>` | 同项目门禁 | 跳转项目设置的飞书群聊面板 |
-| 学校邮箱注册／找回密码弹窗 | `/login` 内 | 公开 | 学校邮箱 → 验证码；验证成功后打开注册资料页；忘记密码保持统一反馈 |
-| 注册资料页 | `/register/profile?tx=<id>` | 有效的已验证事务及同一浏览器 Cookie | 带入已验证学校邮箱，填写身份资料及密码。学生完成后进入工作区，教师进入身份审核 |
-| 未知路由 | — | — | 404，不加载工作区 |
+| --- | --- | --- | --- |
+| 个人中心入口 | `/account` | 有会话 | 跳转本人当前待办步骤；已激活默认进入资料页 |
+| 个人中心基本资料 | `/account/profile` | 有会话且未停用 | 姓名、身份、学号（学生）、学院与真实学校邮箱验证状态；白名单 + `expectedVersion` |
+| 学校邮箱绑定/验证/更换 | `/account/email` | 有会话且未停用 | `@student.must.edu.mo` / `@must.edu.mo` 验证码发信、校验与独立换绑流程 |
+| 身份确认（学生/教师） | `/account/status` | 有会话 | 展示入台资格摘要与教师入驻审核进度 |
+| 账号安全 | `/account/security` | 有会话 | 修改密码、Google OIDC 账号关联/解除、个人 GitHub OAuth 身份绑定/解绑 |
+| 注册资料页 | `/register/profile?tx=<id>` | 有效已验证事务 + 同浏览器 Cookie | 带入已验证学校邮箱，填写身份资料与密码完成建档 |
+| 密码重置 | `/reset-password` | 公开 | 邮件链接 fragment 令牌在页面即刻清除后经 `POST` 提交 |
+| 旧资料/邮箱验证别名 | `/onboarding/profile`、`/onboarding/email-verification` | 同门禁 | 兼容重定向至 `/account/profile` 与 `/account/email` |
+| 旧外部绑定入口别名 | `/github/<项目 UUID>`、`/feishu/<项目 UUID>` | 同项目门禁 | 重定向至项目设置页对应集成面板 |
+| 公共接口路由 | `POST /api/locale`、`GET /healthz` | 公开 | 写入白名单 `gp_locale` Cookie；容器健康检查 |
+| 未知路由 | — | — | 返回 404，不加载业务工作区 |
 
-认证与账户接口（Google OAuth、session、/me、/admin 治理）经同源代理 `/api/v1/*` 访问 FastAPI，契约见 [`docs/development-stages/13-接口交接表.md`](./docs/development-stages/13-接口交接表.md)。
+认证与业务 API 统一经 `/api/v1/*` 访问 `services/api`，完整接口契约以 [packages/domain/openapi.json](../../packages/domain/openapi.json) 为唯一权威定义。
 
-## 实施顺序
+## 5. 视觉体系与交互升级记录
 
-1. 初始化工程、设计变量、角色布局、导航、类型、Mock Adapter 与共用控件。
-2. 登录、资料、验证、首页、课程与小组。
-3. 项目总览、六步初始化、需求基线与任务规划。
-4. 共享任务视图与详情、里程碑、提交、证据、逐项验收。
-5. GitHub、飞书只读记录、文件、讨论、贡献、报告和设置。
-6. 教师 10 页与 Admin 6 页。
-7. 执行 lint、typecheck、build，检查导航和核心交互，记录 Mock 与待集成项到 `FRONTEND_STATUS.md`。
+### 2026-11-22 学生端统一画布与 GitHub AI 摘要
 
-## 2026-11-22 学生端统一 UI 与活动摘要落地
+- 共享令牌与基础组件位于 `app/globals.css`、`shared/components/common.tsx` 与 `shared/components/workspace-shell.tsx`，设计规格见 [学生端统一 UI 设计与实现规格](../superpowers/specs/2026-11-22-student-ui-unified-design.md)。
+- `/projects/:projectId/github` 首屏展示提交者与 AI 实现摘要（后端 `services/api/app/modules/a/activity_summary.py` 与 `a_activity_summaries` 迁移 `0047`），详情抽屉按需展示文件差异、证据引用与原始来源。
 
-本轮不改变 56 个页面路由和权限边界，而是把学生端的展示层收敛到同一套工作台语言：
+### 2026-11-25 Lucian UI 视觉与动效改版（已合入 `develop` 与 `main` 上线）
 
-- **设计令牌与基础组件**：`app/globals.css` 集中维护画布、表面、文字、操作色、状态色、边框、圆角、间距和动效变量；`components/common.tsx` 提供 `Section`、`ListRow`、`DetailDrawer`、`StateBlock`；学生角色由 `WorkspaceShell` 加入统一工作区标识。实现规格见 [`学生端统一 UI 设计与实现规格`](docs/superpowers/specs/2026-11-22-student-ui-unified-design.md)。
-- **页面模板**：工作台首页使用轻量统计 + 项目/课程/活动列表；项目页保留上下文与主动作；活动、文件、讨论和证据页使用“索引列表 + 详情抽屉”；表单和向导按关注点分段。现有角色、项目导航和 56 页旧链接继续有效。
-- **GitHub 活动**：`/projects/:projectId/github` 首屏显示提交者和 AI 实现摘要，详情抽屉显示影响、验证、风险、证据、原始来源和操作历史。PR/CI 仍为来源证据；不会把 PR 正文渲染成开发摘要。
-- **通用摘要服务**：`services/api/app/modules/a/activity_summary.py` 将 GitHub commit 映射到与平台无关的 `ActivitySummaryInput`；`services/api/app/modules/a/ai/` 维护提示词版本、证据引用校验、假提供方和 OpenRouter 提供方。摘要表和缓存迁移为 `0047_a_activity_summaries`，接在当前 develop 的 B 模块迁移之后。
-- **同步输入**：GitHub commit 同步会尽可能读取文件级变更并保存受限、脱敏的 patch；无法读取差异时仍保存提交标题/正文，摘要状态会提示上下文不足。来源快照始终是事实来源，AI 结果只作建议并需人工确认。
-- **验收脚本**：除既有 `check:ux`、`check:routes` 和业务断言外，使用 `npm run check:student-ui` 检查学生工作区标识、共享组件、响应式/焦点规则和 GitHub 活动页关键结构。真实外部平台授权、生产 AI 凭据、数据库迁移和浏览器实平台回归不在本地 Mock 验收之内。
-
-### 2026-11-21 学生端补充入口
-
-- `/projects/new`：独立项目创建，复用页面 35 的创建职责，不要求课程；原课程项目路由继续保留。
-- `/courses/:courseId/files`：页面 50 的学生入口别名，沿用同一文件服务及权限，不进入教师导航。
+- 新增 `shared/styles/lux-tokens.css`、`lux-shell.css`、`lux-student.css`、`lux-teacher.css` 与 `shared/components/lux/`、`shared/auth/lux/`。
+- 落地登录页粒子词标（`ParticleWordmark`）、浮动输入框（`FloatingField`）、三语旋转选择器（`LanguagePicker`）、教师 5-Hub 悬浮变形导航（`MorphNav`）、首页弹性快捷行（`JellyActionRow`）、侧栏平滑折叠与可搜索下拉框，全部支持 `prefers-reduced-motion: reduce` 静态降级，Playwright UX 自检 24/24 通过（详见 [UI 改版自检报告](../testing/2026-11-25-ui-redesign-selfcheck.md)）。

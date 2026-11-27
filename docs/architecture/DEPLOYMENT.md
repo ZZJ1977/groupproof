@@ -1,163 +1,149 @@
-# 部署基线
+# 部署基线与三环境运维架构
 
-## A3 统一认证测试发布（2026-10-12）
+> 更新日期：2026-11-27 · 代码基线：`origin/develop == origin/main`（Alembic 迁移头 `0047`）  
+> 返回 [项目首页](../../README.md) · 另见 [开发与架构设计](../guide/ARCHITECTURE.md) · [并发压力测试报告](../testing/STRESS_TEST_REPORT.md)
 
-本轮代码来源为 `~/GroupProof-team/groupproof` 的 `compat/unified-auth-resend`（`b2d1f2c`），交付 PR 为 [#14](https://github.com/ZZJ1977/groupproof/pull/14)。`services/api` 统一承载认证和业务，`server/` 保留为历史参考；以下历史基础设施描述不代表旧身份服务仍是正式入口。
+## 1. 当前线上三环境总览（均已上线，HTTP 200）
 
-`develop` 的 GitHub Actions 在全部质量检查通过后运行 `scripts/deploy-staging.mjs`，按以下顺序发布到既有 `groupproof-staging` 项目：
+GroupProof 在 Railway 上维护三套相互隔离的生产级服务环境，数据库均为 Railway 托管 **PostgreSQL 18.6**（启用 `pgvector` 与 `pgcrypto`），后端统一运行 `services/api`（FastAPI + SQLAlchemy 2 + Alembic `0047`），早期历史原型 `server/` 已彻底下线移除，所有线上环境均强制 `APP_MODE=real` 与 `NEXT_PUBLIC_ENABLE_MOCKS=false`：
 
-1. 核对固定的测试项目、API、Web、PostgreSQL 卷和部署接口；保留团队 API 原数据库连接。
-2. 在 Railway 中创建数据库卷备份，确认备份工作流完成且新备份可查询；失败时不继续迁移。
-3. 配置统一 API 的认证变量、迁移前置命令和 `/readyz`，部署 `services/api`；就绪检查同时核对数据库迁移 head。
-4. API 成功后，将 Web 的 `API_INTERNAL_URL` 从旧 `identity` 切到 `http://groupproof.railway.internal:8000`，再部署 Web。
-5. 从测试网站验证同源认证封装、匿名会话、邮件限制、个人中心 401 和业务页登录跳转。
+| 环境定位 | 跟踪分支 | Railway 项目 | 线上入口 | 核心服务组成 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| **Staging（测试与验收）** | `develop` | `groupproof-staging` | <https://groupproof-staging-production.up.railway.app> | `web`、`groupproof` (API)、`report-worker`、`risk-scheduler`、`Postgres 18.6`、`Redis` | 接收个人分支 PR 合并，6/6 CI 通过后自动发布 |
+| **Production（正式生产）** | `main` | `groupproof-production` | <https://groupproof-production-production.up.railway.app> | `web`、`groupproof` (API)、`report-worker`、`risk-scheduler`、`Postgres 18.6`、`Redis` | Staging 验收后同步 `main`，6/6 CI 通过后自动发布；数据库结构与 Staging 同步为 `0047` |
+| **Admin Console（双环境管理台）** | `admin-backend` | `groupproof-admin` | <https://web-production-650d4574.up.railway.app/admin> | 统一管理 Web 入口 + 指向 Staging/Production 的管理 API 代理 | 顶部环境选择器写入 `gp_admin_environment` Cookie，分别直连 Staging 与 Production 的隔离数据，绝不混库 |
 
-GitHub Environment `staging` 的项目 ID 和 Web 服务 ID仍使用现有配置。Railway 项目内部环境名为 `production`，但脚本同时校验项目 ID/名称并只接受 `develop`，不会把这次改造发布到生产项目。
+## 2. 三环境 CI/CD 与部署拓扑
 
-PR 上的 preflight 只读取服务、备份和配置是否存在，不更改平台配置、不迁移、不部署、不打印密钥。实际发布依赖 `develop` 的团队审查/保护规则；不能通过 PR 的检查成功宣布已经部署。
+```mermaid
+flowchart LR
+    subgraph DevBranches["成员个人开发分支"]
+        A["A_task (卓子杰/组长)"]
+        B["B_task (郑元泰)"]
+        C["C_task (杨凯景)"]
+        D["D_task (林星妤)"]
+    end
 
-测试站点：<https://groupproof-staging-production.up.railway.app>。
+    subgraph GitHubCI["GitHub Actions CI/CD (.github/workflows/ci-cd.yml)"]
+        PR["Pull Request -> develop (组长审查)"]
+        Develop["develop 分支"]
+        Main["main 分支"]
+        AdminBranch["admin-backend 分支"]
+        CI6["6 项 CI 流水线: quality / backend / e2e / c-integration / docker -> deploy"]
+    end
 
-## `admin-backend` 独立 Railway 项目（2026-11-22）
+    subgraph RailwayEnvs["Railway 三环境（PostgreSQL 18.6 / Alembic 0047）"]
+        Staging["Staging: groupproof-staging (Web + API + Workers + PG18.6 + Redis)"]
+        Prod["Production: groupproof-production (Web + API + Workers + PG18.6 + Redis)"]
+        Admin["Admin Console: groupproof-admin (/admin 双环境切换)"]
+    end
 
-为管理后台真实治理接线建立了独立项目 `groupproof-admin`，不复用旧 staging 数据库：
+    A --> PR
+    B --> PR
+    C --> PR
+    D --> PR
+    PR --> Develop
+    Develop --> CI6
+    CI6 -->|"deploy-staging.mjs + deploy-d-workers.mjs"| Staging
+    Staging -.->|"验收通过后快进同步"| Main
+    Main --> CI6
+    CI6 -->|"deploy-production.mjs + deploy-d-workers.mjs"| Prod
+    AdminBranch --> Admin
+    Admin -.->|"Cookie 切换管理 API"| Staging
+    Admin -.->|"Cookie 切换管理 API"| Prod
+```
 
-| 服务 | 来源/根目录 | 当前公开地址或状态 |
-| --- | --- | --- |
-| `api` | `ZZJ1977/groupproof` / `admin-backend` / `services/api` | <https://api-production-bc8ebe8c.up.railway.app> |
-| `web` | `ZZJ1977/groupproof` / `admin-backend` / 仓库根目录 | <https://web-production-650d4574.up.railway.app> |
-| `worker` | `ZZJ1977/groupproof` / `admin-backend` / `services/worker` | 无需公开域名 |
-| `Postgres`、`Redis` | 项目内托管服务 | 仅私网可见 |
+## 3. 各环境内部服务拓扑与职责
 
-项目 ID 为 `c96385e7-2109-4250-be01-5100b1d55521`，环境为 `production`。API 的迁移预部署命令为 `alembic upgrade head`，健康检查为 `/readyz`；Web 健康检查为 `/healthz`。当前部署只完成匿名健康检查，`APP_MODE=real` 下 Google、邮箱注册和密码找回在真实凭据配置前保持关闭，初始管理员需另行受控开通。密钥只放 Railway Variables，不写入仓库。
+每个业务环境（`groupproof-staging`、`groupproof-production`）包含独立隔离的服务集合，彼此不共享数据库、Redis、对象存储桶或密钥：
 
-当前现场核对：`groupproof-admin` 的 API、Web 和 worker 均跟踪 `admin-backend`；API 密码登录能力为 enabled/available，Google、邮箱注册和密码找回关闭，学校邮箱验证虽启用但因未配置邮件服务而不可用。旧 `groupproof-staging` 的 Resend/Google 凭据仍未配置；因此真实注册、学校验证、密码恢复和已登录 Admin 业务不作为线上已验收项。发布配置禁用邮件捕获、演示身份、debug 和验收密令，使用稳定的服务端 HMAC 密钥。
-
-本地旧账号、密码散列及旧会话不会由 CI 自动上传或导入。旧数据导入须另行备份、dry-run 和冲突核对。回退应用时保留升级后的数据库和新记录，不自动 downgrade 或清库。
-
-旧 staging/production 发布链路仍按下文环境策略管理；本轮另建独立的 `groupproof-admin` 项目用于 `admin-backend` 的真实后端验证。该项目在 Railway 中的环境名虽然是 `production`，但不等同正式生产发布；正式发布仍需由负责人完成生产认证配置、迁移和成套 API/Web 验收，再决定发布。
-
-旧环境基线是 GroupProof 的 Next.js 前端原型，可作为独立 Railway Web 服务运行；在本轮 `groupproof-admin` 项目中，真实 API、管理后台、异步 worker、PostgreSQL 和 Redis 已按服务边界接入，Web 的 Mock 开关保持关闭。
-
-## 双环境管理后台（2026-11-22）
-
-管理后台现在通过一个统一 Web 入口接入原有的 Staging 和 Production 数据库。页面顶部的数据环境选择器写入 `gp_admin_environment` Cookie，API 代理按当前环境选择对应的管理 API：
-
-| 数据环境 | Railway 项目 | 管理 API | 管理 Web | 数据状态 |
-| --- | --- | --- | --- | --- |
-| `develop` / Staging | `groupproof-staging` | `admin-api` | 统一入口 | 已读取原 Staging 数据 |
-| `main` / Production | `groupproof-production` | `admin-api` | 统一入口 | 已读取原 Production 数据 |
-
-统一入口为 <https://web-production-650d4574.up.railway.app>。`admin-backend` 已合入 `develop` 的后端代码和迁移历史，Alembic head 为 `0046`。Staging 与 Production 的管理 API 分别使用各自项目内的 `Postgres.DATABASE_URL`，数据不会在两个环境之间混合。之前创建的 `groupproof-admin` 是独立验证项目，保留作隔离环境，不是统一入口的数据源。
-
-## 环境策略
-
-使用两个 Railway 项目隔离测试和生产数据：
-
-| 环境 | Git 分支 | Railway 项目 | 用途 |
+| 服务名 | 根目录 / 启动方式 | 健康检查 / 暴露方式 | 职责说明 |
 | --- | --- | --- | --- |
-| 测试 | `develop` | `groupproof-staging` | 联调、验收、演示 |
-| 生产 | `main` | `groupproof-production` | 面向真实用户 |
+| `web` | 仓库根目录 `Dockerfile`（Next.js standalone） | `GET /healthz`，公网 HTTPS | 学生端、教师 5-Hub 端页面与 `/api/v1/*` 同源运行时代理（经私网 `API_INTERNAL_URL` 转发至 API） |
+| `groupproof`（API） | `services/api/Dockerfile` + `entrypoint.sh` | `GET /readyz`（校验 PG 连通性与 Alembic `0047` head），私网优先 | 统一 FastAPI 认证（Argon2id / Session / CSRF / Google OIDC / 邮件 OTP）与 A/B/C/D 全模块业务 API |
+| `report-worker` | `services/api` (`railway-report-worker.toml`) | Celery Worker (`app.modules.d.report_tasks:celery_app`)，无公网端口 | 消费 Redis 队列，执行 7 章节结项报告生成、图表渲染与 DOCX/PDF 导出 |
+| `risk-scheduler` | `services/api` (`railway-risk-scheduler.toml`) | `python -m scripts.daily_risks --loop`，无公网端口 | 每日定时风险巡检与预警更新 |
+| `worker` | `services/worker/` | 后台任务消费者，无公网端口 | 独立异步任务消费者框架 |
+| `Postgres` | Railway 托管 PostgreSQL **18.6** | 仅私网可见 | 业务与认证数据主库，启用 `pgvector` 与 `pgcrypto`，时区 `Asia/Shanghai` |
+| `Redis` | Railway 托管 Redis | 仅私网可见 | Celery Broker 与异步任务状态支撑 |
 
-`groupproof-staging` 和 `groupproof-production` 已分别创建 Web、FastAPI API 和 PostgreSQL 服务。Staging API 跟踪 `develop`，Production API 跟踪 `main`；两套 API 的 `DATABASE_URL` 都引用各自项目内的 PostgreSQL，`DATABASE_TIMEZONE` 为 `Asia/Shanghai`。Staging 已完成 Alembic 迁移和开发 seed，当前远端镜像仍对应已合并的 `develop` 提交；工作区中的 A2 新代码应通过功能分支 PR 合入 `develop` 后再部署。Production 数据库等后端代码合并到 `main` 后执行迁移。测试和生产使用不同的数据库、Redis、对象存储桶和 OAuth 回调地址。
+> 说明：Web、API、管理后台与 Worker 均作为独立容器部署，支持独立扩缩容与故障隔离。镜像在 `services/api/Dockerfile` 中已内置中文字体与 Cairo 运行时，用于服务端渲染真实 PDF / DOCX / SVG 报告图表。
 
-每个项目建议使用以下服务名：
+## 4. 关键环境变量与外部服务配置
 
-| 服务 | 当前状态 | 说明 |
-| --- | --- | --- |
-| `web` | 已支持 | 当前仓库的 Next.js 用户端 |
-| `api` | Staging 基础设施已运行，A2 代码待 PR；Production 待 `main` 合并 | FastAPI 健康检查、示例接口、统一响应和任务进度入口 |
-| `admin` | 预留 | 管理后台；可在同一仓库的 `apps/admin` 中维护 |
-| `worker` | Staging 基础设施已运行，A2 代码待 PR；Production 待 `main` 合并 | Celery 任务消费者；两套 Railway 服务均已绑定各自 Redis |
-| `postgres` | 已创建 | Railway 托管 PostgreSQL/pgvector；每个环境独立 |
-| `redis` | 已创建 | Celery/SSE 的 Redis 协议使用项目内 Redis；测试和生产完全隔离 |
+`NEXT_PUBLIC_*` 变量会打包进浏览器客户端，仅用于公开开关与非敏感地址；所有数据库串、密钥、OAuth Secret、邮件 API Key、AI Key 与 Railway Token 严禁进入代码仓库，仅配置在 Railway Service Variables 或 GitHub Actions Secrets。
 
-不要把前端、API 和管理后台强行塞进同一个容器。它们应独立部署、独立扩缩容，并通过环境变量传递地址。
-
-## 当前 Web 服务
-
-Railway 服务根目录保持在仓库根目录，平台会自动检测 `Dockerfile`。容器监听 Railway 注入的 `$PORT`，服务健康检查设置为 `/healthz`。当前服务不需要数据库或密钥就能运行，因为数据仍由浏览器 Mock 层提供。
-
-## A1 本地全套环境
-
-仓库根目录的 `docker-compose.yml` 可以同时启动 Web、FastAPI API、worker、PostgreSQL/pgvector 和 Redis。默认端口分别为 3000、8000、5432 和 6379；使用 `.env` 中的 `*_PORT` 变量可以覆盖宿主机端口。
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-在 Railway 的 `web` 服务中配置：
+### 4.1 Web 服务核心变量
 
 ```text
-NEXT_PUBLIC_APP_ENV=staging       # 生产改为 production
-NEXT_PUBLIC_ENABLE_MOCKS=true     # API 上线后改为 false
-NEXT_PUBLIC_API_BASE_URL=https://<api-domain>
-API_INTERNAL_URL=http://api:8000  # 仅在同一 Railway 项目内使用时填写
-NEXT_PUBLIC_ADMIN_URL=https://<admin-domain>
+NEXT_PUBLIC_APP_ENV=staging          # Production 为 production
+NEXT_PUBLIC_APP_MODE=real
+NEXT_PUBLIC_ENABLE_MOCKS=false       # Staging 与 Production 强制关闭
+API_INTERNAL_URL=http://groupproof.railway.internal:8000
 ```
 
-`NEXT_PUBLIC_` 变量会进入浏览器包，只能放公开地址和功能开关。JWT 密钥、数据库连接串、OAuth secret、对象存储密钥和 Railway token 只能放 Railway Variables 或 GitHub Secrets，不能提交到仓库。
-
-API 和 worker 在两个 Railway 项目中分别配置以下变量；`${{ ... }}` 是 Railway 项目内的服务引用，不要把解析后的密码写入仓库：
+### 4.2 API 与 Worker 核心变量
 
 ```text
-APP_ENV=staging                 # Production 项目使用 production
+APP_ENV=staging                      # Production 为 production
+APP_MODE=real
+APP_ORIGIN=https://<当前环境公网域名>
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 DATABASE_TIMEZONE=Asia/Shanghai
 REDIS_URL=${{Redis.REDIS_URL}}
+RUN_MIGRATIONS_ON_STARTUP=1          # API 启动时幂等执行 alembic upgrade head；Worker 设为 0
+EMAIL_CHALLENGE_HMAC_KEY=<32字节随机十六进制密钥，保持稳定>
 ```
 
-### 发信（学校邮箱验证码 / 注册 / 密码恢复）
+### 4.3 邮件发信通道（Brevo / Resend / SMTP）
 
-验证码由 **API 服务**（Railway staging 里名为 `groupproof` 的服务，不是 `groupproof-staging` Web 服务，也不是已下线的 `identity`）在请求内同步发送，不经过 worker/Redis 队列，所以以下变量只需配在 API 服务上。Staging 部署脚本每次都会写入 `MAIL_MODE=resend`，并保留已手动设置的 `RESEND_API_KEY`、`MAIL_FROM` 和 `MAIL_PUBLIC_ENABLED=true`：
+学校邮箱验证码、注册验证与密码恢复由 API 服务同步调用发信通道，不经 Celery 队列：
 
-```text
-MAIL_MODE=resend                # 未设置时默认 capture：只写数据库 email_outbox，不会投递到任何邮箱
-RESEND_API_KEY=re_...           # Resend 控制台 → API Keys（Sending access 即可）
-MAIL_FROM=GroupProof <noreply@你的已验证域名>
-MAIL_PUBLIC_ENABLED=true        # 域名验证并实测投递成功后再开；它控制注册/找回密码入口是否开放
-EMAIL_CHALLENGE_HMAC_KEY=...    # openssl rand -hex 32，保持稳定，改动会让未使用的验证码全部失效
+- **Brevo（HTTPS API，推荐无自有域名时使用）**：在 Brevo 验证发件人邮箱并生成 API Key，配置 `MAIL_MODE=brevo`、`BREVO_API_KEY`、`MAIL_FROM`、`MAIL_PUBLIC_ENABLED=true`。
+- **Resend（HTTPS API，适合已验证自有域名）**：在 Resend 完成域名的 SPF/DKIM 验证后，配置 `MAIL_MODE=resend`、`RESEND_API_KEY`、`MAIL_FROM`、`MAIL_PUBLIC_ENABLED=true`。
+- **SMTP**：配置 `MAIL_MODE=smtp` 及 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASSWORD`、`SMTP_TLS_MODE`。
+- **排查要点**：若日志出现 `mail captured (not delivered)` 说明仍处于本地 `capture` 模式；`brevo rejected ... status=400` 通常为发件人未验证，`status=401` 为 Key 无效或 IP 限制；`resend rejected ... status=403/422` 通常为域名未验证。
+
+### 4.4 Google OIDC、GitHub、飞书、OpenRouter 与对象存储
+
+| 集成 | 必需环境变量（仅在 Railway Variables 配置） | 说明 |
+| --- | --- | --- |
+| Google OIDC | `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_REDIRECT_URI`（须严格等于 `APP_ORIGIN + /api/v1/auth/google/callback`） | `APP_MODE=real` 启动时自动校验回调同源性；停用时显式设 `AUTH_GOOGLE_ENABLED=false` |
+| GitHub App + OAuth | `GITHUB_APP_ID`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_APP_SLUG`、`GITHUB_OAUTH_CLIENT_ID`、`GITHUB_OAUTH_CLIENT_SECRET` | 支持项目仓库绑定、多分支 Commit/PR/Diff 同步与个人 GitHub 身份归属 |
+| 飞书机器人 | `FEISHU_APP_ID`、`FEISHU_APP_SECRET` | 群聊校验、消息元数据同步与 AI 协作洞察 |
+| OpenRouter AI | `AI_PROVIDER=openrouter`、`OPENROUTER_API_KEY`、`AI_MODEL=deepseek/deepseek-v3.2`、`AI_REPORT_WRITING_MODEL=google/gemini-2.5-flash`、`AI_REPORT_VISUAL_MODEL=google/gemini-2.5-flash` | 全部调用写入 `a_ai_usage_events`，由 `/admin/ai-usage` 监控 |
+| 文件存储 | `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`、`SUPABASE_STORAGE_BUCKET` | 主存 Supabase Storage；缺省或异常时回退 PostgreSQL LOB |
+
+## 5. GitHub Actions CI/CD 门禁与发布脚本
+
+工作流位于 `.github/workflows/ci-cd.yml`。Railway 侧已断开直接 GitHub 自动部署，所有发布必须经 CI 6 项门禁串联放行：
+
+1. **`quality`**：在隔离 PostgreSQL 16 中执行迁移与认证核心 pytest，运行 `npm run lint`、`npm run typecheck`、`npm run check:routes`、`npm run test:api-config`、`npm run check:workspace-isolation`、OpenAPI 生成产物零漂移检查、`npm run build`，并拉起 Next.js standalone + Uvicorn 验证 `CHECK_HTTP=1 npm run check:routes` 与 `CHECK_AUTH_API=1 npm run check:auth`。
+2. **`backend`**：在隔离 PostgreSQL 16 上运行 `ruff format --check`、`ruff check`、`alembic upgrade head`、`alembic check`、`services/worker` 编译检查及完整后端 `pytest -q`。
+3. **`e2e`**：执行 Playwright 前端回归套件（默认、B、C、C-daily、C-API、C-shell、`test:workspace-real`）与全部业务命令脚本校验。
+4. **`c-integration`**：连接真实 PostgreSQL 跑通 C 模块会话、代理与写入端到端测试。
+5. **`docker`**：校验 `docker compose config --quiet`，构建生产镜像并冒烟验证 `/healthz`、首页与静态资源。
+6. **`deploy`**（依赖前 5 项全部通过）：
+   - `develop` 推送且 `vars.RAILWAY_DEPLOY_STAGING == 'true'` → `scripts/deploy-staging.mjs` + `scripts/deploy-d-workers.mjs`；
+   - `main` 推送且 `vars.RAILWAY_DEPLOY_PRODUCTION == 'true'` → `scripts/deploy-production.mjs` + `scripts/deploy-d-workers.mjs`；
+   - 支持 `workflow_dispatch` 手动指定 `staging` 或 `production` 触发；
+   - 生产发布前脚本自动核验必需环境变量并在迁移前触发数据库卷备份，缺项即中止部署；回退应用时不自动执行 `alembic downgrade` 或清库。
+
+只读部署自检命令（需 `RAILWAY_API_TOKEN` 与 `RAILWAY_PROJECT_ID`）：
+
+```bash
+node scripts/deploy-staging.mjs --check-only
+node scripts/deploy-production.mjs --check-only
 ```
 
-**没有自有域名时用 Brevo**：Brevo 只要求验证一个发件邮箱（点一下验证邮件即可），免费额度每天 300 封，走 HTTPS API。步骤：注册 Brevo → Senders & IP → Senders 添加并验证发件邮箱 → SMTP & API → API Keys 生成 Key；然后在 API 服务设置：
+## 6. 当前运维限制（客观记录）
 
-```text
-MAIL_MODE=brevo
-BREVO_API_KEY=xkeysib-...
-MAIL_FROM=GroupProof <已在 Brevo 验证的邮箱>
-MAIL_PUBLIC_ENABLED=true
-```
+1. **单进程 Uvicorn 与 Railway Starter 资源上限**：当前 API 容器默认 `--workers 1`，经实测可安全承载典型高校课堂（~100 并发读用户安全）；在 150+ 并发写或重聚合突发场景下 P95 延迟将明显上升，量化数据与扩容建议（多 worker + 连接池配比 + `touch_session()` 节流）见 [并发压力测试报告](../testing/STRESS_TEST_REPORT.md)。
+2. **第三方 AI 配额与成本依赖**：OpenRouter 推理受上游限流与网络延迟影响，现网配置下标准小组全周期成本约 **RMB 2.3–5.8 / 组**，需通过 `/admin/ai-usage` 持续监控异常重试（尤其是大 diff 触发的 `summarize_activity`）。
+3. **公网域名与 Google OAuth 公开审核**：当前 Staging 与 Production 使用 Railway 默认 `.up.railway.app` 域名；未来切换自定义学校域名时，需同步更新 `APP_ORIGIN`、`GOOGLE_REDIRECT_URI`、Authorized domains 以及 Google OAuth 同意屏幕公开验证状态。
 
-部署脚本默认写入 `MAIL_MODE=resend`，但会保留手动设置的 `MAIL_MODE=brevo` 与 `BREVO_API_KEY`。用个人邮箱（如 Gmail）作为发件人时，学校邮箱可能把邮件放进垃圾箱，首次请检查垃圾箱/隔离区。排查日志：`brevo rejected ... status=400` 多为发件人未验证，`status=401` 为 API Key 无效或 Brevo 开启了 IP 限制。
+## 7. 演进里程碑备注
 
-注意：`MAIL_FROM` 若使用 Resend 默认的 `onboarding@resend.dev`，Resend 只允许发给注册 Resend 的那个邮箱，发往学校邮箱会被拒（API 返回“邮件服务暂不可用”）。必须先在 Resend → Domains 添加并验证自己的域名（按提示在 DNS 加 SPF/DKIM 记录），再用该域名下的地址作为 `MAIL_FROM`。学校邮箱（Microsoft 365）可能把新域名的邮件放进垃圾箱或隔离区，首次验收时请一并检查。
-
-排查：API 日志出现 `mail captured (not delivered)` 表示仍是 capture 模式；`resend rejected ... status=403/422` 多为发信域名未验证或 `MAIL_FROM` 不在已验证域名下；`status=401` 为 API Key 无效。前端在 capture 模式下会明确提示“验证码不会送达邮箱”。
-
-API 另外设置 `PORT=8000`，worker 使用 `services/worker` 作为根目录并运行 Celery consumer。Production 的 API/worker 服务在 `main` 尚未包含后端目录期间保持停止，避免错误镜像接收正式流量。
-
-## CI/CD 触发方式
-
-GitHub Actions 在目标分支的 PR 和推送 `develop` 或 `main` 时执行前端质量、Python 后端检查、路由检查、生产构建和 Docker 冒烟测试；全部通过后才执行对应环境的 Railway 部署。Railway 服务自身的 GitHub 自动部署连接已断开，避免绕过 CI 或重复部署。
-
-GitHub 仓库 Actions Secret：`RAILWAY_TOKEN`，存放有 `zzj1977's Projects` 工作区权限的 Railway API Token。工作流将其映射为 Railway CLI 使用的 `RAILWAY_API_TOKEN`。GitHub Environment `staging` 和 `production` 各自设置 `RAILWAY_PROJECT_ID`、`RAILWAY_SERVICE_ID`，避免部署到错误项目。`RAILWAY_ENVIRONMENT` 可按项目单独设置；目前两个独立 Railway 项目内部的环境名都为 `production`，工作流默认使用这个值。GitHub Environment 的 `staging`/`production` 名称与 Railway 项目内环境名不是同一个配置项。
-
-生产发布使用 `scripts/deploy-production.mjs`：推送 `main`（且仓库变量 `RAILWAY_DEPLOY_PRODUCTION=true`）时，先检查生产 API 服务（`groupproof`）上必须由负责人配置的变量，缺任何一项就在部署前失败、不动生产；通过后依次做数据库备份（Pro 工作区）、写入服务设置、部署 API（预部署命令执行 Alembic 迁移）和 Web，并做不需要登录的部署后检查。需要的变量：`APP_MODE=real`、`APP_ORIGIN`（https）、`DATABASE_URL`、`EMAIL_CHALLENGE_HMAC_KEY`、`MAIL_MODE`（resend/brevo/smtp）及对应 Key 和 `MAIL_FROM`；启用 Google 时还要 `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`，不启用则设 `AUTH_GOOGLE_ENABLED=false`。只读自检：`node scripts/deploy-production.mjs --check-only`（需要 `RAILWAY_API_TOKEN` 和 `RAILWAY_PROJECT_ID`）。
-
-仓库级变量 `RAILWAY_DEPLOY_STAGING` 和 `RAILWAY_DEPLOY_PRODUCTION` 控制推送后的自动部署；两者为 `true` 时才自动部署。生产发布由负责人在 Staging 验收后推送 `main`。如 GitHub 套餐支持分支保护，可将质量和 Docker 检查设为必需检查。
-
-## 未来扩展为多应用仓库
-
-后端和管理后台开始开发时，建议迁移为以下目录，不改变领域模型和 API 适配边界：
-
-```text
-apps/web/       # 当前 app、components、features
-apps/admin/     # 管理后台
-services/api/   # FastAPI
-services/worker/ # Celery/任务消费者
-packages/domain/ # 前后端共享的契约与类型
-infra/          # 本地 Compose、迁移和运维脚本
-```
-
-迁移时为每个应用提供独立 Dockerfile 和 Railway 服务，先保留现有根目录 Dockerfile 以保证当前部署不受影响。API、数据库和后台接入完成后，再把 `NEXT_PUBLIC_ENABLE_MOCKS` 切换为 `false`，并在测试环境先执行迁移和完整验收。
+- **2026-10-12（A3 统一认证整合）**：将身份认证迁入 `services/api/app/auth`，退休旧 `server/` 原型，实现同源代理与 `/readyz` 迁移头校验。
+- **2026-11-22（管理台双环境合流）**：完成 `admin-backend` 与 `develop` 合流，通过 `groupproof-admin` 提供 Staging / Production 双环境切换。
+- **2026-11-25 至 2026-11-27（全量生产上线）**：Alembic 演进至 `0047`，完成 Lucian UI 改版、贡献分析 v2、独立项目移入课程、并发压测与 Staging / Production 双环境生产同步上线。
