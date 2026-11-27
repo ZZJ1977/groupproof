@@ -1,5 +1,7 @@
 # 用户管理工作台 Implementation Plan
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 将 `/admin/users` 改造成真实数据驱动的用户目录工作台：可扫读、可筛选、可复现选中用户，并在右侧详情抽屉中完成安全的账号操作。

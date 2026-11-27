@@ -12,10 +12,11 @@
 ## 验收清单
 
 - [ ] 只修改了本任务需要的文件，没有直接改其他成员负责的目录
-- [ ] 数据库结构变化包含迁移文件
+- [ ] 数据库结构变化包含迁移文件（`services/api/migrations/versions/`）
+- [ ] 接口契约变化已同步更新 `packages/domain/openapi.json` 与 `packages/domain/api.generated.ts`
 - [ ] 正常成功路径已测试
 - [ ] 无权限或无效输入路径已测试
-- [ ] 没有提交 `.env.local`、密钥、Token 或真实数据
+- [ ] 没有提交 `.env`、`.env.local`、密钥、Token 或真实敏感数据
 - [ ] 已从最新 `develop` 更新并解决冲突
 - [ ] 已运行与本次变更相关的 lint、类型检查和测试
 - [ ] PR 标题和描述包含任务编号，相关提交信息也包含任务编号

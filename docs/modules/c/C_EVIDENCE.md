@@ -1,8 +1,8 @@
 # C 证据与任务说明接口交接
 
-本文件记录 `services/api` 中已经实现的 C2/C3 证据与任务说明后端。任务执行状态接口另见 [C_TASK_EXECUTION.md](C_TASK_EXECUTION.md)，总体交付边界见 [C_DELIVERY.md](C_DELIVERY.md)，数据关系依据 [ERD.md](ERD.md)。
+本文件记录 `services/api` 中已经实现的 C2/C3 证据与任务说明后端（前端页位于 `student/execution/EvidenceApiPage.tsx` 与 `ExecutionApiPage.tsx`）。任务执行状态接口另见 [C_TASK_EXECUTION.md](C_TASK_EXECUTION.md)，总体交付边界见 [C_DELIVERY.md](C_DELIVERY.md)，数据关系依据 [ERD.md](../../architecture/ERD.md)。
 
-实现包含手工证据、任务说明版本转候选、采纳、撤回、来源变化历史、有效证据查询、说明版本管理及事务 outbox。A 文件存储、GitHub/飞书真实来源适配器、A 生产会话和 B/D 事件消费尚未完成接入；接口不会为这些依赖制造成功结果。
+实现包含手工证据、任务说明版本转候选、讨论/文件/GitHub/飞书可信来源采集（`WorkspaceEvidenceSources`）、采纳、撤回、来源变化历史、有效证据查询、说明版本管理、同事务 D 验收失效联动及事务 outbox。统一认证会话与外部平台适配器均已接入；在部署环境未配置对应外部凭据时，相关来源仍显式返回 503，不会制造伪造成功结果。
 
 ## 1. 入口与公共契约
 
@@ -76,7 +76,7 @@
 | `manual` | 保存用户提交的标题、正文及可选 HTTP(S) `source_url`，快照明确标记为用户手工内容；不声称已抓取或验证 URL 内容，不接受 `source_id` |
 | `task_note` | `source_id` 是本任务当前 `TaskNoteVersion.id`；服务端读取数据库原文。旧版本不能作为“当前说明”提交新候选 |
 | `discussion` | `source_id` 是同项目的重要、开放讨论 ID；服务端读取不可变讨论快照，包含当时的回复。新增回复或取消重要标记会使关联证据来源变化，原快照保留 |
-| `file` / `screenshot` | `source_id` 交给 A 文件适配器验证；当前未接入，明确 503 |
+| `file` / `screenshot` | `source_id` 经 `FileEvidenceSourcePort` 调用 A4-04 文件适配器校验并读取不可变文件版本快照；部署未配置对象存储时明确返回 503 |
 | `github` / `feishu` | 按 `source_id` 从 A 读取该项目有权访问的活动。飞书来源保存指定消息当时的脱敏全文和已核验附件的指纹。 |
 
 非手工来源的 URL 必须由适配器返回，请求不得自行提供 `source_url`。手工 URL 只接受 HTTP(S)，不能包含用户名或密码。用户提交的标题、散列值、外部 URL 或“已删除”字段均不能证明外部来源的真实状态。
@@ -191,13 +191,13 @@ GET /api/v1/projects/11111111-1111-4111-8111-111111111111/evidence/effective?tas
 
 ## 9. 与 A、B、D 的接入责任
 
-| 对接方 | 当前接口边界 | 接入时必须落实 |
+| 对接方 | 当前接口边界（均已合入主干） | 持续保持的不变量 |
 |---|---|---|
-| A 身份 | canonical `get_current_user` 和共享 User/项目/课程关系 | 替换临时身份实现为真实已验证会话；保留账号状态、邮箱验证、当前关系和生产拒绝临时身份头的规则 |
-| A 文件 | `SourcePort` 的 `file/screenshot` 分支 | 授权读取真实已完成的文件版本、核验项目归属和文件可用性、返回稳定版本与快照；对接真实对象存储，不能仅凭浏览器 object key 或 URL 放行 |
-| B 任务与标准 | 读取 `tasks`、`acceptance_criteria`、最新 `plan_versions` | 使用一致的 UUID；确认计划快照含任务；保持任务/标准归属；更改验收标准时通知 D 使旧验收失效 |
-| D 验收、贡献与报告 | `/evidence/effective` 与 outbox | 只使用有效正式证据；按事件 ID 幂等处理采纳/撤回/来源变化，使受影响验收过期并保留历史；报告引用可追溯证据 ID 和原快照，不能把候选数量直接当贡献 |
-| GitHub / 飞书适配 | `SourcePort` 的可信来源分支 | 认证连接、验证同步事件和资源归属、保存可信版本、区分真实删除与临时失败；当前路由不实现连接授权或同步抓取 |
+| A 身份 | `services/api/app/auth` 统一 Cookie/CSRF 会话与 canonical User/项目/课程关系 | 保持账号状态、当前学校邮箱绑定校验、实时关系鉴权和生产拒绝 demo 身份头 |
+| A 文件 | `FileEvidenceSourcePort` 对接 A4-04 Supabase Storage（未配置时 503） | 授权读取真实已完成的文件版本、核验项目归属和文件可用性、返回稳定版本与快照，不信任浏览器自报 key/URL |
+| B 任务与标准 | 读取 `tasks`、`acceptance_criteria`、最新 `plan_versions` | 使用一致的 UUID；确认计划快照含任务；保持任务/标准归属；更改验收标准时调用 D 失效端口作废旧验收 |
+| D 验收、贡献与报告 | `/evidence/effective` 与同事务失效联动 | 只使用有效正式证据；采纳/撤回/来源变化同事务作废受影响 D 验收结果并保留历史；报告引用可追溯证据 ID 和原快照 |
+| GitHub / 飞书适配 | `CompositeActivityPort`（A5/A6 只读快照与附件核验） | 认证连接、验证同步事件和资源归属、保存可信版本、区分真实删除与临时失败（503） |
 
 内部 B/D 调用不能通过制造普通用户或传任意 actor ID 获得权限。服务间认证方案尚未定义时，应使用现有真实授权上下文或经过明确装配的内部服务调用，并保持相同项目边界。
 
@@ -238,4 +238,4 @@ PostgreSQL 验证由独立验证任务运行，结果由集成交付记录统一
 
 未设置 `C_TEST_DATABASE_URL` 时，关系/HTTP 测试使用测试专用 SQLite，三条 PG 并发测试明确跳过。PG 并发用例检查同 key 并发新建只产生一份证据和事件、同版本并发采纳只有一个成功、并发首次保存说明只产生一个单例和版本。
 
-生产限制必须随交付保留：A 真实会话尚未接入时生产接口默认拒绝未认证请求；文件、GitHub、飞书真实适配器未接入时明确 503；outbox 尚未投递；没有自动完成 D 的验收更新或贡献重算。前端原有 Mock 运行结果也不能替代这些真实服务的联调验收。
+运行与安全不变量：生产环境严格拒绝未认证请求与 demo 身份头；当环境未配置 Supabase/GitHub/飞书凭据时对应来源明确返回 503；撤回与来源变更保留历史快照并排除于有效证据查询之外；最新端到端与线上交付状态见 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md)。

@@ -1,5 +1,7 @@
 # GroupProof Admin Console Visual Refresh Implementation Plan
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 将现有 `/admin/*` 改造成统一的浅色数据工作台，保留真实 API、环境切换、权限和路由契约。

@@ -1,7 +1,9 @@
 # GroupProof 教师端工作台（Phases 1–8）最终交付总报告
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../../README.md) 与 [FRONTEND_STATUS.md](../../../../FRONTEND_STATUS.md) 为准。
+
 - **交付日期**：2026-11-17
-- **执行依据**：[2026-11-17-teacher-platform-execution.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/2026-11-17-teacher-platform-execution.md)
+- **执行依据**：[2026-11-17-teacher-platform-execution.md](../2026-11-17-teacher-platform-execution.md)
 - **分支状态**：本地工作区改造完成（未执行 `git commit` / `git push` 及 Docker 构建命令，由您本地自行迁移与重启容器）。
 
 ---
@@ -10,14 +12,14 @@
 
 | 阶段 | 模块主题 | 核心页面 | 迁移版本 | 阶段报告 |
 |---|---|---|---|---|
-| Phase 1 | 权限引擎 + 助教与权限管理 | Screen 59 `/teacher/courses/{cid}/staff` | `0032` | [phase-1-staff-permissions-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-1-staff-permissions-report.md) |
-| Phase 2 | 班级设置中心 + 课程规则管理 | Screen 46 `/settings` · Screen 47 `/rules` | `0033` | [phase-2-settings-and-rules-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-2-settings-and-rules-report.md) |
-| Phase 3 | 审批与操作中心 + 导航待办徽标 | Screen 44 `/teacher/courses/{cid}/actions` | — | [phase-3-actions-center-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-3-actions-center-report.md) |
-| Phase 4 | 课程资料中心（目录树/版本/可见性） | Screen 50 `/teacher/courses/{cid}/files` | `0034` | [phase-4-course-files-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-4-course-files-report.md) |
-| Phase 5 | 课程公告系统 + 学生未读顶部横条 | Screen 60 `/announcements` · `AnnouncementBanner` | `0035` | [phase-5-announcements-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-5-announcements-report.md) |
-| Phase 6 | 数据报告中心（纯 SVG 看板 + 导出） | Screen 45 `/teacher/courses/{cid}/reports` | — | [phase-6-reports-center-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-6-reports-center-report.md) |
-| Phase 7 | 申诉与争议处理 + 贡献度调权快照 | Screen 49 `/teacher/courses/{cid}/appeals` | `0036` | [phase-7-appeals-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-7-appeals-report.md) |
-| Phase 8 | 项目总览督办 + 跨班级教师工作台 | Screen 61 `/projects` · Screen 58 `/teacher/dashboard` | — | [phase-8-projects-and-dashboard-report.md](file:///Users/motasy_delay/GroupProof-team/groupproof/docs/modules/b/phase-reports/phase-8-projects-and-dashboard-report.md) |
+| Phase 1 | 权限引擎 + 助教与权限管理 | Screen 59 `/teacher/courses/{cid}/staff` | `0032` | [phase-1-staff-permissions-report.md](phase-1-staff-permissions-report.md) |
+| Phase 2 | 班级设置中心 + 课程规则管理 | Screen 46 `/settings` · Screen 47 `/rules` | `0033` | [phase-2-settings-and-rules-report.md](phase-2-settings-and-rules-report.md) |
+| Phase 3 | 审批与操作中心 + 导航待办徽标 | Screen 44 `/teacher/courses/{cid}/actions` | — | [phase-3-actions-center-report.md](phase-3-actions-center-report.md) |
+| Phase 4 | 课程资料中心（目录树/版本/可见性） | Screen 50 `/teacher/courses/{cid}/files` | `0034` | [phase-4-course-files-report.md](phase-4-course-files-report.md) |
+| Phase 5 | 课程公告系统 + 学生未读顶部横条 | Screen 60 `/announcements` · `AnnouncementBanner` | `0035` | [phase-5-announcements-report.md](phase-5-announcements-report.md) |
+| Phase 6 | 数据报告中心（纯 SVG 看板 + 导出） | Screen 45 `/teacher/courses/{cid}/reports` | — | [phase-6-reports-center-report.md](phase-6-reports-center-report.md) |
+| Phase 7 | 申诉与争议处理 + 贡献度调权快照 | Screen 49 `/teacher/courses/{cid}/appeals` | `0036` | [phase-7-appeals-report.md](phase-7-appeals-report.md) |
+| Phase 8 | 项目总览督办 + 跨班级教师工作台 | Screen 61 `/projects` · Screen 58 `/teacher/dashboard` | — | [phase-8-projects-and-dashboard-report.md](phase-8-projects-and-dashboard-report.md) |
 
 ---
 

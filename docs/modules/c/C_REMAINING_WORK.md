@@ -1,7 +1,9 @@
 # C implementation status and remaining work
 
-2026-11-11: see the [weekly report and 35-item C checklist](weekly/2026-11-09-C.md)
-for the latest branch review, delivered integrations and remaining team dependencies.
+> **当前交付状态（2026-11-27 核对）**：下文保留 2026-10 至 2026-11 期间的阶段审计记录与历史批次统计以供追溯。截至当前 `develop` 主干（迁移头 `0047_a_activity_summaries`），下文原列跨模块依赖均已完成真实接入并上线至 Railway Staging 与 Production：包括统一 Cookie/CSRF 认证与 Google OIDC、A4 通知/待办（`DatabaseInboxPort`）、A4 共享审计与 A7 OpenRouter AI 用量（`DatabaseUsagePort`）、A4 文件存储（Supabase Storage + PG LOB 回退）、A5/A6 GitHub 多分支与飞书活动源（`CompositeActivityPort`）、A 临时只读授权（`DatabaseAuthorizationPort`）、`c-admin` 账号创建与恢复、全局权限检索 `GET /api/v1/search`、B 课程/立项/冻结文件版本引用以及 D 人工验收与同事务证据失效联动。实时系统边界与运行限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
+2026-11-11 历史周报：see the [weekly report and 35-item C checklist](2026-11-09-C-weekly.md)
+for the branch review and integration ledger at that milestone.
 
 ## Current correction — 2026-10-14
 
@@ -33,8 +35,9 @@ actual unread counts, displays task descriptions, separates historical evidence
 authors from mention recipients, locates exact replies/history from receipts and
 activity links, and exposes reasoned source checking. Global search remains
 unavailable without an authorized search provider; external source checks still
-require A's source port. The [audit](reviews/2026-10-14-c-function-audit.md)
-records the original reproductions and the delivery record records validation.
+require A's source port. The historical 2026-10-14 C functional audit
+(`reviews/2026-10-14-c-function-audit.md`, archived)
+recorded the original reproductions and `C_DELIVERY.md` records validation.
 
 This is a code audit, not team acceptance. The assignment enumerates 35 C tasks.
 Passing tests or touching a task ID does not mean that task has passed the Feishu
@@ -72,12 +75,15 @@ for exact changes, completed checks and current delivery.
 
 ## Existing team code that must be reused
 
-- `services/api/app/auth` implements teacher application persistence/review and
-  account disable/session revocation. C routes delegate with Admin/CSRF checks,
+- `services/api/app/auth` implements teacher application persistence/review,
+  account disable/session revocation, and (added in subsequent integration)
+  admin user restore (`POST /api/v1/c-admin/users/{id}/enable`) and user creation
+  (`POST /api/v1/c-admin/users`). C routes delegate with Admin/CSRF checks,
   nonblank reasons, self-disable prevention, current review basis and version
-  conflicts. Restore/create users remain unfinished.
-- `lib/commands/files.ts` already validates local file metadata, manages version
-  history and preserves baseline source references. It does not upload bytes.
+  conflicts.
+- `shared/legacy-mock/commands/files.ts`（原 `lib/commands/files.ts`）is archived
+  legacy mock metadata logic; real file uploads use A4-04 Supabase Storage / PG LOB
+  and C's canonical file endpoints.
 - `services/api` has canonical UUID User/Course/project models and real cookie
   sessions. Its development identity header remains unavailable in production.
   `server/` and earlier identity test counts are retained as historical reference.

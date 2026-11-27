@@ -1,10 +1,10 @@
 # B 对外接口约定（A4-05、D 验收端口）
 
-状态：**B 侧已定义，待 A、D 负责人确认**。确认方式：在 B_task 的合并请求里评论“同意”或提出修改。确认前，B 只使用下面的“默认实现”，不会假装功能已接通。
+状态：**已定稿并接入真实实现（2026-11-27 核对）**。`get_material_text_port()` 已接入 A4-05 持久化提取适配器 `PersistedMaterialTextPort`（`app/modules/b/material_text_port.py`），`get_verification_port()` 已接入 D 持久化人工验收与失效适配器 `PersistedVerificationPort`（`app/modules/b/verification_port.py`）；`Unavailable*Port` 仅作为未配置或隔离测试回退实现保留。
 
-- 代码位置：`services/api/app/modules/b/ports.py`
+- 代码位置：`services/api/app/modules/b/ports.py`、`material_text_port.py`、`verification_port.py`
 - 单元测试：`services/api/tests/test_b_foundation.py`
-- 对应计划：`docs/plans/2026-11-05-b-module-staged-development-plan.md` 第 2 节
+- 对应历史计划：[2026-11-05-b-module-staged-development-plan.md](2026-11-05-b-module-staged-development-plan.md) 第 2 节
 
 ---
 
@@ -39,7 +39,7 @@ class MaterialText:
 | 事务 | 只读，不提交 `session`。 |
 | 替换方式 | A 实现后，把 `get_material_text_port()` 的返回值换成 A 的实现（或在 `app.dependency_overrides` 里替换）。 |
 
-**默认实现** `UnavailableMaterialTextPort`：总是返回 `status="unavailable"`、空正文、原因“正文提取服务暂未接入”。B3-04 在 A4-05 接通前记为“部分完成”，页面显示“正文提取不可用”，不使用假正文。文本资料（学生直接粘贴文字）不依赖本端口。
+**已接入实现** `PersistedMaterialTextPort`（`app/modules/b/material_text_port.py`）：通过 A4-05 `read_receipt_text` 对 `.pdf`、`.docx`、`.md`、`.txt` 进行持久化分段正文提取与 SHA-256 指纹校验；降级/测试回退类 `UnavailableMaterialTextPort` 返回 `status="unavailable"`，绝不伪造正文。文本资料（学生直接粘贴文字）不依赖本端口。
 
 ---
 
@@ -85,24 +85,24 @@ class TaskVerificationStatus:
 | 状态口径 | 只有 `passed` 视为“验收完成”；`invalidated` 视为需要重新验收。 |
 | 替换方式 | D 实现后，把 `get_verification_port()` 的返回值换成 D 的实现。 |
 
-**默认实现** `UnavailableVerificationPort`：
+**已接入实现** `PersistedVerificationPort`（`app/modules/b/verification_port.py`）：直接对接 D 的持久化人工验收结果与同事务失效逻辑（AI 建议不会替代人工确认）。降级/测试回退类 `UnavailableVerificationPort` 保留如下安全拒绝语义：
 
 - `invalidate_criterion_results` 返回 `accepted=False`，B 把这次作废记为“待 D 处理”，不显示“旧验收已作废”。
 - `task_verification_status` 直接抛 503 `VERIFICATION_UNAVAILABLE`。B7-03 因此拒绝完成里程碑并提示“验收服务暂不可用”，不允许跳过检查。
 
 ---
 
-## 3. B 依赖但已由 A/C 提供的接口（不在本文约定，仅列出）
+## 3. B 依赖且已合入主干的 A/C 接口（仅列出）
 
-| 接口 | 提供方 | 状态（2026-11-05） |
+| 接口 | 提供方 | 当前状态（已合入 `develop` / `main`） |
 | --- | --- | --- |
-| `permissions.require_*` / `can()`（A3-05） | A | 在 `origin/A_task`，尚未合入 main |
-| `notify()`（A4-01）、`record_audit()`（A4-02）、`create_action_item()` / `close_action_items_by_source()`（A4-03） | A | 同上 |
-| 上传回执 `receipt_id`（A4-04） | A | 同上 |
-| `progress_projection`（C 根任务加权进度，B3-02 总览复用） | C | 已在 main |
-| `extract_requirements`（A7-03）、`suggest_tasks`（A7-04） | A | 同上（固定假结果版） |
-| `governance_course_service.resolve_course_invite` | C | 已在 main |
-| `POST /tasks/{id}/start`、`PATCH /tasks/{id}/progress`（C2-01） | C | 已在 main |
+| `permissions.require_*` / `can()`（A3-05） | A | 已合入并上线 |
+| `notify()`（A4-01）、`record_audit()`（A4-02）、`create_action_item()` / `close_action_items_by_source()`（A4-03） | A | 已合入并上线 |
+| 上传回执 `receipt_id`（A4-04，含 Supabase Storage 与 PG LOB 回退） | A | 已合入并上线 |
+| `progress_projection`（C 根任务加权进度，B3-02 总览复用） | C | 已合入并上线 |
+| `extract_requirements`（A7-03）、`suggest_tasks`（A7-04） | A | 已合入并接入 OpenRouter 真实模型（`fake` 仅限开发/测试） |
+| `governance_course_service.resolve_course_invite` | C | 已合入并上线 |
+| `POST /tasks/{id}/start`、`PATCH /tasks/{id}/progress`（C2-01） | C | 已合入并上线 |
 
 ---
 

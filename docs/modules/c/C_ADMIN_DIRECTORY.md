@@ -31,21 +31,21 @@ no-store`.
 
 ## Frontend integration
 
-`createCClient().adminUsers(query)` and `.adminUser(id)` use generated OpenAPI types.
-With `NEXT_PUBLIC_API_FEATURES=admin=real`, `/admin/users` renders the canonical
-read-only directory. It preserves filters/page in the URL, scopes query caches to
-the signed-in user, hides old rows during loading/errors, and provides retry.
-It never combines real responses with `MockData.users` or sends a demo identity
-header. The local browser tests intercept these responses with explicit fixtures.
+`createCClient().adminUsers(query)` and `.adminUser(id)` use generated OpenAPI types;
+the Admin console page lives at `admin/pages/IdentityAdminApiPages.tsx` (backed by
+`admin/api/c-identity-client.ts`) and uses real APIs by default. It preserves
+filters/page in the URL, scopes query caches to the signed-in user, hides old rows
+during loading/errors, and provides retry. It never combines real responses with
+legacy mock users or sends a demo identity header.
 
-Unified Cookie authentication now provides canonical UUID identity. The read-only
+Unified Cookie authentication provides canonical UUID identity. The read-only
 directory computes verification from the current `SchoolEmailBinding`, never
-from a stale users timestamp. Backend authorization remains mandatory; changing
-a demo role cannot make a denied real request succeed.
+from a stale users timestamp. Backend authorization remains mandatory.
 
-C7-02 account mutations and C7-03 teacher reviews use the separate
-`/api/v1/c-admin` contracts with CSRF, current versions and A's account services.
-Their IDs are now the same canonical UUIDs; their DTO shapes are not interchangeable.
+C7-02 account mutations (disable, enable/restore, and admin user creation) and
+C7-03 teacher reviews use the `/api/v1/c-admin` contracts with CSRF, current
+versions and A's account services (`services/api/app/auth/routers/c_admin.py`).
+Their IDs are the same canonical UUIDs; their DTO shapes are not interchangeable.
 
 ## Validation
 

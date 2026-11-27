@@ -1,8 +1,10 @@
 # C delivery and integration record
 
+> **当前状态说明（2026-11-27）**：本文主体记录 C 模块在 2026-10 至 2026-11-01 期间的逐批交付、审查与测试快照，历史表项按原貌保留以备追溯。截至当前 `develop` 主干（迁移头 `0047_a_activity_summaries`），C 模块与 A（统一认证/Google OIDC/A4 通知待办审计存储/A5-A6 GitHub 与飞书/A7 OpenRouter AI 用量/临时授权）、B（课程、组队、需求基线、冻结文件引用、任务计划）及 D（完整性检查、人工验收、同事务失效、贡献与报告）的真实联调已全部合入并部署至 Railway Staging 与 Production；最新运行边界请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 Owner: C (杨凯景). Working branch: `C_task`; pull request target: `develop`.
 
-Current follow-up (2026-11-01): PR #17 is merged. `C_task` has been fast-forwarded
+Historical follow-up (2026-11-01): PR #17 is merged. `C_task` has been fast-forwarded
 to `develop` `302bf4e`, including Google linking and D/OAuth migrations 0014/0015.
 The current batch adds Google-to-C HTTP and real-browser integration coverage,
 data-preserving migration regressions, and repairs the missing CSRF check on
@@ -12,7 +14,8 @@ the current PR checks are the authority for executed PostgreSQL/browser results.
 Previous snapshot (2026-10-15): PRs #9–#12 and #16 are merged. Team PR #14 unified
 authentication into the canonical API. This follow-up starts at `22c0d1a` and
 reuses A's existing persisted authentication events and teacher applications for
-C7-05/C7-03. The preceding [C functional audit](reviews/2026-10-14-c-function-audit.md)
+C7-05/C7-03. The preceding 2026-10-14 C functional audit
+(`reviews/2026-10-14-c-function-audit.md`, archived)
 was delivered in PR #16; its final CI passed 869 backend tests, 121 C browser cases,
 733 C script assertions, frontend quality/build and Docker smoke checks.
 There is partial code/contract coverage for **35/35 C task IDs, not 35 accepted
@@ -27,7 +30,7 @@ function, rather than relying on their partial anonymous HTML previews.
 
 - [Detailed assignment](https://tcnulppfrs5x.feishu.cn/wiki/RQb3wHm45i3UpXk9iOtcDxmjn7d): modified 2026-10-10 20:03. C1–C7 and the personal-branch section were checked against the supplied assignment.
 - [Technical and submission specification v1.0](https://tcnulppfrs5x.feishu.cn/wiki/GkCkwEEpfijf4okZsVQcnUH7nSc): modified 2026-10-09 11:46. Full text read, including API, tests, commits, review and Definition of Done.
-- [Database and ER draft](https://tcnulppfrs5x.feishu.cn/wiki/HYWxwo4PgiaQ8ZkuBWRcM4v1n0c): modified 2026-10-10 12:33. Explanatory text read and diagram overview displayed. Individual diagram labels could not all be resolved in the narrow browser preview; detailed schema work uses the repository's `docs/ERD.md`, the source model referred to by this document.
+- [Database and ER draft](https://tcnulppfrs5x.feishu.cn/wiki/HYWxwo4PgiaQ8ZkuBWRcM4v1n0c): modified 2026-10-10 12:33. Explanatory text read and diagram overview displayed. Individual diagram labels could not all be resolved in the narrow browser preview; detailed schema work uses the repository's [docs/architecture/ERD.md](../../architecture/ERD.md), the source model referred to by this document.
 
 ### Conflicts and implementation decisions
 
@@ -146,7 +149,7 @@ GroupProof-specific functions: [GitHub Apps](https://docs.github.com/en/apps/cre
 - C2-02/06 and C3-01 UI: URL-backed tabs and combined evidence filters; safe
   original-source links; resetting all source-specific fields; candidate creation
   preserves task status. File upload is explicitly unavailable until storage exists.
-- Generated OpenAPI types and `lib/api/c-client.ts` expose the canonical routes.
+- Generated OpenAPI types and `shared/daily-inbox/c-client.ts`（原 `lib/api/c-client.ts`）expose the canonical routes.
   This client is not enabled in mock-ID workspace pages. A must connect verified
   identity and B must deliver canonical project/task/criterion IDs first.
 - Added isolated browser fixtures and CI steps for the C tests. The existing
@@ -509,7 +512,8 @@ dependencies. C task acceptance remains separate from partial code coverage.
 
 Base: merged `develop` `4143991` (including PRs #12 and #14). This entry supersedes
 the earlier identity-bridge dependency. The original findings and remaining
-provider gaps are preserved in [the audit](reviews/2026-10-14-c-function-audit.md).
+provider gaps were recorded in the historical 2026-10-14 C functional audit
+(`reviews/2026-10-14-c-function-audit.md`, archived).
 
 | Commit | Delivered change |
 | --- | --- |

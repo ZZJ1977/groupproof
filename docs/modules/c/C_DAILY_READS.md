@@ -26,8 +26,9 @@ no-store cache policy.
   one record plus the provider's complete total, not every page. A successful empty
   source returns zero. A missing, unavailable or invalid source returns null only
   for its own counter and is listed in `unavailable_sources`; unrelated home facts
-  remain visible. Provider 401/403 errors fail the entire response. The default A
-  adapter remains unavailable, and no counts are inferred from pending outbox data.
+  remain visible. Provider 401/403 errors fail the entire response. `get_inbox_port()`
+  is wired to A4 `DatabaseInboxPort` (`app/modules/a/inbox.py`), and no counts are
+  inferred from pending outbox data.
 
 The query count is bounded rather than querying once per project. A new request
 sees task mutations without stale workspace snapshots.
@@ -68,15 +69,15 @@ sent. Set `NEXT_PUBLIC_API_FEATURES=daily=real` to select the real read-only pag
 independently of unfinished workspace features. Existing overrides may be combined,
 for example `admin=real,daily=real`.
 
-`DailyApiPages.tsx` uses only server DTOs. Session-scoped query keys, zero retained
-cache lifetime and hiding rows during refetch/error prevent stale successful data
-from appearing after a rejected request. Empty/error responses never fall back to
-seed users, project counts or activities. Filters and pagination live in the URL.
+`shared/daily-inbox/DailyApiPages.tsx` uses only server DTOs and is enabled by
+default in real workspace mode (`NEXT_PUBLIC_ENABLE_MOCKS=false`). Session-scoped
+query keys, zero retained cache lifetime and hiding rows during refetch/error
+prevent stale successful data from appearing after a rejected request. Empty/error
+responses never fall back to seed users, project counts or activities. Filters and
+pagination live in the URL.
 
-This flag does not implement A's production session-to-canonical-user mapping.
-Until A delivers that mapping, production requests return 401. The surrounding
-workspace and B's canonical project/course pages are separate integration work.
-The feature must not be enabled as a claim that all those dependencies are ready.
+Unified Cookie/CSRF authentication (`services/api/app/auth`) and canonical A/B/C/D
+workspace pages are wired and live on Staging and Production.
 
 ## Verification
 

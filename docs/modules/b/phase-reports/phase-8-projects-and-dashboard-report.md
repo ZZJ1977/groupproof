@@ -1,5 +1,7 @@
 # Phase 8 校验报告：项目总览 + 教师工作台
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../../README.md) 与 [FRONTEND_STATUS.md](../../../../FRONTEND_STATUS.md) 为准。
+
 - **完成日期**：2026-11-17
 - **覆盖范围**：Screen 61（`/teacher/courses/{cid}/projects`，单班项目总览与督办）+ Screen 58（`/teacher/dashboard`，跨班级钉钉式教师工作台）
 

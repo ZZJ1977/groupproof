@@ -1,3 +1,3 @@
 # A worker tasks
 
-预留给平台、认证和第三方同步任务。实现任务时保持输入输出契约在 `packages/domain` 中可追踪。
+预留给基于 `services/worker` `ProgressTask` 的平台、认证与外部同步长耗时任务；输入输出契约保持在 `packages/domain` 中可追踪。当前 GitHub 定时自动同步随 API 进程运行于 `services/api/app/modules/a/github_auto_sync.py`。

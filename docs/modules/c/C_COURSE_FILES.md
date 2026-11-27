@@ -1,10 +1,12 @@
 # C5-04 canonical course files
 
 The C course-file service persists logical files, immutable byte metadata,
-publication decisions and pending integration facts in `services/api`. Actual
-uploads and signed previews/downloads require an A adapter. The default
-course-scoped storage port returns **503**, without creating fake file records
-or claiming uploaded bytes. No third-party credentials are included.
+publication decisions and pending integration facts in `services/api`. `get_course_storage_port()`
+is wired to A4-04 `SupabaseCourseStoragePort` when `SUPABASE_URL` /
+`SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET` are configured; when storage
+is unconfigured, it falls back to `UnavailableCourseStoragePort` (**503**) without
+creating fake file records or claiming uploaded bytes. No third-party credentials
+are included in the repository.
 
 ## Files and integration
 
@@ -148,13 +150,12 @@ This read-only test checks that B saved the file and version together, that the
 project page links to that version, and that its downloaded bytes match the
 historical SHA-256 after a reload.
 
-On November 19, [B's course materials center](https://github.com/ZZJ1977/groupproof/blob/81fa4262763f46c35656c116a8d1839ac8c04e92/docs/modules/b/phase-reports/phase-4-course-files-report.md)
-supported downloads by version number for files in its own catalog. The
-[project baseline snapshot](https://github.com/ZZJ1977/groupproof/blob/81fa4262763f46c35656c116a8d1839ac8c04e92/services/api/app/modules/b/baseline_service.py#L247-L306)
-still needs to persist each selected C publication's `file_id` and `version_id`
-when the baseline is submitted for confirmation. The frozen project page can
-then use that pair to construct the version URL above. For older snapshots
-without a recorded pair, the selected version is unknown.
+On 2026-11-22, B's project baseline freeze snapshot (`_snapshot`) was updated to
+pin published `c_course_files` and `b_course_material_items` version references
+automatically, and student course files (`student/courses/StudentCourseFilesApiPage.tsx`)
+integrate both B course materials and C `?version=` deep links. For historical
+snapshots created before that update without a recorded pair, the selected version
+remains unknown.
 
 ## A course-storage contract
 
@@ -196,8 +197,8 @@ or migration plan, never silent loss of course-file provenance.
 
 ## Course-file API page
 
-`features/c/CourseFilesApiPage.tsx` accepts a canonical `courseId` and uses
-`lib/api/c-course-files-client.ts`; it never translates mock IDs or displays
+`student/execution/CourseFilesApiPage.tsx`（原 `features/c/CourseFilesApiPage.tsx`）accepts a canonical `courseId` and uses
+`shared/daily-inbox/c-course-files-client.ts`（原 `lib/api/c-course-files-client.ts`）; it never translates mock IDs or displays
 receipt IDs, storage object IDs or editable UUID fields. Root routing selects
 the real page with the course-files feature flag. Existing materials, permitted
 version history, URL-persisted combined filters and pagination come from the

@@ -75,7 +75,7 @@
 
 not_started → in_progress 复用负责人/依赖开始规则。通用内部状态变更接口的其余转换必须传入进程内 `TransitionProvider`；缺少适配器返回 503 `TRANSITION_PROVIDER_UNAVAILABLE`。C2-08 的专用准备端点在同事务保存草稿后进入 pending_submission，不执行 D 验收。该协议的 `authorize(scope, user, target, reason)` 必须读取当前持久化事实，验证对应流程条件，并将必要的失效通知/记录写入**同一 Session 和事务**。不得信任浏览器传来的 `verified=true`、AI 通过结果或陈旧验证快照。
 
-调用形态如下（`DTransitionAdapter` 是待 D 交付的实际适配器，不是本批已实现类）：
+调用形态如下（D 模块验收与任务完成联动已在 `app/modules/d/acceptance.py` 与 `verification.py` 落地，仍严格遵循“100% 进度不自动完成、必须经负责人人工确认”的不变量）：
 
 ```python
 service = TaskExecutionService(SqlExecutionRepository(session))

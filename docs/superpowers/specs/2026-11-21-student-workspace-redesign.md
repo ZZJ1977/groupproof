@@ -1,5 +1,7 @@
 # Student Workspace Redesign
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 ## Intent
 
 Rebuild the student experience around the work a student is trying to complete, rather than exposing every domain object as a flat navigation item. A project must be usable immediately after creation. Configuration, integrations, requirements analysis, and formal baseline governance remain available, but they no longer form one universal blocking wizard.

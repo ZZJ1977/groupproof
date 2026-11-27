@@ -1,30 +1,31 @@
 # C real API page handoff
 
-The C pages preserve the existing page map and shared layout. Feature flags route
-to small C-owned components before the demo-role guard. A's authenticated page
-gate still runs, and each backend request independently checks current authority.
-The real page components never translate `project-1`, `course-1` or other seed
-identifiers into database UUIDs and never fall back to local sample data.
+> **当前状态（2026-11-27）**：前端已重构为按角色分域目录，C 真实页面现位于 `shared/daily-inbox/`（04–06、30）、`student/execution/`（14–15、20–24、50）与 `admin/pages/`（51–56、62）。工作区默认全量启用真实 API（`NEXT_PUBLIC_ENABLE_MOCKS=false`），A/B/C/D 后端端口均已接入并在 Staging / Production 上线，最新交付边界见 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md)。
+
+The C pages preserve the existing page map and shared layout. A's authenticated page
+gate runs before workspace routes, and each backend request independently checks
+current authority. The real page components never translate `project-1`, `course-1`
+or other legacy seed identifiers into database UUIDs and never fall back to local
+sample data.
 
 ## Features and routes
 
-| Flag | Screens | Interface |
+| Flag | Screens | Frontend location & interface |
 | --- | --- | --- |
-| `daily=real` | 04, 30 | Canonical home summary and personal activity |
-| `inbox=real` | 05, 06 | A-backed notification and assigned action-item ports |
-| `cworkspace=real` | 14, 15, 20–24 | Canonical task execution, evidence, activity, files and discussions |
-| `coursefiles=real` | 50 | Canonical course file versions and publication |
-| `cidentity=real` | 51, 52 | Existing identity service directory, disable and teacher review |
-| `governance=real` | 53–56 | Canonical course lifecycle, audit, usage and access decisions |
+| `daily=real` | 04, 30 | `shared/daily-inbox/DailyApiPages.tsx` — Canonical home summary and personal activity |
+| `inbox=real` | 05, 06 | `shared/daily-inbox/InboxApiPages.tsx` — A4 `DatabaseInboxPort` notifications and action items |
+| `cworkspace=real` | 14, 15, 20–24 | `student/execution/` — Canonical task execution, evidence, activity, files and discussions |
+| `coursefiles=real` | 50 | `student/execution/CourseFilesApiPage.tsx`（学生端另由 `student/courses/StudentCourseFilesApiPage.tsx` 聚合 B/C 课程资料） |
+| `cidentity=real` | 51, 52 | `admin/pages/IdentityAdminApiPages.tsx` — Unified identity directory, disable/enable/create and teacher review |
+| `governance=real` | 53–56 | `admin/pages/GovernanceApiPages.tsx` — Course lifecycle, auth/shared audit, AI usage and access decisions |
 
-Set the chosen entries in `NEXT_PUBLIC_API_FEATURES`; flags are independent.
-With mocks globally disabled, the default for every feature is real. Enable the
-canonical features against `services/api`, which now includes A's unified cookie
-session transport. The browser defaults to same-origin `/api/v1`, and Next
-forwards `Idempotency-Key` with cookies and CSRF headers. `server/` is historical.
-With `workspace=real`, the shell contains no seed objects, uses valid route UUIDs
-for navigation and actual inbox totals for its badge. It disables global search
-until an authorized search provider exists; feature pages query their own data.
+With mocks globally disabled (`NEXT_PUBLIC_ENABLE_MOCKS=false`, enforced in Staging
+and Production), every feature defaults to real against `services/api`, using A's
+unified cookie session and CSRF transport. The browser defaults to same-origin
+`/api/v1`, and Next forwards `Idempotency-Key` with cookies and CSRF headers.
+`server/` is historical. The shell contains no seed objects, uses valid route UUIDs
+for navigation, actual inbox totals for its badge, and authorized global search
+(`GET /api/v1/search`, strictly scoped by current account permissions).
 
 ## Page and interaction structure
 
@@ -32,29 +33,35 @@ until an authorized search provider exists; feature pages query their own data.
   linked discussions and execution history. Tabs live in the URL. Progress and
   implementation-note forms retain input on failures; refreshing after a version
   conflict requires the user to check the current saved state. Progress at 100%
-  cannot complete a task. D's verification tab explains its unavailable service.
+  cannot complete a task. The verification tab queries D's real acceptance history
+  and links to completeness check / human confirmation (degrading explicitly only
+  if the service is unavailable).
 - Submission saves the note draft and pending-submission state together. A
   source selector shows actual authorized records; switching source clears its
-  selection. Manual descriptions, existing task notes and important discussions
-  can become candidate evidence. File/GitHub/Feishu snapshots need A's adapter.
-  Successful preparation displays the actual receipt and does not enter a mock
-  acceptance flow on screens 16 or 17.
+  selection. Manual descriptions, existing task notes, important discussions,
+  stored files and synced GitHub/Feishu activities can become candidate evidence
+  through A's wired `SourcePort` adapters. Successful preparation displays the
+  actual receipt and hands off to D's real completeness check on screen 16.
 - Evidence has URL filters, criterion choices from the current task context,
-  source snapshots, decision history and explicit reasoned adoption/withdrawal.
+  source snapshots, decision history and explicit reasoned adoption/withdrawal
+  (triggering in-transaction D verification invalidation).
 - GitHub and Feishu display authorized provider query results, current connection
-  state and association/decision controls. Their connection and sync controls
-  remain A-owned. Original GitHub links require the exact GitHub HTTPS host.
+  state, direct in-page sync triggers and association/decision controls. Original
+  GitHub links require the exact GitHub HTTPS host.
 - Project and course files have URL filters, version history, reasoned official
-  designation/publication, and short-lived signed preview/download links. Actual
-  byte upload remains unavailable until A provides its upload interface.
+  designation/publication, verified byte upload (via A4-04 Supabase Storage or
+  inline PG LOB fallback where applicable) and short-lived signed preview/download
+  links (returning explicit 503 only when storage is unconfigured).
 - Discussions support task/requirement/module/milestone references, mentions,
   concurrent replies, important marks and explicit confirmation before discarding
   edits. Task detail uses the same discussion component with its task scope.
 - Governance pages use real lists and detail records with reason/version-aware
-  decisions. An unavailable audit or usage source yields an error, not a synthetic
-  trend. Authorization activation must be acknowledged by A before approval.
-- Inbox pages expose read-state controls and processing links. There is no C
-  endpoint or button to arbitrarily complete an assigned action item.
+  decisions against A's `AuthAuditEvent`, A4 shared audit, A7 `DatabaseUsagePort`
+  and `DatabaseAuthorizationPort`. Unavailable sources yield an explicit error,
+  never synthetic trends.
+- Inbox pages expose read-state controls and processing links backed by A4
+  `DatabaseInboxPort`. There is no C endpoint or button to arbitrarily complete an
+  assigned action item.
 
 ## Common behavior and data boundaries
 

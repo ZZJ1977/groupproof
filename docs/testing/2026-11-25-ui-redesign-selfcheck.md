@@ -1,5 +1,7 @@
 # Playwright UX Self-Check Report: Lucian UI Redesign
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../README.md) 与 [FRONTEND_STATUS.md](../../FRONTEND_STATUS.md) 为准。
+
 - **Date**: 2026-11-25
 - **Branch / HEAD**: `feat/ui-lucian-redesign` (`3909ecf`) in `/Users/motasy_delay/GroupProof-team/groupproof-final`
 - **Target Runtime**: `http://localhost:3000` (Next.js dev) + `http://localhost:8000` (Docker FastAPI `/readyz` ready)

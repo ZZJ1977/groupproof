@@ -2,9 +2,9 @@
 
 ## 范围与边界
 
-本轮在 `services/api/app/modules/c/governance_*.py` 实现 C7-04、C7-07 的 canonical 命令与持久化，并为 C7-05、C7-06 提供 A 服务的只读 typed ports。前端 `GovernanceApiPages` 在 `governance=real` 时只使用真实 API；课程、日志、AI 用量、访问审批分别对应 C53–C56。没有服务器数据时不合并本地种子，也不把 503 当作零数据或写入成功。
+`services/api/app/modules/c/governance_*.py` 实现 C7-04、C7-07 的 canonical 命令与持久化，并为 C7-05、C7-06 接入 A 服务的真实只读提供方（A4 共享审计、`AuthAuditEvent`、A7 `DatabaseUsagePort` 与 `DatabaseAuthorizationPort`）。前端 `admin/pages/GovernanceApiPages.tsx`（及 `admin/api/c-governance-client.ts`）直接调用真实 API，课程、日志、AI 用量、访问审批分别对应页面 53–56，已在 Railway Staging / Production 与管理控制台上线。没有服务器数据时不合并本地种子，也不把 503 当作零数据或写入成功。
 
-所有管理接口重新查询当前 canonical User，要求 active Admin；写入另要求 A 当前学校邮箱绑定有效，并锁定当前操作人行。申请人接口使用当前身份，没有自由 applicant 参数。浏览器展示不代替服务端授权。PR #14 已交付 `services/api/app/auth` 的统一 Cookie/UUID 身份；浏览器 fixtures 仍不等于真实环境联调验收。
+所有管理接口重新查询当前 canonical User，要求 active Admin；写入另要求 A 当前学校邮箱绑定有效，并锁定当前操作人行。申请人接口使用当前身份，没有自由 applicant 参数。浏览器展示不代替服务端授权。统一 Cookie/UUID 身份与 CSRF 校验均由 `services/api/app/auth` 提供。
 
 ## 14 个接口
 
@@ -55,8 +55,7 @@ C 的内容读取调用 A 的 `has_read_grant` 核对项目和具体资源。任
 - `GET /api/v1/admin/auth-audit-logs`：按操作、结果、操作者、目标用户和时间筛选，服务器分页。
 - `GET /api/v1/admin/auth-audit-logs/{record_id}`：读取原始认证事件的安全投影；ID 沿用 A 的不透明字符串。
 
-响应明确标明 `source=auth_audit_events`、`scope=authentication`。认证日志与原全站业务日志分别查询；
-认证记录可用不表示全站审计提供方已经接通。所有请求检查当前管理员身份；页面不提供修改或删除日志的操作。
+响应明确标明 `source=auth_audit_events`、`scope=authentication`。认证日志与 A4 全站业务审计日志分别查询、清晰区分来源范围。所有请求检查当前管理员身份；页面不提供修改或删除日志的操作。
 显示事件时间、操作、结果和白名单内的变更字段名。A 未保存的历史角色、改前/改后值、处理原因不推断补齐，
 请求原文、完整邮箱、会话和验证码也不从底层记录透传。未知元数据使用显式脱敏标记。
 筛选和当前页写入网址，权限失效后清除旧列表与详情。验证记录见 `C_DELIVERY.md`。
@@ -75,6 +74,4 @@ C 的内容读取调用 A 的 `has_read_grant` 核对项目和具体资源。任
 
 迁移 `0012` 父为 `0011`；只新增 C 表。非空治理表拒绝降级，避免误删历史/授权记录；空表降级可回到 `0011` 并再次升级。未修改 canonical code+semester 约束。
 
-最终本地验证（2026-10-12）：治理 74 项服务/HTTP 测试与 7 项隔离 PostgreSQL 并发/迁移测试均已纳入主任务的 canonical 全套 **813 passed、零 skipped** 结果；该全套数量包含 SQLite/HTTP 测试，不能称作 813 项 PostgreSQL 测试。测试文件为 `test_c_governance.py`、`test_c_governance_http.py`、`test_c_governance_reads.py`、`test_c_governance_postgres.py`。
-
-治理浏览器回归 `e2e/c-governance-api.spec.ts` **11/11 通过**，包括相同请求保留幂等键重试、权限失效清除旧详情、版本冲突保留理由、刷新保留创建草稿、完整日志筛选和服务不可用状态。它使用显式拦截 fixture 验证真实 API 页面分支，不等于 A 生产接入验收。前端 TypeScript、目标 ESLint 和本批生产构建均已通过；构建包含编译、类型检查、静态生成和 trace 收集。远端 CI、PR 审查和团队验收尚待完成，不在此标记通过。后续结果由总交付记录统一更新。
+历史阶段本地验证（2026-10-12 快照）：治理 74 项服务/HTTP 测试与 7 项隔离 PostgreSQL 并发/迁移测试均已纳入当时 canonical 全套 **813 passed、零 skipped** 结果（含 SQLite/HTTP 与 PG 用例，测试文件 `test_c_governance.py`、`test_c_governance_http.py`、`test_c_governance_reads.py`、`test_c_governance_postgres.py`）；`e2e/c-governance-api.spec.ts` 11/11 通过。后续全量管理台接线与上线状态见 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md)。

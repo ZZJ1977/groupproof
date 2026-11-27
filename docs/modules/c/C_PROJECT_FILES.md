@@ -11,7 +11,9 @@ receipt with C. An unconfigured storage port returns **503**. The separate
 - `app/modules/c/files_models.py`: `c_logical_files`, `c_file_versions`,
   `c_file_decisions`. The A `files` table and all B snapshots remain unchanged.
 - `files_storage.py`: A's `StoragePort`, immutable receipt/link DTOs, defensive
-  output validation, and the unavailable default dependency.
+  output validation, wired via `get_storage_port()` to A4-04 `SupabaseProjectStoragePort`
+  when `SUPABASE_*` is configured (falling back to `UnavailableStoragePort` / 503
+  only when unconfigured).
 - `files_service.py`: authorization, queries, append-only version registration,
   official designation, CAS, audit and transactional outbox.
 - `files_router.py` / `files_schemas.py`: canonical HTTP and typed contracts.
@@ -82,8 +84,8 @@ teaching staff can read. A student from another group in the same course cannot
 read these files, even with the exact file and version IDs. Only verified,
 active project members may write, and both project and course must be active.
 Platform administrators and unrelated teachers get no implicit content access.
-The [project permissions matrix](development-stages/01-权限矩阵与权限判断.md)
-and the [project file handoff](development-stages/13-接口交接表.md) define this
+The [development stages index](../../development-stages/README.md) and
+[A shared permissions contract](../a/A_SHARED_SERVICES.md) document this
 teaching-staff exception. Course files use their own course-scoped routes.
 Preparation of project files does not require a frozen B baseline or plan.
 Every link request repeats authorization; historical versions remain readable
@@ -134,9 +136,10 @@ hostname or target URL. C never fetches arbitrary returned URLs. The adapter
 owns safe response Content-Type/Content-Disposition handling, especially for
 preview responses. Transient adapter failure is 503, not deletion or success.
 
-The C evidence `SourcePort` bridge to these immutable version IDs is a separate
-integration boundary; this delivery does not silently switch evidence sources
-or mark old evidence changed merely because another file version was appended.
+The C evidence `SourcePort` bridge to these immutable version IDs is implemented in
+`file_evidence.py` (`FileEvidenceSourcePort`) and wired in `evidence_sources.py`;
+appending another file version never silently switches existing evidence sources or
+marks old evidence changed.
 
 ## Validation
 

@@ -1,10 +1,11 @@
 # C4 canonical activity-record handoff
 
-This slice owns C's task associations and Feishu triage decisions. It does not
-implement A's GitHub/Feishu authentication, connection, ingestion or synchronization.
-The collaboration pages use these canonical routes when `cworkspace=real` is
-enabled. The separate mock mode remains local; its IDs must not be passed to
-canonical UUID routes. An unavailable A source adapter still returns 503.
+This slice owns C's task associations and Feishu triage decisions. A's GitHub App
+(multi-branch commits/PRs/CI + webhook) and Feishu bot read adapters are wired into
+`get_activity_source_port()` via `CompositeActivityPort` and live on Staging and
+Production. The collaboration pages (`student/execution/ActivityApiPages.tsx`) use
+these canonical routes by default. An unavailable or unconfigured A source adapter
+still returns explicit 503 without substituting mock records.
 
 ## Source contract
 
@@ -67,7 +68,7 @@ cannot supply an actor, source author, source body, URL, evidence ID or snapshot
 
 ## Real-page URL filters
 
-`ActivityApiPages.tsx` forwards URL `kind` to the API and, for Feishu only,
+`student/execution/ActivityApiPages.tsx` forwards URL `kind` to the API and, for Feishu only,
 `group_id`. It accepts legacy `group` when `group_id` is absent; new submissions
 write `group_id` and remove `group`. A canonical `group_id` is opaque, including
 the literal value `all`; legacy `group=all` and `kind=all` mean no filter.
@@ -117,9 +118,10 @@ available. A changed request under the same key fails. Failed writes roll back a
 records together. Stored history remains readable when the external adapter fails.
 
 `source_changed` in C4 reads compares the current source with the last C4 decision
-capture. This read flag does **not** mutate C3 evidence validity or invalidate D.
-The separate trusted C3 SourcePort/source-change event and downstream D delivery
-still need A/D integration. Outbox rows mean pending delivery, not sent notifications.
+capture. This read flag does **not** mutate C3 evidence validity directly on read;
+explicit C3 `check-source` / evidence decisions handle invalidation (including
+in-transaction D verification invalidation). Outbox rows record durable facts
+separately from read queries.
 
 ## Verification
 

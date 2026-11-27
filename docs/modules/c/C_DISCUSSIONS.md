@@ -1,8 +1,8 @@
 # C6 讨论、并发回复与重要来源交接
 
-本文对应 C6-01/02/03，记录 `services/api/app/modules/c/discussion_*.py` 的真实数据库实现。证据生命周期见 [C_EVIDENCE.md](C_EVIDENCE.md)，权限背景见 [C_TASK_EXECUTION.md](C_TASK_EXECUTION.md)，关系字段依据 [ERD.md](ERD.md)。前端 Mock 和真实 HTTP 接入状态应在 [C_DELIVERY.md](C_DELIVERY.md) 分开说明。
+本文对应 C6-01/02/03，记录 `services/api/app/modules/c/discussion_*.py` 的真实数据库实现（前端页位于 `student/execution/DiscussionsApiPage.tsx`）。证据生命周期见 [C_EVIDENCE.md](C_EVIDENCE.md)，权限背景见 [C_TASK_EXECUTION.md](C_TASK_EXECUTION.md)，关系字段依据 [ERD.md](../../architecture/ERD.md)。整体交付边界见 [C_DELIVERY.md](C_DELIVERY.md)。
 
-已实现同项目对象关联、创建讨论、独立回复行、结构化提及、重要标记、不可变讨论来源快照、幂等与并发保护。通知和审计写入 C 的事务 outbox；尚未接入 A 的通知送达，不把 pending 当作已发送。
+已实现同项目对象关联、创建讨论、独立回复行、结构化提及、重要标记、不可变讨论来源快照、幂等与并发保护。A 统一会话/CSRF、A4 通知收件箱与 C/D 证据失效联动均已合入主干；`c_integration_outbox` 中的持久化事件用于审计与异步追踪，不把未消费 outbox 行直接当作已送达。
 
 ## 1. HTTP 接口
 
@@ -161,4 +161,4 @@ Idempotency-Key: discussion-important-001
 .venv/Scripts/ruff.exe check app/modules/c/discussion_*.py tests/test_c_discussions*.py migrations/versions/0008_c_discussions.py
 ```
 
-全套集成结果在 C 交付记录中统一维护。真实边界仍是：生产 A 会话未接入时请求默认拒绝；A 通知只有待消费 outbox，未送达；B/D 自动验收失效与贡献更新仍待消费者；前端若仍运行 Mock，应保留明确标识，不能把 Mock 讨论、通知或证据当作真实数据库结果。
+全套集成结果与当前上线状态见 [C_DELIVERY.md](C_DELIVERY.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md)。统一 Cookie/CSRF 认证、讨论页与同事务证据来源失效已部署至 Staging 与 Production；`c_integration_outbox` 继续保留完整事件事实用于审计和幂等重放。

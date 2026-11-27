@@ -1,5 +1,7 @@
 # 管理后台真实后端阶段报告（2026-11-22）
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 ## 范围
 
 在 `admin-backend` 分支复用 `services/api` 的统一身份和 PostgreSQL 领域服务，完成 Admin 六页所需的真实治理接线：用户目录与账号停用/恢复/创建、教师申请审核、课程生命周期、认证/共享审计读取、AI 用量读取、临时只读访问申请与实际内容权限检查。保留现有 `/admin/*` URL、real feature flags 和 `server/` 历史参考边界。

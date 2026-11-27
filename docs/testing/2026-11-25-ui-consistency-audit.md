@@ -1,5 +1,7 @@
 # UI/UX Consistency Audit: Student vs. Teacher Workspaces
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../README.md) 与 [FRONTEND_STATUS.md](../../FRONTEND_STATUS.md) 为准。
+
 - **Audit Date**: 2026-11-25
 - **Target Repository**: `/Users/motasy_delay/GroupProof-team/groupproof-final`
 - **Scope**: Read-only audit comparing the Student end (`student/`, plus student paths in `shared/`) and Teacher end (`teacher/`, plus teacher-scoped paths in `shared/` and `.gp-teacher-shell`/`.gp-teacher-portal` styles in `app/globals.css`). No application source files were modified.

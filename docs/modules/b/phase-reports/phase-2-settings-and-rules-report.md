@@ -1,5 +1,7 @@
 # Phase 2 校验报告：班级设置 + 课程规则
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../../README.md) 与 [FRONTEND_STATUS.md](../../../../FRONTEND_STATUS.md) 为准。
+
 - **完成日期**：2026-11-17
 - **覆盖范围**：Screen 46（`/teacher/courses/{cid}/settings`，对标钉钉"组织设置"）+ Screen 47（`/teacher/courses/{cid}/rules`，对标钉钉"审批模板管理"）
 

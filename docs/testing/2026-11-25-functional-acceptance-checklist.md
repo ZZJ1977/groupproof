@@ -1,5 +1,7 @@
 # GroupProof 功能验收检查清单（2026-11-25）
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../README.md) 与 [FRONTEND_STATUS.md](../../FRONTEND_STATUS.md) 为准。
+
 > **适用环境**：`/Users/motasy_delay/GroupProof-team/groupproof-final`（前端 `http://localhost:3000`，后端 `http://localhost:8000`，Alembic 迁移头 `0047`）。  
 > **参考依据**：[前端实施计划（56 页 + 62/63 路由映射）](../architecture/FRONTEND_IMPLEMENTATION_PLAN.md)、[前端交付状态](../../FRONTEND_STATUS.md)、`shared/lib/routes.ts`、`shared/components/route-dispatcher.tsx`、`shared/components/workspace-shell.tsx`、`teacher/components/TeacherClassLayout.tsx` 与各业务目录实际页面。
 

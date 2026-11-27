@@ -8,8 +8,8 @@ B、C、D 写后端接口时直接调用下面这些函数，不要自己重写�
 | A4-01 | 发通知（站内 + 重要事情发邮件） | `app/modules/a/inbox.py` 的 `notify()` |
 | A4-02 | 记操作记录（只能加不能改） | `app/modules/a/audit.py` 的 `record_audit()` |
 | A4-03 | 建待办 / 关待办 | `app/modules/a/inbox.py` 的 `create_action_item()` / `close_action_item()` |
-| A4-04 | 文件上传和限时下载 | `app/modules/a/storage.py` 和 `POST /api/v1/storage/uploads` |
-| A7 | AI 中间层和 4 个 AI 函数（目前是固定假结果版） | `app/modules/a/ai/` |
+| A4-04 | 文件上传和限时下载（Supabase Storage + PG LOB 内联回退） | `app/modules/a/storage.py` 和 `POST /api/v1/storage/uploads` |
+| A7 | AI 中间层与 8 个结构化 AI 函数（OpenRouter 已上线，`fake` 仅限开发/测试） | `app/modules/a/ai/` |
 
 所有写操作都只 `flush` 不 `commit`，跟着调用方的业务事务一起提交或回滚。
 
@@ -35,7 +35,7 @@ perm.require_project_leader(session, user, project_id)
 perm.require_course_teacher(session, user, course_id)
 perm.require_admin(user)
 
-# 按动作矩阵（与前端 lib/access/policy.ts 同名）
+# 按动作矩阵（后端权威实现；历史前端演示规则见 shared/legacy-mock/access/policy.ts）
 perm.can(session, user, "project.files.write", perm.Target("project", project_id))
 perm.require_action(session, user, "project.publish", perm.Target("project", project_id))
 ```
@@ -129,9 +129,9 @@ close_action_items_by_source(session, f"join:{request.id}", actor=teacher)  # �
 | `SUPABASE_SERVICE_ROLE_KEY` | service role key，只放后端变量 |
 | `SUPABASE_STORAGE_BUCKET` | 存储桶名，建议 `groupproof-staging` / `groupproof-production`，设为私有 |
 
-三个变量不全时，上传接口和 C 的文件接口返回 `503 FILE_STORAGE_UNAVAILABLE`，不会假装上传成功。
+三个变量齐全时走 Supabase Storage 直传与签名下载；本地开发或项目初始化内联上传场景（如 `POST /api/v1/projects/{id}/materials/upload-inline`）支持 PostgreSQL Large Object（`pg_lob`）持久化与正文提取回退。未配置外部对象存储时，依赖签名直传的 C 文件接口仍返回 `503 FILE_STORAGE_UNAVAILABLE`，不会假装上传成功。
 
-## AI（A7，目前是固定假结果版）
+## AI（A7，OpenRouter 真实模型已上线）
 
 ```python
 from app.modules.a import ai
@@ -140,6 +140,7 @@ result = ai.extract_requirements(ai.RequirementExtractionInput(project_id=..., d
 result = ai.suggest_tasks(ai.TaskSuggestionInput(project_id=..., requirements=[...], tasks=[...]))
 result = ai.match_evidence(ai.EvidenceMatchInput(project_id=..., criterion={...}, evidence=[...]))
 result = ai.explain_risk(ai.RiskExplanationInput(project_id=..., tasks=[...], risks=[...]))
+result = ai.summarize_activity(ai.ActivitySummaryInput(...))
 ```
 
 | 函数 | 给谁 | 输入 | 输出 |
@@ -149,13 +150,16 @@ result = ai.explain_risk(ai.RiskExplanationInput(project_id=..., tasks=[...], ri
 | `match_evidence`（A7-05） | D，页面 17 | 一条验收标准 + 若干证据 | 通过 / 部分通过 / 不通过 / 证据不足，置信度、理由、缺什么 |
 | `explain_risk`（A7-06） | D，风险和报告页 | 任务进度 + 风险记录 | 风险等级、一句话总结、大白话解释、建议 |
 | `analyze_implementation`（A7-07） | A5，GitHub 页 | 需求列表 + 代码文件（路径+正文） | 每条需求：已实现 / 部分 / 没找到 / 不确定，置信度、理由、缺什么；声称已实现必须带真实文件路径和逐字存在的引文，否则整份作废 |
+| `summarize_activity` | A5/C4，GitHub 活动页（迁移 `0047`） | 平台、记录类型、作者、正文与文件级差异 | 结构化提交/PR 摘要与证据引用，按来源版本和输入哈希缓存 |
+| `analyze_feishu_collaboration` | A6/C4，飞书协作洞察 | 脱敏群聊消息与项目任务摘要 | 协作进展、阻塞与待办洞察 |
+| `generate_project_blueprint` | B，项目初始化 | 上传资料正文与成员列表 | 项目模块、需求与任务蓝图草案 |
 
-完整字段见 `app/modules/a/ai/schemas.py`。**这是草案，请 B、D 看过后在 PR 里提意见，定稿后再接真实 AI。**
+完整字段见 `app/modules/a/ai/schemas.py`。
 
 - 每个结果都带 `provider`、`is_placeholder` 和 `needs_human_review=true`：AI 的结果只是建议，页面必须让人确认后才写入正式数据；
 - AI 不可用时抛 `503 AI_UNAVAILABLE`（“AI 暂不可用，请改为人工处理”），页面改走人工流程，网站其他功能不受影响；
 - AI 编造了不存在的出处或 id 时，整份结果作废，同样返回 `AI_UNAVAILABLE`；
-- `AI_PROVIDER=fake`：返回固定假结果（本地 Docker Compose 默认开启，测试环境可在 Railway 变量里开启）；正式环境禁止 `fake`；留空表示 AI 不可用。`AI_PROVIDER=openrouter`：走 OpenRouter 真实模型，需要 Railway 变量 `AI_API_KEY`（密钥只放 Railway，不进聊天和代码）和 `AI_MODEL`（建议 anthropic/claude-sonnet-4.5，留空用默认）。
+- `AI_PROVIDER=openrouter`（Staging / Production 当前已上线）：走 OpenRouter 真实模型，通过后端环境变量 `AI_API_KEY` 与 `AI_MODEL` 配置（支持 `deepseek/deepseek-v3.2`、`google/gemini-2.5-flash` 或默认 `openrouter/auto`，密钥只放环境变量，不进代码与文档）；`AI_PROVIDER=fake` 仅用于本地开发与隔离测试，正式环境（`APP_ENV=production`）强制禁止 `fake`；留空表示 AI 不可用。
 - 接口：`POST /api/v1/a/projects/{id}/github/analyze`，body 为 `{requirements:[{id,text}]}`；项目成员可用，需先绑定并同步仓库；只会把与需求文字相关的文件（总量上限约 6 万字）交给 AI。
 
 
@@ -180,7 +184,7 @@ result = ai.explain_risk(ai.RiskExplanationInput(project_id=..., tasks=[...], ri
 
 ## GitHub 活动（A5）
 
-- “同步 GitHub”现在除了代码文件，还会读默认分支最近 100 条提交、100 个合并请求、100 次 CI 运行（只读）。**GitHub App 需要只读权限：Contents、Metadata、Pull requests、Actions。** 给已有的 App 补权限后，仓库所有者要在 GitHub 上点“接受新权限”，否则同步会报 503。
+- “同步 GitHub”除了代码文件，还会同步默认分支及 `develop` 等活跃分支的提交（按 SHA 去重，含文件级 diff 用于 AI 摘要）、合并请求与 CI 运行（只读），同时支持验签 Webhook `POST /api/v1/webhooks/github` 与后台定时同步（`github_auto_sync.py`）。**GitHub App 需要只读权限：Contents、Metadata、Pull requests、Actions。** 给已有的 App 补权限后，仓库所有者要在 GitHub 上点“接受新权限”，否则同步会报 503。
 - 查询：`GET /api/v1/a/projects/{id}/github/activity?kind=commit|pull_request|ci_run&author_id=...`；C 的活动页和证据页通过 `ActivitySourcePort` 读取（`github_activity.DatabaseGithubActivityPort`），能按本站用户、类型、时间、关键词过滤，记录带稳定的 `identity` 和 `revision`。
 - 作者识别：本人用 `PUT /api/v1/a/me/github-login`（body `{login}`，空表示清除）声明 GitHub 用户名；也会按提交邮箱匹配本站登录邮箱、已验证学校邮箱和 `id+用户名@users.noreply.github.com`。**只会对应到本项目成员**，对应不上就只显示 GitHub 名字。
 - 来源被删除：窗口内本该出现却没出现的提交或 CI 运行，会逐个向 GitHub 确认，GitHub 明确说查不到才标记 `deleted`；网络、权限失败整体 503，绝不当成删除。

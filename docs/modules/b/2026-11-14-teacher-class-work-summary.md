@@ -1,5 +1,7 @@
 # 阶段性工作总结：上游同步、目录整理与教师端班级/组队广场开发
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 - 总结日期：2026-11-14
 - 仓库路径：`/Users/motasy_delay/GroupProof-team/groupproof`
 - 当前分支：`B_task`（基于 `7205fed`）

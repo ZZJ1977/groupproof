@@ -6,14 +6,20 @@ and migration 0013. `server/` is historical reference.
 
 ## Interface and permission
 
-Enable `NEXT_PUBLIC_API_FEATURES=cidentity=real` to use pages 51 and 52. Requests
-go to the same-origin `/api/v1/c-admin` routes behind the existing identity proxy.
-All routes require A's current authenticated Admin guard. Mutations additionally
-require A's CSRF check. No client-supplied role or user override is accepted.
+Pages 51 and 52 live at `admin/pages/IdentityAdminApiPages.tsx` (using
+`admin/api/c-identity-client.ts`) and run against real APIs by default. Requests
+go to the same-origin `/api/v1/c-admin` routes (`services/api/app/auth/routers/c_admin.py`)
+behind the identity proxy. All routes require A's current authenticated Admin
+guard. Mutations additionally require A's CSRF check. No client-supplied role or
+user override is accepted.
 
 - `GET /users`: literal name, school-email or student-ID search; exact role,
   account status and college filters; ten rows per page. Only directory fields
   are returned, never credentials, recovery fields or provider tokens.
+- `POST /users`: admin-created student or teacher account (`identity`, `name`,
+  `username`, `schoolEmail`, optional `studentId`/`college`/`submitForReview`).
+  No password is generated or returned; the user sets their own password via
+  password recovery, and creation is audited (`user.created_by_admin`).
 - `POST /users/{id}/disable`: nonblank reason and current `expectedVersion`;
   account versions start at zero, whereas teacher application versions start at one;
   reject self-disable. Lock the target row, then call A's `accounts.disable_user`
@@ -23,6 +29,9 @@ require A's CSRF check. No client-supplied role or user override is accepted.
   the reason to the target account's inbox. The response reports `inboxNotified`.
   Missing A4-01 leaves suspension available. A failure writing an installed inbox
   rolls back the suspension, revocation and audit so an administrator can retry.
+- `POST /users/{id}/enable`: restore a disabled account with nonblank `reason`
+  and `expectedVersion`, clearing disabled state, incrementing authority version
+  and notifying the user.
 - `GET /teacher-applications`: status-filtered applications (`pending`, `approved`,
   `rejected`, or `all`; default `pending`), with ten-row SQL pagination. The saved
   application basis/version and decision time/reason are distinct from the current
@@ -38,19 +47,19 @@ Version conflicts retain the typed reason and require refreshing and checking
 the current record before another decision. Writes do not optimistically change
 the directory or review list.
 
-## Explicit remaining dependencies
+## Operational notes and boundaries
 
-The C7-03 follow-up reuses A's existing `TeacherApplication` history for the
-approved/rejected views. It does not create a second review store or rewrite A's
-decisions. URL status/page filters and read-only history keep processed decisions
-inspectable after the pending list refreshes. See `C_DELIVERY.md` for validation.
+The C7-03 review list reuses A's `TeacherApplication` history for approved and
+rejected views without creating a second store. URL status/page filters and
+read-only history keep processed decisions inspectable after the pending list
+refreshes.
 
-Account restoration and account creation are unavailable because A does not yet
-provide matching identity lifecycle functions. C does not bypass A by inserting
-accounts, assigning roles, or reactivating sessions itself. The suspended account
-cannot log in to read its inbox. A's email worker currently skips disabled
-accounts. Reaching a suspended user outside the application needs A's delivery
-support. Teacher review notifications come from A's account service.
+Account creation (`POST /api/v1/c-admin/users`) and restoration
+(`POST /api/v1/c-admin/users/{id}/enable`) are implemented in `app/auth/routers/c_admin.py`
+and wired to A's account services; C never bypasses A to mutate roles or sessions
+directly. A suspended account cannot log in to read its inbox, and the email
+worker skips disabled accounts by design. Teacher review notifications are emitted
+by A's account service.
 
 The directory here and the read-only canonical Admin directory now use the same
 UUID users. Their response and mutation contracts remain separate. School-email

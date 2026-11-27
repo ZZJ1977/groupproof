@@ -1,5 +1,7 @@
 # GitHub 活动 AI 摘要 Implementation Plan
 
+> **历史归档文档**：本文记录对应阶段的规划/验收快照，不代表当前最新状态；当前架构、实时交付状态与限制请以 [README.md](../../../README.md) 与 [FRONTEND_STATUS.md](../../../FRONTEND_STATUS.md) 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为任意软件项目提供可验证、可缓存的 Git 活动 AI 摘要，让列表首屏明确显示“谁提交了什么”，详情页再展示影响、验证、风险和原始证据。

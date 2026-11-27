@@ -1,11 +1,12 @@
 # C1-02 / C1-03 notification and action-item API boundary
 
 The C inbox reads A4 notifications and assigned actions. The home summary uses
-the same recipient-scoped queries for its unread and pending counts. On
-`develop` and `C_task`, the missing A4 provider returns 503 to the inbox pages
-and the affected home counts are `null`. `A_task` supplies the database
-implementation, migrations and default dependency used in the integration test
-below. Action items close through their owning workflow.
+the same recipient-scoped queries for its unread and pending counts. On current
+`develop` / `main`, `get_inbox_port()` is wired by default to A4's
+`DatabaseInboxPort` (`app/modules/a/inbox.py`), backed by migration `0018_a_shared_services`,
+and deployed to Staging and Production. `UnavailableInboxPort` (returning 503 and
+`null` home counts) is kept only for isolated tests or explicit fallback. Action
+items close through their owning workflow.
 
 ## Routes and ownership
 
@@ -79,11 +80,12 @@ destination resource. Plaintext titles/descriptions render as React text.
 
 ## Real-page entry and validation
 
-`features/c/InboxApiPages.tsx` exports `NotificationsApiPage` and
-`ActionItemsApiPage`, consumed through the `inbox=real` feature flag at existing
-pages 05/06. `lib/api/c-inbox-client.ts` uses generated OpenAPI types and the
-canonical cookie transport. It never sends local workspace actor IDs and rebuilds
-navigation from structured targets, ignoring arbitrary returned `href` values.
+`shared/daily-inbox/InboxApiPages.tsx`（原 `features/c/InboxApiPages.tsx`）exports
+`NotificationsApiPage` and `ActionItemsApiPage`, rendered at pages 05/06 by default
+in real mode. `shared/daily-inbox/c-inbox-client.ts`（原 `lib/api/c-inbox-client.ts`）uses
+generated OpenAPI types and the canonical cookie transport. It never sends local
+workspace actor IDs and rebuilds navigation from structured targets, ignoring
+arbitrary returned `href` values.
 
 Filters and pagination persist in URLs. Failed reads do not optimistically mark
 notifications read; the same payload preserves its key, and double clicks send
@@ -110,5 +112,5 @@ students used separate session cookies with CSRF protection. The case covers
 homepage counts and links, two notification pages, single and bulk reads,
 retry and stale-snapshot handling, cross-recipient access, processing links
 and closure through A's action service. The test runs when the provider and
-disposable PostgreSQL are available. Staging still needs the integrated A4
-schema, adapter and a deployed browser run.
+disposable PostgreSQL are available. The A4 schema and `DatabaseInboxPort` have
+since been merged into `develop` / `main` and deployed to Staging and Production.

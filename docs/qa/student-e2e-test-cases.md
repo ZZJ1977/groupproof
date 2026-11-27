@@ -1,5 +1,7 @@
 # GroupProof 学生端全流程交互测试案例与验收报告
 
+> **目录重构说明**：本报告记录 2026-11-22 验收快照；后续前端已由 `features/` 与 `components/` 重构为按角色分域的 `student/`、`teacher/`、`admin/`、`shared/`（下文已同步标注当前文件路径），最新交付状态请以 [README.md](../../README.md) 与 [FRONTEND_STATUS.md](../../FRONTEND_STATUS.md) 为准。
+
 - **验收日期**：2026-11-22
 - **测试环境**：真实构建 Next.js 15（`NEXT_PUBLIC_ENABLE_MOCKS=false`）+ 真实 FastAPI 后端（`services/api`）+ 真实 Chromium 浏览器（Playwright，无前端 API Mock 拦截）
 - **自动化脚本**：`scripts/run-student-full-lifecycle-e2e.mjs` + `scripts/student_e2e_backend.py`
@@ -9,12 +11,12 @@
 
 ## 本次验收期间发现并修复的真实缺陷
 
-1. **项目报告页 CSRF 缺失导致 403**：`features/d/ReportApiPage.tsx` 原使用 `useApp().session?.csrfToken` 静态值，已统一升级为 `fetchWithSession` 动态携带最新 `X-CSRF-Token`，修复“生成新版本”和“导出 PDF/DOCX”在真实会话下报 `403 Forbidden` 的问题。
-2. **GitHub 活动仅同步默认分支且缺少页内同步入口**：后端 `github.py` / `github_activity.py` 升级为默认分支 + `develop` 等活跃分支多分支同步（自动按 SHA 去重），并新增验签 Webhook `POST /api/v1/webhooks/github`；前端 `ActivityApiPages.tsx` 顶栏新增**「同步 GitHub」**与**「同步飞书记录」**直连同步按钮，并清洗 PR 模板 HTML 注释与重复标题行。
-3. **侧边栏项目名未回显 & 权限回收泄露**：`components/workspace-shell.tsx` 修复为读取真实项目名（不再固定显示“项目”），且权限失效（403）时立即清空隐藏旧项目名。
-4. **需求新增后下方“需求清单”未即时刷新**：`features/b/RequirementsSteps.tsx` 补全 `b-req-list` 缓存失效，新增或 AI 分析后下方列表实时同步。
-5. **项目设置“项目语言”输入框未限制 16 字符导致 422**：`features/d/ProjectSettingsApiPage.tsx` 补齐 `maxLength={16}` 与准确示例文案。
-6. **里程碑页重复主标题 & D 模块 5 页无样式原型**：`route-dispatcher.tsx` 为嵌入式风险区传入 `embedded` 消除重复 `<h1>`；统一升级风险、验收、贡献、报告、项目设置 5 页及全局学生端设计体系（分段胶囊标签、轻量化开放画布、柔和景深卡片与统一圆角控件）。
+1. **项目报告页 CSRF 缺失导致 403**：`student/review/ReportApiPage.tsx`（原 `features/d/ReportApiPage.tsx`）原使用 `useApp().session?.csrfToken` 静态值，已统一升级为 `fetchWithSession` 动态携带最新 `X-CSRF-Token`，修复“生成新版本”和“导出 PDF/DOCX”在真实会话下报 `403 Forbidden` 的问题。
+2. **GitHub 活动仅同步默认分支且缺少页内同步入口**：后端 `github.py` / `github_activity.py` 升级为默认分支 + `develop` 等活跃分支多分支同步（自动按 SHA 去重），并新增验签 Webhook `POST /api/v1/webhooks/github`；前端 `student/execution/ActivityApiPages.tsx` 顶栏新增**「同步 GitHub」**与**「同步飞书记录」**直连同步按钮，并清洗 PR 模板 HTML 注释与重复标题行。
+3. **侧边栏项目名未回显 & 权限回收泄露**：`shared/components/workspace-shell.tsx`（原 `components/workspace-shell.tsx`）修复为读取真实项目名（不再固定显示“项目”），且权限失效（403）时立即清空隐藏旧项目名。
+4. **需求新增后下方“需求清单”未即时刷新**：`student/projects/RequirementsSteps.tsx`（原 `features/b/RequirementsSteps.tsx`）补全 `b-req-list` 缓存失效，新增或 AI 分析后下方列表实时同步。
+5. **项目设置“项目语言”输入框未限制 16 字符导致 422**：`student/review/ProjectSettingsApiPage.tsx`（原 `features/d/ProjectSettingsApiPage.tsx`）补齐 `maxLength={16}` 与准确示例文案。
+6. **里程碑页重复主标题 & D 模块 5 页无样式原型**：`shared/components/route-dispatcher.tsx` 为嵌入式风险区传入 `embedded` 消除重复 `<h1>`；统一升级风险、验收、贡献、报告、项目设置 5 页及全局学生端设计体系（分段胶囊标签、轻量化开放画布、柔和景深卡片与统一圆角控件）。
 
 ---
 
