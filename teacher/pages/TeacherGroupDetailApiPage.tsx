@@ -190,7 +190,12 @@ export function TeacherGroupDetailApiPage({
                     ? tCode("teacherOriginPillWithShare", {
                         planned: plannedCount,
                         discovered: codeDiscoveredCount,
-                        share: Math.round(codeDiscoveredWeightShare * 10) / 10,
+                        share:
+                          Math.round(
+                            (codeDiscoveredWeightShare <= 1
+                              ? codeDiscoveredWeightShare * 100
+                              : codeDiscoveredWeightShare) * 10,
+                          ) / 10,
                       })
                     : tCode("teacherOriginPill", {
                         planned: plannedCount,

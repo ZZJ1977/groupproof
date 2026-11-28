@@ -685,6 +685,36 @@ def _plaza_group_dto(
     elif full:
         locked_reason = "已满员"
     progress, briefs = _group_progress(session, project)
+    project_ref: ProjectRefDTO | None = None
+    if project is not None:
+        from app.db.models import Task
+        from app.modules.b.models import BTaskMeta
+
+        p_count = c_count = 0
+        p_weight = c_weight = 0.0
+        for origin_val, weight_val in session.execute(
+            select(BTaskMeta.origin, Task.weight)
+            .select_from(Task)
+            .outerjoin(BTaskMeta, BTaskMeta.task_id == Task.id)
+            .where(Task.project_id == project.id)
+        ).all():
+            if origin_val == "ai_code":
+                c_count += 1
+                c_weight += float(weight_val)
+            else:
+                p_count += 1
+                p_weight += float(weight_val)
+        w_total = p_weight + c_weight
+        c_share = round(c_weight / w_total, 4) if w_total > 0 else 0.0
+        project_ref = ProjectRefDTO(
+            id=project.id,
+            name=project.name,
+            href=f"/projects/{project.id}",
+            planned_task_count=p_count,
+            code_discovered_task_count=c_count,
+            code_discovered_weight_share=c_share,
+            high_expansion_warning=c_share > 0.20,
+        )
     dto = PlazaGroupDTO(
         id=group.id,
         name=group.name,
@@ -695,11 +725,7 @@ def _plaza_group_dto(
         max_group_size=course.max_group_size,
         roster_frozen=group.roster_frozen,
         has_project=has_project,
-        project=(
-            ProjectRefDTO(id=project.id, name=project.name, href=f"/projects/{project.id}")
-            if project
-            else None
-        ),
+        project=project_ref,
         lock_version=group.lock_version,
         accepts_drop=accepts_drop,
         locked_reason=locked_reason,

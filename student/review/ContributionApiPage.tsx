@@ -601,7 +601,12 @@ export function ContributionApiPage({
                       {tCode("contributionCodeDiscovered", {
                         count: analytics.originSummary.code_discovered_task_count,
                         credit: analytics.originSummary.code_discovered_weight_total,
-                        share: Math.round(analytics.originSummary.code_discovered_weight_share * 10) / 10,
+                        share:
+                          Math.round(
+                            (analytics.originSummary.code_discovered_weight_share <= 1
+                              ? analytics.originSummary.code_discovered_weight_share * 100
+                              : analytics.originSummary.code_discovered_weight_share) * 10,
+                          ) / 10,
                       })}
                     </span>
                   </div>

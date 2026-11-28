@@ -72,6 +72,10 @@ class ProjectRefDTO(BaseModel):
     id: UUID
     name: str
     href: str
+    planned_task_count: int = 0
+    code_discovered_task_count: int = 0
+    code_discovered_weight_share: float = 0.0
+    high_expansion_warning: bool = False
 
 
 class TeacherClassSummaryDTO(BaseModel):

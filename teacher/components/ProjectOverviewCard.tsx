@@ -161,7 +161,12 @@ export function ProjectOverviewCard({
                       item.planned_task_count ??
                       Math.max(0, item.total_tasks - (item.code_discovered_task_count ?? 0)),
                     discovered: item.code_discovered_task_count ?? 0,
-                    share: Math.round(item.code_discovered_weight_share * 10) / 10,
+                    share:
+                      Math.round(
+                        (item.code_discovered_weight_share <= 1
+                          ? item.code_discovered_weight_share * 100
+                          : item.code_discovered_weight_share) * 10,
+                      ) / 10,
                   })
                 : tCode("teacherOriginPill", {
                     planned:
