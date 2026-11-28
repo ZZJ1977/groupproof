@@ -6,10 +6,13 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { EmptyState, ProgressBar, StatusBadge } from "@/shared/components/common";
+import { CodeDiscoveredReviewCallout, TaskOriginBadge, type TaskOriginMeta } from "@/shared/components/TaskOriginBadge";
 import { useConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { tr } from "@/shared/i18n/tr";
 import { useWorkspace } from "@/shared/lib/workspace";
 import { formatDate } from "@/shared/lib/utils";
+import { isCodeDiscoveredTask, type BDiscoveredFrom } from "@/student/api/b-code-discoveries";
+import { bTasksApi } from "@/student/api/b-tasks";
 import { EvidenceCapturePanel } from "@/student/execution/EvidenceCapturePanel";
 import { readCriterionRechecks } from "@/student/api/c-criterion-rechecks";
 import { readTaskPlanVersions } from "@/student/api/c-task-plan-versions";
@@ -103,6 +106,13 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
     queryFn: ({ signal }) => readTaskVerification(projectId, taskId, signal),
     enabled: showVerification,
     ...queryPolicy,
+  });
+  const bTasksQuery = useQuery({
+    queryKey: ["b-tasks", userId, projectId, { view: "tree" }],
+    queryFn: () => bTasksApi.list(projectId, { view: "tree" }),
+    enabled: taskExists,
+    retry: false,
+    staleTime: 30_000,
   });
   const planVersions = useQuery({
     queryKey: ["c-task-plan-versions", userId, projectId, taskId],
@@ -633,6 +643,29 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
                   </section>
                 );
 
+                const bTaskMatch = bTasksQuery.data?.items.find((item) => item.id === taskId);
+                const taskRecord = task as unknown as TaskOriginMeta & { code_discovered_review_note?: string | null };
+                const stateRecord = state as unknown as TaskOriginMeta & { code_discovered_review_note?: string | null };
+                const latestVerification = verification.data?.[0];
+                const taskOrigin: TaskOriginMeta & { code_discovered_review_note?: string | null } = {
+                  origin: latestVerification?.origin ?? taskRecord.origin ?? stateRecord.origin ?? bTaskMatch?.origin,
+                  is_code_discovered:
+                    latestVerification?.is_code_discovered ??
+                    taskRecord.is_code_discovered ??
+                    stateRecord.is_code_discovered ??
+                    bTaskMatch?.is_code_discovered,
+                  discovered_from:
+                    (latestVerification?.discovered_from as BDiscoveredFrom | null | undefined) ??
+                    taskRecord.discovered_from ??
+                    stateRecord.discovered_from ??
+                    bTaskMatch?.discovered_from,
+                  code_discovered_review_note:
+                    latestVerification?.code_discovered_review_note ??
+                    taskRecord.code_discovered_review_note ??
+                    stateRecord.code_discovered_review_note,
+                };
+                const isCodeDiscovered = isCodeDiscoveredTask(taskOrigin);
+
                 return (
                   <div className="min-w-0 space-y-3.5">
                     {/* Compact Task Status & Progress Strip */}
@@ -641,6 +674,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
                         <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex flex-wrap items-center gap-2 text-sm">
                             <span className="font-semibold text-slate-900">任务：{task.title}</span>
+                            {isCodeDiscovered && <TaskOriginBadge task={taskOrigin} />}
                             <StatusBadge status={state.status} label={states[state.status]} />
                             <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                               状态：{states[state.status]} · 进度：{state.progress}%
@@ -683,6 +717,13 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
                         <ProgressBar value={state.progress} />
                       </div>
                     </section>
+
+                    {isCodeDiscovered && (submission || tab !== "verification") && (
+                      <CodeDiscoveredReviewCallout
+                        discoveredFrom={taskOrigin.discovered_from}
+                        reviewNote={taskOrigin.code_discovered_review_note}
+                      />
+                    )}
 
                     {/* Inline Progress Update Card */}
                     {progress && state.can_update_progress && (
@@ -861,6 +902,7 @@ function ExecutionPage({ projectId, taskId, userId, submission }: { projectId: s
                                   taskId={taskId}
                                   query={verification}
                                   members={access.members}
+                                  taskOrigin={taskOrigin}
                                 />
                               )}
                             </div>

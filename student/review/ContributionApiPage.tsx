@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Award,
   BarChart3,
   Calculator,
@@ -11,12 +12,14 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  GitBranchPlus,
   GitCommitHorizontal,
   Info,
   Lock,
   MessageSquare,
   Users,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   Avatar,
   EmptyState,
@@ -26,6 +29,7 @@ import {
   StateBlock,
   StatusBadge,
 } from "@/shared/components/common";
+import { TaskOriginBadge } from "@/shared/components/TaskOriginBadge";
 import { useUrlQuery } from "@/shared/lib/use-url-query";
 import { apiErrorText } from "@/shared/i18n/api-error-text";
 import { ContributionWeek7Panel } from "@/student/review/ContributionWeek7Panel";
@@ -172,6 +176,7 @@ export function ContributionApiPage({
   projectId: string;
   memberId?: string;
 }) {
+  const tCode = useTranslations("codeDiscovery");
   const { query, updateQuery } = useUrlQuery();
   const activeTab: "analytics" | "report" = !memberId && query.get("tab") === "report" ? "report" : "analytics";
   const [analytics, setAnalytics] = useState<ProjectContributionAnalytics | null>(null);
@@ -385,6 +390,14 @@ export function ContributionApiPage({
                     <span className="text-slate-500">正式成果权重</span>
                     <span className="font-mono text-sm font-bold text-sky-700">{selectedMember.formalShare.toFixed(1)}%</span>
                     <span className="text-slate-400">(积分 {selectedMember.taskCredit})</span>
+                    {(selectedMember.codeDiscoveredCredit ?? 0) > 0 && (
+                      <span className="rounded-full border border-violet-200/80 bg-violet-50/90 px-2 py-0.5 font-mono text-[11px] font-medium tabular-nums text-violet-700">
+                        {tCode("contributionMemberSplit", {
+                          planned: selectedMember.plannedCredit ?? Math.max(0, Math.round((selectedMember.taskCredit - (selectedMember.codeDiscoveredCredit ?? 0)) * 100) / 100),
+                          discovered: selectedMember.codeDiscoveredCredit ?? 0,
+                        })}
+                      </span>
+                    )}
                   </div>
                   <span className="hidden h-3.5 w-px bg-slate-200 sm:inline-block" aria-hidden="true" />
                   <div className="flex items-center gap-1.5">
@@ -429,7 +442,10 @@ export function ContributionApiPage({
                       {selectedMember.formalTasks.map((task) => (
                         <article className="space-y-1.5 py-2.5 first:pt-0 last:pb-0" key={task.task_id}>
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h3 className="text-sm font-semibold text-slate-900">{task.title}</h3>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <h3 className="text-sm font-semibold text-slate-900">{task.title}</h3>
+                              <TaskOriginBadge task={task} compact />
+                            </div>
                             <span className="gp-pill">
                               权重 {task.weight} · 有效占比 {task.responsibility_share}%
                             </span>
@@ -486,6 +502,7 @@ export function ContributionApiPage({
                                 </span>
                               )}
                               <span className="text-sm font-semibold text-slate-900">{task.title}</span>
+                              <TaskOriginBadge task={task} compact />
                               <StatusBadge
                                 status={task.status}
                                 label={TASK_STATUS_LABEL[task.status] ?? task.status}
@@ -560,6 +577,46 @@ export function ContributionApiPage({
                 </span>
               </div>
 
+              {analytics.originSummary && analytics.originSummary.code_discovered_task_count > 0 && (
+                <div
+                  data-testid="contribution-origin-breakdown"
+                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-violet-200/80 bg-white px-4 py-2.5 text-xs shadow-2xs"
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
+                      <GitBranchPlus size={14} className="text-violet-600" aria-hidden="true" />
+                      {tCode("contributionStripTitle")}
+                    </span>
+                    <span className="hidden h-3.5 w-px bg-slate-200 sm:inline-block" aria-hidden="true" />
+                    <span className="inline-flex items-center gap-1.5 font-mono tabular-nums text-slate-700">
+                      <span className="h-2 w-2 rounded-full bg-slate-400" aria-hidden="true" />
+                      {tCode("contributionPlanned", {
+                        count: analytics.originSummary.planned_task_count,
+                        credit: analytics.originSummary.planned_weight_total,
+                      })}
+                    </span>
+                    <span className="text-slate-300" aria-hidden="true">vs</span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/85 bg-violet-50/85 px-2.5 py-0.5 font-mono font-semibold tabular-nums text-violet-800">
+                      <span className="h-2 w-2 rounded-full bg-violet-500" aria-hidden="true" />
+                      {tCode("contributionCodeDiscovered", {
+                        count: analytics.originSummary.code_discovered_task_count,
+                        credit: analytics.originSummary.code_discovered_weight_total,
+                        share: Math.round(analytics.originSummary.code_discovered_weight_share * 10) / 10,
+                      })}
+                    </span>
+                  </div>
+                  {analytics.originSummary.high_expansion_warning && (
+                    <span
+                      data-testid="contribution-high-expansion-warning"
+                      className="inline-flex items-center gap-1 rounded-full border border-amber-200/90 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800"
+                    >
+                      <AlertTriangle size={11} aria-hidden="true" />
+                      {tCode("highExpansionWarning")}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Visual Section 1: Stacked horizontal distribution bar */}
               <ContributionDistributionBar
                 members={analytics.members}
@@ -617,6 +674,19 @@ export function ContributionApiPage({
                               <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
                                 积分 {member.taskCredit} · {member.formalTasks.length} 项成果
                               </div>
+                              {(member.codeDiscoveredCredit ?? 0) > 0 && (
+                                <div className="mt-0.5 font-mono text-[10px] tabular-nums text-violet-700">
+                                  {tCode("contributionMemberSplit", {
+                                    planned:
+                                      member.plannedCredit ??
+                                      Math.max(
+                                        0,
+                                        Math.round((member.taskCredit - (member.codeDiscoveredCredit ?? 0)) * 100) / 100,
+                                      ),
+                                    discovered: member.codeDiscoveredCredit ?? 0,
+                                  })}
+                                </div>
+                              )}
                             </td>
                             <td className="text-right">
                               <div className="font-mono text-xs font-semibold tabular-nums text-slate-900">

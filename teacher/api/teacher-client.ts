@@ -7,7 +7,15 @@ export type JoinMode = "direct" | "approval";
 export type ProgressState = "no_project" | "no_milestones" | "tracking";
 
 export type GroupRef = { id: string; name: string };
-export type ProjectRef = { id: string; name: string; href: string };
+export type ProjectRef = {
+  id: string;
+  name: string;
+  href: string;
+  planned_task_count?: number;
+  code_discovered_task_count?: number;
+  code_discovered_weight_share?: number;
+  high_expansion_warning?: boolean;
+};
 
 export type TeacherClassSummary = {
   id: string;
@@ -74,6 +82,10 @@ export type GroupProgress = {
   next_milestone: MilestoneRef | null;
   overdue_count: number;
   risk_level: BRiskLevel | null;
+  planned_task_count?: number;
+  code_discovered_task_count?: number;
+  code_discovered_weight_share?: number;
+  high_expansion_warning?: boolean;
 };
 
 export type PlazaMember = {
@@ -101,6 +113,10 @@ export type PlazaGroup = {
   members_locked: boolean;
   progress: GroupProgress;
   href: string;
+  planned_task_count?: number;
+  code_discovered_task_count?: number;
+  code_discovered_weight_share?: number;
+  high_expansion_warning?: boolean;
 };
 
 export type PlazaData = {

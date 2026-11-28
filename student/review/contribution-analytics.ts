@@ -11,6 +11,15 @@ import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
 import type { components } from "@/packages/domain/api.generated";
 
+export type ContributionOriginSummary = {
+  planned_task_count: number;
+  code_discovered_task_count: number;
+  planned_weight_total: number;
+  code_discovered_weight_total: number;
+  code_discovered_weight_share: number;
+  high_expansion_warning: boolean;
+};
+
 export type ContributionTaskCredit = {
   task_id: string;
   title: string;
@@ -19,6 +28,8 @@ export type ContributionTaskCredit = {
   formal_outcome_id: string | null;
   evidence_url: string;
   evidence: { criterion_id: string; evidence_id: string; version: number }[];
+  origin?: string;
+  is_code_discovered?: boolean;
 };
 
 export type ContributionSnapshotMember = {
@@ -26,6 +37,8 @@ export type ContributionSnapshotMember = {
   name: string;
   share: number;
   task_credit: number;
+  planned_credit?: number;
+  code_discovered_credit?: number;
   tasks: ContributionTaskCredit[];
 };
 
@@ -37,6 +50,7 @@ export type ContributionSnapshot = {
   formula_version: string;
   calculated_at: string;
   stale: boolean;
+  origin_summary?: ContributionOriginSummary | null;
   members: ContributionSnapshotMember[];
 };
 
@@ -47,6 +61,8 @@ export type MemberAnalyticsRow = {
   // Formal acceptance metrics
   formalShare: number;
   taskCredit: number;
+  plannedCredit?: number;
+  codeDiscoveredCredit?: number;
   formalTasks: ContributionTaskCredit[];
   // Task execution metrics
   assignedCount: number;
@@ -87,6 +103,7 @@ export type ProjectContributionAnalytics = {
   projectId: string;
   projectName: string;
   snapshot: ContributionSnapshot | null;
+  originSummary: ContributionOriginSummary | null;
   members: MemberAnalyticsRow[];
   tasks: BTaskRow[];
   taskStatusCounts: TaskStatusCounts;
@@ -867,11 +884,24 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
     feishuActivities: feishuActivities?.items ?? [],
   });
 
+  const taskOriginById = new Map<string, { origin?: string; is_code_discovered?: boolean }>();
+  for (const t of tasksData.items) {
+    taskOriginById.set(t.id, { origin: t.origin, is_code_discovered: t.is_code_discovered });
+  }
+
   // 5. Build rows for every active member
   const rawRows: Omit<MemberAnalyticsRow, "color" | "activityShare">[] = orderedIds.map((uid) => {
     const name = memberNameMap.get(uid) ?? "项目成员";
     const formal = snapshotByUser.get(uid);
     const assignedTasks = assignedTasksByUser.get(uid) ?? [];
+    const formalTasks: ContributionTaskCredit[] = (formal?.tasks ?? []).map((ft) => {
+      const taskMeta = taskOriginById.get(ft.task_id);
+      return {
+        ...ft,
+        origin: ft.origin ?? taskMeta?.origin,
+        is_code_discovered: ft.is_code_discovered ?? taskMeta?.is_code_discovered,
+      };
+    });
 
     let completedCount = 0;
     let pendingVerificationCount = 0;
@@ -909,7 +939,9 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
       name,
       formalShare: formal?.share ?? 0,
       taskCredit: formal?.task_credit ?? 0,
-      formalTasks: formal?.tasks ?? [],
+      plannedCredit: formal?.planned_credit,
+      codeDiscoveredCredit: formal?.code_discovered_credit,
+      formalTasks,
       assignedCount: assignedTasks.length,
       completedCount,
       pendingVerificationCount,
@@ -1001,6 +1033,7 @@ export async function fetchContributionAnalytics(projectId: string): Promise<Pro
     projectId,
     projectName,
     snapshot,
+    originSummary: snapshot?.origin_summary ?? null,
     members,
     tasks: tasksData.items,
     taskStatusCounts,

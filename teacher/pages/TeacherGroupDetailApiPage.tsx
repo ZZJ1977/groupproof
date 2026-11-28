@@ -9,9 +9,11 @@ import {
   ArrowRight,
   Crown,
   FolderKanban,
+  GitBranchPlus,
   Lock,
   ShieldCheck,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
 import { dateTime, errorText } from "@/shared/lib/b-ui";
 import { cn } from "@/shared/lib/utils";
@@ -50,6 +52,7 @@ export function TeacherGroupDetailApiPage({
   groupId: string;
 }) {
   const qc = useQueryClient();
+  const tCode = useTranslations("codeDiscovery");
   const { userId } = useWorkspace();
   const perms = useTeacherPermissions(courseId);
   const [leaderFeedback, setLeaderFeedback] = useState<{
@@ -126,6 +129,25 @@ export function TeacherGroupDetailApiPage({
   const data = detail.data;
   const group = data.group;
   const canManage = perms.loading ? (courseDetail.data?.can_manage ?? false) : perms.manageGroups;
+  const codeDiscoveredCount =
+    group.project?.code_discovered_task_count ??
+    group.progress.code_discovered_task_count ??
+    group.code_discovered_task_count ??
+    0;
+  const plannedCount =
+    group.project?.planned_task_count ??
+    group.progress.planned_task_count ??
+    group.planned_task_count ??
+    0;
+  const codeDiscoveredWeightShare =
+    group.project?.code_discovered_weight_share ??
+    group.progress.code_discovered_weight_share ??
+    group.code_discovered_weight_share;
+  const highExpansionWarning = Boolean(
+    group.project?.high_expansion_warning ??
+      group.progress.high_expansion_warning ??
+      group.high_expansion_warning,
+  );
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
@@ -156,6 +178,33 @@ export function TeacherGroupDetailApiPage({
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
                   <Lock size={12} />
                   名单已冻结
+                </span>
+              )}
+              {codeDiscoveredCount > 0 && (
+                <span
+                  data-testid="teacher-group-origin-pill"
+                  className="gp-tabular inline-flex items-center gap-1 rounded-full border border-violet-200/85 bg-violet-50/85 px-2.5 py-0.5 font-mono text-xs font-medium text-violet-800"
+                >
+                  <GitBranchPlus size={12} className="shrink-0 text-violet-600" aria-hidden="true" />
+                  {codeDiscoveredWeightShare !== undefined
+                    ? tCode("teacherOriginPillWithShare", {
+                        planned: plannedCount,
+                        discovered: codeDiscoveredCount,
+                        share: Math.round(codeDiscoveredWeightShare * 10) / 10,
+                      })
+                    : tCode("teacherOriginPill", {
+                        planned: plannedCount,
+                        discovered: codeDiscoveredCount,
+                      })}
+                </span>
+              )}
+              {codeDiscoveredCount > 0 && highExpansionWarning && (
+                <span
+                  data-testid="teacher-group-high-expansion-warning"
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-200/90 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800"
+                >
+                  <AlertTriangle size={11} aria-hidden="true" />
+                  {tCode("highExpansionWarning")}
                 </span>
               )}
             </div>

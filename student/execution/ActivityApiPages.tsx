@@ -3,7 +3,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Sparkles, X } from "lucide-react";
+import { GitBranchPlus, RefreshCw, Sparkles, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   Avatar,
   DetailDrawer,
@@ -14,6 +15,8 @@ import {
   StatusBadge,
 } from "@/shared/components/common";
 import { projectRequest } from "@/shared/lib/integration-request";
+import { listCodeDiscoveries } from "@/student/api/b-code-discoveries";
+import { CodeDiscoveryDrawer } from "@/student/projects/CodeDiscoveryDrawer";
 import {
   FeishuCollaborationInsightsPanel,
   type FeishuCollaborationInsights,
@@ -132,6 +135,7 @@ export function ActivityApiPage({ projectId, sourceType }: { projectId: string; 
 }
 
 function ActivityPage({ projectId, sourceType, userId }: { projectId: string; sourceType: ActivitySourceType; userId: string }) {
+  const tCode = useTranslations("codeDiscovery");
   const { query, updateQuery } = useUrlQuery();
   const rawStatus = query.get("status");
   const groupFilter = query.has("group_id") ? query.get("group_id") || undefined : selectedFilter(query.get("group"));
@@ -191,6 +195,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
   const [operationError, setOperationError] = useState<unknown>(null);
   const [blocked, setBlocked] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const commandKey = useCommandKey();
   const hiddenProject = bindings.error instanceof CApiError && bindings.error.code === "PROJECT_NOT_FOUND" ? bindings.error : null;
   const denial = blocked || hiddenProject || [context.error, list.error, detail.error, history.error, bindings.error].find(accessFailure);
@@ -230,6 +235,13 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
     placeholderData: (previousData) => previousData,
     retry: false,
     staleTime: 15_000,
+  });
+  const codeDiscoveriesQuery = useQuery({
+    queryKey: ["b-code-discoveries", userId, projectId],
+    queryFn: () => listCodeDiscoveries(projectId),
+    enabled: enabled && sourceType === "github" && Boolean(access?.actor.is_member),
+    retry: false,
+    staleTime: 30_000,
   });
   const feishuInsightsQuery = useQuery({
     queryKey: ["a-feishu-collaboration-insights", userId, projectId],
@@ -442,7 +454,7 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
       context.refetch(),
       list.refetch(),
       ...(context.data?.actor.is_member ? [bindings.refetch()] : []),
-      ...(sourceType === "github" && context.data?.actor.is_member ? [githubStatsQuery.refetch()] : []),
+      ...(sourceType === "github" && context.data?.actor.is_member ? [githubStatsQuery.refetch(), codeDiscoveriesQuery.refetch()] : []),
       ...(sourceType === "feishu" && context.data?.actor.is_member ? [feishuInsightsQuery.refetch()] : []),
       ...(selectedId ? [detail.refetch(), history.refetch()] : []),
       ...(summaryIds.length ? [summaries.refetch()] : []),
@@ -802,6 +814,48 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                   </div>
                 </section>
               )}
+
+              {sourceType === "github" &&
+                access.actor.is_member &&
+                ((codeDiscoveriesQuery.data?.unmatched_commits_count ?? 0) > 0 ||
+                  (codeDiscoveriesQuery.data?.pending_approval_count ?? 0) > 0) && (
+                  <section
+                    data-testid="github-code-discovery-banner"
+                    className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-violet-200/85 bg-violet-50/55 px-4 py-2.5 text-xs shadow-2xs"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-slate-800">
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                        <GitBranchPlus size={13} aria-hidden="true" />
+                      </span>
+                      <span className="font-semibold tabular-nums text-violet-950">
+                        {(codeDiscoveriesQuery.data?.unmatched_commits_count ?? 0) > 0
+                          ? tCode("activityBannerTitle", {
+                              count: codeDiscoveriesQuery.data?.unmatched_commits_count ?? 0,
+                            })
+                          : tCode("activityBannerOnlyApproval", {
+                              count: codeDiscoveriesQuery.data?.pending_approval_count ?? 0,
+                            })}
+                      </span>
+                      {(codeDiscoveriesQuery.data?.unmatched_commits_count ?? 0) > 0 &&
+                        (codeDiscoveriesQuery.data?.pending_approval_count ?? 0) > 0 && (
+                          <span className="rounded-full bg-amber-100/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-amber-800">
+                            {tCode("activityBannerPendingApproval", {
+                              count: codeDiscoveriesQuery.data?.pending_approval_count ?? 0,
+                            })}
+                          </span>
+                        )}
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="github-code-discovery-banner-btn"
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700"
+                      onClick={() => setDiscoveryOpen(true)}
+                    >
+                      <Sparkles size={12} aria-hidden="true" />
+                      {tCode("activityBannerAction")}
+                    </button>
+                  </section>
+                )}
 
               {sourceType === "github" && access.actor.is_member && (
                 <GithubStatsChart
@@ -1628,6 +1682,14 @@ function ActivityPage({ projectId, sourceType, userId }: { projectId: string; so
                   </div>
                 )}
               </DetailDrawer>
+              {sourceType === "github" && access.actor.is_member && (
+                <CodeDiscoveryDrawer
+                  projectId={projectId}
+                  open={discoveryOpen}
+                  onOpenChange={setDiscoveryOpen}
+                  onChanged={() => void refresh()}
+                />
+              )}
             </>
           )}
         </>

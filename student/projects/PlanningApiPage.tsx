@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { Avatar, EmptyState, Feedback, Panel, StatusBadge } from "@/shared/components/common";
+import { TaskOriginBadge } from "@/shared/components/TaskOriginBadge";
 import { BApiError } from "@/student/api/b-client";
 import { bPlanningApi, type BPlan, type BPlanIssue, type BPlanTask, type BTaskInput } from "@/student/api/b-planning";
 import type { BPriority } from "@/student/api/b-requirements";
@@ -409,6 +410,7 @@ export function PlanningApiPage({ projectId }: { projectId: string }) {
                           {task.origin === "ai" && (
                             <span className="ml-1.5 rounded bg-sky-50 px-1 py-0.5 text-[10px] font-medium text-sky-700">AI</span>
                           )}
+                          <TaskOriginBadge task={task} compact className="ml-1.5" />
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                           {task.assignees.map((a) => a.name ?? tr("组员")).join("、") || (
@@ -710,6 +712,7 @@ function TaskReadOnlyDetail({
               {task.origin === "ai" && (
                 <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">AI</span>
               )}
+              <TaskOriginBadge task={task} />
               <span className="font-mono text-[11px] text-slate-400">v{task.content_version}</span>
             </div>
             <button

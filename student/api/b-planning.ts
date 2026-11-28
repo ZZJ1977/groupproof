@@ -1,4 +1,5 @@
 import { bRequest } from "@/student/api/b-client";
+import type { BDiscoveredFrom, BTaskOrigin } from "@/student/api/b-code-discoveries";
 import type { BPerson } from "@/student/api/b-courses";
 import type { BPriority } from "@/student/api/b-requirements";
 
@@ -7,7 +8,9 @@ export type BPlanTask = {
   id: string; code: string | null; title: string; description: string; module_id: string; parent_task_id: string | null;
   requirement_ids: string[]; assignees: BPerson[]; dependency_ids: string[]; milestone_ids: string[];
   priority: BPriority; weight: number; criteria: BPlanCriterion[]; status: string; progress_percent: number;
-  content_version: number; origin: "manual" | "ai"; href: string;
+  content_version: number; origin: BTaskOrigin; href: string;
+  is_code_discovered?: boolean;
+  discovered_from?: BDiscoveredFrom | null;
 };
 export type BPlanIssue = { code: string; message: string; task_id: string | null; field: string | null; task_ids: string[] };
 export type BConfirmState = "confirmed" | "stale" | "pending";

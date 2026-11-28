@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Bell, FolderKanban } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bell, FolderKanban, GitBranchPlus } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
 import type { ProjectOverviewCard as CardModel } from "@/teacher/api/teacher-projects-client";
@@ -23,6 +24,7 @@ export function ProjectOverviewCard({
   remindDisabled?: boolean;
   onRemind: (groupId: string) => void;
 }) {
+  const tCode = useTranslations("codeDiscovery");
   if (!item.has_project) {
     return (
       <div
@@ -148,6 +150,37 @@ export function ProjectOverviewCard({
             </span>
           )}
         </div>
+
+        {(item.code_discovered_task_count ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="teacher-project-origin-pills">
+            <span className="gp-tabular inline-flex items-center gap-1 rounded-full border border-violet-200/85 bg-violet-50/85 px-2 py-0.5 font-mono text-[11px] font-medium text-violet-800">
+              <GitBranchPlus size={11} className="shrink-0 text-violet-600" aria-hidden="true" />
+              {item.code_discovered_weight_share !== undefined
+                ? tCode("teacherOriginPillWithShare", {
+                    planned:
+                      item.planned_task_count ??
+                      Math.max(0, item.total_tasks - (item.code_discovered_task_count ?? 0)),
+                    discovered: item.code_discovered_task_count ?? 0,
+                    share: Math.round(item.code_discovered_weight_share * 10) / 10,
+                  })
+                : tCode("teacherOriginPill", {
+                    planned:
+                      item.planned_task_count ??
+                      Math.max(0, item.total_tasks - (item.code_discovered_task_count ?? 0)),
+                    discovered: item.code_discovered_task_count ?? 0,
+                  })}
+            </span>
+            {item.high_expansion_warning && (
+              <span
+                data-testid="teacher-high-expansion-warning"
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200/90 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+              >
+                <AlertTriangle size={10} aria-hidden="true" />
+                {tCode("highExpansionWarning")}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--gp-border-subtle,#ebedf0)] pt-3">

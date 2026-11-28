@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { StatusBadge } from "@/shared/components/common";
+import { CodeDiscoveredReviewCallout, TaskOriginBadge, type TaskOriginMeta } from "@/shared/components/TaskOriginBadge";
+import { isCodeDiscoveredTask, type BDiscoveredFrom } from "@/student/api/b-code-discoveries";
 import type { TaskVerification } from "@/student/api/c-task-verification";
 import { formatDate } from "@/shared/lib/utils";
 import { ApiFailure } from "@/shared/lib/c-project-api";
@@ -21,20 +23,31 @@ export function TaskVerificationPanel({
   taskId,
   query,
   members,
+  taskOrigin,
 }: {
   projectId: string;
   taskId: string;
   query: UseQueryResult<TaskVerification[]>;
   members: { id: string; title: string }[];
+  taskOrigin?: (TaskOriginMeta & { code_discovered_review_note?: string | null }) | null;
 }) {
   const taskHref = `/projects/${projectId}/tasks/${taskId}`;
+  const latestRun = query.data?.[0];
+  const resolvedOrigin: TaskOriginMeta = {
+    origin: latestRun?.origin ?? taskOrigin?.origin,
+    is_code_discovered: latestRun?.is_code_discovered ?? taskOrigin?.is_code_discovered,
+    discovered_from: (latestRun?.discovered_from as BDiscoveredFrom | null | undefined) ?? taskOrigin?.discovered_from,
+  };
+  const isCodeDiscovered = isCodeDiscoveredTask(resolvedOrigin);
+  const reviewNote = latestRun?.code_discovered_review_note ?? taskOrigin?.code_discovered_review_note;
 
   return (
     <section className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-xs">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+        <h2 className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
           <ShieldCheck size={15} className="text-sky-600" />
           任务验收
+          {isCodeDiscovered && <TaskOriginBadge task={resolvedOrigin} />}
         </h2>
         <div className="flex flex-wrap gap-3 text-xs">
           <Link className="gp-link" href={`${taskHref}/evidence-check`}>
@@ -45,6 +58,14 @@ export function TaskVerificationPanel({
           </Link>
         </div>
       </div>
+
+      {isCodeDiscovered && (
+        <CodeDiscoveredReviewCallout
+          discoveredFrom={resolvedOrigin.discovered_from}
+          reviewNote={reviewNote}
+          className="mb-3"
+        />
+      )}
 
       {query.isFetching && (
         <p role="status" className="text-xs text-slate-500">

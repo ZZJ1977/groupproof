@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, Clock, RefreshCw, ShieldCheck } from "lucide-react";
 import { Feedback, ProgressBar, StatusBadge } from "@/shared/components/common";
+import { CodeDiscoveredReviewCallout, TaskOriginBadge, type TaskOriginMeta } from "@/shared/components/TaskOriginBadge";
 import { button, input, label, secondary } from "@/shared/lib/b-ui";
 import { projectApi } from "@/shared/lib/c-project-api";
 import { fetchWithSession } from "@/shared/lib/api-client";
 import { apiConfig } from "@/shared/lib/api-config";
 import { CApiError } from "@/shared/daily-inbox/c-client";
 import { apiErrorText } from "@/shared/i18n/api-error-text";
+import { isCodeDiscoveredTask, type BDiscoveredFrom } from "@/student/api/b-code-discoveries";
+import { bTasksApi } from "@/student/api/b-tasks";
 
 type EvidenceRef = { id: string; version: number };
 type Criterion = {
@@ -30,7 +33,17 @@ type Check = {
   checked_at: string | null;
   details: Criterion[];
 };
-type Verification = { id: string; status: string; result: string; created_at: string | null; criteria: Criterion[] };
+type Verification = {
+  id: string;
+  status: string;
+  result: string;
+  created_at: string | null;
+  criteria: Criterion[];
+  origin?: string | null;
+  is_code_discovered?: boolean | null;
+  discovered_from?: BDiscoveredFrom | null;
+  code_discovered_review_note?: string | null;
+};
 type DecisionRecord = {
   actor_id: string;
   decision: string;
@@ -135,6 +148,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
   const [verification, setVerification] = useState<Verification | null>(null);
   const [history, setHistory] = useState<HistoryRun[]>([]);
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
+  const [fallbackOrigin, setFallbackOrigin] = useState<TaskOriginMeta | null>(null);
   const [reason, setReason] = useState("");
   const [share, setShare] = useState("");
   const [busy, setBusy] = useState(false);
@@ -209,8 +223,25 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
         // Member directory lookup is best-effort; fallback uses short IDs.
       });
 
+    void bTasksApi
+      .list(projectId, { view: "tree" })
+      .then((res) => {
+        if (next.signal.aborted) return;
+        const match = res.items.find((t) => t.id === taskId);
+        if (match) {
+          setFallbackOrigin({
+            origin: match.origin,
+            is_code_discovered: match.is_code_discovered,
+            discovered_from: match.discovered_from,
+          });
+        }
+      })
+      .catch(() => {
+        // Best-effort lookup for task origin badge.
+      });
+
     return () => next.abort();
-  }, [projectId, refresh, reportFailure]);
+  }, [projectId, taskId, refresh, reportFailure]);
 
   async function retryRead() {
     const signal = controller.current?.signal;
@@ -292,6 +323,20 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
   const vMeta = verification ? (resultMeta[verification.result] ?? { label: verification.result, tone: "gray" as const }) : null;
   const latestRun = history[0] ?? null;
   const formalDone = Boolean(latestRun?.formal_outcome_id);
+  const taskOrigin: TaskOriginMeta = {
+    origin: verification?.origin ?? latestRun?.origin ?? fallbackOrigin?.origin,
+    is_code_discovered:
+      verification?.is_code_discovered ??
+      latestRun?.is_code_discovered ??
+      fallbackOrigin?.is_code_discovered,
+    discovered_from:
+      verification?.discovered_from ??
+      latestRun?.discovered_from ??
+      fallbackOrigin?.discovered_from,
+  };
+  const isCodeDiscovered = isCodeDiscoveredTask(taskOrigin);
+  const codeDiscoveredReviewNote =
+    verification?.code_discovered_review_note ?? latestRun?.code_discovered_review_note;
 
   const criteriaWithDetails = useMemo(
     () =>
@@ -334,6 +379,7 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             {screen === 16 ? "证据完整性检查" : "任务验收"}
           </h1>
+          {isCodeDiscovered && <TaskOriginBadge task={taskOrigin} />}
           <div className="gp-segmented" role="navigation" aria-label="验收步骤">
             <Link className="gp-segmented-item" data-active={screen === 16 ? "true" : undefined} href={`${taskHref}/evidence-check`}>
               1. 证据完整性检查
@@ -368,6 +414,12 @@ export function AcceptanceApiPage({ projectId, taskId, screen }: { projectId: st
         </div>
       )}
       {notice && <Feedback tone="success">{notice}</Feedback>}
+      {isCodeDiscovered && (
+        <CodeDiscoveredReviewCallout
+          discoveredFrom={taskOrigin.discovered_from}
+          reviewNote={codeDiscoveredReviewNote}
+        />
+      )}
 
       {screen === 16 ? (
         <>

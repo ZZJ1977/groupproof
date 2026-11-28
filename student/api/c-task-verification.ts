@@ -2,6 +2,17 @@ import { z } from "zod";
 import { CApiError } from "@/shared/daily-inbox/c-client";
 import { apiConfig } from "@/shared/lib/api-config";
 
+const discoveredFromSchema = z.object({
+  source_type: z.string().optional(),
+  commit_ids: z.array(z.string()).optional(),
+  shas: z.array(z.string()).optional(),
+  commit_count: z.number().optional(),
+  amendment_mode: z.string().optional(),
+  reason: z.string().optional(),
+  approved_by_name: z.string().optional(),
+  approved_at: z.string().optional(),
+}).passthrough();
+
 // D's history endpoint includes freshness and human decisions alongside each run.
 const historySchema = z.array(z.object({
   id: z.string().uuid(),
@@ -13,6 +24,10 @@ const historySchema = z.array(z.object({
   invalidated_reason: z.string().nullable(),
   formal_outcome_id: z.string().uuid().nullable(),
   responsible_ids: z.array(z.string().uuid()),
+  origin: z.string().nullable().optional(),
+  is_code_discovered: z.boolean().nullable().optional(),
+  discovered_from: discoveredFromSchema.nullable().optional(),
+  code_discovered_review_note: z.string().nullable().optional(),
   decisions: z.array(z.object({
     actor_id: z.string().uuid(),
     decision: z.enum(["confirmed", "rejected"]),

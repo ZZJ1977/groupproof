@@ -4,10 +4,14 @@ import { type DragEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, GitCommitHorizontal, Lock, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, GitBranchPlus, GitCommitHorizontal, Lock, RefreshCw, Search, Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Avatar, EmptyState, Feedback, PageHeader, Panel, StatusBadge } from "@/shared/components/common";
+import { TaskOriginBadge } from "@/shared/components/TaskOriginBadge";
 import { CApiError, createCClient } from "@/shared/daily-inbox/c-client";
+import { isCodeDiscoveredTask, listCodeDiscoveries, type BTaskOriginFilter } from "@/student/api/b-code-discoveries";
 import { bTasksApi, type BTaskRow, type BTaskView, type BTransition } from "@/student/api/b-tasks";
+import { CodeDiscoveryDrawer } from "@/student/projects/CodeDiscoveryDrawer";
 import { useUrlFilters } from "@/shared/lib/use-url-filters";
 import { useWorkspace } from "@/shared/lib/workspace";
 import { useBErrorMessage } from "@/student/projects/use-b-error";
@@ -34,6 +38,7 @@ const filterSchema = {
   assignee: { kind: "string" },
   module: { kind: "string" },
   milestone: { kind: "string" },
+  origin: { kind: "enum", values: ["all", "planned", "code_discovered"], default: "all" },
   sort: { kind: "enum", values: ["code", "-code", "priority", "-weight", "weight", "-progress", "progress", "status", "-updated"], default: "code" },
   page: { kind: "int", default: 1, min: 1 },
   collapsed: { kind: "list" },
@@ -52,6 +57,7 @@ const compactSecondary = "inline-flex h-9 shrink-0 items-center justify-center g
 /** Unified tasks workspace: merged tree/list table + kanban board + link to planning. */
 export function TasksApiPage({ projectId, view }: { projectId: string; view: BTaskView }) {
   const tr = useUiText();
+  const tCode = useTranslations("codeDiscovery");
   const errorText = useBErrorMessage();
   const { userId } = useWorkspace();
   const client = useQueryClient();
@@ -59,11 +65,12 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const { filters, setFilters, clearFilters } = useUrlFilters(filterSchema);
   const [q, setQ] = useState(filters.q);
   useEffect(() => setQ(filters.q), [filters.q]);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string; showDiscoveryCta?: boolean }>();
   const [pending, setPending] = useState<{ row: BTaskRow; transition: BTransition }>();
   const [busy, setBusy] = useState(false);
   const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
   const [confirmingAll, setConfirmingAll] = useState(false);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
 
   const query = {
     view,
@@ -72,11 +79,18 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     assignee: filters.assignee || undefined,
     module: filters.module || undefined,
     milestone: filters.milestone || undefined,
+    origin: filters.origin !== "all" ? (filters.origin as BTaskOriginFilter) : undefined,
     sort: view === "list" ? filters.sort : undefined,
     page: view === "list" ? filters.page : undefined,
     page_size: view === "list" ? PAGE_SIZE : undefined,
   };
   const page = useQuery({ queryKey: ["b-tasks", userId, projectId, query], queryFn: () => bTasksApi.list(projectId, query), ...queryPolicy });
+  const codeDiscoveries = useQuery({
+    queryKey: ["b-code-discoveries", userId, projectId],
+    queryFn: () => listCodeDiscoveries(projectId),
+    ...queryPolicy,
+    retry: false,
+  });
   const projectContext = useQuery({
     queryKey: ["c-project-context", userId, projectId],
     queryFn: () => projectApi.projectContext(projectId),
@@ -86,7 +100,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
   const isLeader = Boolean(projectContext.data?.actor.is_leader);
 
   const invalidateAll = () => {
-    for (const name of ["b-tasks", "b-milestones", "b-plan", "c-evidence", "c-task-evidence", "c-project-context"]) {
+    for (const name of ["b-tasks", "b-code-discoveries", "b-milestones", "b-plan", "c-evidence", "c-task-evidence", "c-project-context"]) {
       void client.invalidateQueries({ queryKey: [name, userId, projectId] });
     }
   };
@@ -99,6 +113,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
         text: (res.evidences_created ?? 0) > 0 || res.commits_matched > 0
           ? tr("已扫描 {0} 条成员提交，关联 {1} 条提交并生成 {2} 条代码候选证据，覆盖 {3} 条交付标准（需人工确认后正式完成）。", { 0: res.commits_scanned, 1: res.commits_matched, 2: res.evidences_created ?? 0, 3: res.criteria_covered ?? 0 })
           : tr("已扫描 {0} 条成员提交，当前交付标准与代码证据已保持最新。", { 0: res.commits_scanned }),
+        showDiscoveryCta: true,
       });
       invalidateAll();
     },
@@ -206,6 +221,11 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     && (isLeader || r.assignees.some((a) => a.id === userId)),
   );
 
+  const discoveryAttentionCount =
+    (codeDiscoveries.data?.unmatched_commits_count ?? 0) +
+    (codeDiscoveries.data?.pending_approval_count ?? 0);
+  const hasAnyCodeDiscovered = items.some((r) => isCodeDiscoveredTask(r));
+
   return <div className="space-y-3">
     <PageHeader
       title={tr(title)}
@@ -223,6 +243,24 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
               : tr("一键确认 AI 已通过任务 ({0})", { 0: myAiPassedTasks.length })}
           </button>
         )}
+        <button
+          type="button"
+          data-testid="tasks-code-discovery-btn"
+          className={
+            discoveryAttentionCount > 0
+              ? "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-violet-200/90 bg-violet-50/90 px-3 text-xs font-semibold text-violet-700 shadow-2xs transition hover:border-violet-300 hover:bg-violet-100/80"
+              : compactSecondary
+          }
+          onClick={() => setDiscoveryOpen(true)}
+        >
+          <GitBranchPlus size={13} className="shrink-0" aria-hidden="true" />
+          <span>{tCode("triggerButton")}</span>
+          {discoveryAttentionCount > 0 && (
+            <span className="rounded-full bg-violet-600 px-1.5 py-0.2 font-mono text-[10px] font-bold tabular-nums text-white">
+              {discoveryAttentionCount}
+            </span>
+          )}
+        </button>
         <button type="button" className={compactSecondary} disabled={syncCode.isPending} onClick={() => syncCode.mutate()}>
           <RefreshCw size={13} className={syncCode.isPending ? "animate-spin" : ""} />
           {syncCode.isPending ? tr("正在关联代码证据…") : tr("同步代码证据")}
@@ -268,20 +306,43 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     )}
 
     <div className="flex flex-wrap items-center justify-between gap-2.5">
-      <nav aria-label={tr("任务视图")} className="gp-segmented">
-        <Link href={viewHref("tree")} aria-current={view === "tree" ? "page" : undefined} data-active={view === "tree" ? "true" : undefined} className="gp-segmented-item">
-          {tr("任务树")}
-        </Link>
-        <Link href={viewHref("board")} aria-current={view === "board" ? "page" : undefined} data-active={view === "board" ? "true" : undefined} className="gp-segmented-item">
-          {tr("看板")}
-        </Link>
-        <Link href={viewHref("list")} aria-current={view === "list" ? "page" : undefined} data-active={view === "list" ? "true" : undefined} className="gp-segmented-item">
-          {tr("列表")}
-        </Link>
-        <Link href={`/projects/${projectId}/tasks?view=plan`} className="gp-segmented-item">
-          {tr("规划")}
-        </Link>
-      </nav>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <nav aria-label={tr("任务视图")} className="gp-segmented">
+          <Link href={viewHref("tree")} aria-current={view === "tree" ? "page" : undefined} data-active={view === "tree" ? "true" : undefined} className="gp-segmented-item">
+            {tr("任务树")}
+          </Link>
+          <Link href={viewHref("board")} aria-current={view === "board" ? "page" : undefined} data-active={view === "board" ? "true" : undefined} className="gp-segmented-item">
+            {tr("看板")}
+          </Link>
+          <Link href={viewHref("list")} aria-current={view === "list" ? "page" : undefined} data-active={view === "list" ? "true" : undefined} className="gp-segmented-item">
+            {tr("列表")}
+          </Link>
+          <Link href={`/projects/${projectId}/tasks?view=plan`} className="gp-segmented-item">
+            {tr("规划")}
+          </Link>
+        </nav>
+
+        <div role="group" aria-label={tCode("filterOriginAria")} className="gp-segmented" data-testid="tasks-origin-filter">
+          {(
+            [
+              { value: "all" as const, label: tCode("filterAll") },
+              { value: "planned" as const, label: tCode("filterPlanned") },
+              { value: "code_discovered" as const, label: tCode("filterCodeDiscovered") },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              aria-pressed={filters.origin === opt.value}
+              data-active={filters.origin === opt.value ? "true" : undefined}
+              className="gp-segmented-item"
+              onClick={() => setFilters({ origin: opt.value === "all" ? null : opt.value, page: null })}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
       {page.data && <span className="text-xs text-slate-400">{tr("共 {0} 个任务", { 0: page.data.total })}</span>}
     </div>
 
@@ -344,8 +405,20 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
     {notice && (
       <div data-testid="tasks-notice" className="relative">
         <Feedback tone={notice.tone}>
-          <div className="flex items-center justify-between gap-3">
-            <span>{notice.text}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span>{notice.text}</span>
+              {notice.showDiscoveryCta && (
+                <button
+                  type="button"
+                  onClick={() => setDiscoveryOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-md border border-violet-200/90 bg-white px-2.5 py-0.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50"
+                >
+                  <Sparkles size={11} aria-hidden="true" />
+                  {tCode("syncNoticeAction")}
+                </button>
+              )}
+            </div>
             <button type="button" className="shrink-0 text-xs opacity-70 hover:opacity-100" onClick={() => setNotice(undefined)}>{tr("收起")}</button>
           </div>
         </Feedback>
@@ -386,7 +459,7 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
           />
         </div>
       ) : view === "board" ? (
-        <BoardView page={page.data} onMove={(row, transition) => setPending({ row, transition })} />
+        <BoardView page={page.data} showPlannedBadge={hasAnyCodeDiscovered} onMove={(row, transition) => setPending({ row, transition })} />
       ) : (
         <UnifiedTaskTable
           mode={view === "tree" ? "tree" : "list"}
@@ -400,12 +473,20 @@ export function TasksApiPage({ projectId, view }: { projectId: string; view: BTa
           onPage={(next) => setFilters({ page: next })}
           userId={userId}
           isLeader={isLeader}
+          showPlannedBadge={hasAnyCodeDiscovered}
           confirmingTaskId={confirmingTaskId}
           confirmingAll={confirmingAll}
           onConfirmAiTask={(row) => void confirmAiTask(row)}
         />
       )}
     </div>
+
+    <CodeDiscoveryDrawer
+      projectId={projectId}
+      open={discoveryOpen}
+      onOpenChange={setDiscoveryOpen}
+      onChanged={invalidateAll}
+    />
   </div>;
 }
 
@@ -492,7 +573,7 @@ function ProgressCell({ row }: { row: BTaskRow }) {
 type BTasksPageIssue = { code: string; message: string; task_id: string | null; task_ids: string[] };
 
 function UnifiedTaskTable({
-  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage, userId, isLeader, confirmingTaskId, confirmingAll, onConfirmAiTask,
+  mode, rows, total, pageSize, current, issues, collapsed, onCollapsed, onPage, userId, isLeader, showPlannedBadge, confirmingTaskId, confirmingAll, onConfirmAiTask,
 }: {
   mode: "tree" | "list";
   rows: BTaskRow[];
@@ -505,6 +586,7 @@ function UnifiedTaskTable({
   onPage: (page: number) => void;
   userId: string;
   isLeader: boolean;
+  showPlannedBadge: boolean;
   confirmingTaskId: string | null;
   confirmingAll: boolean;
   onConfirmAiTask: (row: BTaskRow) => void;
@@ -585,6 +667,7 @@ function UnifiedTaskTable({
                         ? <button type="button" aria-label={collapsed.includes(row.id) ? tr("展开 {0}", { 0: row.code ?? row.title }) : tr("收起 {0}", { 0: row.code ?? row.title })} className="text-slate-400 hover:text-slate-700" onClick={() => onCollapsed(collapsed.includes(row.id) ? collapsed.filter((x) => x !== row.id) : [...collapsed, row.id])}>{collapsed.includes(row.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}</button>
                         : <span className="inline-block w-[13px]" />)}
                       <Link className="font-medium text-slate-900 hover:text-sky-700 hover:underline" href={row.links.detail}>{row.title}</Link>
+                      <TaskOriginBadge task={row} showPlanned={showPlannedBadge} />
                       {(row.evidence_count ?? 0) > 0 && (
                         <span className="inline-flex items-center gap-0.5 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
                           <GitCommitHorizontal size={10} />{tr("{0} 证据", { 0: row.evidence_count ?? 0 })}
@@ -646,7 +729,7 @@ const statusDot: Record<string, string> = {
 };
 const WORKFLOW_LOCKED_STATUSES = new Set(["pending_submission", "pending_verification", "completed"]);
 
-function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { status: string; label: string; count: number }[] }; onMove: (row: BTaskRow, transition: BTransition) => void }) {
+function BoardView({ page, showPlannedBadge, onMove }: { page: { items: BTaskRow[]; columns: { status: string; label: string; count: number }[] }; showPlannedBadge: boolean; onMove: (row: BTaskRow, transition: BTransition) => void }) {
   const tr = useUiText();
   const [dragged, setDragged] = useState<BTaskRow>();
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
@@ -854,6 +937,11 @@ function BoardView({ page, onMove }: { page: { items: BTaskRow[]; columns: { sta
                           >
                             {row.title}
                           </Link>
+                          {(isCodeDiscoveredTask(row) || showPlannedBadge) && (
+                            <div className="mt-1.5">
+                              <TaskOriginBadge task={row} compact showPlanned={showPlannedBadge} />
+                            </div>
+                          )}
                         </div>
 
                         <div className="mt-2.5">

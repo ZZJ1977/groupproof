@@ -18,6 +18,10 @@ export type ProjectOverviewCard = {
   overdue_milestones: number;
   risk_level: "high" | "medium" | "low" | null;
   last_activity_at: string | null;
+  planned_task_count?: number;
+  code_discovered_task_count?: number;
+  code_discovered_weight_share?: number;
+  high_expansion_warning?: boolean;
 };
 
 export type TeacherProjectsListData = {
