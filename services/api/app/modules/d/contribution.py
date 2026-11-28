@@ -727,6 +727,40 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
         .where(ContributionItem.snapshot_id == snapshot.id)
         .order_by(ContributionItem.share.desc(), ContributionItem.user_id)
     ).all()
+    origin_by_task: dict[UUID, str] = {}
+    if _has_tables(session, BTaskMeta.__tablename__):
+        for tid, origin_val in session.execute(
+            select(BTaskMeta.task_id, BTaskMeta.origin).where(BTaskMeta.project_id == project_id)
+        ).all():
+            origin_by_task[tid] = str(origin_val or "manual")
+    project_tasks = list(
+        session.execute(select(Task.id, Task.weight).where(Task.project_id == project_id)).all()
+    )
+    planned_task_count = 0
+    code_discovered_task_count = 0
+    planned_weight_total = 0.0
+    code_discovered_weight_total = 0.0
+    for tid, tweight in project_tasks:
+        if origin_by_task.get(tid, "manual") == "ai_code":
+            code_discovered_task_count += 1
+            code_discovered_weight_total += float(tweight)
+        else:
+            planned_task_count += 1
+            planned_weight_total += float(tweight)
+    total_project_weight = planned_weight_total + code_discovered_weight_total
+    code_discovered_weight_share = (
+        round(code_discovered_weight_total / total_project_weight, 4)
+        if total_project_weight > 0
+        else 0.0
+    )
+    origin_summary = {
+        "planned_task_count": planned_task_count,
+        "code_discovered_task_count": code_discovered_task_count,
+        "planned_weight_total": round(planned_weight_total, 2),
+        "code_discovered_weight_total": round(code_discovered_weight_total, 2),
+        "code_discovered_weight_share": code_discovered_weight_share,
+        "high_expansion_warning": code_discovered_weight_share > 0.20,
+    }
     members = []
     for item, person in items:
         links = session.execute(
@@ -736,6 +770,8 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
             .order_by(Task.title)
         ).all()
         tasks = []
+        planned_credit = 0.0
+        code_discovered_credit = 0.0
         for link, task in links:
             outcome = (
                 session.get(FormalOutcome, link.formal_outcome_id)
@@ -753,14 +789,24 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
                 for detail in ((check.details_json or []) if check else [])
                 for ref in detail.get("evidence", [])
             ]
+            task_origin = origin_by_task.get(task.id, "manual")
+            is_code = task_origin == "ai_code"
+            task_weight = (
+                float(outcome.basis_json["task_weight"]) if outcome else float(task.weight)
+            )
+            task_contrib = task_weight * float(link.ratio) / 100.0
+            if is_code:
+                code_discovered_credit += task_contrib
+            else:
+                planned_credit += task_contrib
             tasks.append(
                 {
                     "task_id": str(task.id),
                     "title": task.title,
+                    "origin": task_origin,
+                    "is_code_discovered": is_code,
                     "responsibility_share": float(link.ratio),
-                    "weight": float(outcome.basis_json["task_weight"])
-                    if outcome
-                    else float(task.weight),
+                    "weight": task_weight,
                     "formal_outcome_id": str(outcome.id) if outcome else None,
                     "evidence": evidence,
                     "evidence_url": f"/projects/{project_id}/tasks/{task.id}/verification",
@@ -772,6 +818,8 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
                 "name": person.name or person.username or person.email,
                 "share": float(item.share),
                 "task_credit": float(item.task_credit),
+                "planned_credit": round(planned_credit, 4),
+                "code_discovered_credit": round(code_discovered_credit, 4),
                 "tasks": tasks,
             }
         )
@@ -785,6 +833,8 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
                 "name": person.name or person.username or person.email,
                 "share": 0.0,
                 "task_credit": 0.0,
+                "planned_credit": 0.0,
+                "code_discovered_credit": 0.0,
                 "tasks": [],
             }
         )
@@ -797,6 +847,7 @@ def latest_snapshot(session: Session, project_id: UUID, user: User) -> dict | No
         "calculated_at": calculation.calculated_at.isoformat(),
         "input_hash": calculation.input_hash,
         "stale": calculation.input_hash != current_hash,
+        "origin_summary": origin_summary,
         "members": members,
     }
 

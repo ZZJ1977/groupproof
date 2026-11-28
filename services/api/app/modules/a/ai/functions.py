@@ -28,6 +28,8 @@ from app.modules.a.ai.provider import (
 from app.modules.a.ai.schemas import (
     ActivitySummaryInput,
     ActivitySummaryResult,
+    CodeTaskDiscoveryInput,
+    CodeTaskDiscoveryResult,
     EvidenceMatchInput,
     EvidenceMatchResult,
     FeishuCollaborationInput,
@@ -119,6 +121,8 @@ def _run[ResultT: BaseModel](
             payload, FeishuCollaborationInput
         ):
             raw = _sanitize_feishu_collaboration_raw(raw, payload)
+        elif feature == "discover_tasks_from_code" and isinstance(payload, CodeTaskDiscoveryInput):
+            raw = _sanitize_code_discovery_raw(raw, payload)
         return result_model.model_validate(
             {**raw, "provider": provider.name, "is_placeholder": provider.is_placeholder}
         )
@@ -579,6 +583,131 @@ def analyze_feishu_collaboration(
         "analyze_feishu_collaboration",
         payload,
         FeishuCollaborationResult,
+        provider,
+        timeout=75.0,
+    )
+
+
+def _sanitize_code_discovery_raw(
+    raw: dict[str, Any], payload: CodeTaskDiscoveryInput
+) -> dict[str, Any]:
+    """严格校验代码演进增补任务建议：丢弃幻觉提交/任务/模块 ID，防止非法引用。"""
+    if not isinstance(raw, dict):
+        return raw
+    valid_commit_ids = {str(c.id) for c in payload.unmatched_commits}
+    commit_authors = {
+        str(c.id): str(c.author_user_id)
+        for c in payload.unmatched_commits
+        if c.author_user_id is not None
+    }
+    valid_task_ids = {str(t.id): t for t in payload.existing_tasks}
+    valid_module_ids = {str(m.id) for m in payload.modules}
+    valid_member_ids = {str(m.id) for m in payload.members}
+    default_module_id = str(payload.modules[0].id) if payload.modules else None
+    valid_actions = {"merge_existing", "new_subtask", "new_top_level"}
+
+    suggestions_out: list[dict[str, Any]] = []
+    for item in (raw.get("suggestions") or [])[:12]:
+        if not isinstance(item, dict):
+            continue
+        raw_commits = [
+            str(cid).strip()
+            for cid in (item.get("source_commit_ids") or [])
+            if str(cid).strip() in valid_commit_ids
+        ]
+        source_commit_ids = list(dict.fromkeys(raw_commits))[:40]
+        if not source_commit_ids:
+            continue
+
+        title = str(item.get("title") or "").strip()[:240]
+        if not title:
+            continue
+        description = str(item.get("description") or "").strip()[:3000]
+
+        action = str(item.get("action_type") or "new_top_level").strip().lower()
+        if action not in valid_actions:
+            action = "new_top_level"
+
+        raw_target = str(item.get("target_task_id") or "").strip()
+        target_task_id = raw_target if raw_target in valid_task_ids else None
+
+        raw_parent = str(item.get("suggested_parent_task_id") or "").strip()
+        parent_task_id = raw_parent if raw_parent in valid_task_ids else None
+
+        raw_module = str(item.get("suggested_module_id") or "").strip()
+        module_id = raw_module if raw_module in valid_module_ids else None
+
+        if action == "merge_existing" and target_task_id is None:
+            action = "new_subtask" if parent_task_id is not None else "new_top_level"
+        if action == "new_subtask" and parent_task_id is None:
+            action = "new_top_level"
+
+        if action == "merge_existing" and target_task_id is not None:
+            module_id = str(valid_task_ids[target_task_id].module_id)
+        elif action == "new_subtask" and parent_task_id is not None:
+            module_id = module_id or str(valid_task_ids[parent_task_id].module_id)
+        elif module_id is None:
+            module_id = default_module_id
+
+        assignees = [
+            str(uid).strip()
+            for uid in (item.get("suggested_assignee_ids") or [])
+            if str(uid).strip() in valid_member_ids
+        ]
+        if not assignees:
+            for cid in source_commit_ids:
+                author_uid = commit_authors.get(cid)
+                if author_uid and author_uid in valid_member_ids and author_uid not in assignees:
+                    assignees.append(author_uid)
+        assignees = list(dict.fromkeys(assignees))[:10]
+
+        criteria = [
+            str(c).strip()[:500] for c in (item.get("acceptance_criteria") or []) if str(c).strip()
+        ][:10]
+        if not criteria:
+            criteria = [f"完成「{title[:60]}」核心实现并通过团队人工验收"]
+
+        try:
+            weight = int(item.get("suggested_weight") or 3)
+        except (TypeError, ValueError):
+            weight = 3
+        weight = max(1, min(6, weight))
+
+        try:
+            confidence = float(item.get("confidence", 0.75))
+        except (TypeError, ValueError):
+            confidence = 0.75
+        confidence = max(0.0, min(1.0, confidence))
+
+        rationale = str(item.get("rationale") or "").strip()[:1000]
+        suggestions_out.append(
+            {
+                "action_type": action,
+                "title": title,
+                "description": description,
+                "acceptance_criteria": criteria,
+                "target_task_id": target_task_id if action == "merge_existing" else None,
+                "suggested_parent_task_id": parent_task_id if action == "new_subtask" else None,
+                "suggested_module_id": module_id,
+                "suggested_assignee_ids": assignees,
+                "suggested_weight": weight,
+                "source_commit_ids": source_commit_ids,
+                "rationale": rationale,
+                "confidence": confidence,
+            }
+        )
+    return {"suggestions": suggestions_out}
+
+
+@metered("discover_tasks_from_code")
+def discover_tasks_from_code(
+    payload: CodeTaskDiscoveryInput, *, provider: AIProvider | None = None
+) -> CodeTaskDiscoveryResult:
+    """从未归属任务的真实代码提交中聚簇识别演进增补任务建议（必须经人工确认后才生效）。"""
+    return _run(
+        "discover_tasks_from_code",
+        payload,
+        CodeTaskDiscoveryResult,
         provider,
         timeout=75.0,
     )

@@ -262,3 +262,134 @@ def analyze_feishu_collaboration(payload: dict[str, Any]) -> dict:
         ),
         "items": items,
     }
+
+
+_TRIVIAL_PREFIXES = ("style:", "style(", "format:", "format(", "chore: format", "chore: lint")
+
+
+def _commit_domain_key(commit: dict[str, Any]) -> str:
+    files = commit.get("files") or []
+    for raw_path in files:
+        path = str(raw_path or "").strip().strip("/")
+        if not path:
+            continue
+        parts = [p for p in path.split("/") if p]
+        dir_parts = parts[:-1] if len(parts) > 1 else parts
+        if len(dir_parts) >= 3 and dir_parts[0] in {"services", "apps", "packages", "src"}:
+            return "/".join(dir_parts[:3])
+        if len(dir_parts) >= 2:
+            return "/".join(dir_parts[:2])
+        return dir_parts[0]
+    title = str(commit.get("title") or "").strip().lower()
+    if ":" in title:
+        prefix = title.split(":", 1)[0].strip()
+        if prefix:
+            return prefix[:40]
+    return "general"
+
+
+def discover_tasks_from_code(payload: dict[str, Any]) -> dict:
+    commits = payload.get("unmatched_commits") or []
+    modules = payload.get("modules") or []
+    existing_tasks = payload.get("existing_tasks") or []
+    members = payload.get("members") or []
+    member_ids = {str(m["id"]) for m in members if m.get("id")}
+    default_module_id = str(modules[0]["id"]) if modules else None
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for commit in commits:
+        title = str(commit.get("title") or "").strip()
+        title_lower = title.lower()
+        eff_lines = int(commit.get("effective_lines") or 0)
+        files = commit.get("files") or []
+        if any(title_lower.startswith(p) for p in _TRIVIAL_PREFIXES) and eff_lines < 30:
+            continue
+        if eff_lines < 5 and not files:
+            continue
+        key = _commit_domain_key(commit)
+        grouped.setdefault(key, []).append(commit)
+
+    suggestions: list[dict[str, Any]] = []
+    for domain, items in list(grouped.items())[:6]:
+        commit_ids = [str(c["id"]) for c in items if c.get("id")]
+        if not commit_ids:
+            continue
+        total_lines = sum(int(c.get("effective_lines") or 0) for c in items)
+        assignees: list[str] = []
+        for c in items:
+            uid = str(c.get("author_user_id") or "")
+            if uid and uid in member_ids and uid not in assignees:
+                assignees.append(uid)
+        if not assignees and members:
+            assignees = [str(members[0]["id"])]
+
+        first_title = str(items[0].get("ai_headline") or items[0].get("title") or domain).strip()
+        for prefix in ("feat:", "fix:", "chore:", "refactor:"):
+            if first_title.lower().startswith(prefix):
+                first_title = first_title[len(prefix) :].strip()
+        if first_title.lower().startswith("feat(") and "):" in first_title:
+            first_title = first_title.split("):", 1)[1].strip()
+
+        # Check whether domain tokens overlap strongly with an existing task for merge/subtask.
+        domain_tokens = {
+            tok
+            for tok in domain.lower().replace("/", " ").replace("_", " ").split()
+            if len(tok) > 2
+        }
+        matched_parent: dict[str, Any] | None = None
+        for task in existing_tasks:
+            t_blob = f"{task.get('title') or ''} {task.get('description') or ''}".lower()
+            if domain_tokens and any(tok in t_blob for tok in domain_tokens):
+                matched_parent = task
+                break
+
+        action_type = "new_top_level"
+        suggested_parent_id = None
+        suggested_module_id = default_module_id
+        if matched_parent is not None and matched_parent.get("parent_task_id") is None:
+            action_type = "new_subtask"
+            suggested_parent_id = str(matched_parent["id"])
+            suggested_module_id = (
+                str(matched_parent.get("module_id") or default_module_id or "") or None
+            )
+
+        weight = (
+            2 if total_lines < 80 else (3 if total_lines < 220 else (4 if total_lines < 500 else 5))
+        )
+        sample_files = []
+        for c in items:
+            for f in c.get("files") or []:
+                if f not in sample_files:
+                    sample_files.append(str(f))
+        files_desc = "、".join(sample_files[:5]) or domain
+        title = (first_title or f"补录 {domain} 功能实现")[:180]
+        suggestions.append(
+            {
+                "action_type": action_type,
+                "title": title,
+                "description": (
+                    f"基于 {len(items)} 条未归属代码提交（共约 {total_lines} 行有效变更，"
+                    f"涉及 {files_desc}）归纳的演进增补任务草案。"
+                )[:2800],
+                "acceptance_criteria": [
+                    f"「{title[:60]}」核心代码逻辑完整落地并与现有流程兼容",
+                    f"补充对应单元测试或运行验证记录并经团队人工验收确认（参考文件：{files_desc[:120]}）",
+                ],
+                "target_task_id": None,
+                "suggested_parent_task_id": suggested_parent_id,
+                "suggested_module_id": suggested_module_id,
+                "suggested_assignee_ids": assignees[:5],
+                "suggested_weight": weight,
+                "source_commit_ids": commit_ids[:40],
+                "rationale": (
+                    f"检测到 {len(items)} 条集中在 `{domain}` 目录的实质代码提交未归属任务，"
+                    + (
+                        "建议拆分为子任务补录。"
+                        if action_type == "new_subtask"
+                        else "建议新增顶层增补任务。"
+                    )
+                ),
+                "confidence": 0.78 if len(items) >= 2 else 0.72,
+            }
+        )
+    return {"suggestions": suggestions}

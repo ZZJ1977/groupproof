@@ -499,10 +499,11 @@ class BTaskMeta(Base):
     content_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     origin: Mapped[str] = mapped_column(String(16), server_default=text("'manual'"))
     suggestion_id: Mapped[UUID | None] = mapped_column(Uuid)
+    discovered_from_json: Mapped[dict | None] = mapped_column(DocumentJSON, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("project_id", "seq", name="uq_b_task_meta_seq"),
-        CheckConstraint("origin IN ('manual', 'ai')", name="ck_b_task_meta_origin"),
+        CheckConstraint("origin IN ('manual', 'ai', 'ai_code')", name="ck_b_task_meta_origin"),
     )
 
 
@@ -528,8 +529,8 @@ class BTaskVersion(Base):
 class BTaskSuggestion(Base):
     """B5-03 an AI task suggestion; it becomes a task only when someone adopts it.
 
-    ``fingerprint`` = requirement + normalised title, unique per project, so
-    generating twice never lists the same suggestion twice (even after it was
+    ``fingerprint`` = requirement/code source + normalised title, unique per project,
+    so generating twice never lists the same suggestion twice (even after it was
     adopted or dismissed).
     """
 
@@ -537,14 +538,50 @@ class BTaskSuggestion(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    requirement_id: Mapped[UUID] = mapped_column(ForeignKey("requirements.id", ondelete="CASCADE"))
+    requirement_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE"), nullable=True
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(24), default="requirement", server_default=text("'requirement'")
+    )
+    action_type: Mapped[str] = mapped_column(
+        String(24), default="new_top_level", server_default=text("'new_top_level'")
+    )
+    target_task_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    suggested_module_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("functional_modules.id", ondelete="SET NULL"), nullable=True
+    )
+    suggested_parent_task_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    suggested_assignee_ids_json: Mapped[list | None] = mapped_column(DocumentJSON, nullable=True)
+    suggested_weight: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_refs_json: Mapped[dict | None] = mapped_column(DocumentJSON, nullable=True)
+    approval_status: Mapped[str] = mapped_column(
+        String(24), default="none", server_default=text("'none'")
+    )
+    proposed_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    proposed_payload_json: Mapped[dict | None] = mapped_column(DocumentJSON, nullable=True)
+    approvals_json: Mapped[list | None] = mapped_column(DocumentJSON, nullable=True)
+    approved_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fingerprint: Mapped[str] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(240))
-    description: Mapped[str] = mapped_column(Text, server_default=text("''"))
+    description: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
     acceptance_criteria: Mapped[list] = mapped_column(DocumentJSON)
     provider: Mapped[str] = mapped_column(String(40))
-    is_placeholder: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
-    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    is_placeholder: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default=text("'pending'")
+    )
     adopted_task_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL")
     )
@@ -557,6 +594,24 @@ class BTaskSuggestion(Base):
         UniqueConstraint("project_id", "fingerprint", name="uq_b_task_suggestions_fingerprint"),
         CheckConstraint(
             "status IN ('pending', 'adopted', 'dismissed')", name="ck_b_task_suggestions_status"
+        ),
+        CheckConstraint(
+            "source_type IN ('requirement', 'github_code')",
+            name="ck_b_task_suggestions_source_type",
+        ),
+        CheckConstraint(
+            "action_type IN ('merge_existing', 'new_subtask', 'new_top_level')",
+            name="ck_b_task_suggestions_action_type",
+        ),
+        CheckConstraint(
+            "approval_status IN ('none', 'pending_approval', 'approved', 'rejected')",
+            name="ck_b_task_suggestions_approval_status",
+        ),
+        Index(
+            "ix_b_task_suggestions_project_source_status",
+            "project_id",
+            "source_type",
+            "status",
         ),
     )
 

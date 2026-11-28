@@ -113,6 +113,7 @@ def list_tasks(
     assignee: str = "",
     module: str = "",
     milestone: str = "",
+    origin: str = "all",
     sort: str = "",
     page: int = 1,
     page_size: int = 20,
@@ -122,6 +123,9 @@ def list_tasks(
         raise _invalid("view")
     if status and status not in STATUSES:
         raise _invalid("status")
+    origin_filter = (origin or "all").strip().lower()
+    if origin_filter not in {"all", "planned", "code_discovered"}:
+        raise _invalid("origin")
     sort = sort or "code"
     if sort.lstrip("-") not in SORTS:
         raise _invalid("sort")
@@ -160,8 +164,13 @@ def list_tasks(
             return False
         if assignee_id and assignee_id not in assigned:
             return False
+        meta = facts.meta.get(task.id)
+        task_origin = meta.origin if meta else "manual"
+        if origin_filter == "planned" and task_origin == "ai_code":
+            return False
+        if origin_filter == "code_discovered" and task_origin != "ai_code":
+            return False
         if q:
-            meta = facts.meta.get(task.id)
             if code_match and meta and meta.seq == int(code_match.group(1)):
                 return True
             text = f"{task.title}\n{task.description or ''}\n{task_code(meta.seq) if meta else ''}"
@@ -293,6 +302,9 @@ def list_tasks(
             content_version=meta.content_version if meta else 0,
             lock_version=task.lock_version,
             updated_at=task.updated_at,
+            origin=meta.origin if meta else "manual",  # type: ignore[arg-type]
+            is_code_discovered=(meta.origin == "ai_code") if meta else False,
+            discovered_from=meta.discovered_from_json if meta else None,
             matched_commits=commit_metrics[task.id].commit_count
             if task.id in commit_metrics
             else 0,

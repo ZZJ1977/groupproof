@@ -164,6 +164,7 @@ def _facts(session: Session, project_id: UUID) -> Facts:
 
 
 def _plan_task(facts: Facts, task: Task) -> PlanTask:
+    meta = facts.meta.get(task.id)
     return PlanTask(
         id=task.id,
         code=facts.code(task.id),
@@ -175,6 +176,7 @@ def _plan_task(facts: Facts, task: Task) -> PlanTask:
         assignee_ids=tuple(facts.assignees.get(task.id, [])),
         dependency_ids=tuple(facts.dependencies.get(task.id, [])),
         milestone_ids=tuple(facts.milestones.get(task.id, [])),
+        origin=meta.origin if meta else "manual",
     )
 
 
@@ -579,7 +581,11 @@ def _save(
     meta.content_version = old_version + 1
     _add_version(session, task, plan, meta.content_version, after, user.id)
     if not creating:
-        task.lock_version += 1
+        weight_only_change = before is not None and {
+            k: v for k, v in before.items() if k != "weight"
+        } == {k: v for k, v in after.items() if k != "weight"}
+        if not (weight_only_change and task.status == "completed"):
+            task.lock_version += 1
     plan.lock_version += 1
     session.flush()
     code = task_code(meta.seq) or code
@@ -963,7 +969,10 @@ def list_suggestions(
     permissions.require_project_read(session, user, project_id)
     if status not in {"pending", "adopted", "dismissed", "all"}:
         raise ApiError(422, "INVALID_FILTER", "筛选条件不正确。", details={"field": "status"})
-    statement = select(BTaskSuggestion).where(BTaskSuggestion.project_id == project_id)
+    statement = select(BTaskSuggestion).where(
+        BTaskSuggestion.project_id == project_id,
+        BTaskSuggestion.source_type == "requirement",
+    )
     if status != "all":
         statement = statement.where(BTaskSuggestion.status == status)
     rows = list(_fresh(session, statement.order_by(BTaskSuggestion.created_at, BTaskSuggestion.id)))
@@ -1058,7 +1067,11 @@ def generate_suggestions(
 def _pending_suggestion(session: Session, project_id: UUID, suggestion_id: UUID):
     row = session.scalar(
         select(BTaskSuggestion)
-        .where(BTaskSuggestion.id == suggestion_id, BTaskSuggestion.project_id == project_id)
+        .where(
+            BTaskSuggestion.id == suggestion_id,
+            BTaskSuggestion.project_id == project_id,
+            BTaskSuggestion.source_type == "requirement",
+        )
         .with_for_update()
         .execution_options(populate_existing=True)
     )
@@ -1183,6 +1196,8 @@ def _task_dtos(session: Session, project_id: UUID, facts: Facts) -> list[TaskDTO
                 progress_percent=task.progress_percent,
                 content_version=meta.content_version if meta else 0,
                 origin=meta.origin if meta else "manual",  # type: ignore[arg-type]
+                is_code_discovered=(meta.origin == "ai_code") if meta else False,
+                discovered_from=meta.discovered_from_json if meta else None,
                 href=f"/projects/{project_id}/tasks/{task.id}",
             )
         )
@@ -1227,6 +1242,12 @@ def plan_view(session: Session, user: User, project_id: UUID) -> PlanDTO:
     people = _people(session, set(members))
     tasks = _task_dtos(session, project_id, facts)
     roots = [t for t in facts.tasks if t.parent_task_id is None]
+    planned_roots = [
+        t
+        for t in roots
+        if (facts.meta[t.id].origin if t.id in facts.meta else "manual") != "ai_code"
+    ]
+    checked_roots = planned_roots if (planned_roots and len(planned_roots) < len(roots)) else roots
     baseline_no = plan.snapshot_json.get("baseline_version_no") if plan else None
     if baseline_no is None and baseline_frozen:
         frozen = _frozen_baseline(session, project_id)
@@ -1249,7 +1270,7 @@ def plan_view(session: Session, user: User, project_id: UUID) -> PlanDTO:
         my_state=mine.state if mine else None,
         can_edit=writable and status != FROZEN,
         can_lead=writable and relation.leader,
-        root_weight_total=sum(int(t.weight) for t in roots),
+        root_weight_total=sum(int(t.weight) for t in checked_roots),
         modules=[OptionDTO(id=m.id, name=m.name) for m in modules],
         requirements=[
             OptionDTO(id=r.id, name=r.title, code=codes.get(r.id), module_id=r.module_id)

@@ -49,6 +49,9 @@ class TaskRowDTO(BaseModel):
     content_version: int
     lock_version: int
     updated_at: datetime | None
+    origin: Literal["manual", "ai", "ai_code"] = "manual"
+    is_code_discovered: bool = False
+    discovered_from: dict | None = None
     matched_commits: int = 0
     latest_commit_at: datetime | None = None
     criteria_total: int = 0

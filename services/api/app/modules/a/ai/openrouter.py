@@ -16,7 +16,10 @@ from typing import Any
 import httpx
 
 from app.modules.a.ai import schemas
-from app.modules.a.ai.prompts import CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT
+from app.modules.a.ai.prompts import (
+    CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT,
+    CODE_TASK_DISCOVERY_SYSTEM_PROMPT,
+)
 from app.modules.a.ai.provider import AIUnavailable
 
 logger = logging.getLogger("groupproof.a.ai.openrouter")
@@ -38,6 +41,7 @@ RESULT_MODELS = {
     "summarize_activity": schemas.ActivitySummaryResult,
     "generate_project_blueprint": schemas.ProjectBlueprintResult,
     "analyze_feishu_collaboration": schemas.FeishuCollaborationResult,
+    "discover_tasks_from_code": schemas.CodeTaskDiscoveryResult,
 }
 
 INSTRUCTIONS = {
@@ -77,6 +81,10 @@ INSTRUCTIONS = {
         "5) 阻塞或待跟进事项（category='blocker'）：群内反映的故障、权限卡点、进度风险或待确认问题（status='needs_followup'）。\n"
         "严格约束：每条结论的 message_ids 必须且只能引用输入 messages 中真实存在的 UUID，并包含支撑该结论的完整上下文消息（如发起消息 + 成员讨论 + 收到/OK 确认回复），"
         "以便用户点击详情查看真实聊天记录；严禁编造消息 id 或未发生过的讨论。overview 用 1~2 句话概括群聊整体协作态势。"
+    ),
+    "discover_tasks_from_code": (
+        "将未归属任务的真实代码提交按目录/功能域聚簇，坚持归并优先（merge_existing > new_subtask > new_top_level），"
+        "生成简洁的增补任务建议与候选交付标准草案；仅涉及格式化或琐碎重构时返回空列表。"
     ),
 }
 
@@ -134,6 +142,11 @@ class OpenRouterProvider:
         if feature == "summarize_activity":
             system = (
                 f"{CODE_COMMIT_ANALYSIS_SYSTEM_PROMPT.strip()}\n\n"
+                f"输出必须严格符合以下 JSON Schema：{schema_json}"
+            )
+        elif feature == "discover_tasks_from_code":
+            system = (
+                f"{CODE_TASK_DISCOVERY_SYSTEM_PROMPT.strip()}\n\n"
                 f"输出必须严格符合以下 JSON Schema：{schema_json}"
             )
         else:

@@ -751,6 +751,26 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
         )
 
     completed_tasks = sum(1 for t in tasks if t.status == "completed")
+    origin_by_task: dict[UUID, str] = {}
+    if task_ids and _has_table(session, "b_task_meta"):
+        from app.modules.b.models import BTaskMeta
+
+        for tid, origin_val in session.execute(
+            select(BTaskMeta.task_id, BTaskMeta.origin).where(BTaskMeta.task_id.in_(task_ids))
+        ).all():
+            origin_by_task[tid] = str(origin_val or "manual")
+    planned_task_count = sum(1 for t in tasks if origin_by_task.get(t.id, "manual") != "ai_code")
+    code_discovered_task_count = len(tasks) - planned_task_count
+    planned_weight_total = sum(
+        float(t.weight) for t in tasks if origin_by_task.get(t.id, "manual") != "ai_code"
+    )
+    code_discovered_weight_total = sum(
+        float(t.weight) for t in tasks if origin_by_task.get(t.id, "manual") == "ai_code"
+    )
+    total_task_weight = planned_weight_total + code_discovered_weight_total
+    code_discovered_weight_share = (
+        round(code_discovered_weight_total / total_task_weight, 4) if total_task_weight > 0 else 0.0
+    )
     team_member_labels = [
         f"{m['name']}（{m['role']}）" if m["role"] == "组长" else m["name"]
         for m in member_portraits
@@ -778,6 +798,9 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
             "members": len(members_rows),
             "tasks": len(tasks),
             "completed_tasks": completed_tasks,
+            "planned_task_count": planned_task_count,
+            "code_discovered_task_count": code_discovered_task_count,
+            "code_discovered_weight_share": code_discovered_weight_share,
             "evidence": len(evidence),
             "risks": risk_counts(active_risks)["total"],
             "contribution_members": sum(1 for item in frozen_items if item.share > 0),
@@ -794,6 +817,8 @@ def collect_project_facts(session: Session, project_id: UUID, project_name: str)
             {
                 "title": t.title,
                 "module": module_by_id[t.module_id].name if t.module_id in module_by_id else "",
+                "origin": origin_by_task.get(t.id, "manual"),
+                "is_code_discovered": origin_by_task.get(t.id, "manual") == "ai_code",
                 "status": t.status,
                 "status_label": _TASK_STATUS_ZH.get(t.status, t.status),
                 "progress_percent": int(t.progress_percent),
@@ -928,7 +953,13 @@ def render_fallback_chapters(
             "| 评估维度 | 当前量化指标 | 工程核验依据 |",
             "| --- | --- | --- |",
             f"| 团队配置与基线治理 | {counts['members']} 名成员 · 需求基线 v{proj['baseline_version'] or '—'} / 计划 v{proj['plan_version'] or '—'} | 覆盖 {proj['modules_count']} 个模块、{proj['requirements_count']} 条需求（高优 {proj['requirements_high']} 条） |",
-            f"| 任务与里程碑闭环 | 任务完成 {done_tasks}/{total_tasks}（{completion_rate}%） | 里程碑达成 {ms_done}/{len(milestones)}，阶段交付物核验 {deliv_done}/{deliv_total} |",
+            f"| 任务与里程碑闭环 | 任务完成 {done_tasks}/{total_tasks}（{completion_rate}%） | 里程碑达成 {ms_done}/{len(milestones)}，阶段交付物核验 {deliv_done}/{deliv_total}"
+            + (
+                f"；其中基线规划 {counts.get('planned_task_count', total_tasks)} 项、代码演进增补 {counts.get('code_discovered_task_count', 0)} 项（权重占比 {round(float(counts.get('code_discovered_weight_share', 0.0)) * 100, 1)}%）"
+                if counts.get("code_discovered_task_count", 0) > 0
+                else ""
+            )
+            + " |",
             f"| 代码工程产出 | GitHub 提交 {github['commits']} 次 · PR {github['merged_prs']}/{github['pull_requests']} 已合并 | 代码累计变更 +{github['additions']} / -{github['deletions']} 行"
             + (
                 f"，CI 通过 {github['ci_success']}/{github['ci_runs']} 次（{ci_rate}%）"

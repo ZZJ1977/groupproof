@@ -28,6 +28,10 @@ class ProjectOverviewCardDTO(BaseModel):
     progress_percent: int | None = None
     completed_tasks: int = 0
     total_tasks: int = 0
+    planned_task_count: int = 0
+    code_discovered_task_count: int = 0
+    code_discovered_weight_share: float = 0.0
+    high_expansion_warning: bool = False
     milestones_completed: int = 0
     milestones_total: int = 0
     overdue_milestones: int = 0

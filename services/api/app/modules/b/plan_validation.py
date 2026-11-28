@@ -24,6 +24,7 @@ class PlanTask:
     assignee_ids: tuple[UUID, ...] = ()
     dependency_ids: tuple[UUID, ...] = ()
     milestone_ids: tuple[UUID, ...] = ()
+    origin: str = "manual"
 
 
 @dataclass(frozen=True)
@@ -148,13 +149,31 @@ def validate_plan(
     issues.extend(_dependency_cycles(tasks, by_id, codes))
 
     roots = [task for task in tasks if task.parent_id is None or task.parent_id not in by_id]
-    total = sum(task.weight for task in roots)
-    if roots and total != 100:
+    planned_roots = [task for task in roots if task.origin != "ai_code"]
+    checked_roots = planned_roots if (planned_roots and len(planned_roots) < len(roots)) else roots
+    total = sum(task.weight for task in checked_roots)
+    if checked_roots and total != 100:
         issues.append(
             Issue("root_weight_total", f"顶层任务权重合计是 {total}，必须是 100。", field="weight")
         )
     for parent in tasks:
         children = [task for task in tasks if task.parent_id == parent.id and task.id != parent.id]
+        planned_children = [task for task in children if task.origin != "ai_code"]
+        if children and len(planned_children) < len(children):
+            # Supplemental ai_code subtasks are additive; validate planned children only.
+            if planned_children:
+                child_total = sum(task.weight for task in planned_children)
+                if child_total != parent.weight:
+                    issues.append(
+                        Issue(
+                            "child_weight_total",
+                            f"{parent.code} 的子任务权重合计是 {child_total}，"
+                            f"应等于它的权重 {parent.weight}。",
+                            parent.id,
+                            "weight",
+                        )
+                    )
+            continue
         child_total = sum(task.weight for task in children)
         if children and child_total != parent.weight:
             issues.append(

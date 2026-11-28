@@ -22,6 +22,7 @@ from app.modules.a.audit import record_audit
 from app.modules.a.inbox import notify
 from app.modules.a.models import GithubActivity
 from app.modules.b.milestones_service import milestone_briefs
+from app.modules.b.models import BTaskMeta
 from app.modules.b.teacher_permissions import effective_permissions
 from app.modules.b.teacher_projects_schemas import (
     ProjectOverviewCardDTO,
@@ -82,6 +83,10 @@ def _group_cards(session: Session, course_id: UUID) -> list[ProjectOverviewCardD
 
     task_totals: dict[UUID, int] = {}
     task_done: dict[UUID, int] = {}
+    planned_counts: dict[UUID, int] = {}
+    code_counts: dict[UUID, int] = {}
+    planned_weights: dict[UUID, float] = {}
+    code_weights: dict[UUID, float] = {}
     latest_task: dict[UUID, datetime] = {}
     latest_prog: dict[UUID, datetime] = {}
     latest_gh: dict[UUID, datetime] = {}
@@ -96,6 +101,18 @@ def _group_cards(session: Session, course_id: UUID) -> list[ProjectOverviewCardD
             task_totals[pid] = task_totals.get(pid, 0) + int(cnt)
             if st == "completed":
                 task_done[pid] = task_done.get(pid, 0) + int(cnt)
+
+        for pid, origin_val, weight_val in session.execute(
+            select(Task.project_id, BTaskMeta.origin, Task.weight)
+            .outerjoin(BTaskMeta, BTaskMeta.task_id == Task.id)
+            .where(Task.project_id.in_(project_ids))
+        ).all():
+            if origin_val == "ai_code":
+                code_counts[pid] = code_counts.get(pid, 0) + 1
+                code_weights[pid] = code_weights.get(pid, 0.0) + float(weight_val)
+            else:
+                planned_counts[pid] = planned_counts.get(pid, 0) + 1
+                planned_weights[pid] = planned_weights.get(pid, 0.0) + float(weight_val)
 
         for pid, ts in session.execute(
             select(Task.project_id, func.max(Task.updated_at))
@@ -179,6 +196,13 @@ def _group_cards(session: Session, course_id: UUID) -> list[ProjectOverviewCardD
         clean_ts = [t for t in timestamps if t is not None]
         last_act = max(clean_ts) if clean_ts else None
 
+        p_count = planned_counts.get(proj.id, 0)
+        c_count = code_counts.get(proj.id, 0)
+        p_weight = planned_weights.get(proj.id, 0.0)
+        c_weight = code_weights.get(proj.id, 0.0)
+        w_total = p_weight + c_weight
+        c_share = round(c_weight / w_total, 4) if w_total > 0 else 0.0
+
         cards.append(
             ProjectOverviewCardDTO(
                 group_id=g.id,
@@ -193,6 +217,10 @@ def _group_cards(session: Session, course_id: UUID) -> list[ProjectOverviewCardD
                 progress_percent=pct,
                 completed_tasks=done_t,
                 total_tasks=total_t,
+                planned_task_count=p_count,
+                code_discovered_task_count=c_count,
+                code_discovered_weight_share=c_share,
+                high_expansion_warning=c_share > 0.20,
                 milestones_completed=m_done,
                 milestones_total=m_total,
                 overdue_milestones=overdue,

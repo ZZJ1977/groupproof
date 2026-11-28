@@ -356,3 +356,74 @@ class CollabInsightItem(AIModel):
 class FeishuCollaborationResult(AIResultMeta):
     overview: str = Field(min_length=1, max_length=600)
     items: list[CollabInsightItem] = Field(default_factory=list, max_length=24)
+
+
+# ------------------------------------------------ A7-10 从未归属代码提交发现增补任务（B 用）
+
+
+class CodeDiscoveryCommitBrief(AIModel):
+    id: UUID
+    sha: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=240)
+    summary: str = Field(default="", max_length=2000)
+    author_name: str = Field(default="", max_length=120)
+    author_user_id: UUID | None = None
+    occurred_at: str | None = Field(default=None, max_length=80)
+    effective_lines: int = Field(default=0, ge=0)
+    files: list[str] = Field(default_factory=list, max_length=60)
+    ai_headline: str = Field(default="", max_length=240)
+    ai_implementation: str = Field(default="", max_length=600)
+
+
+class CodeDiscoveryExistingTaskBrief(AIModel):
+    id: UUID
+    code: str | None = Field(default=None, max_length=32)
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=1000)
+    module_id: UUID
+    module_name: str = Field(default="", max_length=200)
+    parent_task_id: UUID | None = None
+    status: str = Field(default="not_started", max_length=32)
+    weight: int = Field(default=1, ge=1, le=100)
+
+
+class CodeDiscoveryModuleBrief(AIModel):
+    id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=600)
+
+
+class CodeDiscoveryMemberBrief(AIModel):
+    id: UUID
+    name: str = Field(min_length=1, max_length=120)
+    github_username: str | None = Field(default=None, max_length=60)
+
+
+class CodeTaskDiscoveryInput(AIModel):
+    project_id: UUID
+    project_name: str = Field(min_length=1, max_length=200)
+    modules: list[CodeDiscoveryModuleBrief] = Field(default_factory=list, max_length=40)
+    existing_tasks: list[CodeDiscoveryExistingTaskBrief] = Field(
+        default_factory=list, max_length=200
+    )
+    members: list[CodeDiscoveryMemberBrief] = Field(default_factory=list, max_length=30)
+    unmatched_commits: list[CodeDiscoveryCommitBrief] = Field(min_length=1, max_length=120)
+
+
+class DiscoveredCodeTask(AIModel):
+    action_type: Literal["merge_existing", "new_subtask", "new_top_level"]
+    title: str = Field(min_length=1, max_length=240)
+    description: str = Field(default="", max_length=3000)
+    acceptance_criteria: list[str] = Field(min_length=1, max_length=10)
+    target_task_id: UUID | None = None
+    suggested_parent_task_id: UUID | None = None
+    suggested_module_id: UUID | None = None
+    suggested_assignee_ids: list[UUID] = Field(default_factory=list, max_length=10)
+    suggested_weight: int = Field(default=3, ge=1, le=6)
+    source_commit_ids: list[UUID] = Field(min_length=1, max_length=40)
+    rationale: str = Field(default="", max_length=1000)
+    confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+
+
+class CodeTaskDiscoveryResult(AIResultMeta):
+    suggestions: list[DiscoveredCodeTask] = Field(default_factory=list, max_length=12)

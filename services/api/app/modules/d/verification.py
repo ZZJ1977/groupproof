@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,7 @@ from app.api.errors import ApiError
 from app.db.models import User
 from app.modules.a.ai import AIUsageContext, EvidenceMatchInput, match_evidence
 from app.modules.a.ai.schemas import CriterionBrief, EvidenceBrief
+from app.modules.b.models import BTaskMeta
 from app.modules.c.files_models import LogicalFile
 from app.modules.c.models import Evidence, EvidenceSourceSnapshot
 from app.modules.c.permissions import get_project_access, require_execution_write, require_task_plan
@@ -57,6 +59,28 @@ def deterministic_result(session: Session, evidence: Evidence) -> tuple[str, str
     return "uncertain", "此证据类型没有确定性验收规则，需人工核对。"
 
 
+def _task_origin_context(session: Session, task_id: UUID) -> dict:
+    origin = "manual"
+    discovered_from = None
+    bind = session.get_bind()
+    if bind is not None and sa_inspect(bind).has_table(BTaskMeta.__tablename__):
+        meta = session.get(BTaskMeta, task_id)
+        if meta is not None:
+            origin = str(meta.origin or "manual")
+            discovered_from = meta.discovered_from_json
+    is_code = origin == "ai_code"
+    return {
+        "origin": origin,
+        "is_code_discovered": is_code,
+        "discovered_from": discovered_from,
+        "code_discovered_review_note": (
+            "该任务属于「代码演进增补任务」，其候选交付标准由已有代码反推生成，请重点人工复核业务价值、边界条件及真实测试/运行证据。"
+            if is_code
+            else None
+        ),
+    }
+
+
 def verification_data(session: Session, run: VerificationRun) -> dict:
     check = session.get(IntegrityCheck, run.integrity_check_id)
     details = {row["criterion_id"]: row for row in (check.details_json or [])} if check else {}
@@ -74,6 +98,7 @@ def verification_data(session: Session, run: VerificationRun) -> dict:
         "status": run.status,
         "engine_version": run.engine_version,
         "created_at": run.created_at.isoformat() if run.created_at else None,
+        **_task_origin_context(session, run.task_id),
         "criteria": [
             {
                 "criterion_id": str(row.criterion_id),

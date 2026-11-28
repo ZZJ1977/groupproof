@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 
-from app.modules.b import code_progress_service, planning_service
+from app.modules.b import code_discovery_service, code_progress_service, planning_service
 from app.modules.b.common import (
     ERROR_RESPONSES,
     CurrentUser,
@@ -18,10 +18,14 @@ from app.modules.b.common import (
     run_command,
 )
 from app.modules.b.planning_schemas import (
+    AdoptCodeDiscoveryRequest,
     AdoptSuggestion,
+    ApproveCodeDiscoveryRequest,
     ConfirmAssignment,
     DeleteTask,
+    DismissCodeDiscoveryRequest,
     FreezePlan,
+    ScanCodeDiscoveriesRequest,
     TaskInput,
     UnlockPlan,
     UpdateTask,
@@ -29,6 +33,9 @@ from app.modules.b.planning_schemas import (
 from app.modules.b.ports import VerificationPort, get_verification_port
 
 Verification = Annotated[VerificationPort, Depends(get_verification_port)]
+OptionalIdempotencyKey = Annotated[
+    str | None, Header(alias="Idempotency-Key", min_length=1, max_length=128)
+]
 
 router = APIRouter(
     tags=["b-planning"], dependencies=[Depends(private_response)], responses=ERROR_RESPONSES
@@ -284,5 +291,126 @@ def sync_code_progress(
             actor=user,
             require_member_auth=True,
             request=request,
+        ),
+    )
+
+
+def _write_optional_idempotency(
+    session, request, user, key: str | None, operation: str, payload: dict, execute
+):
+    if key:
+        return _write(session, request, user, key, operation, payload, execute)
+    try:
+        data = execute()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return envelope(data, request)
+
+
+@router.get("/projects/{project_id}/plan/code-discoveries")
+def list_code_discoveries(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+):
+    return envelope(
+        code_discovery_service.list_code_discoveries(session, user, project_id), request
+    )
+
+
+@router.post("/projects/{project_id}/plan/code-discoveries")
+def scan_code_discoveries(
+    project_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    command: ScanCodeDiscoveriesRequest | None = None,
+    key: OptionalIdempotencyKey = None,
+):
+    payload = command.model_dump(mode="json") if command is not None else {}
+    return _write_optional_idempotency(
+        session,
+        request,
+        user,
+        key,
+        f"plan.code_discovery.scan:{project_id}",
+        payload,
+        lambda: code_discovery_service.scan_code_discoveries(
+            session, user, project_id, command, request=request
+        ),
+    )
+
+
+@router.post("/projects/{project_id}/plan/code-discoveries/{suggestion_id}/adopt")
+def adopt_code_discovery(
+    project_id: UUID,
+    suggestion_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    command: AdoptCodeDiscoveryRequest | None = None,
+    key: OptionalIdempotencyKey = None,
+):
+    payload = command.model_dump(mode="json") if command is not None else {}
+    return _write_optional_idempotency(
+        session,
+        request,
+        user,
+        key,
+        f"plan.code_discovery.adopt:{suggestion_id}",
+        payload,
+        lambda: code_discovery_service.adopt_code_discovery(
+            session, user, project_id, suggestion_id, command, request=request
+        ),
+    )
+
+
+@router.post("/projects/{project_id}/plan/code-discoveries/{suggestion_id}/approve")
+def approve_code_discovery(
+    project_id: UUID,
+    suggestion_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    command: ApproveCodeDiscoveryRequest | None = None,
+    key: OptionalIdempotencyKey = None,
+):
+    payload = command.model_dump(mode="json") if command is not None else {}
+    return _write_optional_idempotency(
+        session,
+        request,
+        user,
+        key,
+        f"plan.code_discovery.approve:{suggestion_id}",
+        payload,
+        lambda: code_discovery_service.approve_code_discovery(
+            session, user, project_id, suggestion_id, command, request=request
+        ),
+    )
+
+
+@router.post("/projects/{project_id}/plan/code-discoveries/{suggestion_id}/dismiss")
+def dismiss_code_discovery(
+    project_id: UUID,
+    suggestion_id: UUID,
+    request: Request,
+    session: Database,
+    user: CurrentUser,
+    command: DismissCodeDiscoveryRequest | None = None,
+    key: OptionalIdempotencyKey = None,
+):
+    payload = command.model_dump(mode="json") if command is not None else {}
+    return _write_optional_idempotency(
+        session,
+        request,
+        user,
+        key,
+        f"plan.code_discovery.dismiss:{suggestion_id}",
+        payload,
+        lambda: code_discovery_service.dismiss_code_discovery(
+            session, user, project_id, suggestion_id, command, request=request
         ),
     )

@@ -84,7 +84,9 @@ class TaskDTO(BaseModel):
     status: str
     progress_percent: int
     content_version: int
-    origin: Literal["manual", "ai"]
+    origin: Literal["manual", "ai", "ai_code"] = "manual"
+    is_code_discovered: bool = False
+    discovered_from: dict | None = None
     href: str
 
 
@@ -170,3 +172,116 @@ class SuggestionBatchDTO(BaseModel):
     uncovered_requirement_ids: list[UUID]
     is_placeholder: bool
     suggestions: list[SuggestionDTO]
+
+
+# ------------------------------------------------ Code-Driven Incremental Task Discovery
+
+
+CodeDiscoveryAction = Literal["merge_existing", "new_subtask", "new_top_level"]
+CodeDiscoveryApprovalStatus = Literal["none", "pending_approval", "approved", "rejected"]
+
+
+class UnmatchedCommitDTO(BaseModel):
+    id: UUID
+    sha: str
+    title: str
+    author_name: str
+    author_user_id: UUID | None = None
+    occurred_at: datetime | None = None
+    effective_lines: int = 0
+    files_count: int = 0
+
+
+class DiscoverySourceCommitDTO(BaseModel):
+    id: UUID
+    sha: str
+    title: str
+    author_name: str
+    effective_lines: int = 0
+
+
+class DiscoveryApprovalDTO(BaseModel):
+    user_id: UUID
+    name: str
+    role: str
+    approved_at: datetime
+
+
+class CodeDiscoveryItemDTO(BaseModel):
+    id: UUID
+    status: Literal["pending", "adopted", "dismissed"]
+    approval_status: CodeDiscoveryApprovalStatus
+    source_type: Literal["github_code"] = "github_code"
+    action_type: CodeDiscoveryAction
+    title: str
+    description: str
+    acceptance_criteria: list[str]
+    suggested_module_id: UUID | None = None
+    suggested_module_name: str | None = None
+    suggested_parent_task_id: UUID | None = None
+    suggested_parent_task_title: str | None = None
+    target_task_id: UUID | None = None
+    target_task_title: str | None = None
+    suggested_assignee_ids: list[UUID]
+    suggested_weight: int
+    rationale: str
+    confidence: float
+    source_commits: list[DiscoverySourceCommitDTO]
+    adopted_task_id: UUID | None = None
+    proposed_by_id: UUID | None = None
+    proposed_by_name: str | None = None
+    approvals: list[DiscoveryApprovalDTO]
+    required_approvals: int
+    can_approve: bool
+    provider: str
+    is_placeholder: bool
+    created_at: datetime
+
+
+class CodeDiscoveryListDTO(BaseModel):
+    unmatched_commits_count: int
+    unmatched_commits: list[UnmatchedCommitDTO]
+    pending_count: int
+    pending_approval_count: int
+    items: list[CodeDiscoveryItemDTO]
+
+
+class CodeDiscoveryScanResultDTO(CodeDiscoveryListDTO):
+    created_count: int
+
+
+class ScanCodeDiscoveriesRequest(Strict):
+    max_commits: int = Field(default=60, ge=1, le=120)
+
+
+class AdoptCodeDiscoveryRequest(Strict):
+    action_type: CodeDiscoveryAction | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=240)
+    description: str | None = Field(default=None, max_length=5000)
+    module_id: UUID | None = None
+    parent_task_id: UUID | None = None
+    target_task_id: UUID | None = None
+    assignee_ids: list[UUID] | None = Field(default=None, max_length=10)
+    weight: int | None = Field(default=None, ge=1, le=100)
+    acceptance_criteria: list[str] | None = Field(default=None, max_length=30)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class ApproveCodeDiscoveryRequest(Strict):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class DismissCodeDiscoveryRequest(Strict):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class CodeDiscoveryActionResultDTO(BaseModel):
+    item: CodeDiscoveryItemDTO
+    task_id: UUID | None = None
+    adopted_immediately: bool
+    attached_evidence_count: int = 0
+    message: str
+
+
+class CodeDiscoveryDismissResultDTO(BaseModel):
+    item: CodeDiscoveryItemDTO

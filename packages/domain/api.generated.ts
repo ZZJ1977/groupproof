@@ -3414,6 +3414,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/plan/code-discoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Code Discoveries */
+        get: operations["list_code_discoveries_api_v1_projects__project_id__plan_code_discoveries_get"];
+        put?: never;
+        /** Scan Code Discoveries */
+        post: operations["scan_code_discoveries_api_v1_projects__project_id__plan_code_discoveries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/plan/code-discoveries/{suggestion_id}/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adopt Code Discovery */
+        post: operations["adopt_code_discovery_api_v1_projects__project_id__plan_code_discoveries__suggestion_id__adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/plan/code-discoveries/{suggestion_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Code Discovery */
+        post: operations["approve_code_discovery_api_v1_projects__project_id__plan_code_discoveries__suggestion_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/plan/code-discoveries/{suggestion_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Code Discovery */
+        post: operations["dismiss_code_discovery_api_v1_projects__project_id__plan_code_discoveries__suggestion_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/plan/confirmations/me": {
         parameters: {
             query?: never;
@@ -6123,6 +6192,29 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** AdoptCodeDiscoveryRequest */
+        AdoptCodeDiscoveryRequest: {
+            /** Acceptance Criteria */
+            acceptance_criteria?: string[] | null;
+            /** Action Type */
+            action_type?: ("merge_existing" | "new_subtask" | "new_top_level") | null;
+            /** Assignee Ids */
+            assignee_ids?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /** Module Id */
+            module_id?: string | null;
+            /** Parent Task Id */
+            parent_task_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Target Task Id */
+            target_task_id?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Weight */
+            weight?: number | null;
+        };
         /** AdoptSuggestion */
         AdoptSuggestion: {
             /**
@@ -6270,6 +6362,11 @@ export interface components {
             original_name?: string | null;
             /** Size Bytes */
             size_bytes?: number | null;
+        };
+        /** ApproveCodeDiscoveryRequest */
+        ApproveCodeDiscoveryRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** ArchiveClass */
         ArchiveClass: {
@@ -7857,6 +7954,11 @@ export interface components {
         DiscussionReplyResultDTO: {
             discussion: components["schemas"]["DiscussionDTO"];
             reply: components["schemas"]["DiscussionReplyDTO"];
+        };
+        /** DismissCodeDiscoveryRequest */
+        DismissCodeDiscoveryRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** DraftDTO */
         DraftDTO: {
@@ -9873,6 +9975,14 @@ export interface components {
             expected_version: number;
             /** Title */
             title: string;
+        };
+        /** ScanCodeDiscoveriesRequest */
+        ScanCodeDiscoveriesRequest: {
+            /**
+             * Max Commits
+             * @default 60
+             */
+            max_commits: number;
         };
         /** SchoolEmailChange */
         SchoolEmailChange: {
@@ -24340,6 +24450,419 @@ export interface operations {
             };
         };
     };
+    list_code_discoveries_api_v1_projects__project_id__plan_code_discoveries_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No permission for this course, group or project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale version, idempotency conflict, duplicate or invalid state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependent service is not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    scan_code_discoveries_api_v1_projects__project_id__plan_code_discoveries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ScanCodeDiscoveriesRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No permission for this course, group or project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale version, idempotency conflict, duplicate or invalid state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependent service is not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    adopt_code_discovery_api_v1_projects__project_id__plan_code_discoveries__suggestion_id__adopt_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdoptCodeDiscoveryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No permission for this course, group or project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale version, idempotency conflict, duplicate or invalid state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependent service is not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    approve_code_discovery_api_v1_projects__project_id__plan_code_discoveries__suggestion_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproveCodeDiscoveryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No permission for this course, group or project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale version, idempotency conflict, duplicate or invalid state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependent service is not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    dismiss_code_discovery_api_v1_projects__project_id__plan_code_discoveries__suggestion_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "X-Demo-User-Id"?: string | null;
+            };
+            path: {
+                project_id: string;
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DismissCodeDiscoveryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No permission for this course, group or project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found or not visible to the caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stale version, idempotency conflict, duplicate or invalid state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependent service is not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     confirm_mine_api_v1_projects__project_id__plan_confirmations_me_post: {
         parameters: {
             query?: never;
@@ -26953,6 +27476,7 @@ export interface operations {
                 assignee?: string;
                 milestone?: string;
                 module?: string;
+                origin?: string;
                 page?: number;
                 page_size?: number;
                 q?: string;
