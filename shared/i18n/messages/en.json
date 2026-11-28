@@ -1473,6 +1473,22 @@
     "contributionMemberSplit": "Baseline {planned} pts · Code-Added {discovered} pts",
     "teacherOriginPill": "Baseline {planned} · Code-Added {discovered}",
     "teacherOriginPillWithShare": "Baseline {planned} · Code-Added {discovered} ({share}%)",
-    "highExpansionWarning": "High Code-Added Share"
+    "highExpansionWarning": "High Code-Added Share",
+    "selectAll": "Select all",
+    "selectedCount": "{selected} of {total} selected",
+    "clearSelection": "Clear",
+    "selectCardAria": "Select suggestion: {title}",
+    "batchAdoptButton": "Adopt / Submit Selected ({count})",
+    "batchAdoptingButton": "Submitting…",
+    "batchApproveButton": "Approve Selected ({count})",
+    "batchApprovingButton": "Approving…",
+    "batchDismissButton": "Dismiss Selected ({count})",
+    "batchDismissingButton": "Dismissing…",
+    "batchAdoptSummaryAll": "Processed {succeeded} supplemental task suggestion(s) concurrently.",
+    "batchAdoptSummaryPartial": "Submitted {succeeded} item(s), {failed} failed: {error}",
+    "batchApproveSummaryAll": "Approved {succeeded} supplemental task(s) concurrently.",
+    "batchApproveSummaryPartial": "Approved {succeeded} item(s), {failed} failed: {error}",
+    "batchDismissSummaryAll": "Dismissed {succeeded} suggestion(s).",
+    "batchDismissSummaryPartial": "Dismissed {succeeded} item(s), {failed} failed: {error}"
   }
 }

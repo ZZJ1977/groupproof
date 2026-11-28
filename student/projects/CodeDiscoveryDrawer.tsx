@@ -80,6 +80,22 @@ function makeInitialDraft(item: CodeDiscoveryItem): DraftState {
   };
 }
 
+function buildAdoptPayload(item: CodeDiscoveryItem, draft: DraftState): CodeDiscoveryAdoptInput {
+  const cleanedCriteria = draft.acceptance_criteria.map((s) => s.trim()).filter(Boolean);
+  return {
+    action_type: draft.action_type,
+    title: draft.title.trim() || item.title,
+    description: draft.description.trim(),
+    module_id: draft.module_id || null,
+    parent_task_id: draft.action_type === "new_subtask" ? draft.parent_task_id || null : null,
+    target_task_id: draft.action_type === "merge_existing" ? draft.target_task_id || null : null,
+    assignee_ids: draft.assignee_ids,
+    weight: Math.min(10, Math.max(1, Number.isFinite(draft.weight) ? Math.round(draft.weight) : 3)),
+    acceptance_criteria: cleanedCriteria,
+    reason: draft.reason.trim() || undefined,
+  };
+}
+
 function actionPillStyle(actionType: CodeDiscoveryActionType): string {
   if (actionType === "merge_existing") {
     return "border-sky-200/90 bg-sky-50 text-sky-700";
@@ -117,7 +133,10 @@ export function CodeDiscoveryDrawer({
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(
     null,
   );
-  const [busyItemId, setBusyItemId] = useState<string | null>(null);
+  const [busyItemIds, setBusyItemIds] = useState<Set<string>>(() => new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [draftsById, setDraftsById] = useState<Record<string, DraftState>>({});
+  const [batchAction, setBatchAction] = useState<"adopt" | "approve" | "dismiss" | null>(null);
 
   const discoveryQuery = useQuery({
     queryKey: ["b-code-discoveries", userId, projectId],
@@ -146,6 +165,26 @@ export function CodeDiscoveryDrawer({
     onChanged?.();
   };
 
+  const setBusy = (ids: string[], busy: boolean) => {
+    setBusyItemIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (busy) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const removeSelected = (ids: string[]) => {
+    if (ids.length === 0) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  };
+
   const scanMutation = useMutation({
     mutationFn: () => scanCodeDiscoveries(projectId, { max_commits: 20 }),
     onSuccess: async (res) => {
@@ -157,14 +196,17 @@ export function CodeDiscoveryDrawer({
             ? t("scanSuccessCreated", { count: res.created_count })
             : t("scanSuccessNone"),
       });
-      if (res.created_count > 0) setTab("pending");
+      if (res.created_count > 0) {
+        setTab("pending");
+        setSelectedIds(new Set());
+      }
       await invalidateProjectCaches();
     },
     onError: (err) => setNotice({ tone: "error", text: errorText(err) }),
   });
 
   const handleAdopt = async (item: CodeDiscoveryItem, payload: CodeDiscoveryAdoptInput) => {
-    setBusyItemId(item.id);
+    setBusy([item.id], true);
     setNotice(null);
     try {
       const res = await adoptCodeDiscovery(projectId, item.id, payload);
@@ -176,17 +218,17 @@ export function CodeDiscoveryDrawer({
             ? t("adoptSuccessImmediate", { count: res.attached_evidence_count })
             : t("adoptSuccessPending")),
       });
-      if (!res.adopted_immediately) setTab("pending_approval");
+      removeSelected([item.id]);
       await invalidateProjectCaches();
     } catch (err) {
       setNotice({ tone: "error", text: errorText(err) });
     } finally {
-      setBusyItemId(null);
+      setBusy([item.id], false);
     }
   };
 
   const handleApprove = async (item: CodeDiscoveryItem, reason: string) => {
-    setBusyItemId(item.id);
+    setBusy([item.id], true);
     setNotice(null);
     try {
       const res = await approveCodeDiscovery(projectId, item.id, reason ? { reason } : {});
@@ -194,26 +236,88 @@ export function CodeDiscoveryDrawer({
         tone: "success",
         text: res.message?.trim() || t("approveSuccess"),
       });
-      if (res.adopted_immediately) setTab("adopted");
+      removeSelected([item.id]);
       await invalidateProjectCaches();
     } catch (err) {
       setNotice({ tone: "error", text: errorText(err) });
     } finally {
-      setBusyItemId(null);
+      setBusy([item.id], false);
     }
   };
 
   const handleDismiss = async (item: CodeDiscoveryItem, reason: string) => {
-    setBusyItemId(item.id);
+    setBusy([item.id], true);
     setNotice(null);
     try {
       await dismissCodeDiscovery(projectId, item.id, reason ? { reason } : {});
       setNotice({ tone: "info", text: t("dismissSuccess") });
+      removeSelected([item.id]);
       await invalidateProjectCaches();
     } catch (err) {
       setNotice({ tone: "error", text: errorText(err) });
     } finally {
-      setBusyItemId(null);
+      setBusy([item.id], false);
+    }
+  };
+
+  const runBatch = async (
+    kind: "adopt" | "approve" | "dismiss",
+    targets: CodeDiscoveryItem[],
+    executor: (item: CodeDiscoveryItem) => Promise<unknown>,
+  ) => {
+    const eligible = targets.filter((item) => !busyItemIds.has(item.id));
+    if (eligible.length === 0) return;
+
+    const targetIds = eligible.map((item) => item.id);
+    setBatchAction(kind);
+    setBusy(targetIds, true);
+    setNotice(null);
+
+    try {
+      const settled = await Promise.allSettled(eligible.map((item) => executor(item)));
+      const succeededIds: string[] = [];
+      let failedCount = 0;
+      let firstError = "";
+
+      settled.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          succeededIds.push(eligible[index].id);
+        } else {
+          failedCount += 1;
+          if (!firstError) firstError = errorText(result.reason);
+        }
+      });
+
+      removeSelected(succeededIds);
+      await invalidateProjectCaches();
+
+      if (failedCount === 0) {
+        const key =
+          kind === "adopt"
+            ? "batchAdoptSummaryAll"
+            : kind === "approve"
+              ? "batchApproveSummaryAll"
+              : "batchDismissSummaryAll";
+        setNotice({ tone: "success", text: t(key, { succeeded: succeededIds.length }) });
+      } else {
+        const key =
+          kind === "adopt"
+            ? "batchAdoptSummaryPartial"
+            : kind === "approve"
+              ? "batchApproveSummaryPartial"
+              : "batchDismissSummaryPartial";
+        setNotice({
+          tone: "error",
+          text: t(key, {
+            succeeded: succeededIds.length,
+            failed: failedCount,
+            error: firstError,
+          }),
+        });
+      }
+    } finally {
+      setBusy(targetIds, false);
+      setBatchAction(null);
     }
   };
 
@@ -238,6 +342,56 @@ export function CodeDiscoveryDrawer({
       : tab === "pending_approval"
         ? pendingApprovalItems
         : adoptedItems;
+
+  const isBatchableTab = tab === "pending" || tab === "pending_approval";
+  const visibleSelectedItems = useMemo(
+    () => (isBatchableTab ? activeItems.filter((item) => selectedIds.has(item.id)) : []),
+    [isBatchableTab, activeItems, selectedIds],
+  );
+  const approvableSelectedItems = useMemo(
+    () => visibleSelectedItems.filter((item) => item.can_approve),
+    [visibleSelectedItems],
+  );
+  const allVisibleSelected =
+    isBatchableTab && activeItems.length > 0 && visibleSelectedItems.length === activeItems.length;
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const item of activeItems) next.delete(item.id);
+      } else {
+        for (const item of activeItems) next.add(item.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectItem = (itemId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  const getDraft = (item: CodeDiscoveryItem) => draftsById[item.id] ?? makeInitialDraft(item);
+
+  const handleDraftChange = (
+    item: CodeDiscoveryItem,
+    updater: (prev: DraftState) => DraftState,
+  ) => {
+    setDraftsById((prev) => ({
+      ...prev,
+      [item.id]: updater(prev[item.id] ?? makeInitialDraft(item)),
+    }));
+  };
+
+  const handleTabChange = (nextTab: DrawerTab) => {
+    setTab(nextTab);
+    setSelectedIds(new Set());
+  };
 
   const modules = tasksMetaQuery.data?.modules ?? [];
   const members = tasksMetaQuery.data?.members ?? [];
@@ -343,7 +497,7 @@ export function CodeDiscoveryDrawer({
                   role="tab"
                   aria-selected={active}
                   data-testid={`code-discovery-tab-${item.id}`}
-                  onClick={() => setTab(item.id)}
+                  onClick={() => handleTabChange(item.id)}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
                     active
@@ -364,6 +518,98 @@ export function CodeDiscoveryDrawer({
               );
             })}
           </div>
+
+          {isBatchableTab && activeItems.length > 0 && (
+            <div
+              data-testid="code-discovery-batch-bar"
+              className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/85 bg-slate-50/80 px-3 py-2 text-xs"
+            >
+              <div className="flex flex-wrap items-center gap-2.5">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    disabled={batchAction !== null}
+                    onChange={toggleSelectAll}
+                    data-testid="code-discovery-select-all"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 accent-sky-600"
+                  />
+                  <span>{t("selectAll")}</span>
+                </label>
+                <span className="font-mono text-[11px] tabular-nums text-slate-500">
+                  {t("selectedCount", {
+                    selected: visibleSelectedItems.length,
+                    total: activeItems.length,
+                  })}
+                </span>
+                {visibleSelectedItems.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchAction !== null}
+                    onClick={() => removeSelected(visibleSelectedItems.map((item) => item.id))}
+                    className="text-[11px] font-medium text-sky-700 hover:underline disabled:opacity-50"
+                  >
+                    {t("clearSelection")}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {tab === "pending" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    loading={batchAction === "adopt"}
+                    disabled={visibleSelectedItems.length === 0 || batchAction !== null}
+                    onClick={() =>
+                      void runBatch("adopt", visibleSelectedItems, (item) =>
+                        adoptCodeDiscovery(projectId, item.id, buildAdoptPayload(item, getDraft(item))),
+                      )
+                    }
+                    data-testid="code-discovery-batch-adopt"
+                  >
+                    {batchAction === "adopt"
+                      ? t("batchAdoptingButton")
+                      : t("batchAdoptButton", { count: visibleSelectedItems.length })}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    loading={batchAction === "approve"}
+                    disabled={approvableSelectedItems.length === 0 || batchAction !== null}
+                    onClick={() =>
+                      void runBatch("approve", approvableSelectedItems, (item) =>
+                        approveCodeDiscovery(projectId, item.id, {}),
+                      )
+                    }
+                    data-testid="code-discovery-batch-approve"
+                  >
+                    {batchAction === "approve"
+                      ? t("batchApprovingButton")
+                      : t("batchApproveButton", { count: approvableSelectedItems.length })}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  loading={batchAction === "dismiss"}
+                  disabled={visibleSelectedItems.length === 0 || batchAction !== null}
+                  onClick={() =>
+                    void runBatch("dismiss", visibleSelectedItems, (item) =>
+                      dismissCodeDiscovery(projectId, item.id, {}),
+                    )
+                  }
+                  data-testid="code-discovery-batch-dismiss"
+                >
+                  {batchAction === "dismiss"
+                    ? t("batchDismissingButton")
+                    : t("batchDismissButton", { count: visibleSelectedItems.length })}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Scrollable body */}
@@ -428,7 +674,12 @@ export function CodeDiscoveryDrawer({
                 modules={modules}
                 members={members}
                 tasks={projectTasks}
-                busy={busyItemId === item.id}
+                draft={getDraft(item)}
+                onDraftChange={(updater) => handleDraftChange(item, updater)}
+                selectable={isBatchableTab}
+                selected={selectedIds.has(item.id)}
+                onToggleSelect={() => toggleSelectItem(item.id)}
+                busy={busyItemIds.has(item.id)}
                 onAdopt={(payload) => void handleAdopt(item, payload)}
                 onApprove={(reason) => void handleApprove(item, reason)}
                 onDismiss={(reason) => void handleDismiss(item, reason)}
@@ -447,6 +698,11 @@ function CodeDiscoveryCard({
   modules,
   members,
   tasks,
+  draft,
+  onDraftChange,
+  selectable,
+  selected,
+  onToggleSelect,
   busy,
   onAdopt,
   onApprove,
@@ -457,6 +713,11 @@ function CodeDiscoveryCard({
   modules: BPlanOption[];
   members: BPerson[];
   tasks: BTaskRow[];
+  draft: DraftState;
+  onDraftChange: (updater: (prev: DraftState) => DraftState) => void;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   busy: boolean;
   onAdopt: (payload: CodeDiscoveryAdoptInput) => void;
   onApprove: (reason: string) => void;
@@ -464,8 +725,8 @@ function CodeDiscoveryCard({
 }) {
   const t = useTranslations("codeDiscovery");
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<DraftState>(() => makeInitialDraft(item));
   const [actionReason, setActionReason] = useState("");
+  const setDraft = onDraftChange;
 
   const isPendingReview = item.status === "pending" && item.approval_status !== "pending_approval";
   const isPendingApproval = item.status === "pending" && item.approval_status === "pending_approval";
@@ -503,20 +764,7 @@ function CodeDiscoveryCard({
   };
 
   const submitAdopt = () => {
-    const cleanedCriteria = draft.acceptance_criteria.map((s) => s.trim()).filter(Boolean);
-    const payload: CodeDiscoveryAdoptInput = {
-      action_type: draft.action_type,
-      title: draft.title.trim() || item.title,
-      description: draft.description.trim(),
-      module_id: draft.module_id || null,
-      parent_task_id: draft.action_type === "new_subtask" ? draft.parent_task_id || null : null,
-      target_task_id: draft.action_type === "merge_existing" ? draft.target_task_id || null : null,
-      assignee_ids: draft.assignee_ids,
-      weight: Math.min(10, Math.max(1, Number.isFinite(draft.weight) ? Math.round(draft.weight) : 3)),
-      acceptance_criteria: cleanedCriteria,
-      reason: draft.reason.trim() || undefined,
-    };
-    onAdopt(payload);
+    onAdopt(buildAdoptPayload(item, draft));
   };
 
   const memberNameById = useMemo(
@@ -527,11 +775,27 @@ function CodeDiscoveryCard({
   return (
     <article
       data-testid={`code-discovery-card-${item.id}`}
-      className="rounded-2xl border border-slate-200/85 bg-white p-4 shadow-2xs"
+      className={cn(
+        "rounded-2xl border bg-white p-4 shadow-2xs transition-colors",
+        selected
+          ? "border-sky-300 ring-1 ring-sky-200/70"
+          : "border-slate-200/85",
+      )}
     >
       {/* Top pills row */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={selected}
+              disabled={busy}
+              onChange={onToggleSelect}
+              aria-label={t("selectCardAria", { title: item.title })}
+              data-testid={`code-discovery-select-${item.id}`}
+              className="mr-0.5 h-3.5 w-3.5 cursor-pointer rounded border-slate-300 text-sky-600 accent-sky-600"
+            />
+          )}
           <span
             className={cn(
               "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold",

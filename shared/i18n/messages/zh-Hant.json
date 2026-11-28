@@ -1473,6 +1473,22 @@
     "contributionMemberSplit": "基線 {planned} 分 · 演進增補 {discovered} 分",
     "teacherOriginPill": "基線 {planned} · 演進增補 {discovered}",
     "teacherOriginPillWithShare": "基線 {planned} · 演進增補 {discovered} ({share}%)",
-    "highExpansionWarning": "演進增補佔比偏高"
+    "highExpansionWarning": "演進增補佔比偏高",
+    "selectAll": "全選目前",
+    "selectedCount": "已選 {selected} / {total} 項",
+    "clearSelection": "清除選取",
+    "selectCardAria": "選取建議任務：{title}",
+    "batchAdoptButton": "批次採納 / 提交 ({count})",
+    "batchAdoptingButton": "批次提交中…",
+    "batchApproveButton": "批次核准 ({count})",
+    "batchApprovingButton": "批次核准中…",
+    "batchDismissButton": "批次忽略 ({count})",
+    "batchDismissingButton": "批次忽略中…",
+    "batchAdoptSummaryAll": "已並行處理 {succeeded} 項增補任務建議。",
+    "batchAdoptSummaryPartial": "已成功提交 {succeeded} 項，{failed} 項失敗：{error}",
+    "batchApproveSummaryAll": "已並行核准 {succeeded} 項增補任務。",
+    "batchApproveSummaryPartial": "已核准 {succeeded} 項，{failed} 項失敗：{error}",
+    "batchDismissSummaryAll": "已批次忽略 {succeeded} 項建議。",
+    "batchDismissSummaryPartial": "已忽略 {succeeded} 項，{failed} 項失敗：{error}"
   }
 }

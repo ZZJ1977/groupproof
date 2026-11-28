@@ -1473,6 +1473,22 @@
     "contributionMemberSplit": "基线 {planned} 分 · 演进增补 {discovered} 分",
     "teacherOriginPill": "基线 {planned} · 演进增补 {discovered}",
     "teacherOriginPillWithShare": "基线 {planned} · 演进增补 {discovered} ({share}%)",
-    "highExpansionWarning": "演进增补占比偏高"
+    "highExpansionWarning": "演进增补占比偏高",
+    "selectAll": "全选当前",
+    "selectedCount": "已选 {selected} / {total} 项",
+    "clearSelection": "清空选择",
+    "selectCardAria": "选择建议任务：{title}",
+    "batchAdoptButton": "批量采纳 / 提交 ({count})",
+    "batchAdoptingButton": "批量提交中…",
+    "batchApproveButton": "批量批准 ({count})",
+    "batchApprovingButton": "批量批准中…",
+    "batchDismissButton": "批量忽略 ({count})",
+    "batchDismissingButton": "批量忽略中…",
+    "batchAdoptSummaryAll": "已并行处理 {succeeded} 项增补任务建议。",
+    "batchAdoptSummaryPartial": "已成功提交 {succeeded} 项，{failed} 项失败：{error}",
+    "batchApproveSummaryAll": "已并行批准 {succeeded} 项增补任务。",
+    "batchApproveSummaryPartial": "已批准 {succeeded} 项，{failed} 项失败：{error}",
+    "batchDismissSummaryAll": "已批量忽略 {succeeded} 项建议。",
+    "batchDismissSummaryPartial": "已忽略 {succeeded} 项，{failed} 项失败：{error}"
   }
 }
